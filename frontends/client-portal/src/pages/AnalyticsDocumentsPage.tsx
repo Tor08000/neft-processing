@@ -97,7 +97,12 @@ export function AnalyticsDocumentsPage() {
 
       {!isLoading && !error && summary ? (
         <section className="grid two">
-          <AnalyticsChartPanel title={t("analytics.documents.statusDistribution")}>
+          <AnalyticsChartPanel
+            title={t("analytics.documents.statusDistribution")}
+            isEmpty={statusMax === 0}
+            emptyTitle={t("analytics.empty.title")}
+            emptyDescription={t("analytics.empty.description")}
+          >
             <ul className="bars">
               {[
                 { label: t("analytics.documents.status.issued"), value: summary.issued },
@@ -119,7 +124,12 @@ export function AnalyticsDocumentsPage() {
             </ul>
           </AnalyticsChartPanel>
 
-          <AnalyticsChartPanel title={t("analytics.documents.attention")}> 
+          <AnalyticsChartPanel
+            title={t("analytics.documents.attention")}
+            isEmpty={!summary.attention.length}
+            emptyTitle={t("analytics.empty.title")}
+            emptyDescription={t("analytics.documents.emptyAttention")}
+          >
             {summary.attention.length ? (
               <ul className="attention-list">
                 {summary.attention.map((item) => (
@@ -131,9 +141,7 @@ export function AnalyticsDocumentsPage() {
                   </li>
                 ))}
               </ul>
-            ) : (
-              <div className="muted">{t("analytics.documents.emptyAttention")}</div>
-            )}
+            ) : null}
           </AnalyticsChartPanel>
         </section>
       ) : null}

@@ -93,7 +93,12 @@ export function AnalyticsDeclinesPage() {
 
       {!isLoading && !error && hasData && declines ? (
         <section className="grid two">
-          <AnalyticsChartPanel title={t("analytics.declines.topReasons")}> 
+          <AnalyticsChartPanel
+            title={t("analytics.declines.topReasons")}
+            isEmpty={!declines.top_reasons.length}
+            emptyTitle={t("analytics.empty.title")}
+            emptyDescription={t("analytics.declines.emptyReasons")}
+          >
             {declines.top_reasons.length ? (
               <ul className="bars">
                 {declines.top_reasons.map((item) => (
@@ -109,12 +114,15 @@ export function AnalyticsDeclinesPage() {
                   </li>
                 ))}
               </ul>
-            ) : (
-              <div className="muted">{t("analytics.declines.emptyReasons")}</div>
-            )}
+            ) : null}
           </AnalyticsChartPanel>
 
-          <AnalyticsChartPanel title={t("analytics.declines.trend")}> 
+          <AnalyticsChartPanel
+            title={t("analytics.declines.trend")}
+            isEmpty={!declines.trend.length}
+            emptyTitle={t("analytics.empty.title")}
+            emptyDescription={t("analytics.declines.emptyTrend")}
+          >
             {declines.trend.length ? (
               <div className="chart">
                 {declines.trend.map((item) => (
@@ -130,16 +138,19 @@ export function AnalyticsDeclinesPage() {
                   </div>
                 ))}
               </div>
-            ) : (
-              <div className="muted">{t("analytics.declines.emptyTrend")}</div>
-            )}
+            ) : null}
           </AnalyticsChartPanel>
         </section>
       ) : null}
 
       {!isLoading && !error && hasData && declines ? (
         <section className="grid two">
-          <AnalyticsChartPanel title={t("analytics.declines.expensive")}> 
+          <AnalyticsChartPanel
+            title={t("analytics.declines.expensive")}
+            isEmpty={!declines.expensive.length}
+            emptyTitle={t("analytics.empty.title")}
+            emptyDescription={t("analytics.declines.emptyExpensive")}
+          >
             {declines.expensive.length ? (
               <table className="data-table">
                 <thead>
@@ -167,12 +178,15 @@ export function AnalyticsDeclinesPage() {
                   ))}
                 </tbody>
               </table>
-            ) : (
-              <div className="muted">{t("analytics.declines.emptyExpensive")}</div>
-            )}
+            ) : null}
           </AnalyticsChartPanel>
 
-          <AnalyticsChartPanel title={t("analytics.declines.insights")}> 
+          <AnalyticsChartPanel
+            title={t("analytics.declines.insights")}
+            isEmpty={!insights?.top_primary_reasons?.length}
+            emptyTitle={t("analytics.empty.title")}
+            emptyDescription={t("analytics.declines.emptyInsights")}
+          >
             {insights?.top_primary_reasons?.length ? (
               <ul className="insights-list">
                 {insights.top_primary_reasons.map((item) => (
@@ -182,15 +196,18 @@ export function AnalyticsDeclinesPage() {
                   </li>
                 ))}
               </ul>
-            ) : (
-              <div className="muted">{t("analytics.declines.emptyInsights")}</div>
-            )}
+            ) : null}
           </AnalyticsChartPanel>
         </section>
       ) : null}
 
-      {!isLoading && !error && hasData && declines?.heatmap?.length ? (
-        <AnalyticsChartPanel title={t("analytics.declines.heatmap")}> 
+      {!isLoading && !error && hasData && declines ? (
+        <AnalyticsChartPanel
+          title={t("analytics.declines.heatmap")}
+          isEmpty={!declines.heatmap?.length}
+          emptyTitle={t("analytics.empty.title")}
+          emptyDescription={t("analytics.empty.description")}
+        >
           <table className="data-table">
             <thead>
               <tr>
@@ -200,7 +217,7 @@ export function AnalyticsDeclinesPage() {
               </tr>
             </thead>
             <tbody>
-              {declines.heatmap.map((item, index) => (
+              {declines.heatmap?.map((item, index) => (
                 <tr key={`${item.reason}-${item.station}-${index}`}>
                   <td>{item.reason}</td>
                   <td>{item.station}</td>

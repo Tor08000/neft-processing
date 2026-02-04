@@ -40,7 +40,7 @@ export function PriceAnalyticsCharts({ series }: PriceAnalyticsChartsProps) {
   }, [series, metric]);
 
   if (!series.length) {
-    return <div className="muted">{t("priceAnalyticsPage.blocks.timeline.empty")}</div>;
+    return null;
   }
 
   const lastPoint = series[series.length - 1];

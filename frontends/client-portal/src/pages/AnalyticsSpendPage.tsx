@@ -136,6 +136,9 @@ export function AnalyticsSpendPage() {
         <AnalyticsChartPanel
           title={t("analytics.spend.trend.title")}
           subtitle={t("analytics.spend.trend.subtitle")}
+          isEmpty={!summary.trend.length}
+          emptyTitle={t("analytics.empty.title")}
+          emptyDescription={t("analytics.spend.trend.empty")}
           action={
             <button
               type="button"
@@ -164,16 +167,19 @@ export function AnalyticsSpendPage() {
                 </div>
               ))}
             </div>
-          ) : (
-            <div className="muted">{t("analytics.spend.trend.empty")}</div>
-          )}
+          ) : null}
           {exportStatus ? <div className="muted small analytics-export-status">{exportStatus}</div> : null}
         </AnalyticsChartPanel>
       ) : null}
 
       {!isLoading && !error && hasData && summary ? (
         <section className="grid two">
-          <AnalyticsChartPanel title={t("analytics.spend.topStations")}>
+          <AnalyticsChartPanel
+            title={t("analytics.spend.topStations")}
+            isEmpty={!summary.top_stations.length}
+            emptyTitle={t("analytics.empty.title")}
+            emptyDescription={t("analytics.spend.emptyStations")}
+          >
             {summary.top_stations.length ? (
               <ul className="bars">
                 {summary.top_stations.map((item) => (
@@ -191,12 +197,15 @@ export function AnalyticsSpendPage() {
                   </li>
                 ))}
               </ul>
-            ) : (
-              <div className="muted">{t("analytics.spend.emptyStations")}</div>
-            )}
+            ) : null}
           </AnalyticsChartPanel>
 
-          <AnalyticsChartPanel title={t("analytics.spend.topMerchants")}>
+          <AnalyticsChartPanel
+            title={t("analytics.spend.topMerchants")}
+            isEmpty={!summary.top_merchants.length}
+            emptyTitle={t("analytics.empty.title")}
+            emptyDescription={t("analytics.spend.emptyMerchants")}
+          >
             {summary.top_merchants.length ? (
               <ul className="bars">
                 {summary.top_merchants.map((item) => (
@@ -214,16 +223,19 @@ export function AnalyticsSpendPage() {
                   </li>
                 ))}
               </ul>
-            ) : (
-              <div className="muted">{t("analytics.spend.emptyMerchants")}</div>
-            )}
+            ) : null}
           </AnalyticsChartPanel>
         </section>
       ) : null}
 
       {!isLoading && !error && hasData && summary ? (
         <section className="grid two">
-          <AnalyticsChartPanel title={t("analytics.spend.topCards")}>
+          <AnalyticsChartPanel
+            title={t("analytics.spend.topCards")}
+            isEmpty={!summary.top_cards.length}
+            emptyTitle={t("analytics.empty.title")}
+            emptyDescription={t("analytics.spend.emptyCards")}
+          >
             {summary.top_cards.length ? (
               <ul className="bars">
                 {summary.top_cards.map((item) => (
@@ -241,12 +253,15 @@ export function AnalyticsSpendPage() {
                   </li>
                 ))}
               </ul>
-            ) : (
-              <div className="muted">{t("analytics.spend.emptyCards")}</div>
-            )}
+            ) : null}
           </AnalyticsChartPanel>
 
-          <AnalyticsChartPanel title={t("analytics.spend.topDrivers")}>
+          <AnalyticsChartPanel
+            title={t("analytics.spend.topDrivers")}
+            isEmpty={!summary.top_drivers.length}
+            emptyTitle={t("analytics.empty.title")}
+            emptyDescription={t("analytics.spend.emptyDrivers")}
+          >
             {summary.top_drivers.length ? (
               <ul className="bars">
                 {summary.top_drivers.map((item) => (
@@ -264,15 +279,18 @@ export function AnalyticsSpendPage() {
                   </li>
                 ))}
               </ul>
-            ) : (
-              <div className="muted">{t("analytics.spend.emptyDrivers")}</div>
-            )}
+            ) : null}
           </AnalyticsChartPanel>
         </section>
       ) : null}
 
       {!isLoading && !error && hasData && summary ? (
-        <AnalyticsChartPanel title={t("analytics.spend.productBreakdown")}>
+        <AnalyticsChartPanel
+          title={t("analytics.spend.productBreakdown")}
+          isEmpty={!summary.product_breakdown.length}
+          emptyTitle={t("analytics.empty.title")}
+          emptyDescription={t("analytics.spend.emptyProducts")}
+        >
           {summary.product_breakdown.length ? (
             <ul className="bars">
               {summary.product_breakdown.map((item) => (
@@ -290,9 +308,7 @@ export function AnalyticsSpendPage() {
                 </li>
               ))}
             </ul>
-          ) : (
-            <div className="muted">{t("analytics.spend.emptyProducts")}</div>
-          )}
+          ) : null}
         </AnalyticsChartPanel>
       ) : null}
     </div>

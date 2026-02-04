@@ -200,7 +200,31 @@ UI is compliant if:
 
 ---
 
-## 12. Smoke check (required)
+## 12. Charts Style Spec (v1)
+
+Use the shared chart primitives and keep charts strict and calm.
+
+**Rules**
+- Maximum 4 series on one chart (add toggles for more).
+- Primary series uses `--neft-primary`.
+- Status colors only via tokens: `--neft-info`, `--neft-success`, `--neft-warning`, `--neft-error`.
+- No gradients, rainbow palettes, or inner chart shadows.
+- Empty data → **EmptyState (v2)** via `ChartFrame` (`isEmpty=true`).
+
+**Shared components**
+- `ChartFrame` provides the standard container, header, fixed height, and empty state.
+- `NeftChartTooltip` is the default tooltip UI for Recharts.
+
+**Recharts defaults**
+- Grid stroke: `var(--neft-chart-grid)`.
+- Axis stroke: `var(--neft-chart-axis)`.
+- Tick fill: `var(--neft-chart-tick)` with font size `12`.
+- Line: `strokeWidth={2}`, `dot={false}`, `activeDot={{ r: 4 }}`.
+- Bar: `radius={4}`.
+
+---
+
+## 13. Smoke check (required)
 
 - Run admin and client frontends.
 - Open dashboard, analytics, and orders/transactions pages.

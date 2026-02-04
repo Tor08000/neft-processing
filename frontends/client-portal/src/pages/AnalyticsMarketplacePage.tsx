@@ -108,7 +108,12 @@ export function AnalyticsMarketplacePage() {
 
       {!isLoading && !error && summary ? (
         <section className="grid two">
-          <AnalyticsChartPanel title={t("analytics.marketplace.statusDistribution")}>
+          <AnalyticsChartPanel
+            title={t("analytics.marketplace.statusDistribution")}
+            isEmpty={!summary.status_breakdown.length}
+            emptyTitle={t("analytics.empty.title")}
+            emptyDescription={t("analytics.marketplace.emptyStatus")}
+          >
             {summary.status_breakdown.length ? (
               <ul className="bars">
                 {summary.status_breakdown.map((item) => (
@@ -124,12 +129,15 @@ export function AnalyticsMarketplacePage() {
                   </li>
                 ))}
               </ul>
-            ) : (
-              <div className="muted">{t("analytics.marketplace.emptyStatus")}</div>
-            )}
+            ) : null}
           </AnalyticsChartPanel>
 
-          <AnalyticsChartPanel title={t("analytics.marketplace.topServices")}>
+          <AnalyticsChartPanel
+            title={t("analytics.marketplace.topServices")}
+            isEmpty={!summary.top_services.length}
+            emptyTitle={t("analytics.empty.title")}
+            emptyDescription={t("analytics.marketplace.emptyServices")}
+          >
             {summary.top_services.length ? (
               <ul className="bars">
                 {summary.top_services.map((item) => (
@@ -145,9 +153,7 @@ export function AnalyticsMarketplacePage() {
                   </li>
                 ))}
               </ul>
-            ) : (
-              <div className="muted">{t("analytics.marketplace.emptyServices")}</div>
-            )}
+            ) : null}
           </AnalyticsChartPanel>
         </section>
       ) : null}

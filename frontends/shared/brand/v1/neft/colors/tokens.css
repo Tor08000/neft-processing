@@ -36,6 +36,19 @@
   --neft-warning: #FFB020;
   --neft-error: #E5484D;
 
+  /* Charts (LIGHT) */
+  --neft-chart-grid: rgba(11, 31, 42, 0.10);
+  --neft-chart-axis: rgba(11, 31, 42, 0.35);
+  --neft-chart-tick: rgba(11, 31, 42, 0.65);
+  --neft-chart-tooltip-bg: #FFFFFF;
+  --neft-chart-tooltip-border: rgba(11, 31, 42, 0.16);
+
+  --neft-chart-series-1: var(--neft-primary);
+  --neft-chart-series-2: var(--neft-info);
+  --neft-chart-series-3: var(--neft-success);
+  --neft-chart-series-4: var(--neft-warning);
+  --neft-chart-series-err: var(--neft-error);
+
   /* Focus */
   --neft-focus: rgba(21, 161, 199, 0.35);
 
@@ -70,6 +83,19 @@
 
   /* Table */
   --neft-table-hover: #243447;
+
+  /* Charts (DARK) */
+  --neft-chart-grid: rgba(229, 231, 235, 0.08);
+  --neft-chart-axis: rgba(229, 231, 235, 0.18);
+  --neft-chart-tick: rgba(229, 231, 235, 0.62);
+  --neft-chart-tooltip-bg: var(--neft-card);
+  --neft-chart-tooltip-border: var(--neft-border);
+
+  --neft-chart-series-1: var(--neft-primary);
+  --neft-chart-series-2: var(--neft-info);
+  --neft-chart-series-3: var(--neft-success);
+  --neft-chart-series-4: var(--neft-warning);
+  --neft-chart-series-err: var(--neft-error);
 }
 
 /* Base application styling helpers (optional) */
