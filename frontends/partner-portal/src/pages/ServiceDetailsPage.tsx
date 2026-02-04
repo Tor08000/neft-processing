@@ -26,8 +26,6 @@ import type {
 
 type ApiErrorState = {
   message: string;
-  status?: number;
-  correlationId?: string | null;
 };
 
 type CatalogFormState = {
@@ -53,18 +51,15 @@ type OfferFormState = {
 
 const normalizeError = (error: unknown, fallback: string): ApiErrorState => {
   if (error instanceof ApiError) {
-    return { message: error.message, status: error.status, correlationId: error.correlationId };
+    return { message: fallback };
   }
   if (error instanceof Error) {
-    return { message: error.message };
+    return { message: fallback };
   }
   return { message: fallback };
 };
 
 const formatErrorDescription = (error: ApiErrorState): string => {
-  if (error.status) {
-    return `${error.message} (HTTP ${error.status})`;
-  }
   return error.message;
 };
 
@@ -333,7 +328,7 @@ export function ServiceDetailsPage() {
       {itemLoading ? (
         <LoadingState label="Загружаем карточку сервиса..." />
       ) : itemError ? (
-        <ErrorState description={formatErrorDescription(itemError)} correlationId={itemError.correlationId} />
+        <ErrorState description={formatErrorDescription(itemError)} />
       ) : item ? (
         <section className="card">
           <div className="section-title">
@@ -429,7 +424,6 @@ export function ServiceDetailsPage() {
         {actionNotice ? (
           <div className="notice">
             <div>{actionNotice}</div>
-            {actionCorrelation ? <div className="muted small">Correlation ID: {actionCorrelation}</div> : null}
           </div>
         ) : null}
         {offersLoading ? (
@@ -438,7 +432,7 @@ export function ServiceDetailsPage() {
             <div className="skeleton-line" />
           </div>
         ) : offersError ? (
-          <ErrorState description={formatErrorDescription(offersError)} correlationId={offersError.correlationId} />
+          <ErrorState description={formatErrorDescription(offersError)} />
         ) : filteredOffers.length === 0 ? (
           <EmptyState
             title={offers.length === 0 ? "Офферов нет" : "Нет результатов фильтра"}
@@ -585,9 +579,6 @@ export function ServiceDetailsPage() {
             {itemFormError ? (
               <div className="notice error">
                 {formatErrorDescription(itemFormError)}
-                {itemFormError.correlationId ? (
-                  <div className="muted small">Correlation ID: {itemFormError.correlationId}</div>
-                ) : null}
               </div>
             ) : null}
             <div className="form-actions">
@@ -698,9 +689,6 @@ export function ServiceDetailsPage() {
             {offerFormError ? (
               <div className="notice error">
                 {formatErrorDescription(offerFormError)}
-                {offerFormError.correlationId ? (
-                  <div className="muted small">Correlation ID: {offerFormError.correlationId}</div>
-                ) : null}
               </div>
             ) : null}
             <div className="form-actions">

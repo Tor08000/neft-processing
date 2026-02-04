@@ -319,7 +319,6 @@ export function PriceVersionDetailsPage() {
         {actionMessage ? (
           <div className="notice">
             <strong>{actionMessage}</strong>
-            {actionCorrelation ? <div className="muted">{t("errors.correlationId", { id: actionCorrelation })}</div> : null}
           </div>
         ) : null}
       </section>
@@ -588,7 +587,6 @@ export function PriceVersionDetailsPage() {
                     </div>
                     <div className="timeline-item__body">
                       <span>{t("priceVersionPage.audit.actor", { actor: eventItem.actor ?? "system" })}</span>
-                      {eventItem.correlation_id ? <span className="muted">{t("errors.correlationId", { id: eventItem.correlation_id })}</span> : null}
                     </div>
                   </div>
                 ))}

@@ -155,7 +155,7 @@ export function OrdersPage() {
       .catch((err) => {
         console.error(err);
         if (!active) return;
-        if (err instanceof ApiError && err.status === 404 && isDemoPartnerAccount) {
+        if (err instanceof ApiError && isDemoPartnerAccount && (err.status === 403 || err.status === 404)) {
           setOrders(demoOrders);
           setTotal(demoOrders.length);
           setIsDemoFallback(true);

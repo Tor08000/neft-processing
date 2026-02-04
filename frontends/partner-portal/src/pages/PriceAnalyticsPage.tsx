@@ -82,7 +82,7 @@ export function PriceAnalyticsPage() {
       })
       .catch((err) => {
         console.error(err);
-        if (err instanceof ApiError && err.status === 404 && isDemoPartnerAccount) {
+        if (err instanceof ApiError && isDemoPartnerAccount && (err.status === 403 || err.status === 404)) {
           setVersions(demoAnalyticsVersions);
           setOffers(demoAnalyticsOffers);
           setInsights(demoAnalyticsInsights);
@@ -166,8 +166,8 @@ export function PriceAnalyticsPage() {
     return (
       <PartnerErrorState
         error={error}
-        title={t("priceAnalyticsPage.errors.loadTitle", { status: error.status })}
-        description={t("priceAnalyticsPage.errors.loadFailed")}
+        title={t("errors.unavailableTitle")}
+        description={t("errors.unavailableDescription")}
         action={
           <button type="button" onClick={() => window.location.reload()}>
             {t("errors.retry")}

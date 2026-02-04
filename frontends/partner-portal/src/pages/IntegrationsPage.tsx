@@ -1002,9 +1002,6 @@ export function IntegrationsPage() {
             {createError ? (
               <div className="notice error">
                 {formatErrorDescription(createError)}
-                {createError.correlationId ? (
-                  <div className="muted small">{t("errors.correlationId", { id: createError.correlationId })}</div>
-                ) : null}
               </div>
             ) : null}
             <div className="form-actions">
@@ -1045,9 +1042,6 @@ export function IntegrationsPage() {
                 <pre className="code-block">{snippet}</pre>
                 <CopyButton value={snippet} label={t("integrationsPage.modals.created.copySnippet")} />
               </div>
-              {createdEndpointInfo.correlationId ? (
-                <div className="muted small">{t("errors.correlationId", { id: createdEndpointInfo.correlationId })}</div>
-              ) : null}
             </div>
           </div>
         </div>
@@ -1144,9 +1138,6 @@ export function IntegrationsPage() {
                   <CopyButton value={rotatedSecretInfo.secret} label={t("integrationsPage.modals.rotated.copySecret")} />
                 </div>
               </div>
-              {rotatedSecretInfo.correlationId ? (
-                <div className="muted small">{t("errors.correlationId", { id: rotatedSecretInfo.correlationId })}</div>
-              ) : null}
             </div>
           </div>
         </div>
@@ -1175,10 +1166,7 @@ export function IntegrationsPage() {
                 <div>{testPingResult.result.latency_ms ?? t("common.notAvailable")} ms</div>
               </div>
               {testPingResult.result.error ? (
-                <div className="notice error">{testPingResult.result.error}</div>
-              ) : null}
-              {testPingResult.correlationId ? (
-                <div className="muted small">{t("errors.correlationId", { id: testPingResult.correlationId })}</div>
+                <div className="notice error">{t("integrationsPage.errors.sendTestFailed")}</div>
               ) : null}
             </div>
           </div>
@@ -1224,10 +1212,6 @@ export function IntegrationsPage() {
                     <div className="label">{t("common.status")}</div>
                     <StatusBadge status={deliveryDetail.status} />
                   </div>
-                  <div>
-                    <div className="label">{t("integrationsPage.modals.deliveryDetail.correlationId")}</div>
-                    <div>{deliveryDetail.correlation_id ?? t("common.notAvailable")}</div>
-                  </div>
                 </div>
                 <div className="grid two">
                   <div>
@@ -1249,7 +1233,6 @@ export function IntegrationsPage() {
                         <th>{t("integrationsPage.modals.deliveryDetail.table.error")}</th>
                         <th>{t("integrationsPage.modals.deliveryDetail.table.latency")}</th>
                         <th>{t("integrationsPage.modals.deliveryDetail.table.nextRetry")}</th>
-                        <th>{t("integrationsPage.modals.deliveryDetail.table.correlationId")}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1257,10 +1240,9 @@ export function IntegrationsPage() {
                         <tr key={`${deliveryDetail.id}-${attempt.attempt}`}>
                           <td>{attempt.attempt}</td>
                           <td>{attempt.http_status ?? t("common.notAvailable")}</td>
-                          <td>{attempt.error ?? t("common.notAvailable")}</td>
+                          <td>{attempt.error ? "Ошибка доставки" : t("common.notAvailable")}</td>
                           <td>{attempt.latency_ms ?? t("common.notAvailable")} ms</td>
                           <td>{attempt.next_retry_at ? formatDateTime(attempt.next_retry_at) : t("common.notAvailable")}</td>
-                          <td>{attempt.correlation_id ?? t("common.notAvailable")}</td>
                         </tr>
                       ))}
                     </tbody>

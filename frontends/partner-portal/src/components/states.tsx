@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { useI18n } from "../i18n";
+import { PartnerErrorState } from "./PartnerErrorState";
 
 interface StateProps {
   title: string;
@@ -52,19 +53,7 @@ export function ErrorState({
   correlationId?: string | null;
   action?: ReactNode;
 }) {
-  const { t } = useI18n();
-  const metaParts = [];
-  if (correlationId) {
-    metaParts.push(t("errors.correlationId", { id: correlationId }));
-  }
-  const details = metaParts.length ? `${description ?? ""} ${metaParts.join(" · ")}`.trim() : description;
-  return (
-    <StateContainer
-      title={title ?? t("errors.actionFailedTitle")}
-      description={details ?? t("common.loading")}
-      action={action}
-    />
-  );
+  return <PartnerErrorState title={title} description={description} action={action} />;
 }
 
 export function ForbiddenState({

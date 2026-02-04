@@ -75,6 +75,8 @@
   "errors": {
     "actionFailedTitle": "Не удалось выполнить действие",
     "actionFailedDescription": "Попробуйте повторить позже.",
+    "unavailableTitle": "Данные временно недоступны",
+    "unavailableDescription": "Попробуйте обновить страницу или повторить позже.",
     "retry": "Повторить",
     "errorCode": "Код ошибки: {code}",
     "requestId": "Request ID: {id}",
@@ -589,7 +591,7 @@
       "period": "Период",
       "presets": {
         "today": "Сегодня",
-        "7d": "7 дней",
+        "7d": "Последние 7 дней",
         "30d": "30 дней",
         "custom": "Произвольно"
       },
@@ -600,9 +602,9 @@
       "searchPlaceholder": "order_id, клиент, сервис",
       "station": "Станция",
       "stationPlaceholder": "station_id",
-      "service": "Сервис",
+      "service": "Услуга",
       "servicePlaceholder": "service_id",
-      "slaRisk": "SLA риск",
+      "slaRisk": "Риск SLA",
       "slaRiskNear": "Близко к дедлайну"
     },
     "actions": {
@@ -613,10 +615,10 @@
       "apiError": "Не удалось загрузить заказы"
     },
     "kpis": {
-      "today": "Заказы сегодня",
-      "pending": "На подтверждении",
-      "documents": "Документы ожидают",
-      "total": "Всего в выборке"
+      "today": "Сегодня",
+      "pending": "В обработке",
+      "documents": "Документы",
+      "total": "Всего"
     },
     "table": {
       "orderId": "Order ID",
@@ -690,12 +692,12 @@
       }
     },
     "notifications": {
-      "accepted": "Заказ принят. Correlation ID: {id}",
-      "rejected": "Заказ отклонён. Correlation ID: {id}",
-      "started": "Заказ в работе. Correlation ID: {id}",
-      "progressed": "Прогресс обновлён. Correlation ID: {id}",
-      "completed": "Заказ завершён. Correlation ID: {id}",
-      "failed": "Заказ завершён с ошибкой. Correlation ID: {id}"
+      "accepted": "Заказ принят.",
+      "rejected": "Заказ отклонён.",
+      "started": "Заказ в работе.",
+      "progressed": "Прогресс обновлён.",
+      "completed": "Заказ завершён.",
+      "failed": "Заказ завершён с ошибкой."
     },
     "errors": {
       "loadTitle": "Не удалось загрузить заказ",
@@ -748,7 +750,7 @@
   },
   "servicesCatalogPage": {
     "title": "Каталог услуг",
-    "subtitle": "Управляйте услугами и бронированиями.",
+    "subtitle": "Управление услугами партнёра",
     "empty": {
       "filteredTitle": "Нет результатов фильтра",
       "filteredDescription": "Измените фильтры или сбросьте настройки поиска."
@@ -772,7 +774,7 @@
       "categoryPlaceholder": "Например, автомойка"
     },
     "table": {
-      "title": "Название",
+      "title": "Услуги",
       "kind": "Тип",
       "category": "Категория",
       "status": "Статус",
@@ -798,11 +800,11 @@
       "activated": "Элемент каталога активирован"
     },
     "import": {
-      "title": "Импорт CSV",
-      "subtitle": "Загрузите CSV для массового добавления.",
+      "title": "Импорт услуг",
+      "subtitle": "Загрузите CSV-файл для массового добавления",
       "unavailableTitle": "Импорт недоступен",
       "unavailableDescription": "Доступ только для PARTNER_OWNER или PARTNER_SERVICE_MANAGER.",
-      "csvFile": "Файл CSV",
+      "csvFile": "CSV-файл",
       "mode": "Режим",
       "modes": {
         "create": "Создать",
@@ -828,8 +830,8 @@
       "resultSkipped": "Пропущено: {count}",
       "refreshList": "Обновить список",
       "csvFormat": "Формат CSV",
-      "requiredFields": "Обязательные поля: kind, title, category, uom",
-      "sampleRow": "SERVICE,Услуга,Автомойка,услуга,Комплексная мойка,ACTIVE",
+      "requiredFields": "Обязательные поля",
+      "sampleRow": "Пример строки",
       "errors": {
         "selectCsv": "Выберите CSV файл",
         "row": "Строка {row}: {message}",

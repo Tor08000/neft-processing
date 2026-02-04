@@ -39,10 +39,10 @@ const canRejectStatus = (status: string) => ["CREATED"].includes(status);
 
 const describeError = (err: unknown, fallback: string) => {
   if (err instanceof ApiError) {
-    return { message: `HTTP ${err.status}: ${err.message}`, correlationId: err.correlationId };
+    return { message: fallback, correlationId: null };
   }
   if (err instanceof Error) {
-    return { message: err.message, correlationId: null };
+    return { message: fallback, correlationId: null };
   }
   return { message: fallback, correlationId: null };
 };
@@ -215,36 +215,36 @@ export function OrderDetailsPage() {
     try {
       if (actionModal === "accept") {
         const result = await acceptOrder(user.token, order.id);
-        setActionMessage(t("orderDetails.notifications.accepted", { id: result.correlationId ?? "—" }));
-        setActionCorrelationId(result.correlationId ?? null);
+        setActionMessage(t("orderDetails.notifications.accepted"));
+        setActionCorrelationId(null);
       }
       if (actionModal === "reject") {
         const result = await rejectOrder(user.token, order.id, rejectReason.trim());
-        setActionMessage(t("orderDetails.notifications.rejected", { id: result.correlationId ?? "—" }));
-        setActionCorrelationId(result.correlationId ?? null);
+        setActionMessage(t("orderDetails.notifications.rejected"));
+        setActionCorrelationId(null);
       }
       if (actionModal === "start") {
         const result = await startOrder(user.token, order.id);
-        setActionMessage(t("orderDetails.notifications.started", { id: result.correlationId ?? "—" }));
-        setActionCorrelationId(result.correlationId ?? null);
+        setActionMessage(t("orderDetails.notifications.started"));
+        setActionCorrelationId(null);
       }
       if (actionModal === "progress") {
         const result = await progressOrder(user.token, order.id, {
           percent: Number(progressPercent),
           message: progressMessage.trim() || undefined,
         });
-        setActionMessage(t("orderDetails.notifications.progressed", { id: result.correlationId ?? "—" }));
-        setActionCorrelationId(result.correlationId ?? null);
+        setActionMessage(t("orderDetails.notifications.progressed"));
+        setActionCorrelationId(null);
       }
       if (actionModal === "complete") {
         const result = await completeOrder(user.token, order.id, { summary: completeSummary.trim() || undefined });
-        setActionMessage(t("orderDetails.notifications.completed", { id: result.correlationId ?? "—" }));
-        setActionCorrelationId(result.correlationId ?? null);
+        setActionMessage(t("orderDetails.notifications.completed"));
+        setActionCorrelationId(null);
       }
       if (actionModal === "fail") {
         const result = await failOrder(user.token, order.id, failReason.trim());
-        setActionMessage(t("orderDetails.notifications.failed", { id: result.correlationId ?? "—" }));
-        setActionCorrelationId(result.correlationId ?? null);
+        setActionMessage(t("orderDetails.notifications.failed"));
+        setActionCorrelationId(null);
       }
       setActionModal(null);
       setRejectReason("");
@@ -408,7 +408,6 @@ export function OrderDetailsPage() {
           {actionError ? (
             <div className="notice error">
               {actionError}
-              {actionCorrelationId ? <div className="muted small">Correlation ID: {actionCorrelationId}</div> : null}
             </div>
           ) : null}
         </div>

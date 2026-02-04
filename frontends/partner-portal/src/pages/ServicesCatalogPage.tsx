@@ -26,8 +26,6 @@ import { isDemoPartner } from "@shared/demo/demo";
 
 type ApiErrorState = {
   message: string;
-  status?: number;
-  correlationId?: string | null;
 };
 
 type CatalogFormState = {
@@ -54,18 +52,15 @@ const localStorageKey = "partner-services-catalog-filters";
 
 const normalizeError = (error: unknown, fallback: string): ApiErrorState => {
   if (error instanceof ApiError) {
-    return { message: error.message, status: error.status, correlationId: error.correlationId };
+    return { message: fallback };
   }
   if (error instanceof Error) {
-    return { message: error.message };
+    return { message: fallback };
   }
   return { message: fallback };
 };
 
 const formatErrorDescription = (error: ApiErrorState): string => {
-  if (error.status) {
-    return `${error.message} (HTTP ${error.status})`;
-  }
   return error.message;
 };
 
@@ -148,7 +143,6 @@ export function ServicesCatalogPage() {
     created: number;
     updated: number;
     skipped: number;
-    correlationId?: string | null;
   } | null>(null);
   const [importError, setImportError] = useState<ApiErrorState | null>(null);
   const hasFilters =
@@ -187,7 +181,7 @@ export function ServicesCatalogPage() {
       setTotal(response.total ?? 0);
       setIsDemoFallback(false);
     } catch (err) {
-      if (err instanceof ApiError && err.status === 404 && isDemoPartner(user.email ?? null)) {
+      if (err instanceof ApiError && isDemoPartner(user.email ?? null) && (err.status === 403 || err.status === 404)) {
         setItems(demoCatalogItems);
         setTotal(demoCatalogItems.length);
         setIsDemoFallback(true);
@@ -307,7 +301,6 @@ export function ServicesCatalogPage() {
         rows: preview.rows ?? parsed.rows,
         errors: preview.errors ?? [],
         summary: preview.summary ?? null,
-        correlationId: preview.correlationId ?? null,
       });
     } catch (err) {
       setImportError(normalizeError(err, t("servicesCatalogPage.import.errors.previewFailed")));
@@ -326,7 +319,6 @@ export function ServicesCatalogPage() {
         created: result.createdCount ?? result.created ?? 0,
         updated: result.updatedCount ?? result.updated ?? 0,
         skipped: result.skippedCount ?? result.failed ?? 0,
-        correlationId: result.correlationId ?? null,
       });
       setImportPreview(null);
     } catch (err) {
@@ -420,7 +412,6 @@ export function ServicesCatalogPage() {
         {actionNotice ? (
           <div className="notice">
             <div>{actionNotice}</div>
-            {actionCorrelation ? <div className="muted small">{t("errors.correlationId", { id: actionCorrelation })}</div> : null}
           </div>
         ) : null}
         {isDemoFallback ? (
@@ -570,9 +561,6 @@ export function ServicesCatalogPage() {
             {importError ? (
               <div className="notice error">
                 {formatErrorDescription(importError)}
-                {importError.correlationId ? (
-                  <div className="muted small">{t("errors.correlationId", { id: importError.correlationId })}</div>
-                ) : null}
               </div>
             ) : null}
             {importParsingErrors.length ? (
@@ -595,9 +583,6 @@ export function ServicesCatalogPage() {
                     <div>{t("servicesCatalogPage.import.willUpdate", { count: previewSummary.willUpdate })}</div>
                     <div>{t("servicesCatalogPage.import.errorsCount", { count: previewSummary.errorsCount })}</div>
                   </div>
-                  {importPreview.correlationId ? (
-                    <div className="muted small">{t("errors.correlationId", { id: importPreview.correlationId })}</div>
-                  ) : null}
                 </div>
                 {importPreview.errors.length ? (
                   <div className="notice error">
@@ -663,9 +648,6 @@ export function ServicesCatalogPage() {
                   <div>{t("servicesCatalogPage.import.resultUpdated", { count: importApplyResult.updated })}</div>
                   <div>{t("servicesCatalogPage.import.resultSkipped", { count: importApplyResult.skipped })}</div>
                 </div>
-                {importApplyResult.correlationId ? (
-                  <div className="muted small">{t("errors.correlationId", { id: importApplyResult.correlationId })}</div>
-                ) : null}
                 <button type="button" className="link-button" onClick={fetchItems}>
                   {t("servicesCatalogPage.import.refreshList")}
                 </button>
@@ -750,9 +732,6 @@ export function ServicesCatalogPage() {
             {formError ? (
               <div className="notice error">
                 {formatErrorDescription(formError)}
-                {formError.correlationId ? (
-                  <div className="muted small">{t("errors.correlationId", { id: formError.correlationId })}</div>
-                ) : null}
               </div>
             ) : null}
             <div className="form-actions">
