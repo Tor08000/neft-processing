@@ -97,6 +97,10 @@ const buildCatalogForm = (item?: CatalogItem | null): CatalogFormState => ({
 });
 
 const resolveSummaryValue = (value: number | undefined | null): string => (value === null || value === undefined ? "—" : String(value));
+const toNum = (value: string): number => {
+  const parsed = Number(value);
+  return Number.isNaN(parsed) ? 0 : parsed;
+};
 
 const getSummary = (preview: CatalogImportPreview | null, fallbackRows: number, fallbackErrors: number) => {
   const summary = preview?.summary;
@@ -585,10 +589,10 @@ export function ServicesCatalogPage() {
                 <div className="notice">
                   <div className="label">{t("servicesCatalogPage.import.previewSummary")}</div>
                   <div className="grid two">
-                    <div>{t("servicesCatalogPage.import.rowsParsed", { count: previewSummary.rowsParsed })}</div>
-                    <div>{t("servicesCatalogPage.import.willCreate", { count: previewSummary.willCreate })}</div>
-                    <div>{t("servicesCatalogPage.import.willUpdate", { count: previewSummary.willUpdate })}</div>
-                    <div>{t("servicesCatalogPage.import.errorsCount", { count: previewSummary.errorsCount })}</div>
+                    <div>{t("servicesCatalogPage.import.rowsParsed", { count: toNum(previewSummary.rowsParsed) })}</div>
+                    <div>{t("servicesCatalogPage.import.willCreate", { count: toNum(previewSummary.willCreate) })}</div>
+                    <div>{t("servicesCatalogPage.import.willUpdate", { count: toNum(previewSummary.willUpdate) })}</div>
+                    <div>{t("servicesCatalogPage.import.errorsCount", { count: toNum(previewSummary.errorsCount) })}</div>
                   </div>
                 </div>
                 {importPreview.errors.length ? (
