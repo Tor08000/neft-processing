@@ -468,7 +468,7 @@ export function ServicesCatalogPage() {
                   <th>{t("servicesCatalogPage.table.status")}</th>
                   <th>{t("servicesCatalogPage.table.activeOffers")}</th>
                   <th>{t("servicesCatalogPage.table.updatedAt")}</th>
-                  <th />
+                  <th>{t("servicesCatalogPage.table.actions")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -505,10 +505,10 @@ export function ServicesCatalogPage() {
             </table>
             <div className="pagination">
               <button type="button" className="secondary" onClick={() => setPage((prev) => Math.max(prev - 1, 1))} disabled={page <= 1}>
-                {t("common.back")}
+                {t("servicesCatalogPage.pagination.prev")}
               </button>
               <div className="muted">
-                {t("servicesCatalogPage.pagination", { current: page, total: totalPages })}
+                {t("servicesCatalogPage.pagination.page")} {page} / {totalPages}
               </div>
               <button
                 type="button"
@@ -516,7 +516,7 @@ export function ServicesCatalogPage() {
                 onClick={() => setPage((prev) => Math.min(prev + 1, totalPages))}
                 disabled={page >= totalPages}
               >
-                {t("common.next")}
+                {t("servicesCatalogPage.pagination.next")}
               </button>
             </div>
           </>

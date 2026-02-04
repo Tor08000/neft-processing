@@ -627,7 +627,8 @@
       "createdAt": "Created",
       "sla": "SLA timer",
       "amount": "Amount",
-      "status": "Status"
+      "status": "Status",
+      "actions": "Actions"
     },
     "pagination": "Page {current} of {total}"
   },
@@ -775,18 +776,25 @@
     },
     "table": {
       "title": "Title",
+      "name": "Name",
       "kind": "Type",
       "category": "Category",
       "status": "Status",
+      "price": "Price",
       "activeOffers": "Active offers",
-      "updatedAt": "Updated"
+      "updatedAt": "Updated",
+      "actions": "Actions"
     },
     "actions": {
       "disable": "Disable",
       "activate": "Activate",
       "resetFilters": "Reset filters"
     },
-    "pagination": "Page {current} of {total}",
+    "pagination": {
+      "prev": "Back",
+      "next": "Next",
+      "page": "Page"
+    },
     "errors": {
       "loadFailed": "Unable to load catalog",
       "requiredFields": "Fill in required fields",
@@ -801,14 +809,17 @@
     },
     "import": {
       "title": "Catalog import",
-      "subtitle": "CSV import with preview",
+      "subtitle": "Upload a CSV file to bulk add services.",
       "unavailableTitle": "Import unavailable",
       "unavailableDescription": "Available only for PARTNER_OWNER or PARTNER_SERVICE_MANAGER.",
       "csvFile": "CSV file",
+      "chooseFile": "Choose file",
+      "fileNotChosen": "No file chosen",
       "mode": "Mode",
       "modes": {
-        "create": "create-only",
-        "upsert": "upsert"
+        "create": "Create",
+        "update": "Update",
+        "upsert": "Create or update"
       },
       "preview": "Preview",
       "csvError": "CSV error:",
@@ -832,6 +843,8 @@
       "csvFormat": "CSV format",
       "requiredFields": "Required fields: kind, title, category, uom",
       "sampleRow": "SERVICE,Service,Car wash,service,Full wash,ACTIVE",
+      "upload": "Upload",
+      "downloadTemplate": "Download template",
       "errors": {
         "selectCsv": "Select a CSV file",
         "row": "Row {row}: {message}",

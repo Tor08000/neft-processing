@@ -621,13 +621,14 @@
       "total": "Всего"
     },
     "table": {
-      "orderId": "Order ID",
+      "orderId": "Заказ",
       "client": "Клиент",
       "service": "Услуга",
       "createdAt": "Создан",
-      "sla": "SLA таймер",
+      "sla": "SLA",
       "amount": "Сумма",
-      "status": "Статус"
+      "status": "Статус",
+      "actions": "Действия"
     },
     "pagination": "Страница {current} из {total}"
   },
@@ -775,18 +776,25 @@
     },
     "table": {
       "title": "Услуги",
+      "name": "Название",
       "kind": "Тип",
       "category": "Категория",
       "status": "Статус",
+      "price": "Цена",
       "activeOffers": "Активные офферы",
-      "updatedAt": "Обновлено"
+      "updatedAt": "Обновлено",
+      "actions": "Действия"
     },
     "actions": {
       "disable": "Отключить",
       "activate": "Активировать",
       "resetFilters": "Сбросить фильтры"
     },
-    "pagination": "Страница {current} из {total}",
+    "pagination": {
+      "prev": "Назад",
+      "next": "Вперёд",
+      "page": "Страница"
+    },
     "errors": {
       "loadFailed": "Не удалось загрузить каталог",
       "requiredFields": "Заполните обязательные поля",
@@ -801,14 +809,17 @@
     },
     "import": {
       "title": "Импорт услуг",
-      "subtitle": "Загрузите CSV-файл для массового добавления",
+      "subtitle": "Загрузите CSV-файл для массового добавления услуг.",
       "unavailableTitle": "Импорт недоступен",
       "unavailableDescription": "Доступ только для PARTNER_OWNER или PARTNER_SERVICE_MANAGER.",
       "csvFile": "CSV-файл",
+      "chooseFile": "Выбрать файл",
+      "fileNotChosen": "Файл не выбран",
       "mode": "Режим",
       "modes": {
         "create": "Создать",
-        "upsert": "Обновить"
+        "update": "Обновить",
+        "upsert": "Создать или обновить"
       },
       "preview": "Предпросмотр",
       "csvError": "Ошибка CSV:",
@@ -832,6 +843,8 @@
       "csvFormat": "Формат CSV",
       "requiredFields": "Обязательные поля",
       "sampleRow": "Пример строки",
+      "upload": "Загрузить",
+      "downloadTemplate": "Скачать шаблон",
       "errors": {
         "selectCsv": "Выберите CSV файл",
         "row": "Строка {row}: {message}",

@@ -369,7 +369,7 @@ export function OrdersPage() {
                   <th>{t("ordersPage.table.sla")}</th>
                   <th>{t("ordersPage.table.amount")}</th>
                   <th>{t("ordersPage.table.status")}</th>
-                  <th />
+                  <th>{t("ordersPage.table.actions")}</th>
                 </tr>
               </thead>
               <tbody>
