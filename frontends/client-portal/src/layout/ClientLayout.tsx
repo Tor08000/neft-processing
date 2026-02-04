@@ -20,6 +20,7 @@ import {
 import { ClientSidebar } from "./ClientSidebar";
 import { ClientTopbar } from "./ClientTopbar";
 import { ClientBottomNav } from "./ClientBottomNav";
+import { isDemoClient } from "@shared/demo/demo";
 import "./client-layout.css";
 
 const MODE_STORAGE_KEY = "neft.client.mode";
@@ -140,6 +141,7 @@ export function ClientLayout({ pwaMode = isPwaMode }: ClientLayoutProps) {
   const [theme, setTheme] = useState(getInitialTheme());
   const [mode, setMode] = useState<ClientMode>(getInitialMode());
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const isDemoAccount = isDemoClient(user?.email ?? null);
 
   useEffect(() => {
     localStorage.setItem(MODE_STORAGE_KEY, mode);
@@ -177,7 +179,9 @@ export function ClientLayout({ pwaMode = isPwaMode }: ClientLayoutProps) {
         <div className="neftc-container">
           {isFeatureDisabled ? (
             <div className="neftc-card">
-              <div className="neftc-text-muted">Онбординг выключен администратором.</div>
+              <div className="neftc-text-muted">
+                {isDemoAccount ? "Демо-режим: онбординг пропущен." : "Онбординг выключен администратором."}
+              </div>
             </div>
           ) : null}
           {pwaMode ? <PwaNotificationsPrompt /> : null}
