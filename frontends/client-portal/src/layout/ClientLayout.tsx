@@ -143,6 +143,7 @@ export function ClientLayout({ pwaMode = isPwaMode }: ClientLayoutProps) {
 
   useEffect(() => {
     localStorage.setItem(MODE_STORAGE_KEY, mode);
+    window.dispatchEvent(new CustomEvent("neftc:client-mode", { detail: mode }));
   }, [mode]);
 
   const filteredItems = useMemo(
