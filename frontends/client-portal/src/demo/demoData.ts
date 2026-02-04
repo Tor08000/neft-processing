@@ -1,3 +1,5 @@
+import type { AnalyticsDailyMetricsResponse } from "../types/analytics";
+
 export type OverviewVehicle = {
   id: string;
   plate: string;
@@ -298,7 +300,7 @@ export const demoDocumentsSummary: DemoDocumentsSummary = {
   ],
 };
 
-export const demoAnalyticsDailyMetrics = {
+export const demoAnalyticsDailyMetrics: AnalyticsDailyMetricsResponse = {
   from: "2024-09-01",
   to: "2024-09-30",
   currency: "RUB",
