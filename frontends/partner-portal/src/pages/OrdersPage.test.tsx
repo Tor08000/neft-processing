@@ -6,7 +6,7 @@ import type { AuthSession } from "../api/types";
 
 const session: AuthSession = {
   token: "token-1",
-  email: "owner@demo.test",
+  email: "owner@neft.local",
   roles: ["PARTNER_OWNER"],
   subjectType: "PARTNER",
   partnerId: "partner-1",
