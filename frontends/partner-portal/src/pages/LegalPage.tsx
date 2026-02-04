@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLegalGate } from "../auth/LegalGateContext";
+import { EmptyState } from "@shared/ui/EmptyState";
 import { useAuth } from "../auth/AuthContext";
 import { fetchPartnerLegalProfile } from "../api/partnerLegal";
 import type { PartnerLegalProfileResponse } from "../types/partnerLegal";
@@ -62,8 +63,9 @@ export function LegalPage() {
   const taxContext = legalProfile?.tax_context ?? null;
 
   return (
-    <div className="card">
-      <h1>Legal & Tax</h1>
+    <div className="neft-container">
+      <div className="card">
+        <h1>Legal & Tax</h1>
       <div className="legal-summary">
         <div>
           <div className="muted">Статус профиля</div>
@@ -121,39 +123,47 @@ export function LegalPage() {
 
       <div className="legal-grid">
         <div className="legal-list">
-          {required.map((item) => (
-            <div key={`${item.code}-${item.required_version}-${item.locale}`} className="legal-item">
-              <div>
-                <strong>{item.title}</strong>
-                <div className="muted">Код: {item.code}</div>
-                <div className="muted">Версия: {item.required_version}</div>
-                <div className="muted">Локаль: {item.locale}</div>
-                <div className="muted">Вступает: {formatDate(item.effective_from)}</div>
-              </div>
-              <div className="legal-actions">
-                <button
-                  className="ghost neft-btn-secondary"
-                  type="button"
-                  onClick={() => setSelectedCode(item.code)}
-                >
-                  Прочитать
-                </button>
-                <label className="checkbox">
-                  <input type="checkbox" checked={item.accepted} readOnly />
-                  <span>{item.accepted ? `Принято ${formatDate(item.accepted_at)}` : "Не принято"}</span>
-                </label>
-                {!item.accepted ? (
+          {required.length === 0 && !isLoading ? (
+            <EmptyState
+              title="Нет обязательных документов"
+              description="Юридические документы ещё не настроены."
+              hint="Мы уведомим вас, как только они будут доступны для подписания."
+            />
+          ) : (
+            required.map((item) => (
+              <div key={`${item.code}-${item.required_version}-${item.locale}`} className="legal-item">
+                <div>
+                  <strong>{item.title}</strong>
+                  <div className="muted">Код: {item.code}</div>
+                  <div className="muted">Версия: {item.required_version}</div>
+                  <div className="muted">Локаль: {item.locale}</div>
+                  <div className="muted">Вступает: {formatDate(item.effective_from)}</div>
+                </div>
+                <div className="legal-actions">
                   <button
-                    className="neft-btn-primary"
+                    className="ghost neft-btn-secondary"
                     type="button"
-                    onClick={() => accept(item.code, item.required_version, item.locale)}
+                    onClick={() => setSelectedCode(item.code)}
                   >
-                    Принять
+                    Прочитать
                   </button>
-                ) : null}
+                  <label className="checkbox">
+                    <input type="checkbox" checked={item.accepted} readOnly />
+                    <span>{item.accepted ? `Принято ${formatDate(item.accepted_at)}` : "Не принято"}</span>
+                  </label>
+                  {!item.accepted ? (
+                    <button
+                      className="neft-btn-primary"
+                      type="button"
+                      onClick={() => accept(item.code, item.required_version, item.locale)}
+                    >
+                      Принять
+                    </button>
+                  ) : null}
+                </div>
               </div>
-            </div>
-          ))}
+            ))
+          )}
         </div>
         <div className="legal-preview">
           {selected && document ? (
@@ -167,6 +177,7 @@ export function LegalPage() {
             <div className="muted">Выберите документ, чтобы просмотреть содержание.</div>
           )}
         </div>
+      </div>
       </div>
     </div>
   );

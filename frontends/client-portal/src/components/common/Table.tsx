@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { EmptyState } from "../EmptyState";
+import { EmptyState } from "@shared/ui/EmptyState";
 import { ErrorState } from "./ErrorState";
 import { TableSkeleton } from "./TableSkeleton";
 import { TableDensityToggle } from "./TableDensityToggle";
@@ -28,6 +28,15 @@ interface TableProps<T> {
   emptyState?: {
     title: string;
     description?: string;
+    hint?: string;
+    primaryAction?: {
+      label: string;
+      onClick: () => void;
+    };
+    secondaryAction?: {
+      label: string;
+      onClick: () => void;
+    };
     actionLabel?: string;
     actionOnClick?: () => void;
   };
@@ -93,8 +102,14 @@ export function Table<T>({ columns, data, loading, errorState, emptyState, empty
           <EmptyState
             title={emptyState.title}
             description={emptyState.description ?? ""}
-            actionLabel={emptyState.actionLabel}
-            actionOnClick={emptyState.actionOnClick}
+            hint={emptyState.hint}
+            primaryAction={
+              emptyState.primaryAction ??
+              (emptyState.actionLabel && emptyState.actionOnClick
+                ? { label: emptyState.actionLabel, onClick: emptyState.actionOnClick }
+                : undefined)
+            }
+            secondaryAction={emptyState.secondaryAction}
           />
         ) : (
           <div className="card state">{emptyMessage}</div>

@@ -43,7 +43,7 @@ export const FinanceOverviewPage: React.FC = () => {
   if (!overview) {
     return (
       <div>
-        <h1>Finance overview</h1>
+        <h1 className="neft-h1">Finance overview</h1>
         <div style={{ color: "#dc2626" }}>Failed to load overview: {error?.message ?? "Unknown error"}</div>
         {requestId ? <div style={{ marginTop: 8 }}>Request ID: {requestId}</div> : null}
       </div>
@@ -53,7 +53,7 @@ export const FinanceOverviewPage: React.FC = () => {
   return (
     <div style={{ display: "grid", gap: 20 }}>
       <div>
-        <h1 style={{ marginBottom: 8 }}>Finance overview</h1>
+        <h1 className="neft-h1">Finance overview</h1>
         <div style={{ display: "flex", gap: 8 }}>
           <button type="button" className={window === "24h" ? "neft-btn" : "ghost"} onClick={() => setWindow("24h")}>
             24h
@@ -73,31 +73,31 @@ export const FinanceOverviewPage: React.FC = () => {
 
       <div style={KPI_STYLE}>
         <div className="card">
-          <div className="muted">Overdue orgs</div>
-          <div style={{ fontSize: 22, fontWeight: 600 }}>{overview.overdue_orgs}</div>
-          <div className="muted">Amount: {overview.overdue_amount}</div>
+          <div className="neft-kpi-label">Overdue orgs</div>
+          <div className="neft-kpi-value">{overview.overdue_orgs}</div>
+          <div className="neft-kpi-meta">Amount: {overview.overdue_amount}</div>
         </div>
         <div className="card">
-          <div className="muted">Invoices issued</div>
-          <div style={{ fontSize: 22, fontWeight: 600 }}>{overview.invoices_issued_24h}</div>
-          <div className="muted">Paid: {overview.invoices_paid_24h}</div>
+          <div className="neft-kpi-label">Invoices issued</div>
+          <div className="neft-kpi-value">{overview.invoices_issued_24h}</div>
+          <div className="neft-kpi-meta">Paid: {overview.invoices_paid_24h}</div>
         </div>
         <div className="card">
-          <div className="muted">Payment intakes pending</div>
-          <div style={{ fontSize: 22, fontWeight: 600 }}>{overview.payment_intakes_pending}</div>
+          <div className="neft-kpi-label">Payment intakes pending</div>
+          <div className="neft-kpi-value">{overview.payment_intakes_pending}</div>
         </div>
         <div className="card">
-          <div className="muted">Reconciliation unmatched</div>
-          <div style={{ fontSize: 22, fontWeight: 600 }}>{overview.reconciliation_unmatched_24h}</div>
+          <div className="neft-kpi-label">Reconciliation unmatched</div>
+          <div className="neft-kpi-value">{overview.reconciliation_unmatched_24h}</div>
         </div>
         <div className="card">
-          <div className="muted">Payout queue pending</div>
-          <div style={{ fontSize: 22, fontWeight: 600 }}>{overview.payout_queue_pending}</div>
+          <div className="neft-kpi-label">Payout queue pending</div>
+          <div className="neft-kpi-value">{overview.payout_queue_pending}</div>
         </div>
         <div className="card">
-          <div className="muted">MoR immutable violations</div>
-          <div style={{ fontSize: 22, fontWeight: 600 }}>{overview.mor_immutable_violations_24h}</div>
-          <div className="muted">Clawback required: {overview.clawback_required_24h}</div>
+          <div className="neft-kpi-label">MoR immutable violations</div>
+          <div className="neft-kpi-value">{overview.mor_immutable_violations_24h}</div>
+          <div className="neft-kpi-meta">Clawback required: {overview.clawback_required_24h}</div>
         </div>
       </div>
 

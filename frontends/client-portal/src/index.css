@@ -100,16 +100,28 @@ button:disabled {
   border-radius: 0.75rem;
   color: var(--neft-text-muted);
   font-weight: 600;
+  position: relative;
 }
 
 .sidebar a.active,
 .sidebar a.active {
+  background: rgba(21, 161, 199, 0.1);
+  color: var(--neft-text);
+}
+
+.sidebar a.active::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 4px;
+  border-radius: 4px;
   background: var(--neft-primary);
-  color: #0B1F2A;
 }
 
 .sidebar a:hover {
-  background: var(--neft-table-hover);
+  background: rgba(255, 255, 255, 0.04);
   color: var(--neft-text);
 }
 
@@ -393,13 +405,13 @@ textarea:focus-visible {
 }
 
 .onboarding-page {
-  padding: 2rem 1.5rem;
+  padding: 24px 16px;
   display: flex;
   justify-content: center;
 }
 
 .onboarding-card {
-  width: min(760px, 100%);
+  width: min(720px, 100%);
   display: grid;
   gap: 1rem;
 }

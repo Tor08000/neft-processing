@@ -12,6 +12,7 @@ import { useAuth } from "../../auth/AuthContext";
 import { JsonViewer } from "../../components/common/JsonViewer";
 import { ApiError } from "../../api/http";
 import { AdminMisconfigPage } from "../admin/AdminStatusPages";
+import { EmptyState } from "@shared/ui/EmptyState";
 
 type StatusAction = { status: string } | null;
 
@@ -96,6 +97,14 @@ export const LegalPartnersPage: React.FC = () => {
     });
   };
 
+  const handleResetFilters = () => {
+    setStatusFilter("");
+    setSearch("");
+    setSelectedPartner(null);
+    setOffset(0);
+    setSearchParams({});
+  };
+
   const handleStatusUpdate = async ({ reason, correlationId }: { reason: string; correlationId: string }) => {
     if (!accessToken || !selectedPartner || !action) return;
     if (!canWrite) return;
@@ -138,8 +147,19 @@ export const LegalPartnersPage: React.FC = () => {
         </button>
       </div>
 
-      <Table columns={columns} data={items} loading={isLoading} onRowClick={handleSelect} />
-      <Pagination total={total} limit={limit} offset={offset} onChange={(value) => setOffset(value)} />
+      {!isLoading && !isFetching && items.length === 0 ? (
+        <EmptyState
+          title="Нет партнёров"
+          description="По текущим фильтрам партнёры не найдены."
+          hint="Попробуйте изменить фильтры или запрос."
+          primaryAction={{ label: "Сбросить фильтры", onClick: handleResetFilters }}
+        />
+      ) : (
+        <>
+          <Table columns={columns} data={items} loading={isLoading} onRowClick={handleSelect} />
+          <Pagination total={total} limit={limit} offset={offset} onChange={(value) => setOffset(value)} />
+        </>
+      )}
 
       <section className="card">
         <h2 style={{ marginTop: 0 }}>Partner detail</h2>

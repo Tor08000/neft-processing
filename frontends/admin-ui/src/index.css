@@ -1105,16 +1105,28 @@ p {
   text-decoration: none;
   color: var(--neft-text-muted);
   font-weight: 600;
+  position: relative;
 }
 
 .admin-nav-link:hover {
   color: var(--neft-text);
-  background: rgba(22, 34, 53, 0.45);
+  background: rgba(255, 255, 255, 0.04);
 }
 
 .admin-nav-link.is-active {
-  color: #0b0f14;
-  background: var(--neft-accent);
+  color: var(--neft-text);
+  background: rgba(21, 161, 199, 0.1);
+}
+
+.admin-nav-link.is-active::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 6px;
+  bottom: 6px;
+  width: 4px;
+  border-radius: 4px;
+  background: var(--neft-primary);
 }
 
 .admin-nav-link.is-disabled {

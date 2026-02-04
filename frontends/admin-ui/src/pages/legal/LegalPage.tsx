@@ -126,8 +126,9 @@ export default function LegalPage() {
   const requiredItems = useMemo(() => required ?? [], [required]);
 
   return (
-    <div className="card">
-      <h1>Legal Documents</h1>
+    <div className="neft-container">
+      <div className="card">
+        <h1>Legal Documents</h1>
 
       <section className="legal-section">
         <h2>Acceptance Gate</h2>
@@ -177,6 +178,7 @@ export default function LegalPage() {
                 <label>
                   Код
                   <input
+                    className="neft-input"
                     value={form.code}
                     onChange={(event) => setForm({ ...form, code: event.target.value })}
                     required
@@ -186,6 +188,7 @@ export default function LegalPage() {
                 <label>
                   Версия
                   <input
+                    className="neft-input"
                     value={form.version}
                     onChange={(event) => setForm({ ...form, version: event.target.value })}
                     required
@@ -195,6 +198,7 @@ export default function LegalPage() {
                 <label>
                   Локаль
                   <input
+                    className="neft-input"
                     value={form.locale}
                     onChange={(event) => setForm({ ...form, locale: event.target.value })}
                     required
@@ -204,6 +208,7 @@ export default function LegalPage() {
               <label>
                 Заголовок
                 <input
+                  className="neft-input"
                   value={form.title}
                   onChange={(event) => setForm({ ...form, title: event.target.value })}
                   required
@@ -213,6 +218,7 @@ export default function LegalPage() {
                 <label>
                   Effective from
                   <input
+                    className="neft-input"
                     type="datetime-local"
                     value={form.effective_from}
                     onChange={(event) => setForm({ ...form, effective_from: event.target.value })}
@@ -222,6 +228,7 @@ export default function LegalPage() {
                 <label>
                   Content type
                   <select
+                    className="neft-input"
                     value={form.content_type}
                     onChange={(event) => setForm({ ...form, content_type: event.target.value })}
                   >
@@ -234,6 +241,7 @@ export default function LegalPage() {
               <label>
                 Контент
                 <textarea
+                  className="neft-input"
                   rows={6}
                   value={form.content}
                   onChange={(event) => setForm({ ...form, content: event.target.value })}
@@ -247,16 +255,19 @@ export default function LegalPage() {
 
             <div className="legal-filters">
               <input
+                className="neft-input"
                 placeholder="Код"
                 value={filters.code}
                 onChange={(event) => setFilters({ ...filters, code: event.target.value })}
               />
               <input
+                className="neft-input"
                 placeholder="Локаль"
                 value={filters.locale}
                 onChange={(event) => setFilters({ ...filters, locale: event.target.value })}
               />
               <input
+                className="neft-input"
                 placeholder="Статус"
                 value={filters.status}
                 onChange={(event) => setFilters({ ...filters, status: event.target.value })}
@@ -301,11 +312,13 @@ export default function LegalPage() {
           <>
             <div className="legal-filters">
               <input
+                className="neft-input"
                 placeholder="Subject ID"
                 value={acceptanceFilters.subject_id}
                 onChange={(event) => setAcceptanceFilters({ ...acceptanceFilters, subject_id: event.target.value })}
               />
               <input
+                className="neft-input"
                 placeholder="Document code"
                 value={acceptanceFilters.document_code}
                 onChange={(event) => setAcceptanceFilters({ ...acceptanceFilters, document_code: event.target.value })}
@@ -331,6 +344,7 @@ export default function LegalPage() {
           </>
         )}
       </section>
+      </div>
     </div>
   );
 }

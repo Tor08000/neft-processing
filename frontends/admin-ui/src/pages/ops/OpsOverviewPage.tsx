@@ -44,7 +44,7 @@ export const OpsOverviewPage: React.FC = () => {
   if (!summary) {
     return (
       <div>
-        <h1>Ops overview</h1>
+        <h1 className="neft-h1">Ops overview</h1>
         <div style={{ color: "#dc2626" }}>Failed to load ops summary: {error?.message ?? "Unknown error"}</div>
         {requestId ? <div style={{ marginTop: 8 }}>Request ID: {requestId}</div> : null}
       </div>
@@ -54,8 +54,8 @@ export const OpsOverviewPage: React.FC = () => {
   return (
     <div style={{ display: "grid", gap: 20 }}>
       <div>
-        <h1 style={{ marginBottom: 4 }}>Ops overview</h1>
-        <div style={{ color: "#475569" }}>
+        <h1 className="neft-h1">Ops overview</h1>
+        <div className="neft-h1-subtitle">
           Env: {summary.env.name} · Build: {summary.env.build} · Updated: {formatDateTime(summary.time.now)}
         </div>
       </div>
