@@ -1,7 +1,13 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "../auth/AuthContext";
 import { downloadClientDoc, fetchClientDocsList, type ClientDocItem } from "../api/clientDocs";
-import { AppEmptyState, AppErrorState, AppForbiddenState, AppLoadingState } from "../components/states";
+import { ApiError } from "../api/http";
+import { ClientErrorState } from "../components/ClientErrorState";
+import { DemoEmptyState } from "../components/DemoEmptyState";
+import { Link } from "react-router-dom";
+import { AppEmptyState, AppForbiddenState, AppLoadingState } from "../components/states";
+import { demoDocuments } from "../demo/demoData";
+import { isDemoClient } from "@shared/demo/demo";
 import { formatDate } from "../utils/format";
 import { canAccessFinance } from "../utils/roles";
 
@@ -14,17 +20,43 @@ export function ClientDocsListPage({ title, docType }: ClientDocsListPageProps) 
   const { user } = useAuth();
   const [items, setItems] = useState<ClientDocItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<{ message: string; status?: number; details?: string } | null>(null);
+  const [useDemoData, setUseDemoData] = useState(false);
+  const isDemoClientAccount = isDemoClient(user?.email ?? null);
 
-  useEffect(() => {
+  const loadDocs = () => {
     if (!user) return;
     setLoading(true);
     setError(null);
+    setUseDemoData(false);
     fetchClientDocsList(user, docType)
       .then((resp) => setItems(resp.items ?? []))
-      .catch((err: Error) => setError(err.message))
+      .catch((err: unknown) => {
+        console.error("Не удалось загрузить документы", err);
+        if (isDemoClientAccount) {
+          setItems(demoDocuments);
+          setUseDemoData(true);
+          return;
+        }
+        if (err instanceof ApiError) {
+          setError({
+            message: "Не удалось загрузить документы.",
+            status: err.status,
+            details: err.message,
+          });
+          return;
+        }
+        setError({
+          message: "Не удалось загрузить документы.",
+          details: err instanceof Error ? err.message : String(err),
+        });
+      })
       .finally(() => setLoading(false));
-  }, [docType, user]);
+  };
+
+  useEffect(() => {
+    loadDocs();
+  }, [docType, user, isDemoClientAccount]);
 
   if (!canAccessFinance(user)) {
     return <AppForbiddenState message="Недостаточно прав для просмотра документов." />;
@@ -35,10 +67,30 @@ export function ClientDocsListPage({ title, docType }: ClientDocsListPageProps) 
   }
 
   if (error) {
-    return <AppErrorState message={error} />;
+    return (
+      <ClientErrorState
+        title="Документы недоступны"
+        description="Не удалось получить список документов. Попробуйте обновить страницу позже."
+        details={error.details}
+        onRetry={loadDocs}
+      />
+    );
   }
 
   if (!items.length) {
+    if (isDemoClientAccount) {
+      return (
+        <DemoEmptyState
+          title="Документы в демо появятся позже"
+          description="В рабочем контуре здесь будет архив счетов, актов и договоров."
+          action={
+            <Link className="ghost neft-btn-secondary" to="/dashboard">
+              Перейти в обзор
+            </Link>
+          }
+        />
+      );
+    }
     return <AppEmptyState title="Документов пока нет" description="Документы появятся после выставления." />;
   }
 
@@ -46,7 +98,11 @@ export function ClientDocsListPage({ title, docType }: ClientDocsListPageProps) 
     try {
       await downloadClientDoc(documentId, user);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Не удалось скачать документ.");
+      console.error("Не удалось скачать документ", err);
+      setError({
+        message: "Не удалось скачать документ.",
+        details: err instanceof Error ? err.message : String(err),
+      });
     }
   };
 
@@ -55,7 +111,9 @@ export function ClientDocsListPage({ title, docType }: ClientDocsListPageProps) 
       <div className="card__header">
         <div>
           <h2>{title}</h2>
-          <p className="muted">Список документов и доступные файлы.</p>
+          <p className="muted">
+            {useDemoData ? "Демонстрационный список документов." : "Список документов и доступные файлы."}
+          </p>
         </div>
       </div>
       <table className="table">

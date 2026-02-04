@@ -125,6 +125,20 @@ export function OnboardingPage() {
     return <Navigate to="/login" replace />;
   }
 
+  if (isDemoClientAccount && !onboardingEnabled) {
+    return (
+      <EmptyState
+        title="Демо-режим: онбординг пропущен"
+        description="В демонстрационной среде подключение компании не требуется."
+        action={
+          <button type="button" className="ghost neft-btn-secondary" onClick={() => navigate("/dashboard")}>
+            Перейти в кабинет
+          </button>
+        }
+      />
+    );
+  }
+
   if (isDemoClientAccount) {
     return <Navigate to="/" replace />;
   }

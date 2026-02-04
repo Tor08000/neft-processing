@@ -2,14 +2,18 @@ import { type ChangeEvent, useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { fetchOperations } from "../api/operations";
 import { fetchCards } from "../api/cards";
+import { ApiError } from "../api/http";
 import { useAuth } from "../auth/AuthContext";
-import { AppErrorState, AppForbiddenState } from "../components/states";
+import { ClientErrorState } from "../components/ClientErrorState";
+import { AppForbiddenState } from "../components/states";
 import { Table } from "../components/common/Table";
+import { demoOperations } from "../demo/demoData";
 import type { OperationSummary } from "../types/operations";
 import type { ClientCard } from "../types/cards";
 import { formatDateTime, formatLiters } from "../utils/format";
 import { MoneyValue } from "../components/common/MoneyValue";
 import { canAccessOps } from "../utils/roles";
+import { isDemoClient } from "@shared/demo/demo";
 
 const STATUS_OPTIONS = [
   { value: "", label: "Все" },
@@ -60,11 +64,13 @@ export function OperationsPage() {
   const [cards, setCards] = useState<ClientCard[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isCardsLoading, setIsCardsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<{ message: string; status?: number; details?: string } | null>(null);
+  const [useDemoData, setUseDemoData] = useState(false);
   const [total, setTotal] = useState(0);
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
   const [pagination, setPagination] = useState({ limit: 10, offset: 0 });
   const [savedFilters, setSavedFilters] = useState<Record<string, typeof filters>>({});
+  const isDemoClientAccount = isDemoClient(user?.email ?? null);
 
   useEffect(() => {
     const stored = localStorage.getItem(FILTERS_STORAGE);
@@ -92,13 +98,21 @@ export function OperationsPage() {
     setIsCardsLoading(true);
     fetchCards(user)
       .then((resp) => setCards(resp.items))
-      .catch((err: Error) => setError(err.message))
+      .catch((err: Error) => {
+        console.error("Не удалось загрузить карты", err);
+        if (isDemoClientAccount) {
+          setCards([]);
+          return;
+        }
+        setError({ message: "Не удалось загрузить карты.", details: err.message });
+      })
       .finally(() => setIsCardsLoading(false));
-  }, [user]);
+  }, [user, isDemoClientAccount]);
 
   useEffect(() => {
     if (!user) return;
     setIsLoading(true);
+    setUseDemoData(false);
     fetchOperations(user, {
       status: filters.status || undefined,
       cardId: filters.cardId || undefined,
@@ -117,9 +131,22 @@ export function OperationsPage() {
         setOperations(resp.items);
         setTotal(resp.total);
       })
-      .catch((err: Error) => setError(err.message))
+      .catch((err: unknown) => {
+        console.error("Не удалось загрузить операции", err);
+        if (isDemoClientAccount) {
+          setOperations(demoOperations);
+          setTotal(demoOperations.length);
+          setUseDemoData(true);
+          return;
+        }
+        if (err instanceof ApiError) {
+          setError({ message: "Не удалось загрузить операции.", status: err.status, details: err.message });
+          return;
+        }
+        setError({ message: "Не удалось загрузить операции.", details: err instanceof Error ? err.message : String(err) });
+      })
       .finally(() => setIsLoading(false));
-  }, [user, filters, pagination]);
+  }, [user, filters, pagination, isDemoClientAccount]);
 
   const pageNumber = useMemo(
     () => Math.floor(pagination.offset / pagination.limit) + 1,
@@ -181,7 +208,11 @@ export function OperationsPage() {
       <div className="card__header">
         <div>
           <h2>Операции</h2>
-          <p className="muted">Расходы по топливу, статусы и детали транзакций.</p>
+          <p className="muted">
+            {useDemoData
+              ? "Демо-режим: операции сформированы на основе типового сценария."
+              : "Расходы по топливу, статусы и детали транзакций."}
+          </p>
         </div>
       </div>
 
@@ -325,7 +356,15 @@ export function OperationsPage() {
         </div>
       </div>
 
-      {error ? <AppErrorState message={error} /> : null}
+      {useDemoData ? <div className="notice">Фильтры работают в демо-режиме, данные обновляются локально.</div> : null}
+      {error ? (
+        <ClientErrorState
+          title="Расходы недоступны"
+          description="Не удалось загрузить операции. Попробуйте обновить страницу."
+          details={error.details}
+          onRetry={() => setFilters((prev) => ({ ...prev }))}
+        />
+      ) : null}
       {!error ? (
         <>
           <Table

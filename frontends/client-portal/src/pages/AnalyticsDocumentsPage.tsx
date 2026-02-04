@@ -7,16 +7,21 @@ import { AnalyticsChartPanel } from "../components/analytics/AnalyticsChartPanel
 import { AnalyticsKpiCard } from "../components/analytics/AnalyticsKpiCard";
 import { AnalyticsTabs } from "../components/analytics/AnalyticsTabs";
 import { FilterBar, type DateFilters } from "../components/analytics/FilterBar";
-import { AppEmptyState, AppErrorState, AppForbiddenState, AppLoadingState } from "../components/states";
+import { ClientErrorState } from "../components/ClientErrorState";
+import { DemoEmptyState } from "../components/DemoEmptyState";
+import { AppEmptyState, AppForbiddenState, AppLoadingState } from "../components/states";
+import { demoDocumentsSummary } from "../demo/demoData";
 import { useI18n } from "../i18n";
 import type { AnalyticsDocumentsSummaryResponse } from "../types/analytics";
 import { buildDateRange } from "../utils/dateRange";
 import { hasAnyRole } from "../utils/roles";
+import { isDemoClient } from "@shared/demo/demo";
 
 interface AnalyticsErrorState {
   message: string;
   status?: number;
   correlationId?: string | null;
+  details?: string;
 }
 
 export function AnalyticsDocumentsPage() {
@@ -26,11 +31,13 @@ export function AnalyticsDocumentsPage() {
   const [summary, setSummary] = useState<AnalyticsDocumentsSummaryResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<AnalyticsErrorState | null>(null);
+  const [useDemoData, setUseDemoData] = useState(false);
   const hasData = Boolean(
     summary && (summary.issued > 0 || summary.signed > 0 || summary.edo_pending > 0 || summary.edo_failed > 0),
   );
 
   const canAccess = hasAnyRole(user, ["CLIENT_OWNER", "CLIENT_ACCOUNTANT", "CLIENT_FLEET_MANAGER", "CLIENT_USER"]);
+  const isDemoClientAccount = isDemoClient(user?.email ?? null);
 
   useEffect(() => {
     if (filters.preset !== "custom") {
@@ -43,17 +50,32 @@ export function AnalyticsDocumentsPage() {
     if (!user?.clientId || !filters.from || !filters.to) return;
     setIsLoading(true);
     setError(null);
+    setUseDemoData(false);
     fetchDocumentsSummary(user, { clientId: user.clientId, from: filters.from, to: filters.to })
       .then((resp) => setSummary(resp))
       .catch((err: unknown) => {
-        if (err instanceof ApiError) {
-          setError({ message: err.message, status: err.status, correlationId: err.correlationId });
+        console.error("Не удалось загрузить аналитику документов", err);
+        if (isDemoClientAccount) {
+          setSummary(demoDocumentsSummary);
+          setUseDemoData(true);
           return;
         }
-        setError({ message: err instanceof Error ? err.message : t("analytics.errors.loadFailed") });
+        if (err instanceof ApiError) {
+          setError({
+            message: "Не удалось загрузить аналитику документов.",
+            status: err.status,
+            correlationId: err.correlationId,
+            details: err.message,
+          });
+          return;
+        }
+        setError({
+          message: "Не удалось загрузить аналитику документов.",
+          details: err instanceof Error ? err.message : String(err),
+        });
       })
       .finally(() => setIsLoading(false));
-  }, [user, filters.from, filters.to, t]);
+  }, [user, filters.from, filters.to, t, isDemoClientAccount]);
 
   const statusMax = useMemo(() => {
     if (!summary) return 0;
@@ -71,7 +93,9 @@ export function AnalyticsDocumentsPage() {
         <div className="card__header">
           <div>
             <h2>{t("analytics.documents.title")}</h2>
-            <p className="muted">{t("analytics.documents.subtitle")}</p>
+            <p className="muted">
+              {useDemoData ? "Демо-режим: показатели собраны на примере типовой компании." : t("analytics.documents.subtitle")}
+            </p>
           </div>
           <Link className="ghost" to="/documents?requiresAction=yes">
             {t("analytics.documents.action")}
@@ -81,7 +105,26 @@ export function AnalyticsDocumentsPage() {
       </section>
 
       {isLoading ? <AppLoadingState label={t("analytics.loading")} /> : null}
-      {error ? <AppErrorState message={error.message} status={error.status} correlationId={error.correlationId} /> : null}
+      {error ? (
+        isDemoClientAccount && error.status === 404 ? (
+          <DemoEmptyState
+            title="Раздел в демо недоступен"
+            description="В рабочем контуре здесь будут метрики по документообороту и ЭДО."
+            action={
+              <Link className="ghost neft-btn-secondary" to="/dashboard">
+                Перейти в обзор
+              </Link>
+            }
+          />
+        ) : (
+          <ClientErrorState
+            title="Аналитика документов недоступна"
+            description="Данные временно недоступны. Попробуйте обновить страницу."
+            details={error.details}
+            onRetry={() => setFilters((prev) => ({ ...prev }))}
+          />
+        )
+      ) : null}
       {!isLoading && !error && !hasData ? (
         <AppEmptyState title={t("analytics.empty.title")} description={t("analytics.empty.description")} />
       ) : null}
