@@ -1,28 +1,31 @@
 import { render, screen } from "@testing-library/react";
+import { I18nextProvider, useTranslation } from "react-i18next";
 import { describe, expect, it } from "vitest";
-import { I18nProvider, useI18n } from "./index";
+import i18n from "./index";
 
 const Sample = () => {
-  const { t } = useI18n();
+  const { t } = useTranslation();
   return <div>{t("emptyStates.orders.title")}</div>;
 };
 
 describe("i18n", () => {
   it("renders russian translations", async () => {
+    await i18n.changeLanguage("ru");
     render(
-      <I18nProvider locale="ru">
+      <I18nextProvider i18n={i18n}>
         <Sample />
-      </I18nProvider>,
+      </I18nextProvider>,
     );
 
     expect(await screen.findByText("Заказов пока нет")).toBeInTheDocument();
   });
 
   it("renders english translations", async () => {
+    await i18n.changeLanguage("en");
     render(
-      <I18nProvider locale="en">
+      <I18nextProvider i18n={i18n}>
         <Sample />
-      </I18nProvider>,
+      </I18nextProvider>,
     );
 
     expect(await screen.findByText("No orders yet")).toBeInTheDocument();

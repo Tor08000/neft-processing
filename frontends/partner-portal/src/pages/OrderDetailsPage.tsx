@@ -28,7 +28,7 @@ import type {
 import { formatCurrency, formatDateTime } from "../utils/format";
 import { canManageOrderLifecycle, canReadOrders } from "../utils/roles";
 import { OrderTimelinePanel } from "./OrderTimelinePanel";
-import { useI18n } from "../i18n";
+import { useTranslation } from "react-i18next";
 
 const canAcceptStatus = (status: string) => ["CREATED"].includes(status);
 const canStartStatus = (status: string) => ["ACCEPTED"].includes(status);
@@ -71,7 +71,7 @@ const resolveSlaTone = (metric: MarketplaceOrderSlaMetric) => {
 export function OrderDetailsPage() {
   const { id } = useParams();
   const { user } = useAuth();
-  const { t } = useI18n();
+  const { t } = useTranslation();
   const [order, setOrder] = useState<MarketplaceOrder | null>(null);
   const [orderLoading, setOrderLoading] = useState(true);
   const [orderError, setOrderError] = useState<string | null>(null);

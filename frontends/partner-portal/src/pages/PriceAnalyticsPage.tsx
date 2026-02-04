@@ -5,7 +5,7 @@ import { ForbiddenState, LoadingState } from "../components/states";
 import { PriceAnalyticsCharts } from "../components/PriceAnalyticsCharts";
 import { ChartFrame } from "@shared/ui/charts/ChartFrame";
 import { useAuth } from "../auth/AuthContext";
-import { useI18n } from "../i18n";
+import { useTranslation } from "react-i18next";
 import {
   fetchPriceAnalyticsInsights,
   fetchPriceAnalyticsOffers,
@@ -48,7 +48,7 @@ const formatPercent = (value: number | null) => {
 
 export function PriceAnalyticsPage() {
   const { user } = useAuth();
-  const { t } = useI18n();
+  const { t } = useTranslation();
   const [versions, setVersions] = useState<PriceAnalyticsVersion[]>([]);
   const [offers, setOffers] = useState<PriceAnalyticsOffer[]>([]);
   const [insights, setInsights] = useState<PriceAnalyticsInsight[]>([]);

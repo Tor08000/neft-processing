@@ -19,7 +19,7 @@ import { formatDateTime, formatNumber } from "../utils/format";
 import { parseCatalogCsv } from "../utils/csv";
 import { canManageServices, canReadServices } from "../utils/roles";
 import type { CatalogItem, CatalogItemInput, CatalogItemKind, CatalogItemStatus, CatalogImportPreview } from "../types/marketplace";
-import { useI18n } from "../i18n";
+import { useTranslation } from "react-i18next";
 import { PartnerErrorState } from "../components/PartnerErrorState";
 import { demoCatalogItems } from "../demo/partnerDemoData";
 import { isDemoPartner } from "@shared/demo/demo";
@@ -110,7 +110,7 @@ const getSummary = (preview: CatalogImportPreview | null, fallbackRows: number, 
 
 export function ServicesCatalogPage() {
   const { user } = useAuth();
-  const { t } = useI18n();
+  const { t } = useTranslation();
   const canRead = canReadServices(user?.roles);
   const canManage = canManageServices(user?.roles);
   const isDemoPartnerAccount = isDemoPartner(user?.email ?? null);

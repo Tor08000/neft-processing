@@ -3,12 +3,12 @@ import { fetchMarketplaceProfile, upsertMarketplaceProfile } from "../api/market
 import { ApiError } from "../api/http";
 import { useAuth } from "../auth/AuthContext";
 import { StatusBadge } from "../components/StatusBadge";
-import { useI18n } from "../i18n";
+import { useTranslation } from "react-i18next";
 import type { MarketplacePartnerProfile } from "../types/marketplace";
 
 export function MarketplaceProfilePage() {
   const { user } = useAuth();
-  const { t } = useI18n();
+  const { t } = useTranslation();
   const [profile, setProfile] = useState<MarketplacePartnerProfile | null>(null);
   const [companyName, setCompanyName] = useState("");
   const [description, setDescription] = useState("");

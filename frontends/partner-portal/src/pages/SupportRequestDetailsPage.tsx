@@ -7,7 +7,7 @@ import { ErrorState, LoadingState } from "../components/states";
 import type { SupportRequestDetail } from "../types/support";
 import { formatDateTime } from "../utils/format";
 import { supportStatusLabel, supportStatusTone, supportSubjectLabel } from "../utils/support";
-import { useI18n } from "../i18n";
+import { useTranslation } from "react-i18next";
 
 const buildSubjectLink = (subjectType: string, subjectId?: string | null) => {
   if (!subjectId) return null;
@@ -28,7 +28,7 @@ const buildSubjectLink = (subjectType: string, subjectId?: string | null) => {
 export function SupportRequestDetailsPage() {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
-  const { t } = useI18n();
+  const { t } = useTranslation();
   const [supportRequest, setSupportRequest] = useState<SupportRequestDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

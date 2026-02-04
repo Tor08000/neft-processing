@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { createSupportRequest } from "../api/support";
 import { useAuth } from "../auth/AuthContext";
-import { useI18n } from "../i18n";
+import { useTranslation } from "react-i18next";
 import type { SupportRequestDetail, SupportRequestSubjectType } from "../types/support";
 
 type SupportRequestModalProps = {
@@ -25,7 +25,7 @@ export function SupportRequestModal({
   defaultTitle,
 }: SupportRequestModalProps) {
   const { user } = useAuth();
-  const { t } = useI18n();
+  const { t } = useTranslation();
   const [title, setTitle] = useState(defaultTitle);
   const [description, setDescription] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);

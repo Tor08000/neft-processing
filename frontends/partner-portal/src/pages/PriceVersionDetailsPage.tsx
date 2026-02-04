@@ -9,7 +9,7 @@ import { canCreateDraftPrices, canPublishPrices, canReadPrices } from "../utils/
 import { parseCsv } from "../utils/csv";
 import { ApiError } from "../api/http";
 import { StatusBadge } from "../components/StatusBadge";
-import { useI18n } from "../i18n";
+import { useTranslation } from "react-i18next";
 
 const tabs = ["overview", "import", "preview", "validate", "diff", "audit"] as const;
 type TabKey = (typeof tabs)[number];
@@ -19,7 +19,7 @@ const shortId = (value: string) => value.slice(0, 8);
 export function PriceVersionDetailsPage() {
   const { id } = useParams();
   const { user } = useAuth();
-  const { t } = useI18n();
+  const { t } = useTranslation();
   const [searchParams, setSearchParams] = useSearchParams();
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<ApiError | null>(null);

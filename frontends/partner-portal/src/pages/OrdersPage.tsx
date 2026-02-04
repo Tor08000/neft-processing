@@ -10,7 +10,7 @@ import { StatusBadge } from "../components/StatusBadge";
 import type { MarketplaceOrder } from "../types/marketplace";
 import { formatCurrency, formatDateTime, formatNumber } from "../utils/format";
 import { canReadOrders } from "../utils/roles";
-import { useI18n } from "../i18n";
+import { useTranslation } from "react-i18next";
 import { PartnerErrorState } from "../components/PartnerErrorState";
 import { demoOrders } from "../demo/partnerDemoData";
 import { isDemoPartner } from "@shared/demo/demo";
@@ -60,7 +60,7 @@ const shortId = (value: string) => (value.length > 10 ? `${value.slice(0, 6)}…
 
 export function OrdersPage() {
   const { user } = useAuth();
-  const { t } = useI18n();
+  const { t } = useTranslation();
   const [orders, setOrders] = useState<MarketplaceOrder[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<unknown>(null);
