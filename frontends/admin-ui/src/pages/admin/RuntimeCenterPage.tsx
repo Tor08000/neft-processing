@@ -182,7 +182,7 @@ export const RuntimeCenterPage: React.FC = () => {
   return (
     <div>
       <div className="page-header">
-        <h1>Runtime Center</h1>
+        <h1 className="neft-h1">Runtime Center</h1>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           <button onClick={() => refetch()} disabled={isFetching}>
             Refresh

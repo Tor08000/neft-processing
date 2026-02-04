@@ -348,15 +348,15 @@ export function AuditPage() {
       <div className="card filters">
         <label className="filter">
           <span>{t("auditViewer.filters.from")}</span>
-          <input type="datetime-local" name="from" value={filters.from} onChange={handleFilterChange} />
+          <input type="datetime-local" className="neft-input" name="from" value={filters.from} onChange={handleFilterChange} />
         </label>
         <label className="filter">
           <span>{t("auditViewer.filters.to")}</span>
-          <input type="datetime-local" name="to" value={filters.to} onChange={handleFilterChange} />
+          <input type="datetime-local" className="neft-input" name="to" value={filters.to} onChange={handleFilterChange} />
         </label>
         <label className="filter">
           <span>{t("auditViewer.filters.action")}</span>
-          <select multiple value={filters.action} onChange={handleActionChange}>
+          <select multiple className="neft-input" value={filters.action} onChange={handleActionChange}>
             {actionOptions.length === 0 ? (
               <option value="" disabled>
                 {t("auditViewer.filters.actionEmpty")}
@@ -371,11 +371,17 @@ export function AuditPage() {
         </label>
         <label className="filter">
           <span>{t("auditViewer.filters.actor")}</span>
-          <input name="actor" value={filters.actor} onChange={handleFilterChange} placeholder={t("auditViewer.filters.actorPlaceholder")} />
+          <input
+            name="actor"
+            className="neft-input"
+            value={filters.actor}
+            onChange={handleFilterChange}
+            placeholder={t("auditViewer.filters.actorPlaceholder")}
+          />
         </label>
         <label className="filter">
           <span>{t("auditViewer.filters.entityType")}</span>
-          <select name="entityType" value={filters.entityType} onChange={handleFilterChange}>
+          <select name="entityType" className="neft-input" value={filters.entityType} onChange={handleFilterChange}>
             {ENTITY_TYPE_OPTIONS.map((option) => (
               <option key={option.value} value={option.value}>
                 {option.label}
@@ -385,12 +391,19 @@ export function AuditPage() {
         </label>
         <label className="filter">
           <span>{t("auditViewer.filters.entityId")}</span>
-          <input name="entityId" value={filters.entityId} onChange={handleFilterChange} placeholder={t("auditViewer.filters.entityIdPlaceholder")} />
+          <input
+            name="entityId"
+            className="neft-input"
+            value={filters.entityId}
+            onChange={handleFilterChange}
+            placeholder={t("auditViewer.filters.entityIdPlaceholder")}
+          />
         </label>
         <label className="filter">
           <span>{t("auditViewer.filters.requestId")}</span>
           <input
             name="requestId"
+            className="neft-input"
             value={filters.requestId}
             onChange={handleFilterChange}
             placeholder={t("auditViewer.filters.requestIdPlaceholder")}
@@ -398,7 +411,7 @@ export function AuditPage() {
         </label>
         <label className="filter">
           <span>{t("auditViewer.filters.limit")}</span>
-          <select name="limit" value={filters.limit} onChange={handleLimitChange}>
+          <select name="limit" className="neft-input" value={filters.limit} onChange={handleLimitChange}>
             {[25, 50, 100, 200].map((value) => (
               <option key={value} value={value}>
                 {value}

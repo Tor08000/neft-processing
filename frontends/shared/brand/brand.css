@@ -32,6 +32,54 @@ html, body {
   min-height: 100vh;
 }
 
+/* Typography utilities */
+.neft-h1 {
+  font-size: 26px;
+  line-height: 1.2;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--neft-text);
+}
+
+@media (max-width: 960px) {
+  .neft-h1 {
+    font-size: 24px;
+  }
+}
+
+.neft-h1-subtitle {
+  margin-top: 6px;
+  font-size: 13px;
+  line-height: 1.4;
+  font-weight: 500;
+  color: var(--neft-text-muted);
+}
+
+/* KPI card text hierarchy */
+.neft-kpi-label {
+  font-size: 12.5px;
+  line-height: 1.3;
+  font-weight: 500;
+  color: var(--neft-text-muted);
+}
+
+.neft-kpi-value {
+  margin-top: 6px;
+  font-size: 26px;
+  line-height: 1.15;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--neft-text);
+}
+
+.neft-kpi-meta {
+  margin-top: 6px;
+  font-size: 12.5px;
+  line-height: 1.35;
+  font-weight: 500;
+  color: var(--neft-text-secondary);
+}
+
 .neft-input,
 .neft-select {
   background: var(--neft-surface);
@@ -206,6 +254,7 @@ html, body {
   display: flex;
   align-items: center;
   gap: 10px;
+  position: relative;
 }
 
 .brand-nav-link__label {
@@ -229,7 +278,7 @@ html, body {
 
 .brand-nav-link:hover {
   color: var(--neft-text);
-  background: var(--neft-table-hover);
+  background: rgba(255, 255, 255, 0.04);
 }
 
 .brand-nav-link.is-disabled {
@@ -241,6 +290,17 @@ html, body {
 
 .brand-nav-link.is-active {
   color: var(--neft-text);
+  background: rgba(21, 161, 199, 0.1);
+}
+
+.brand-nav-link.is-active::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 6px;
+  bottom: 6px;
+  width: 4px;
+  border-radius: 4px;
   background: var(--neft-primary);
 }
 
@@ -382,6 +442,38 @@ html, body {
 .empty-state__description {
   margin: 0;
   color: var(--neft-text-muted);
+}
+
+.empty-state__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  color: var(--neft-text-secondary);
+}
+
+.neft-container {
+  width: 100%;
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+.neft-container--form {
+  width: 100%;
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+textarea.neft-input {
+  background: var(--neft-surface);
+  color: var(--neft-text);
+  border: 1px solid var(--neft-border);
+}
+
+textarea.neft-input:focus {
+  border-color: var(--neft-primary);
+  box-shadow: 0 0 0 4px var(--neft-focus);
 }
 
 .toast {
