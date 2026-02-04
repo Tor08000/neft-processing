@@ -231,125 +231,121 @@ export function OrdersPage() {
   return (
     <div className="stack">
       <section className="card">
-        <div className="section-title">
-          <h2>{t("ordersPage.title")}</h2>
-          <div className="neft-actions">
-            <button type="button" className="secondary" onClick={handleSaveFilters}>
-              {t("ordersPage.actions.saveFilters")}
-            </button>
+        <div className="page-section">
+          <div className="page-section__header">
+            <h2>{t("ordersPage.title")}</h2>
+            <div className="neft-actions">
+              <button type="button" className="secondary" onClick={handleSaveFilters}>
+                {t("ordersPage.actions.saveFilters")}
+              </button>
+            </div>
           </div>
-        </div>
-        <div className="filters neft-filters">
-          <label className="filter neft-filter">
-            {t("ordersPage.filters.period")}
-            <select value={periodPreset} onChange={(event) => handlePresetChange(event.target.value as PeriodPreset)}>
-              <option value="today">{t("ordersPage.filters.presets.today")}</option>
-              <option value="7d">{t("ordersPage.filters.presets.7d")}</option>
-              <option value="30d">{t("ordersPage.filters.presets.30d")}</option>
-              <option value="custom">{t("ordersPage.filters.presets.custom")}</option>
-            </select>
-          </label>
-          <label className="filter neft-filter">
-            {t("ordersPage.filters.from")}
-            <input
-              type="date"
-              value={filters.from ?? ""}
-              onChange={(event) => handleFilterChange("from", event.target.value)}
-            />
-          </label>
-          <label className="filter neft-filter">
-            {t("ordersPage.filters.to")}
-            <input
-              type="date"
-              value={filters.to ?? ""}
-              onChange={(event) => handleFilterChange("to", event.target.value)}
-            />
-          </label>
-          <label className="filter neft-filter">
-            {t("ordersPage.filters.status")}
-            <select value={filters.status ?? ""} onChange={(event) => handleFilterChange("status", event.target.value)}>
-              {statusOptions.map((status) => (
-                <option key={status || "all"} value={status}>
-                  {status || t("common.all")}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="filter neft-filter">
-            {t("ordersPage.filters.search")}
-            <input
-              type="search"
-              placeholder={t("ordersPage.filters.searchPlaceholder")}
-              value={filters.q ?? ""}
-              onChange={(event) => handleFilterChange("q", event.target.value)}
-            />
-          </label>
-          <label className="filter neft-filter">
-            {t("ordersPage.filters.station")}
-            <input
-              type="text"
-              placeholder={t("ordersPage.filters.stationPlaceholder")}
-              value={filters.station_id ?? ""}
-              onChange={(event) => handleFilterChange("station_id", event.target.value)}
-            />
-          </label>
-          <label className="filter neft-filter">
-            {t("ordersPage.filters.service")}
-            <input
-              type="text"
-              placeholder={t("ordersPage.filters.servicePlaceholder")}
-              value={filters.service_id ?? ""}
-              onChange={(event) => handleFilterChange("service_id", event.target.value)}
-            />
-          </label>
-          <label className="filter neft-filter">
-            {t("ordersPage.filters.slaRisk")}
-            <select
-              value={filters.sla_risk ?? ""}
-              onChange={(event) => handleFilterChange("sla_risk", event.target.value)}
-            >
-              <option value="">{t("common.all")}</option>
-              <option value="near">{t("ordersPage.filters.slaRiskNear")}</option>
-            </select>
-          </label>
-        </div>
+          <div className="page-section__content">
+            <div className="filters neft-filters">
+              <label className="filter neft-filter">
+                {t("ordersPage.filters.period")}
+                <select value={periodPreset} onChange={(event) => handlePresetChange(event.target.value as PeriodPreset)}>
+                  <option value="today">{t("ordersPage.filters.presets.today")}</option>
+                  <option value="7d">{t("ordersPage.filters.presets.7d")}</option>
+                  <option value="30d">{t("ordersPage.filters.presets.30d")}</option>
+                  <option value="custom">{t("ordersPage.filters.presets.custom")}</option>
+                </select>
+              </label>
+              <label className="filter neft-filter">
+                {t("ordersPage.filters.from")}
+                <input
+                  type="date"
+                  value={filters.from ?? ""}
+                  onChange={(event) => handleFilterChange("from", event.target.value)}
+                />
+              </label>
+              <label className="filter neft-filter">
+                {t("ordersPage.filters.to")}
+                <input
+                  type="date"
+                  value={filters.to ?? ""}
+                  onChange={(event) => handleFilterChange("to", event.target.value)}
+                />
+              </label>
+              <label className="filter neft-filter">
+                {t("ordersPage.filters.status")}
+                <select value={filters.status ?? ""} onChange={(event) => handleFilterChange("status", event.target.value)}>
+                  {statusOptions.map((status) => (
+                    <option key={status || "all"} value={status}>
+                      {status || t("common.all")}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="filter neft-filter">
+                {t("ordersPage.filters.search")}
+                <input
+                  type="search"
+                  placeholder={t("ordersPage.filters.searchPlaceholder")}
+                  value={filters.q ?? ""}
+                  onChange={(event) => handleFilterChange("q", event.target.value)}
+                />
+              </label>
+              <label className="filter neft-filter">
+                {t("ordersPage.filters.station")}
+                <input
+                  type="text"
+                  placeholder={t("ordersPage.filters.stationPlaceholder")}
+                  value={filters.station_id ?? ""}
+                  onChange={(event) => handleFilterChange("station_id", event.target.value)}
+                />
+              </label>
+              <label className="filter neft-filter">
+                {t("ordersPage.filters.service")}
+                <input
+                  type="text"
+                  placeholder={t("ordersPage.filters.servicePlaceholder")}
+                  value={filters.service_id ?? ""}
+                  onChange={(event) => handleFilterChange("service_id", event.target.value)}
+                />
+              </label>
+              <label className="filter neft-filter">
+                {t("ordersPage.filters.slaRisk")}
+                <select
+                  value={filters.sla_risk ?? ""}
+                  onChange={(event) => handleFilterChange("sla_risk", event.target.value)}
+                >
+                  <option value="">{t("common.all")}</option>
+                  <option value="near">{t("ordersPage.filters.slaRiskNear")}</option>
+                </select>
+              </label>
+            </div>
 
-        <div className="stats-grid">
-          <div className="stat">
-            <div className="stat__label">{t("ordersPage.kpis.today")}</div>
-            <div className="stat__value">{formatNumber(kpis.ordersToday)}</div>
-          </div>
-          <div className="stat">
-            <div className="stat__label">{t("ordersPage.kpis.pending")}</div>
-            <div className="stat__value">{formatNumber(kpis.pendingConfirmation)}</div>
-          </div>
-          <div className="stat">
-            <div className="stat__label">{t("ordersPage.kpis.documents")}</div>
-            <div className="stat__value">{formatNumber(kpis.docsPending)}</div>
-          </div>
-          <div className="stat">
-            <div className="stat__label">{t("ordersPage.kpis.total")}</div>
-            <div className="stat__value">{formatNumber(total)}</div>
+            <div className="stats-grid">
+              <div className="stat">
+                <div className="stat__label">{t("ordersPage.kpis.today")}</div>
+                <div className="stat__value">{formatNumber(kpis.ordersToday)}</div>
+              </div>
+              <div className="stat">
+                <div className="stat__label">{t("ordersPage.kpis.pending")}</div>
+                <div className="stat__value">{formatNumber(kpis.pendingConfirmation)}</div>
+              </div>
+              <div className="stat">
+                <div className="stat__label">{t("ordersPage.kpis.documents")}</div>
+                <div className="stat__value">{formatNumber(kpis.docsPending)}</div>
+              </div>
+              <div className="stat">
+                <div className="stat__label">{t("ordersPage.kpis.total")}</div>
+                <div className="stat__value">{formatNumber(total)}</div>
+              </div>
+            </div>
+            {isDemoFallback ? (
+              <div className="notice">
+                <div>В демо-режиме показываются примерные заказы и показатели.</div>
+              </div>
+            ) : null}
           </div>
         </div>
-        {isDemoFallback ? (
-          <div className="notice">
-            <div>В демо-режиме показываются примерные заказы и показатели.</div>
-          </div>
-        ) : null}
 
         {isLoading ? (
           <LoadingState />
         ) : error ? (
-          <PartnerErrorState
-            error={error}
-            description={t("ordersPage.errors.apiError")}
-            action={
-              <button type="button" className="secondary" onClick={refreshOrders}>
-                {t("errors.retry")}
-              </button>
-            }
-          />
+          <PartnerErrorState error={error} />
         ) : orders.length === 0 ? (
           <EmptyState
             icon={<Package />}
@@ -358,44 +354,46 @@ export function OrdersPage() {
             primaryAction={{ label: t("actions.refresh"), onClick: refreshOrders }}
           />
         ) : (
-          <>
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>{t("ordersPage.table.orderId")}</th>
-                  <th>{t("ordersPage.table.client")}</th>
-                  <th>{t("ordersPage.table.service")}</th>
-                  <th>{t("ordersPage.table.createdAt")}</th>
-                  <th>{t("ordersPage.table.sla")}</th>
-                  <th>{t("ordersPage.table.amount")}</th>
-                  <th>{t("ordersPage.table.status")}</th>
-                  <th>{t("ordersPage.table.actions")}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {orders.map((order) => (
-                  <tr key={order.id}>
-                    <td>{shortId(order.id)}</td>
-                    <td>{order.clientName ?? order.clientId ?? t("common.notAvailable")}</td>
-                    <td>{order.serviceTitle ?? t("common.notAvailable")}</td>
-                    <td>{formatDateTime(order.createdAt)}</td>
-                    <td>
-                      <span className={`badge ${resolveSlaTone(order)}`}>{formatCountdown(getSlaRemainingSeconds(order))}</span>
-                    </td>
-                    <td>{formatCurrency(order.totalAmount ?? null)}</td>
-                    <td>
-                      <StatusBadge status={order.status} />
-                    </td>
-                    <td>
-                      <Link className="link-button" to={`/orders/${order.id}`}>
-                        {t("common.open")}
-                      </Link>
-                    </td>
+          <div className="page-section">
+            <div className="table-wrapper">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>{t("ordersPage.table.orderId")}</th>
+                    <th>{t("ordersPage.table.client")}</th>
+                    <th>{t("ordersPage.table.service")}</th>
+                    <th>{t("ordersPage.table.createdAt")}</th>
+                    <th>{t("ordersPage.table.sla")}</th>
+                    <th>{t("ordersPage.table.amount")}</th>
+                    <th>{t("ordersPage.table.status")}</th>
+                    <th>{t("ordersPage.table.actions")}</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-            <div className="pagination">
+                </thead>
+                <tbody>
+                  {orders.map((order) => (
+                    <tr key={order.id}>
+                      <td>{shortId(order.id)}</td>
+                      <td>{order.clientName ?? order.clientId ?? t("common.notAvailable")}</td>
+                      <td>{order.serviceTitle ?? t("common.notAvailable")}</td>
+                      <td>{formatDateTime(order.createdAt)}</td>
+                      <td>
+                        <span className={`badge ${resolveSlaTone(order)}`}>{formatCountdown(getSlaRemainingSeconds(order))}</span>
+                      </td>
+                      <td>{formatCurrency(order.totalAmount ?? null)}</td>
+                      <td>
+                        <StatusBadge status={order.status} />
+                      </td>
+                      <td>
+                        <Link className="link-button" to={`/orders/${order.id}`}>
+                          {t("common.open")}
+                        </Link>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="pagination pagination-wrapper">
               <button type="button" className="secondary" onClick={() => setPage((prev) => Math.max(prev - 1, 1))} disabled={page <= 1}>
                 {t("common.back")}
               </button>
@@ -404,7 +402,7 @@ export function OrdersPage() {
                 {t("common.next")}
               </button>
             </div>
-          </>
+          </div>
         )}
       </section>
     </div>

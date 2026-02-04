@@ -12,6 +12,7 @@ import { PartnerErrorState } from "../components/PartnerErrorState";
 import { isDemoPartner } from "@shared/demo/demo";
 import { ApiError } from "../api/http";
 import { DemoEmptyState } from "../components/DemoEmptyState";
+import { demoActs, demoInvoices } from "../demo/partnerDemoData";
 
 export function DocumentsPage() {
   const { user } = useAuth();
@@ -33,6 +34,14 @@ export function DocumentsPage() {
   useEffect(() => {
     let active = true;
     if (!user) return;
+    if (isDemoPartnerAccount) {
+      setInvoices(demoInvoices);
+      setActs(demoActs);
+      setIsDemoFallback(true);
+      setError(null);
+      setIsLoading(false);
+      return;
+    }
     setIsLoading(true);
     Promise.all([fetchPartnerInvoices(user.token), fetchPartnerActs(user.token)])
       .then(([invoiceResp, actResp]) => {
@@ -65,7 +74,6 @@ export function DocumentsPage() {
     if (items.length === 0) {
       return isDemoFallback ? (
         <DemoEmptyState
-          description="Документы появятся в рабочем контуре"
           primaryAction={{ label: "Обновить", onClick: () => window.location.reload() }}
           secondaryAction={{ label: "Связаться", to: "/support/requests" }}
         />
@@ -121,30 +129,34 @@ export function DocumentsPage() {
           </div>
         </section>
       ) : null}
-      <section className="card">
-        <div className="section-title">
-          <h2>Счета</h2>
-        </div>
-        {isLoading ? (
-          <LoadingState />
-        ) : error ? (
-          <PartnerErrorState error={error} description="Не удалось загрузить документы" />
-        ) : (
-          renderTable(invoices, "Новые счета появятся в конце месяца.")
-        )}
-      </section>
-      <section className="card">
-        <div className="section-title">
-          <h2>Акты</h2>
-        </div>
-        {isLoading ? (
-          <LoadingState />
-        ) : error ? (
-          <PartnerErrorState error={error} description="Не удалось загрузить документы" />
-        ) : (
-          renderTable(acts, "Акты появятся после начислений.")
-        )}
-      </section>
+      {error ? (
+        <section className="card">
+          <PartnerErrorState error={error} />
+        </section>
+      ) : (
+        <>
+          <section className="card">
+            <div className="section-title">
+              <h2>Счета</h2>
+            </div>
+            {isLoading ? (
+              <LoadingState />
+            ) : (
+              renderTable(invoices, "Новые счета появятся в конце месяца.")
+            )}
+          </section>
+          <section className="card">
+            <div className="section-title">
+              <h2>Акты</h2>
+            </div>
+            {isLoading ? (
+              <LoadingState />
+            ) : (
+              renderTable(acts, "Акты появятся после начислений.")
+            )}
+          </section>
+        </>
+      )}
     </div>
   );
 }

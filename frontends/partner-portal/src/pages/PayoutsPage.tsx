@@ -11,6 +11,7 @@ import { ApiError } from "../api/http";
 import { PartnerErrorState } from "../components/PartnerErrorState";
 import { isDemoPartner } from "@shared/demo/demo";
 import { DemoEmptyState } from "../components/DemoEmptyState";
+import { demoPayouts } from "../demo/partnerDemoData";
 
 export function PayoutsPage() {
   const { user } = useAuth();
@@ -28,6 +29,12 @@ export function PayoutsPage() {
 
   const loadPayouts = () => {
     if (!user) return;
+    if (isDemoPartnerAccount) {
+      setItems(demoPayouts);
+      setError(null);
+      setIsLoading(false);
+      return;
+    }
     setIsLoading(true);
     fetchPartnerPayouts(user.token)
       .then((data) => {
@@ -52,6 +59,11 @@ export function PayoutsPage() {
 
   useEffect(() => {
     if (!user) return;
+    if (isDemoPartnerAccount) {
+      setPayoutPreview({ legal_status: "VERIFIED", warnings: [] });
+      setPreviewError(null);
+      return;
+    }
     setPreviewError(null);
     fetchPartnerPayoutPreview(user.token)
       .then((data) => {
@@ -125,7 +137,7 @@ export function PayoutsPage() {
             <div>В демо-режиме запросы на выплату недоступны.</div>
           </div>
         ) : null}
-        {previewError ? <PartnerErrorState error={previewError} description="Не удалось загрузить статус выплат" /> : null}
+        {previewError ? <PartnerErrorState error={previewError} /> : null}
         <div className="form-grid">
           <label className="field">
             <span className="label">Сумма</span>
@@ -163,10 +175,32 @@ export function PayoutsPage() {
         {isLoading ? (
           <LoadingState />
         ) : error ? (
-          <PartnerErrorState error={error} description="Не удалось загрузить историю выплат" />
+          <PartnerErrorState error={error} />
+        ) : isDemoPartnerAccount && items.length ? (
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Дата</th>
+                <th>Сумма</th>
+                <th>Статус</th>
+                <th>Причина</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((item) => (
+                <tr key={item.id}>
+                  <td>{formatDateTime(item.created_at)}</td>
+                  <td>{formatCurrency(item.amount ?? null, item.currency)}</td>
+                  <td>
+                    <StatusBadge status={item.status} />
+                  </td>
+                  <td>{item.blocked_reason ?? "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         ) : isDemoPartnerAccount ? (
           <DemoEmptyState
-            description="История выплат доступна в рабочем контуре."
             primaryAction={{ label: "Обновить", onClick: () => loadPayouts() }}
             secondaryAction={{ label: "Связаться", to: "/support/requests" }}
           />

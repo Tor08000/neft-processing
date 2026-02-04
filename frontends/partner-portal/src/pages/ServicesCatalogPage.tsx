@@ -113,6 +113,7 @@ export function ServicesCatalogPage() {
   const { t } = useI18n();
   const canRead = canReadServices(user?.roles);
   const canManage = canManageServices(user?.roles);
+  const isDemoPartnerAccount = isDemoPartner(user?.email ?? null);
   const [items, setItems] = useState<CatalogItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [page, setPage] = useState(1);
@@ -181,7 +182,7 @@ export function ServicesCatalogPage() {
       setTotal(response.total ?? 0);
       setIsDemoFallback(false);
     } catch (err) {
-      if (err instanceof ApiError && isDemoPartner(user.email ?? null) && (err.status === 403 || err.status === 404)) {
+      if (err instanceof ApiError && isDemoPartnerAccount && (err.status === 403 || err.status === 404)) {
         setItems(demoCatalogItems);
         setTotal(demoCatalogItems.length);
         setIsDemoFallback(true);
@@ -342,83 +343,87 @@ export function ServicesCatalogPage() {
   return (
     <div className="stack">
       <section className="card">
-        <div className="section-title">
-          <div>
-            <h2>{t("servicesCatalogPage.title")}</h2>
-            <div className="muted">{t("servicesCatalogPage.subtitle")}</div>
+        <div className="page-section">
+          <div className="page-section__header">
+            <div>
+              <h2>{t("servicesCatalogPage.title")}</h2>
+              <div className="muted">{t("servicesCatalogPage.subtitle")}</div>
+            </div>
+            {canManage ? (
+              <button type="button" className="primary" onClick={openCreateModal}>
+                {t("actions.create")}
+              </button>
+            ) : null}
           </div>
-          {canManage ? (
-            <button type="button" className="primary" onClick={openCreateModal}>
-              {t("actions.create")}
-            </button>
-          ) : null}
+          <div className="page-section__content">
+            <div className="filters neft-filters">
+              <label className="filter neft-filter">
+                {t("servicesCatalogPage.filters.search")}
+                <input
+                  type="search"
+                  placeholder={t("servicesCatalogPage.filters.searchPlaceholder")}
+                  value={filters.q}
+                  onChange={(event) => {
+                    setFilters((prev) => ({ ...prev, q: event.target.value }));
+                    setPage(1);
+                  }}
+                />
+              </label>
+              <label className="filter neft-filter">
+                {t("servicesCatalogPage.filters.kind")}
+                <select
+                  value={filters.kind}
+                  onChange={(event) => {
+                    setFilters((prev) => ({ ...prev, kind: event.target.value }));
+                    setPage(1);
+                  }}
+                >
+                  <option value="ALL">{t("common.all")}</option>
+                  <option value="SERVICE">{t("servicesCatalogPage.filters.kindOptions.service")}</option>
+                  <option value="PRODUCT">{t("servicesCatalogPage.filters.kindOptions.product")}</option>
+                </select>
+              </label>
+              <label className="filter neft-filter">
+                {t("servicesCatalogPage.filters.status")}
+                <select
+                  value={filters.status}
+                  onChange={(event) => {
+                    setFilters((prev) => ({ ...prev, status: event.target.value }));
+                    setPage(1);
+                  }}
+                >
+                  <option value="ALL">{t("common.all")}</option>
+                  <option value="DRAFT">{t("servicesCatalogPage.filters.statusOptions.draft")}</option>
+                  <option value="ACTIVE">{t("servicesCatalogPage.filters.statusOptions.active")}</option>
+                  <option value="DISABLED">{t("servicesCatalogPage.filters.statusOptions.disabled")}</option>
+                  <option value="ARCHIVED">{t("servicesCatalogPage.filters.statusOptions.archived")}</option>
+                </select>
+              </label>
+              <label className="filter neft-filter">
+                {t("servicesCatalogPage.filters.category")}
+                <input
+                  type="text"
+                  placeholder={t("servicesCatalogPage.filters.categoryPlaceholder")}
+                  value={filters.category}
+                  onChange={(event) => {
+                    setFilters((prev) => ({ ...prev, category: event.target.value }));
+                    setPage(1);
+                  }}
+                />
+              </label>
+            </div>
+            {actionNotice ? (
+              <div className="notice">
+                <div>{actionNotice}</div>
+              </div>
+            ) : null}
+            {isDemoFallback ? (
+              <div className="notice">
+                <div>В демо-режиме доступен примерный каталог услуг.</div>
+              </div>
+            ) : null}
+          </div>
         </div>
-        <div className="filters neft-filters">
-          <label className="filter neft-filter">
-            {t("servicesCatalogPage.filters.search")}
-            <input
-              type="search"
-              placeholder={t("servicesCatalogPage.filters.searchPlaceholder")}
-              value={filters.q}
-              onChange={(event) => {
-                setFilters((prev) => ({ ...prev, q: event.target.value }));
-                setPage(1);
-              }}
-            />
-          </label>
-          <label className="filter neft-filter">
-            {t("servicesCatalogPage.filters.kind")}
-            <select
-              value={filters.kind}
-              onChange={(event) => {
-                setFilters((prev) => ({ ...prev, kind: event.target.value }));
-                setPage(1);
-              }}
-            >
-              <option value="ALL">{t("common.all")}</option>
-              <option value="SERVICE">{t("servicesCatalogPage.filters.kindOptions.service")}</option>
-              <option value="PRODUCT">{t("servicesCatalogPage.filters.kindOptions.product")}</option>
-            </select>
-          </label>
-          <label className="filter neft-filter">
-            {t("servicesCatalogPage.filters.status")}
-            <select
-              value={filters.status}
-              onChange={(event) => {
-                setFilters((prev) => ({ ...prev, status: event.target.value }));
-                setPage(1);
-              }}
-            >
-              <option value="ALL">{t("common.all")}</option>
-              <option value="DRAFT">{t("servicesCatalogPage.filters.statusOptions.draft")}</option>
-              <option value="ACTIVE">{t("servicesCatalogPage.filters.statusOptions.active")}</option>
-              <option value="DISABLED">{t("servicesCatalogPage.filters.statusOptions.disabled")}</option>
-              <option value="ARCHIVED">{t("servicesCatalogPage.filters.statusOptions.archived")}</option>
-            </select>
-          </label>
-          <label className="filter neft-filter">
-            {t("servicesCatalogPage.filters.category")}
-            <input
-              type="text"
-              placeholder={t("servicesCatalogPage.filters.categoryPlaceholder")}
-              value={filters.category}
-              onChange={(event) => {
-                setFilters((prev) => ({ ...prev, category: event.target.value }));
-                setPage(1);
-              }}
-            />
-          </label>
-        </div>
-        {actionNotice ? (
-          <div className="notice">
-            <div>{actionNotice}</div>
-          </div>
-        ) : null}
-        {isDemoFallback ? (
-          <div className="notice">
-            <div>В демо-режиме доступен примерный каталог услуг.</div>
-          </div>
-        ) : null}
         {isLoading ? (
           <div className="skeleton-stack" aria-busy="true">
             <div className="skeleton-line" />
@@ -426,15 +431,7 @@ export function ServicesCatalogPage() {
             <div className="skeleton-line" />
           </div>
         ) : error ? (
-          <PartnerErrorState
-            error={error}
-            description={t("servicesCatalogPage.errors.loadFailed")}
-            action={
-              <button type="button" className="secondary" onClick={fetchItems}>
-                {t("errors.retry")}
-              </button>
-            }
-          />
+          <PartnerErrorState error={error} />
         ) : items.length === 0 ? (
           <EmptyState
             icon={<Wrench />}
@@ -458,52 +455,54 @@ export function ServicesCatalogPage() {
             }
           />
         ) : (
-          <>
-            <table className="data-table neft-table-spacing">
-              <thead>
-                <tr>
-                  <th>{t("servicesCatalogPage.table.title")}</th>
-                  <th>{t("servicesCatalogPage.table.kind")}</th>
-                  <th>{t("servicesCatalogPage.table.category")}</th>
-                  <th>{t("servicesCatalogPage.table.status")}</th>
-                  <th>{t("servicesCatalogPage.table.activeOffers")}</th>
-                  <th>{t("servicesCatalogPage.table.updatedAt")}</th>
-                  <th>{t("servicesCatalogPage.table.actions")}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {items.map((item) => (
-                  <tr key={item.id}>
-                    <td>{item.title}</td>
-                    <td>{item.kind}</td>
-                    <td>{item.category ?? t("common.notAvailable")}</td>
-                    <td>
-                      <StatusBadge status={item.status} tone={resolveCatalogTone(item.status)} />
-                    </td>
-                    <td>{formatNumber(item.activeOffersCount ?? null)}</td>
-                    <td>{formatDateTime(item.updatedAt)}</td>
-                    <td>
-                      <div className="stack-inline">
-                        <Link to={`/services/${item.id}`} className="link-button">
-                          {t("common.open")}
-                        </Link>
-                        {canManage ? (
-                          <>
-                            <button type="button" className="ghost" onClick={() => openEditModal(item)}>
-                              {t("actions.edit")}
-                            </button>
-                            <button type="button" className="ghost" onClick={() => handleToggleStatus(item)}>
-                              {item.status === "ACTIVE" ? t("servicesCatalogPage.actions.disable") : t("servicesCatalogPage.actions.activate")}
-                            </button>
-                          </>
-                        ) : null}
-                      </div>
-                    </td>
+          <div className="page-section">
+            <div className="table-wrapper">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>{t("servicesCatalogPage.table.title")}</th>
+                    <th>{t("servicesCatalogPage.table.kind")}</th>
+                    <th>{t("servicesCatalogPage.table.category")}</th>
+                    <th>{t("servicesCatalogPage.table.status")}</th>
+                    <th>{t("servicesCatalogPage.table.activeOffers")}</th>
+                    <th>{t("servicesCatalogPage.table.updatedAt")}</th>
+                    <th>{t("servicesCatalogPage.table.actions")}</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-            <div className="pagination">
+                </thead>
+                <tbody>
+                  {items.map((item) => (
+                    <tr key={item.id}>
+                      <td>{item.title}</td>
+                      <td>{item.kind}</td>
+                      <td>{item.category ?? t("common.notAvailable")}</td>
+                      <td>
+                        <StatusBadge status={item.status} tone={resolveCatalogTone(item.status)} />
+                      </td>
+                      <td>{formatNumber(item.activeOffersCount ?? null)}</td>
+                      <td>{formatDateTime(item.updatedAt)}</td>
+                      <td>
+                        <div className="stack-inline">
+                          <Link to={`/services/${item.id}`} className="link-button">
+                            {t("common.open")}
+                          </Link>
+                          {canManage ? (
+                            <>
+                              <button type="button" className="ghost" onClick={() => openEditModal(item)}>
+                                {t("actions.edit")}
+                              </button>
+                              <button type="button" className="ghost" onClick={() => handleToggleStatus(item)}>
+                                {item.status === "ACTIVE" ? t("servicesCatalogPage.actions.disable") : t("servicesCatalogPage.actions.activate")}
+                              </button>
+                            </>
+                          ) : null}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="pagination pagination-wrapper">
               <button type="button" className="secondary" onClick={() => setPage((prev) => Math.max(prev - 1, 1))} disabled={page <= 1}>
                 {t("servicesCatalogPage.pagination.prev")}
               </button>
@@ -519,14 +518,16 @@ export function ServicesCatalogPage() {
                 {t("servicesCatalogPage.pagination.next")}
               </button>
             </div>
-          </>
+          </div>
         )}
       </section>
 
-      <section className="card">
-        <div className="section-title">
-          <h3>{t("servicesCatalogPage.import.title")}</h3>
-          <div className="muted">{t("servicesCatalogPage.import.subtitle")}</div>
+      <section className="card import-section">
+        <div className="page-section__header">
+          <div>
+            <h3>{t("servicesCatalogPage.import.title")}</h3>
+            <div className="muted">{t("servicesCatalogPage.import.subtitle")}</div>
+          </div>
         </div>
         {!canManage ? (
           <EmptyState
@@ -535,7 +536,12 @@ export function ServicesCatalogPage() {
             description={t("servicesCatalogPage.import.unavailableDescription")}
           />
         ) : (
-          <div className="stack">
+          <div className="page-section__content">
+            {isDemoPartnerAccount ? (
+              <div className="notice">
+                <div>В демо-режиме загрузка CSV отключена, но интерфейс импорта доступен.</div>
+              </div>
+            ) : null}
             <div className="form-grid neft-import-grid">
               <label className="form-field">
                 {t("servicesCatalogPage.import.csvFile")}
@@ -543,6 +549,7 @@ export function ServicesCatalogPage() {
                   type="file"
                   accept=".csv,text/csv"
                   onChange={(event) => setImportFile(event.target.files?.[0] ?? null)}
+                  disabled={isDemoPartnerAccount}
                 />
               </label>
               <label className="form-field">
@@ -553,7 +560,7 @@ export function ServicesCatalogPage() {
                 </select>
               </label>
               <div className="form-grid__actions">
-                <button type="button" className="secondary" onClick={handlePreviewImport} disabled={importLoading}>
+                <button type="button" className="secondary" onClick={handlePreviewImport} disabled={importLoading || isDemoPartnerAccount}>
                   {t("servicesCatalogPage.import.preview")}
                 </button>
               </div>
@@ -633,7 +640,7 @@ export function ServicesCatalogPage() {
                     type="button"
                     className="primary"
                     onClick={handleApplyImport}
-                    disabled={importApplyLoading || importPreview.errors.length > 0}
+                    disabled={importApplyLoading || importPreview.errors.length > 0 || isDemoPartnerAccount}
                   >
                     {t("servicesCatalogPage.import.apply")}
                   </button>
