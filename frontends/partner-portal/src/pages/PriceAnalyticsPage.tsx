@@ -67,6 +67,16 @@ export function PriceAnalyticsPage() {
 
   useEffect(() => {
     if (!user || !canRead) return;
+    if (isDemoPartnerAccount) {
+      setVersions(demoAnalyticsVersions);
+      setOffers(demoAnalyticsOffers);
+      setInsights(demoAnalyticsInsights);
+      setSeries(demoAnalyticsSeries);
+      setError(null);
+      setIsDemoFallback(true);
+      setIsLoading(false);
+      return;
+    }
     setIsLoading(true);
     Promise.all([
       fetchPriceAnalyticsVersions(user.token, filters),
@@ -81,7 +91,6 @@ export function PriceAnalyticsPage() {
         setIsDemoFallback(false);
       })
       .catch((err) => {
-        console.error(err);
         if (err instanceof ApiError && isDemoPartnerAccount && (err.status === 403 || err.status === 404)) {
           setVersions(demoAnalyticsVersions);
           setOffers(demoAnalyticsOffers);
@@ -91,6 +100,7 @@ export function PriceAnalyticsPage() {
           setIsDemoFallback(true);
           return;
         }
+        console.error(err);
         setError(err instanceof ApiError ? err : new ApiError(t("priceAnalyticsPage.errors.loadFailed"), 500, null, null, null));
       })
       .finally(() => {
@@ -112,7 +122,7 @@ export function PriceAnalyticsPage() {
   }, [versions, selectedVersion, compareLeft, compareRight]);
 
   useEffect(() => {
-    if (isDemoFallback) {
+    if (isDemoPartnerAccount || isDemoFallback) {
       setSeries(demoAnalyticsSeries);
       return;
     }
@@ -126,7 +136,7 @@ export function PriceAnalyticsPage() {
         console.error(err);
         setSeries([]);
       });
-  }, [user, selectedVersion, filters, canRead, isDemoFallback]);
+  }, [user, selectedVersion, filters, canRead, isDemoFallback, isDemoPartnerAccount]);
 
   const comparison = useMemo(() => {
     const left = versions.find((version) => version.price_version_id === compareLeft);

@@ -1,4 +1,5 @@
 import { AUTH_API_BASE, CORE_API_BASE, CORE_ROOT_API_BASE } from "./base";
+import { isDemoPartner } from "@shared/demo/demo";
 
 export { AUTH_API_BASE, CORE_API_BASE };
 
@@ -10,6 +11,24 @@ const isAuthMeRequest = (base: ApiBase, path: string) => base === "auth" && path
 const logErrorUrl = (url: string, status: number) => {
   if (import.meta.env.DEV && status >= 400) {
     console.info("[api-error]", { final_url: url, status });
+  }
+};
+const DEMO_AUTH_STORAGE_KEY = "neft_partner_auth";
+const getDemoPartnerEmail = () => {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(DEMO_AUTH_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { email?: string | null };
+    return parsed.email ?? null;
+  } catch {
+    return null;
+  }
+};
+const logDemoStatus = (url: string, status: number) => {
+  if (status !== 403 && status !== 404) return;
+  if (isDemoPartner(getDemoPartnerEmail())) {
+    console.debug("[api-demo]", { final_url: url, status });
   }
 };
 
@@ -210,6 +229,7 @@ export async function request<T>(
           ? "Сервис временно недоступен"
           : `Request failed with status ${response.status}`;
     const message = payload?.message ?? payload?.error ?? (text || fallbackMessage);
+    logDemoStatus(url, response.status);
     throw new ApiError(
       message,
       response.status,
@@ -318,6 +338,7 @@ export async function requestWithMeta<T>(
           ? "Сервис временно недоступен"
           : `Request failed with status ${response.status}`;
     const message = payload?.message ?? payload?.error ?? (text || fallbackMessage);
+    logDemoStatus(url, response.status);
     throw new ApiError(
       message,
       response.status,
@@ -379,6 +400,7 @@ export async function requestFormData<T>(
         : response.status === 502 || response.status === 503
           ? "Сервис временно недоступен"
           : `Request failed with status ${response.status}`;
+    logDemoStatus(`${apiBase}${path}`, response.status);
     throw new ApiError(text || fallbackMessage, response.status, correlationId, null, null);
   }
 

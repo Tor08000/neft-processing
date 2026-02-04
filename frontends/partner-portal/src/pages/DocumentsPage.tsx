@@ -51,7 +51,6 @@ export function DocumentsPage() {
         setIsDemoFallback(false);
       })
       .catch((err) => {
-        console.error(err);
         if (!active) return;
         if (err instanceof ApiError && isDemoPartnerAccount && (err.status === 403 || err.status === 404)) {
           setInvoices([]);
@@ -60,6 +59,7 @@ export function DocumentsPage() {
           setError(null);
           return;
         }
+        console.error(err);
         setError(err);
       })
       .finally(() => {

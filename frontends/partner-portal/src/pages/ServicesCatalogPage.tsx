@@ -171,6 +171,14 @@ export function ServicesCatalogPage() {
 
   const fetchItems = async () => {
     if (!user) return;
+    if (isDemoPartnerAccount) {
+      setItems(demoCatalogItems);
+      setTotal(demoCatalogItems.length);
+      setIsDemoFallback(true);
+      setError(null);
+      setIsLoading(false);
+      return;
+    }
     setIsLoading(true);
     setError(null);
     try {
@@ -193,6 +201,7 @@ export function ServicesCatalogPage() {
         setError(null);
         return;
       }
+      console.error(err);
       setError(err);
     } finally {
       setIsLoading(false);

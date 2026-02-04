@@ -81,7 +81,6 @@ export function PartnerFinancePage() {
         setIsDemoFallback(false);
       })
       .catch((err) => {
-        console.error(err);
         if (!active) return;
         if (err instanceof ApiError && isDemoPartnerAccount && (err.status === 403 || err.status === 404)) {
           setBalance(demoBalance);
@@ -93,6 +92,7 @@ export function PartnerFinancePage() {
           setError(null);
           return;
         }
+        console.error(err);
         setError(err);
       })
       .finally(() => {
