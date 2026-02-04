@@ -20,15 +20,15 @@ export function ClientDocsListPage({ title, docType }: ClientDocsListPageProps) 
   const { user } = useAuth();
   const [items, setItems] = useState<ClientDocItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<{ message: string; status?: number } | null>(null);
-  const [useDemoData, setUseDemoData] = useState(false);
+  const [error, setError] = useState<{ status?: number } | null>(null);
+  const [demoFallback, setDemoFallback] = useState(false);
   const isDemoClientAccount = isDemoClient(user?.email ?? null);
 
   const loadDocs = () => {
     if (!user) return;
     setLoading(true);
+    setDemoFallback(false);
     setError(null);
-    setUseDemoData(false);
     fetchClientDocsList(user, docType)
       .then((resp) => setItems(resp.items ?? []))
       .catch((err: unknown) => {
@@ -37,19 +37,11 @@ export function ClientDocsListPage({ title, docType }: ClientDocsListPageProps) 
         const isNotFound = status === 404 || (err instanceof Error && err.message.includes("Not Found"));
         if (isDemoClientAccount && isNotFound) {
           setItems(demoDocuments);
-          setUseDemoData(true);
+          setDemoFallback(true);
+          setError(null);
           return;
         }
-        if (err instanceof ApiError) {
-          setError({
-            message: "Не удалось загрузить документы.",
-            status,
-          });
-          return;
-        }
-        setError({
-          message: "Не удалось загрузить документы.",
-        });
+        setError({ status });
       })
       .finally(() => setLoading(false));
   };
@@ -57,6 +49,14 @@ export function ClientDocsListPage({ title, docType }: ClientDocsListPageProps) 
   useEffect(() => {
     loadDocs();
   }, [docType, user, isDemoClientAccount]);
+
+  const handleDownload = async (documentId: string) => {
+    try {
+      await downloadClientDoc(documentId, user);
+    } catch (err) {
+      console.error("Не удалось скачать документ", err);
+    }
+  };
 
   if (!canAccessFinance(user)) {
     return <AppForbiddenState message="Недостаточно прав для просмотра документов." />;
@@ -66,12 +66,50 @@ export function ClientDocsListPage({ title, docType }: ClientDocsListPageProps) 
     return <AppLoadingState label="Загружаем документы..." />;
   }
 
+  if (demoFallback) {
+    return (
+      <div className="card">
+        <div className="card__header">
+          <div>
+            <h2>{title}</h2>
+            <p className="muted">Демонстрационный список документов.</p>
+          </div>
+        </div>
+        <table className="table">
+          <thead>
+            <tr>
+              <th>Дата</th>
+              <th>Статус</th>
+              <th>Тип</th>
+              <th />
+            </tr>
+          </thead>
+          <tbody>
+            {items.map((item) => (
+              <tr key={item.id}>
+                <td>{formatDate(item.date)}</td>
+                <td>{item.status}</td>
+                <td>{item.type}</td>
+                <td>
+                  <button type="button" className="ghost" onClick={() => void handleDownload(item.id)}>
+                    Скачать
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
+  }
+
   if (error) {
     return (
       <ClientErrorState
         title="Не удалось загрузить документы"
-        description="Попробуйте обновить страницу или изменить фильтры."
+        description="Документы временно недоступны. Попробуйте обновить страницу."
         onRetry={loadDocs}
+        retryLabel="Обновить"
       />
     );
   }
@@ -93,24 +131,13 @@ export function ClientDocsListPage({ title, docType }: ClientDocsListPageProps) 
     return <AppEmptyState title="Документов пока нет" description="Документы появятся после выставления." />;
   }
 
-  const handleDownload = async (documentId: string) => {
-    try {
-      await downloadClientDoc(documentId, user);
-    } catch (err) {
-      console.error("Не удалось скачать документ", err);
-      setError({
-        message: "Не удалось скачать документ.",
-      });
-    }
-  };
-
   return (
     <div className="card">
       <div className="card__header">
         <div>
           <h2>{title}</h2>
           <p className="muted">
-            {useDemoData ? "Демонстрационный список документов." : "Список документов и доступные файлы."}
+            {isDemoClientAccount ? "Демонстрационный список документов." : "Список документов и доступные файлы."}
           </p>
         </div>
       </div>
