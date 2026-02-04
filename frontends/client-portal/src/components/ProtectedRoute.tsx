@@ -32,16 +32,6 @@ export function ProtectedRoute() {
     return <div className="centered">Загружаем профиль...</div>;
   }
 
-  const onboardingEnabled = client?.gating?.onboarding_enabled ?? client?.features?.onboarding_enabled ?? true;
-  if (
-    onboardingEnabled &&
-    client?.access_state &&
-    ["NEEDS_ONBOARDING", "NEEDS_PLAN", "NEEDS_CONTRACT"].includes(client.access_state) &&
-    !location.pathname.startsWith("/onboarding")
-  ) {
-    return <Navigate to="/onboarding" replace />;
-  }
-
   if (isBlocked && location.pathname !== "/legal") {
     return <Navigate to="/legal" replace />;
   }

@@ -9,6 +9,7 @@ import {
   Wallet,
 } from "./icons";
 import { useAuth } from "../auth/AuthContext";
+import { isDemoPartnerEmail } from "../auth/demo";
 import { useLegalGate } from "../auth/LegalGateContext";
 import { usePortal } from "../auth/PortalContext";
 import { useI18n } from "../i18n";
@@ -28,6 +29,7 @@ export function Layout() {
       .map(([code]) => code.toUpperCase()),
   );
   const roleSet = new Set([...(portal?.user_roles ?? []), ...(portal?.org_roles ?? [])].map((role) => role.toUpperCase()));
+  const isDemoPartner = isDemoPartnerEmail(user?.email ?? portal?.user?.email ?? null);
   const isModuleEnabled = (module?: string) => (module ? enabledModules.has(module.toUpperCase()) : true);
   const hasCapability = (capability?: string) => (capability ? capabilities.has(capability.toUpperCase()) : true);
   const hasRoles = (requiredRoles?: string[]) =>
@@ -67,6 +69,9 @@ export function Layout() {
   ];
 
   const navItems = NAV_ITEMS.map((item) => {
+    if (isDemoPartner) {
+      return item;
+    }
     const lacksModule = item.module && !isModuleEnabled(item.module);
     const lacksCapability = item.capability && !hasCapability(item.capability);
     const lacksRole = item.requiredRoles && !hasRoles(item.requiredRoles);

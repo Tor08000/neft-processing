@@ -4,6 +4,7 @@ import { usePortal, type PortalState } from "../auth/PortalContext";
 import { useAuth } from "../auth/AuthContext";
 import { AccessState, resolveAccessState } from "../access/accessState";
 import { ErrorState, ForbiddenState, LoadingState } from "./states";
+import { isDemoPartnerEmail } from "../auth/demo";
 
 type AccessGateProps = {
   capability?: string;
@@ -266,7 +267,16 @@ export const AccessGate = ({ capability, requiredRoles, title, children }: Acces
     return portalView;
   }
 
-  const decision = resolveAccessState({ portal, requiredRoles, capability });
+  let decision = resolveAccessState({ portal, requiredRoles, capability });
+  const isDemoPartner = isDemoPartnerEmail(user.email ?? portal?.user?.email ?? null);
+  if (
+    isDemoPartner &&
+    [AccessState.NEEDS_PLAN, AccessState.NEEDS_ONBOARDING, AccessState.MODULE_DISABLED, AccessState.MISSING_CAPABILITY].includes(
+      decision.state,
+    )
+  ) {
+    decision = { state: AccessState.ACTIVE };
+  }
   if (decision.state !== AccessState.ACTIVE) {
     return <AccessStateView state={decision.state} title={title} reason={decision.reason} />;
   }

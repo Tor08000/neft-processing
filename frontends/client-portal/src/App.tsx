@@ -1,6 +1,6 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import { AuthProvider } from "./auth/AuthContext";
-import { ClientProvider, useClient } from "./auth/ClientContext";
+import { ClientProvider } from "./auth/ClientContext";
 import { LegalGateProvider } from "./auth/LegalGateContext";
 import type { AuthSession } from "./api/types";
 import { ClientLayout } from "./layout/ClientLayout";
@@ -88,29 +88,7 @@ interface AppProps {
 
 function IndexRedirect() {
   const { user } = useAuth();
-  const { client } = useClient();
   if (user) {
-    const onboardingEnabled = client?.gating?.onboarding_enabled ?? client?.features?.onboarding_enabled ?? true;
-    if (onboardingEnabled && client?.access_state) {
-      if (client.access_state === "NEEDS_ONBOARDING") {
-        return <Navigate to="/client/onboarding" replace />;
-      }
-      if (client.access_state === "NEEDS_PLAN") {
-        return <Navigate to="/client/onboarding/plan" replace />;
-      }
-      if (client.access_state === "NEEDS_CONTRACT") {
-        return <Navigate to="/client/onboarding/contract" replace />;
-      }
-      if (client.access_state === "OVERDUE") {
-        return <Navigate to="/client/billing/overdue" replace />;
-      }
-      if (client.access_state === "SERVICE_UNAVAILABLE") {
-        return <Navigate to="/client/service-unavailable" replace />;
-      }
-      if (client.access_state === "TECH_ERROR") {
-        return <Navigate to="/client/tech-error" replace />;
-      }
-    }
     return (
       <AccessGate title="Дашборд" capability="CLIENT_DASHBOARD">
         <OverviewPage />
@@ -135,8 +113,9 @@ export function App({ initialSession = null }: AppProps) {
         <LegalGateProvider>
           <Routes>
             <Route path="/login" element={<LoginPage />} />
-            <Route path="/client/login" element={<LoginPage />} />
-            <Route path="/client/signup" element={<SignupPage />} />
+            <Route path="/register" element={<SignupPage />} />
+            <Route path="/client/login" element={<Navigate to="/login" replace />} />
+            <Route path="/client/signup" element={<Navigate to="/register" replace />} />
             <Route path="/unauthorized" element={<UnauthorizedPage />} />
             <Route element={<ProtectedRoute />}>
               <Route path="/client/dashboard" element={<Navigate to="/dashboard" replace />} />
