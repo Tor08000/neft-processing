@@ -12,7 +12,7 @@ import { SignupPage } from "./pages/SignupPage";
 import { OnboardingPage } from "./pages/OnboardingPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
 import { UnauthorizedPage } from "./pages/UnauthorizedPage";
-import { DashboardPage } from "./pages/DashboardPage";
+import { OverviewPage } from "./pages/OverviewPage";
 import { OperationsPage } from "./pages/OperationsPage";
 import { OperationDetailsPage } from "./pages/OperationDetailsPage";
 import { ClientCardsPage } from "./pages/ClientCardsPage";
@@ -111,7 +111,11 @@ function IndexRedirect() {
         return <Navigate to="/client/tech-error" replace />;
       }
     }
-    return <Navigate to="/client/dashboard" replace />;
+    return (
+      <AccessGate title="Дашборд" capability="CLIENT_DASHBOARD">
+        <OverviewPage />
+      </AccessGate>
+    );
   }
   return <Navigate to="/login" replace />;
 }
@@ -163,7 +167,7 @@ export function App({ initialSession = null }: AppProps) {
                     path="/dashboard"
                     element={
                       <AccessGate title="Дашборд" capability="CLIENT_DASHBOARD">
-                        <DashboardPage />
+                        <OverviewPage />
                       </AccessGate>
                     }
                   />
