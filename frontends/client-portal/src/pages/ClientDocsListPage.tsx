@@ -20,7 +20,7 @@ export function ClientDocsListPage({ title, docType }: ClientDocsListPageProps) 
   const { user } = useAuth();
   const [items, setItems] = useState<ClientDocItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<{ message: string; status?: number; details?: string } | null>(null);
+  const [error, setError] = useState<{ message: string; status?: number } | null>(null);
   const [useDemoData, setUseDemoData] = useState(false);
   const isDemoClientAccount = isDemoClient(user?.email ?? null);
 
@@ -33,7 +33,9 @@ export function ClientDocsListPage({ title, docType }: ClientDocsListPageProps) 
       .then((resp) => setItems(resp.items ?? []))
       .catch((err: unknown) => {
         console.error("Не удалось загрузить документы", err);
-        if (isDemoClientAccount) {
+        const status = err instanceof ApiError ? err.status : undefined;
+        const isNotFound = status === 404 || (err instanceof Error && err.message.includes("Not Found"));
+        if (isDemoClientAccount && isNotFound) {
           setItems(demoDocuments);
           setUseDemoData(true);
           return;
@@ -41,14 +43,12 @@ export function ClientDocsListPage({ title, docType }: ClientDocsListPageProps) 
         if (err instanceof ApiError) {
           setError({
             message: "Не удалось загрузить документы.",
-            status: err.status,
-            details: err.message,
+            status,
           });
           return;
         }
         setError({
           message: "Не удалось загрузить документы.",
-          details: err instanceof Error ? err.message : String(err),
         });
       })
       .finally(() => setLoading(false));
@@ -69,9 +69,8 @@ export function ClientDocsListPage({ title, docType }: ClientDocsListPageProps) 
   if (error) {
     return (
       <ClientErrorState
-        title="Документы недоступны"
-        description="Не удалось получить список документов. Попробуйте обновить страницу позже."
-        details={error.details}
+        title="Не удалось загрузить документы"
+        description="Попробуйте обновить страницу или изменить фильтры."
         onRetry={loadDocs}
       />
     );
@@ -101,7 +100,6 @@ export function ClientDocsListPage({ title, docType }: ClientDocsListPageProps) 
       console.error("Не удалось скачать документ", err);
       setError({
         message: "Не удалось скачать документ.",
-        details: err instanceof Error ? err.message : String(err),
       });
     }
   };
