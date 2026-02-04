@@ -34,7 +34,7 @@ export function ClientDocsListPage({ title, docType }: ClientDocsListPageProps) 
       .catch((err: unknown) => {
         console.error("Не удалось загрузить документы", err);
         const status = err instanceof ApiError ? err.status : undefined;
-        const isNotFound = status === 404 || (err instanceof Error && err.message.includes("Not Found"));
+        const isNotFound = status === 404;
         if (isDemoClientAccount && isNotFound) {
           setItems(demoDocuments);
           setDemoFallback(true);

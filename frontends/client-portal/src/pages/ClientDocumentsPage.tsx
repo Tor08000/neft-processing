@@ -2,9 +2,12 @@ import { type ChangeEvent, useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { FileText } from "../components/icons";
 import { acknowledgeClosingDocument, downloadDocumentFile, fetchDocuments } from "../api/documents";
+import { ApiError } from "../api/http";
 import { useAuth } from "../auth/AuthContext";
 import { EmptyState } from "../components/EmptyState";
-import { AppErrorState, AppLoadingState } from "../components/states";
+import { ClientErrorState } from "../components/ClientErrorState";
+import { DemoEmptyState } from "../components/DemoEmptyState";
+import { AppLoadingState } from "../components/states";
 import type { ClientDocumentSummary } from "../types/documents";
 import { formatDate, formatDateTime } from "../utils/format";
 import { MoneyValue } from "../components/common/MoneyValue";
@@ -20,6 +23,7 @@ import {
 import { canAccessFinance } from "../utils/roles";
 import { useI18n } from "../i18n";
 import { isPwaMode } from "../pwa/mode";
+import { isDemoClient } from "@shared/demo/demo";
 
 const DEFAULT_LIMIT = isPwaMode ? 20 : 25;
 const LAST_UPDATED_KEY = "pwa:lastUpdated:documents";
@@ -45,7 +49,9 @@ export function ClientDocumentsPage() {
   const [offset, setOffset] = useState(0);
   const [debouncedFilters, setDebouncedFilters] = useState(filters);
   const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<{ status?: number } | null>(null);
+  const [demoFallback, setDemoFallback] = useState(false);
+  const isDemoClientAccount = isDemoClient(user?.email ?? null);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedFilters(filters), 450);
@@ -87,6 +93,7 @@ export function ClientDocumentsPage() {
   useEffect(() => {
     setIsLoading(true);
     setError(null);
+    setDemoFallback(false);
     fetchDocuments(user, {
       dateFrom: debouncedFilters.dateFrom || undefined,
       dateTo: debouncedFilters.dateTo || undefined,
@@ -123,9 +130,17 @@ export function ClientDocumentsPage() {
         localStorage.setItem(LAST_UPDATED_KEY, timestamp);
         setLastUpdated(timestamp);
       })
-      .catch((err: Error) => setError(err.message))
+      .catch((err: unknown) => {
+        const status = err instanceof ApiError ? err.status : undefined;
+        if (isDemoClientAccount && status === 404) {
+          setDemoFallback(true);
+          setError(null);
+          return;
+        }
+        setError({ status });
+      })
       .finally(() => setIsLoading(false));
-  }, [debouncedFilters, offset, user]);
+  }, [debouncedFilters, offset, user, isDemoClientAccount]);
 
   const handleFilterChange = (evt: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = evt.target;
@@ -142,7 +157,7 @@ export function ClientDocumentsPage() {
     try {
       await downloadDocumentFile(documentId, fileType, user);
     } catch (err) {
-      setError((err as Error).message);
+      setError({ status: err instanceof ApiError ? err.status : undefined });
     }
   };
 
@@ -153,7 +168,7 @@ export function ClientDocumentsPage() {
         prev.map((doc) => (doc.id === documentId ? { ...doc, status: "ACKNOWLEDGED" } : doc)),
       );
     } catch (err) {
-      setError((err as Error).message);
+      setError({ status: err instanceof ApiError ? err.status : undefined });
     }
   };
 
@@ -304,15 +319,44 @@ export function ClientDocumentsPage() {
       </div>
 
       {isLoading ? <AppLoadingState /> : null}
-      {error ? <AppErrorState message={error} /> : null}
-      {!isLoading && !error && items.length === 0 ? (
-        <EmptyState
-          icon={<FileText />}
-          title={t("emptyStates.documents.title")}
-          description={t("emptyStates.documents.description")}
+      {error ? (
+        <ClientErrorState
+          title="Документы недоступны"
+          description="Не удалось получить список документов. Попробуйте обновить страницу."
+          onRetry={() => setDebouncedFilters((prev) => ({ ...prev }))}
         />
       ) : null}
-      {!isLoading && !error && items.length > 0 ? (
+      {demoFallback ? (
+        <DemoEmptyState
+          title="Документы в демо появятся позже"
+          description="В рабочем контуре здесь будет архив счетов, актов и договоров."
+          action={
+            <Link className="ghost neft-btn-secondary" to="/dashboard">
+              Перейти в обзор
+            </Link>
+          }
+        />
+      ) : null}
+      {!isLoading && !error && items.length === 0 && !demoFallback ? (
+        isDemoClientAccount ? (
+          <DemoEmptyState
+            title="Документы в демо появятся позже"
+            description="В рабочем контуре здесь будет архив счетов, актов и договоров."
+            action={
+              <Link className="ghost neft-btn-secondary" to="/dashboard">
+                Перейти в обзор
+              </Link>
+            }
+          />
+        ) : (
+          <EmptyState
+            icon={<FileText />}
+            title={t("emptyStates.documents.title")}
+            description={t("emptyStates.documents.description")}
+          />
+        )
+      ) : null}
+      {!isLoading && !error && items.length > 0 && !demoFallback ? (
         <>
           {Object.entries(
             items.reduce<Record<string, ClientDocumentSummary[]>>((acc, doc) => {

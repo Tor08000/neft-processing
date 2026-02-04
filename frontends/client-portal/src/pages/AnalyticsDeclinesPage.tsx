@@ -7,18 +7,19 @@ import { useAuth } from "../auth/AuthContext";
 import { AnalyticsChartPanel } from "../components/analytics/AnalyticsChartPanel";
 import { AnalyticsTabs } from "../components/analytics/AnalyticsTabs";
 import { FilterBar, type DateFilters } from "../components/analytics/FilterBar";
-import { AppEmptyState, AppErrorState, AppForbiddenState, AppLoadingState } from "../components/states";
+import { AppEmptyState, AppForbiddenState, AppLoadingState } from "../components/states";
+import { ClientErrorState } from "../components/ClientErrorState";
+import { DemoEmptyState } from "../components/DemoEmptyState";
 import { useI18n } from "../i18n";
 import type { AnalyticsDeclinesResponse } from "../types/analytics";
 import type { ExplainInsightsResponse } from "../types/explain";
 import { buildDateRange } from "../utils/dateRange";
 import { MoneyValue } from "../components/common/MoneyValue";
 import { hasAnyRole } from "../utils/roles";
+import { isDemoClient } from "@shared/demo/demo";
 
 interface AnalyticsErrorState {
-  message: string;
   status?: number;
-  correlationId?: string | null;
 }
 
 export function AnalyticsDeclinesPage() {
@@ -29,9 +30,11 @@ export function AnalyticsDeclinesPage() {
   const [insights, setInsights] = useState<ExplainInsightsResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<AnalyticsErrorState | null>(null);
+  const [demoFallback, setDemoFallback] = useState(false);
   const hasData = (declines?.total ?? 0) > 0;
 
   const canAccess = hasAnyRole(user, ["CLIENT_OWNER", "CLIENT_ACCOUNTANT", "CLIENT_FLEET_MANAGER", "CLIENT_USER"]);
+  const isDemoClientAccount = isDemoClient(user?.email ?? null);
 
   useEffect(() => {
     if (filters.preset !== "custom") {
@@ -44,6 +47,7 @@ export function AnalyticsDeclinesPage() {
     if (!user?.clientId || !filters.from || !filters.to) return;
     setIsLoading(true);
     setError(null);
+    setDemoFallback(false);
     Promise.all([
       fetchDeclines(user, { clientId: user.clientId, from: filters.from, to: filters.to }),
       fetchExplainInsights(user, { from: filters.from, to: filters.to }),
@@ -53,14 +57,20 @@ export function AnalyticsDeclinesPage() {
         setInsights(insightsResponse);
       })
       .catch((err: unknown) => {
-        if (err instanceof ApiError) {
-          setError({ message: err.message, status: err.status, correlationId: err.correlationId });
+        const status = err instanceof ApiError ? err.status : undefined;
+        if (isDemoClientAccount && status === 404) {
+          setDemoFallback(true);
+          setError(null);
           return;
         }
-        setError({ message: err instanceof Error ? err.message : t("analytics.errors.loadFailed") });
+        if (err instanceof ApiError) {
+          setError({ status: err.status });
+          return;
+        }
+        setError({ status });
       })
       .finally(() => setIsLoading(false));
-  }, [user, filters.from, filters.to, t]);
+  }, [user, filters.from, filters.to, t, isDemoClientAccount]);
 
   const reasonsMax = useMemo(() => Math.max(...(declines?.top_reasons ?? []).map((item) => item.count), 0), [declines]);
   const trendMax = useMemo(() => Math.max(...(declines?.trend ?? []).map((item) => item.count), 0), [declines]);
@@ -86,9 +96,38 @@ export function AnalyticsDeclinesPage() {
       </section>
 
       {isLoading ? <AppLoadingState label={t("analytics.loading")} /> : null}
-      {error ? <AppErrorState message={error.message} status={error.status} correlationId={error.correlationId} /> : null}
-      {!isLoading && !error && !hasData ? (
-        <AppEmptyState title={t("analytics.empty.title")} description={t("analytics.empty.description")} />
+      {error ? (
+        <ClientErrorState
+          title="Отказы недоступны"
+          description="Не удалось получить данные. Попробуйте обновить страницу."
+          onRetry={() => setFilters((prev) => ({ ...prev }))}
+        />
+      ) : null}
+      {demoFallback ? (
+        <DemoEmptyState
+          title="Данные в демо появятся позже"
+          description="В рабочем контуре здесь будет аналитика отказов."
+          action={
+            <Link className="ghost neft-btn-secondary" to="/dashboard">
+              Перейти в обзор
+            </Link>
+          }
+        />
+      ) : null}
+      {!isLoading && !error && !hasData && !demoFallback ? (
+        isDemoClientAccount ? (
+          <DemoEmptyState
+            title="Данные в демо появятся позже"
+            description="В рабочем контуре здесь будет аналитика отказов."
+            action={
+              <Link className="ghost neft-btn-secondary" to="/dashboard">
+                Перейти в обзор
+              </Link>
+            }
+          />
+        ) : (
+          <AppEmptyState title={t("analytics.empty.title")} description={t("analytics.empty.description")} />
+        )
       ) : null}
 
       {!isLoading && !error && hasData && declines ? (

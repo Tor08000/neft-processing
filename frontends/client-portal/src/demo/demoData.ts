@@ -298,6 +298,110 @@ export const demoDocumentsSummary: DemoDocumentsSummary = {
   ],
 };
 
+export const demoAnalyticsDailyMetrics = {
+  from: "2024-09-01",
+  to: "2024-09-30",
+  currency: "RUB",
+  spend: {
+    total: 2_540_000,
+    series: [
+      { date: "2024-09-24", value: 120_000 },
+      { date: "2024-09-25", value: 132_000 },
+      { date: "2024-09-26", value: 98_000 },
+      { date: "2024-09-27", value: 160_000 },
+      { date: "2024-09-28", value: 142_000 },
+      { date: "2024-09-29", value: 118_000 },
+      { date: "2024-09-30", value: 150_000 },
+    ],
+  },
+  orders: {
+    total: 418,
+    completed: 392,
+    refunds: 6,
+    series: [
+      { date: "2024-09-24", value: 58 },
+      { date: "2024-09-25", value: 64 },
+      { date: "2024-09-26", value: 52 },
+      { date: "2024-09-27", value: 68 },
+      { date: "2024-09-28", value: 60 },
+      { date: "2024-09-29", value: 54 },
+      { date: "2024-09-30", value: 62 },
+    ],
+  },
+  declines: {
+    total: 14,
+    top_reason: "Лимит превышен",
+    series: [
+      { date: "2024-09-24", value: 2 },
+      { date: "2024-09-25", value: 1 },
+      { date: "2024-09-26", value: 3 },
+      { date: "2024-09-27", value: 2 },
+      { date: "2024-09-28", value: 1 },
+      { date: "2024-09-29", value: 3 },
+      { date: "2024-09-30", value: 2 },
+    ],
+  },
+  documents: {
+    attention: 3,
+  },
+  exports: {
+    attention: 1,
+  },
+  attention: [
+    {
+      id: "attention-1",
+      title: "Истекает срок действия карты",
+      description: "Проверьте карты водителей и обновите при необходимости.",
+      href: "/client/cards",
+      severity: "warning",
+    },
+  ],
+};
+
+export const demoAnalyticsDeclines = {
+  total: 14,
+  top_reasons: [
+    { reason: "Лимит превышен", count: 6 },
+    { reason: "Недостаточно средств", count: 4 },
+    { reason: "Карта заблокирована", count: 4 },
+  ],
+  trend: [
+    { date: "2024-09-24", reason: "Лимит превышен", count: 2 },
+    { date: "2024-09-25", reason: "Недостаточно средств", count: 1 },
+    { date: "2024-09-26", reason: "Карта заблокирована", count: 3 },
+    { date: "2024-09-27", reason: "Лимит превышен", count: 2 },
+    { date: "2024-09-28", reason: "Недостаточно средств", count: 1 },
+    { date: "2024-09-29", reason: "Лимит превышен", count: 3 },
+    { date: "2024-09-30", reason: "Карта заблокирована", count: 2 },
+  ],
+  expensive: [
+    { id: "decline-1", reason: "Лимит превышен", amount: 28_500, station: "Лукойл · МКАД" },
+    { id: "decline-2", reason: "Недостаточно средств", amount: 21_300, station: "Газпромнефть · Лесная" },
+  ],
+};
+
+export const demoAnalyticsExportsSummary = {
+  total: 6,
+  ok: 5,
+  mismatch: 1,
+  items: [
+    {
+      id: "exp-001",
+      status: "OK",
+      mapping_version: "v2.3",
+      checksum: "a1b2c3d4",
+      created_at: "2024-09-30T09:42:00Z",
+    },
+    {
+      id: "exp-002",
+      status: "Mismatch",
+      mapping_version: "v2.3",
+      checksum: "b4c5d6e7",
+      created_at: "2024-09-28T15:18:00Z",
+    },
+  ],
+};
+
 export type DemoClientAnalyticsSummary = {
   period: { from: string; to: string };
   summary: {

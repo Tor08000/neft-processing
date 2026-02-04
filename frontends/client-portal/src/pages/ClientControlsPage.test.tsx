@@ -150,6 +150,6 @@ describe("Client controls", () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByText("Не удалось выполнить действие")).toBeInTheDocument();
+    expect(await screen.findByText("Не удалось выполнить запрос")).toBeInTheDocument();
   });
 });

@@ -1,14 +1,18 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { acknowledgeClosingDocument, downloadDocumentFile, fetchDocumentDetails } from "../api/documents";
+import { ApiError } from "../api/http";
 import { useAuth } from "../auth/AuthContext";
 import { CopyButton } from "../components/CopyButton";
 import { SupportRequestModal } from "../components/SupportRequestModal";
-import { AppEmptyState, AppErrorState, AppForbiddenState, AppLoadingState } from "../components/states";
+import { ClientErrorState } from "../components/ClientErrorState";
+import { DemoEmptyState } from "../components/DemoEmptyState";
+import { AppEmptyState, AppForbiddenState, AppLoadingState } from "../components/states";
 import type { ClientDocumentDetails } from "../types/documents";
 import { formatDate, formatDateTime } from "../utils/format";
 import { getDocumentStatusLabel, getDocumentStatusTone, getDocumentTypeLabel } from "../utils/documents";
 import { canAccessFinance } from "../utils/roles";
+import { isDemoClient } from "@shared/demo/demo";
 
 const LEGAL_TEXT =
   "Документ сформирован из данных системы и не изменяется после подтверждения. " +
@@ -19,19 +23,34 @@ export function ClientDocumentDetailsPage() {
   const { user } = useAuth();
   const [document, setDocument] = useState<ClientDocumentDetails | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<{ status?: number } | null>(null);
+  const [demoFallback, setDemoFallback] = useState(false);
   const [tab, setTab] = useState("files");
   const [isSupportOpen, setIsSupportOpen] = useState(false);
+  const isDemoClientAccount = isDemoClient(user?.email ?? null);
 
-  useEffect(() => {
+  const loadDocument = useCallback(() => {
     if (!id) return;
     setIsLoading(true);
     setError(null);
+    setDemoFallback(false);
     fetchDocumentDetails(id, user)
       .then((data) => setDocument(data))
-      .catch((err: Error) => setError(err.message))
+      .catch((err: unknown) => {
+        const status = err instanceof ApiError ? err.status : undefined;
+        if (isDemoClientAccount && status === 404) {
+          setDemoFallback(true);
+          setError(null);
+          return;
+        }
+        setError({ status });
+      })
       .finally(() => setIsLoading(false));
-  }, [id, user]);
+  }, [id, user, isDemoClientAccount]);
+
+  useEffect(() => {
+    loadDocument();
+  }, [loadDocument]);
 
   const canAcknowledge = useMemo(() => canAccessFinance(user), [user]);
 
@@ -40,7 +59,7 @@ export function ClientDocumentDetailsPage() {
     try {
       await downloadDocumentFile(document.id, fileType, user);
     } catch (err) {
-      setError((err as Error).message);
+      setError({ status: err instanceof ApiError ? err.status : undefined });
     }
   };
 
@@ -58,7 +77,7 @@ export function ClientDocumentDetailsPage() {
           : prev,
       );
     } catch (err) {
-      setError((err as Error).message);
+      setError({ status: err instanceof ApiError ? err.status : undefined });
     }
   };
 
@@ -71,7 +90,27 @@ export function ClientDocumentDetailsPage() {
   }
 
   if (error) {
-    return <AppErrorState message={error} />;
+    return (
+      <ClientErrorState
+        title="Документ недоступен"
+        description="Не удалось загрузить документ. Попробуйте обновить страницу."
+        onRetry={loadDocument}
+      />
+    );
+  }
+
+  if (demoFallback) {
+    return (
+      <DemoEmptyState
+        title="Документ в демо недоступен"
+        description="В рабочем контуре здесь будет карточка документа с файлами и статусами."
+        action={
+          <Link className="ghost neft-btn-secondary" to="/dashboard">
+            Перейти в обзор
+          </Link>
+        }
+      />
+    );
   }
 
   if (isLoading || !document) {
