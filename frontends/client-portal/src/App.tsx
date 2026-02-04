@@ -34,6 +34,10 @@ import { ExplainPage } from "./pages/ExplainPage";
 import { ExplainInsightsPage } from "./pages/ExplainInsightsPage";
 import { ActionsPage } from "./pages/ActionsPage";
 import { useAuth } from "./auth/AuthContext";
+import { useClient } from "./auth/ClientContext";
+import { AccessState, resolveAccessState } from "./access/accessState";
+import { AppLoadingState } from "./components/states";
+import { isDemoClient } from "@shared/demo/demo";
 import { SettingsPage } from "./pages/SettingsPage";
 import { ClientControlsPage } from "./pages/ClientControlsPage";
 import { MarketplaceCatalogPage } from "./pages/MarketplaceCatalogPage";
@@ -88,14 +92,30 @@ interface AppProps {
 
 function IndexRedirect() {
   const { user } = useAuth();
-  if (user) {
-    return (
-      <AccessGate title="Дашборд" capability="CLIENT_DASHBOARD">
-        <OverviewPage />
-      </AccessGate>
-    );
+  const { client, isLoading, portalState } = useClient();
+  const isDemoClientAccount = isDemoClient(user?.email ?? client?.user?.email ?? null);
+
+  if (!user) {
+    return <Navigate to="/login" replace />;
   }
-  return <Navigate to="/login" replace />;
+
+  if (portalState === "LOADING" || isLoading) {
+    return <AppLoadingState label="Загружаем профиль..." />;
+  }
+
+  const decision = resolveAccessState({ client });
+  if (
+    !isDemoClientAccount &&
+    [AccessState.NEEDS_ONBOARDING, AccessState.NEEDS_PLAN, AccessState.NEEDS_CONTRACT].includes(decision.state)
+  ) {
+    return <Navigate to="/onboarding" replace />;
+  }
+
+  return (
+    <AccessGate title="Дашборд" capability="CLIENT_DASHBOARD">
+      <OverviewPage />
+    </AccessGate>
+  );
 }
 
 function PwaIndexRedirect() {

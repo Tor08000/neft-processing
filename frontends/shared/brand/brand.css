@@ -91,6 +91,31 @@ html, body {
   min-height: 44px;
 }
 
+.brand-shell input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]),
+.brand-shell select,
+.brand-shell textarea {
+  background: var(--neft-surface);
+  color: var(--neft-text);
+  border: 1px solid var(--neft-border);
+  padding: 10px 12px;
+  outline: none;
+  border-radius: var(--neft-radius-md);
+  min-height: 44px;
+  font: inherit;
+}
+
+.brand-shell input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):focus,
+.brand-shell select:focus,
+.brand-shell textarea:focus {
+  border-color: var(--neft-primary);
+  box-shadow: 0 0 0 4px var(--neft-focus);
+}
+
+.brand-shell input::placeholder,
+.brand-shell textarea::placeholder {
+  color: var(--neft-text-muted);
+}
+
 .neft-input:focus,
 .neft-select:focus {
   border-color: var(--neft-primary);

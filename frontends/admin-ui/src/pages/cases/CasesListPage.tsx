@@ -13,6 +13,7 @@ import { CloseCaseModal } from "../../components/cases/CloseCaseModal";
 import { Table } from "../../components/Table/Table";
 import { Toast } from "../../components/common/Toast";
 import { useToast } from "../../components/Toast/useToast";
+import { AdminUnauthorizedPage } from "../admin/AdminStatusPages";
 
 const STATUS_OPTIONS: CaseStatus[] = ["OPEN", "IN_PROGRESS", "CLOSED"];
 const PRIORITY_OPTIONS: CasePriority[] = ["LOW", "MEDIUM", "HIGH", "CRITICAL"];
@@ -216,7 +217,7 @@ export function CasesListPage() {
   };
 
   if (unauthorized) {
-    return <div className="neft-card error-state">Not authorized</div>;
+    return <AdminUnauthorizedPage />;
   }
 
   return (

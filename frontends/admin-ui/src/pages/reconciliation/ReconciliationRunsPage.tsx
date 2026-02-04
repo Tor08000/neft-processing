@@ -16,6 +16,7 @@ import { Table, type Column } from "../../components/Table/Table";
 import { Toast } from "../../components/common/Toast";
 import { useToast } from "../../components/Toast/useToast";
 import { formatDate, formatDateTime } from "../../utils/format";
+import { AdminUnauthorizedPage } from "../admin/AdminStatusPages";
 
 const STATUS_OPTIONS = ["completed", "failed", "started"];
 
@@ -274,7 +275,7 @@ export function ReconciliationRunsPage() {
   };
 
   if (unauthorized) {
-    return <div className="card error-state">Not authorized</div>;
+    return <AdminUnauthorizedPage />;
   }
 
   return (

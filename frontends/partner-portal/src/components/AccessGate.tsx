@@ -4,7 +4,7 @@ import { usePortal, type PortalState } from "../auth/PortalContext";
 import { useAuth } from "../auth/AuthContext";
 import { AccessState, resolveAccessState } from "../access/accessState";
 import { ErrorState, ForbiddenState, LoadingState } from "./states";
-import { isDemoPartnerEmail } from "../auth/demo";
+import { isDemoPartner } from "@shared/demo/demo";
 
 type AccessGateProps = {
   capability?: string;
@@ -268,13 +268,14 @@ export const AccessGate = ({ capability, requiredRoles, title, children }: Acces
   }
 
   let decision = resolveAccessState({ portal, requiredRoles, capability });
-  const isDemoPartner = isDemoPartnerEmail(user.email ?? portal?.user?.email ?? null);
+  const isDemoPartnerAccount = isDemoPartner(user.email ?? portal?.user?.email ?? null);
   if (
-    isDemoPartner &&
+    isDemoPartnerAccount &&
     [AccessState.NEEDS_PLAN, AccessState.NEEDS_ONBOARDING, AccessState.MODULE_DISABLED, AccessState.MISSING_CAPABILITY].includes(
       decision.state,
     )
   ) {
+    // Demo-only bypass: unlock partner modules without altering production checks.
     decision = { state: AccessState.ACTIVE };
   }
   if (decision.state !== AccessState.ACTIVE) {

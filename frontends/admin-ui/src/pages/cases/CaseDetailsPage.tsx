@@ -35,6 +35,7 @@ import { JsonViewer } from "../../components/common/JsonViewer";
 import { CloseCaseModal, getSelectedActionsCount } from "../../components/cases/CloseCaseModal";
 import { Toast } from "../../components/common/Toast";
 import { useToast } from "../../components/Toast/useToast";
+import { AdminUnauthorizedPage } from "../admin/AdminStatusPages";
 import { loadCaseExports } from "../../utils/caseExportRegistry";
 import { CopyChip } from "../../components/common/CopyChip";
 import { isRedactedValue, redactForAudit } from "../../redaction/apply";
@@ -682,7 +683,7 @@ export function CaseDetailsPage() {
   }
 
   if (unauthorized) {
-    return <div className="neft-card error-state">Not authorized</div>;
+    return <AdminUnauthorizedPage />;
   }
 
   if (notAvailable) {

@@ -7,7 +7,7 @@ import { AppErrorState, AppForbiddenState, AppLoadingState } from "./states";
 import { StatusPage } from "./StatusPage";
 import { ModuleUnavailablePage } from "../pages/ModuleUnavailablePage";
 import { BillingOverdueState } from "./BillingOverdueState";
-import { isDemoClientEmail } from "../auth/demo";
+import { isDemoClient } from "@shared/demo/demo";
 
 type AccessGateProps = {
   capability?: string;
@@ -55,15 +55,18 @@ const PortalStateView = ({
   state,
   error,
   onRetry,
+  isDemo,
 }: {
   state: PortalState;
   error?: PortalError | null;
   onRetry?: () => void;
+  isDemo: boolean;
 }) => {
   switch (state) {
     case "AUTH_REQUIRED":
       return <Navigate to="/login" replace />;
     case "FORBIDDEN":
+      if (isDemo) return null;
       return (
         <StatusPage
           title="Доступ ограничен"
@@ -78,6 +81,7 @@ const PortalStateView = ({
         />
       );
     case "SERVICE_UNAVAILABLE":
+      if (isDemo) return null;
       return (
         <AppErrorState
           message={
@@ -91,6 +95,7 @@ const PortalStateView = ({
         />
       );
     case "NETWORK_DOWN":
+      if (isDemo) return null;
       return (
         <AppErrorState
           message={
@@ -104,6 +109,7 @@ const PortalStateView = ({
         />
       );
     case "API_MISCONFIGURED":
+      if (isDemo) return null;
       return (
         <AppErrorState
           message={
@@ -117,6 +123,7 @@ const PortalStateView = ({
         />
       );
     case "ERROR_FATAL":
+      if (isDemo) return null;
       return (
         <AppErrorState
           message={
@@ -143,6 +150,7 @@ const AccessStateView = ({
   requestId,
   correlationId,
   error,
+  homePath,
 }: {
   state: AccessState;
   title?: string;
@@ -150,7 +158,10 @@ const AccessStateView = ({
   requestId?: string | null;
   correlationId?: string | null;
   error?: PortalError | null;
+  homePath?: string;
 }) => {
+  const { user } = useAuth();
+  const fallbackHome = homePath ?? (user ? "/" : "/login");
   switch (state) {
     case AccessState.NEEDS_ONBOARDING:
       return (
@@ -270,26 +281,26 @@ const AccessStateView = ({
       );
     case AccessState.TECH_ERROR:
       return (
-        <AppErrorState
-          message={
-            <>
-              Техническая ошибка. Попробуйте снова позже.
-              <DiagnosticsDetails error={error} />
-              {reason ? <div>Error ID: {reason}</div> : null}
-            </>
-          }
-          correlationId={correlationId ?? undefined}
-        />
+        <div className="stack">
+          <AppErrorState
+            message={
+              <>
+                Техническая ошибка. Попробуйте снова позже.
+                <DiagnosticsDetails error={error} />
+                {reason ? <div>Error ID: {reason}</div> : null}
+              </>
+            }
+            correlationId={correlationId ?? undefined}
+          />
+          <div className="actions">
+            <Link className="ghost neft-btn-secondary" to={fallbackHome}>
+              На главную
+            </Link>
+          </div>
+        </div>
       );
     case AccessState.AUTH_REQUIRED:
-      return (
-        <StatusPage
-          title="Требуется вход"
-          description="Пожалуйста, войдите, чтобы продолжить."
-          actionLabel="Перейти к входу"
-          actionTo="/login"
-        />
-      );
+      return <Navigate to="/login" replace />;
     case AccessState.ACTIVE:
     default:
       return null;
@@ -315,14 +326,25 @@ export const AccessGate = ({
     return <AppLoadingState label="Проверяем доступ..." />;
   }
 
-  const portalView = PortalStateView({ state: portalState, error, onRetry: refresh });
+  const isDemoClientAccount = isDemoClient(user.email ?? client?.user?.email ?? null);
+  const portalView = PortalStateView({ state: portalState, error, onRetry: refresh, isDemo: isDemoClientAccount });
   if (portalView) {
     return portalView;
   }
 
   let decision = resolveAccessState({ client, requiredRoles, capability, module });
-  const isDemoClient = isDemoClientEmail(user.email ?? client?.user?.email ?? null);
-  if (isDemoClient && [AccessState.NEEDS_ONBOARDING, AccessState.NEEDS_PLAN, AccessState.NEEDS_CONTRACT].includes(decision.state)) {
+  if (
+    isDemoClientAccount &&
+    [
+      AccessState.NEEDS_ONBOARDING,
+      AccessState.NEEDS_PLAN,
+      AccessState.NEEDS_CONTRACT,
+      AccessState.TECH_ERROR,
+      AccessState.MISCONFIG,
+      AccessState.SERVICE_UNAVAILABLE,
+    ].includes(decision.state)
+  ) {
+    // Demo-only bypass: allow access even if onboarding or backend data is missing.
     decision = { state: AccessState.ACTIVE };
   }
 

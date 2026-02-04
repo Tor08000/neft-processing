@@ -9,6 +9,7 @@ import { Table, type Column } from "../../components/Table/Table";
 import { formatDateTime } from "../../utils/format";
 import type { BillingRefund } from "../../types/billingFlows";
 import { formatMoney, refundStatusBadge, renderBadge } from "./billingUtils";
+import { AdminUnauthorizedPage } from "../admin/AdminStatusPages";
 
 const STATUS_OPTIONS = ["REFUNDED", "FAILED"];
 
@@ -129,7 +130,7 @@ const BillingRefundsPage: React.FC = () => {
   );
 
   if (unauthorized) {
-    return <div className="card error-state">Unauthorized</div>;
+    return <AdminUnauthorizedPage />;
   }
 
   return (

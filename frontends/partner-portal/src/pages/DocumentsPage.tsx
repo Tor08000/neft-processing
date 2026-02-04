@@ -5,6 +5,7 @@ import { useAuth } from "../auth/AuthContext";
 import { usePortal } from "../auth/PortalContext";
 import { StatusBadge } from "../components/StatusBadge";
 import { ErrorState, LoadingState } from "../components/states";
+import { EmptyState } from "../components/EmptyState";
 import { formatCurrency, formatDate } from "../utils/format";
 import type { PartnerDocument } from "../types/partnerFinance";
 
@@ -48,10 +49,11 @@ export function DocumentsPage() {
   const renderTable = (items: PartnerDocument[], emptyText: string) => {
     if (items.length === 0) {
       return (
-        <div className="empty-state">
-          <strong>Документы отсутствуют</strong>
-          <span className="muted">{emptyText}</span>
-        </div>
+        <EmptyState
+          title="Документы отсутствуют"
+          description={emptyText}
+          primaryAction={{ label: "Обновить", onClick: () => window.location.reload() }}
+        />
       );
     }
     return (

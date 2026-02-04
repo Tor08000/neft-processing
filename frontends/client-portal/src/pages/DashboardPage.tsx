@@ -8,6 +8,7 @@ import { DashboardRenderer } from "./dashboard/DashboardRenderer";
 import { AccessState, resolveAccessState } from "../access/accessState";
 import { AccessStateView, PortalStateView } from "../components/AccessGate";
 import { useClient } from "../auth/ClientContext";
+import { isDemoClient } from "@shared/demo/demo";
 
 const REFRESH_INTERVAL_MS = 60_000;
 
@@ -21,6 +22,7 @@ export function DashboardPage() {
   const lastFetchedRef = useRef(0);
 
   const accessDecision = useMemo(() => resolveAccessState({ client }), [client]);
+  const isDemoClientAccount = isDemoClient(user?.email ?? client?.user?.email ?? null);
 
   const loadDashboard = useCallback(
     async (force = false) => {
@@ -86,7 +88,7 @@ export function DashboardPage() {
     return <AppLoadingState label="Проверяем доступ..." />;
   }
 
-  const portalStateView = PortalStateView({ state: portalState, error: portalError, onRetry: refresh });
+  const portalStateView = PortalStateView({ state: portalState, error: portalError, onRetry: refresh, isDemo: isDemoClientAccount });
   if (portalStateView) {
     return portalStateView;
   }

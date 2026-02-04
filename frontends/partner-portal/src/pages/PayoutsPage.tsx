@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { fetchPartnerPayoutPreview, fetchPartnerPayouts, requestPartnerPayout } from "../api/partnerFinance";
 import { useAuth } from "../auth/AuthContext";
 import { ErrorState, LoadingState } from "../components/states";
+import { EmptyState } from "../components/EmptyState";
 import { StatusBadge } from "../components/StatusBadge";
 import { formatCurrency, formatDateTime } from "../utils/format";
 import type { PartnerPayoutRequest } from "../types/partnerFinance";
@@ -134,10 +135,12 @@ export function PayoutsPage() {
         ) : error ? (
           <ErrorState description={error} />
         ) : items.length === 0 ? (
-          <div className="empty-state">
-            <strong>Пока нет запросов</strong>
-            <span className="muted">Создайте запрос, чтобы получить выплату.</span>
-          </div>
+          <EmptyState
+            title="Пока нет запросов"
+            description="Создайте запрос, чтобы получить выплату."
+            primaryAction={{ label: "Обновить", onClick: () => loadPayouts() }}
+            secondaryAction={{ label: "Создать запрос", onClick: () => window.scrollTo({ top: 0, behavior: "smooth" }) }}
+          />
         ) : (
           <table className="data-table">
             <thead>

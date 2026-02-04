@@ -12,6 +12,7 @@ import {
 import { UnauthorizedError } from "../../api/client";
 import { Toast } from "../../components/common/Toast";
 import { useToast } from "../../components/Toast/useToast";
+import { AdminUnauthorizedPage } from "../admin/AdminStatusPages";
 
 const scenarioOptions: { value: ReconciliationFixtureScenario; label: string }[] = [
   { value: "SCN2_WRONG_AMOUNT", label: "SCN-2 Wrong amount" },
@@ -128,7 +129,7 @@ export function ReconciliationFixturesPage() {
   };
 
   if (unauthorized) {
-    return <div className="card error-state">Not authorized</div>;
+    return <AdminUnauthorizedPage />;
   }
 
   const handleCreateImport = async (fileName: string, fileFormat: "CSV" | "CLIENT_BANK_1C" | "MT940") => {
