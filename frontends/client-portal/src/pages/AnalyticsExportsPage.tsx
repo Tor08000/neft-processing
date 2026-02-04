@@ -7,17 +7,18 @@ import { AnalyticsChartPanel } from "../components/analytics/AnalyticsChartPanel
 import { AnalyticsKpiCard } from "../components/analytics/AnalyticsKpiCard";
 import { AnalyticsTabs } from "../components/analytics/AnalyticsTabs";
 import { FilterBar, type DateFilters } from "../components/analytics/FilterBar";
-import { AppEmptyState, AppErrorState, AppForbiddenState, AppLoadingState } from "../components/states";
+import { AppEmptyState, AppForbiddenState, AppLoadingState } from "../components/states";
+import { ClientErrorState } from "../components/ClientErrorState";
+import { DemoEmptyState } from "../components/DemoEmptyState";
 import { useI18n } from "../i18n";
 import type { AnalyticsExportsSummaryResponse } from "../types/analytics";
 import { buildDateRange } from "../utils/dateRange";
 import { formatDateTime } from "../utils/format";
 import { canAccessFinance } from "../utils/roles";
+import { isDemoClient } from "@shared/demo/demo";
 
 interface AnalyticsErrorState {
-  message: string;
   status?: number;
-  correlationId?: string | null;
 }
 
 export function AnalyticsExportsPage() {
@@ -27,9 +28,11 @@ export function AnalyticsExportsPage() {
   const [summary, setSummary] = useState<AnalyticsExportsSummaryResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<AnalyticsErrorState | null>(null);
+  const [demoFallback, setDemoFallback] = useState(false);
   const hasData = Boolean(summary && summary.total > 0);
 
   const financeAccess = canAccessFinance(user);
+  const isDemoClientAccount = isDemoClient(user?.email ?? null);
 
   useEffect(() => {
     if (filters.preset !== "custom") {
@@ -42,17 +45,24 @@ export function AnalyticsExportsPage() {
     if (!user?.clientId || !filters.from || !filters.to || !financeAccess) return;
     setIsLoading(true);
     setError(null);
+    setDemoFallback(false);
     fetchExportsSummary(user, { clientId: user.clientId, from: filters.from, to: filters.to })
       .then((resp) => setSummary(resp))
       .catch((err: unknown) => {
-        if (err instanceof ApiError) {
-          setError({ message: err.message, status: err.status, correlationId: err.correlationId });
+        const status = err instanceof ApiError ? err.status : undefined;
+        if (isDemoClientAccount && status === 404) {
+          setDemoFallback(true);
+          setError(null);
           return;
         }
-        setError({ message: err instanceof Error ? err.message : t("analytics.errors.loadFailed") });
+        if (err instanceof ApiError) {
+          setError({ status: err.status });
+          return;
+        }
+        setError({ status });
       })
       .finally(() => setIsLoading(false));
-  }, [user, filters.from, filters.to, financeAccess, t]);
+  }, [user, filters.from, filters.to, financeAccess, t, isDemoClientAccount]);
 
 
   if (!user || !financeAccess) {
@@ -76,9 +86,38 @@ export function AnalyticsExportsPage() {
       </section>
 
       {isLoading ? <AppLoadingState label={t("analytics.loading")} /> : null}
-      {error ? <AppErrorState message={error.message} status={error.status} correlationId={error.correlationId} /> : null}
-      {!isLoading && !error && !hasData ? (
-        <AppEmptyState title={t("analytics.empty.title")} description={t("analytics.empty.description")} />
+      {error ? (
+        <ClientErrorState
+          title="Экспорты недоступны"
+          description="Не удалось получить данные. Попробуйте обновить страницу."
+          onRetry={() => setFilters((prev) => ({ ...prev }))}
+        />
+      ) : null}
+      {demoFallback ? (
+        <DemoEmptyState
+          title="Данные в демо появятся позже"
+          description="В рабочем контуре здесь будут метрики по экспортам."
+          action={
+            <Link className="ghost neft-btn-secondary" to="/dashboard">
+              Перейти в обзор
+            </Link>
+          }
+        />
+      ) : null}
+      {!isLoading && !error && !hasData && !demoFallback ? (
+        isDemoClientAccount ? (
+          <DemoEmptyState
+            title="Данные в демо появятся позже"
+            description="В рабочем контуре здесь будут метрики по экспортам."
+            action={
+              <Link className="ghost neft-btn-secondary" to="/dashboard">
+                Перейти в обзор
+              </Link>
+            }
+          />
+        ) : (
+          <AppEmptyState title={t("analytics.empty.title")} description={t("analytics.empty.description")} />
+        )
       ) : null}
 
       {!isLoading && !error && summary ? (

@@ -18,10 +18,7 @@ import { hasAnyRole } from "../utils/roles";
 import { isDemoClient } from "@shared/demo/demo";
 
 interface AnalyticsErrorState {
-  message: string;
   status?: number;
-  correlationId?: string | null;
-  details?: string;
 }
 
 export function AnalyticsDocumentsPage() {
@@ -55,24 +52,18 @@ export function AnalyticsDocumentsPage() {
       .then((resp) => setSummary(resp))
       .catch((err: unknown) => {
         console.error("Не удалось загрузить аналитику документов", err);
-        if (isDemoClientAccount) {
+        const status = err instanceof ApiError ? err.status : undefined;
+        if (isDemoClientAccount && status === 404) {
           setSummary(demoDocumentsSummary);
           setUseDemoData(true);
+          setError(null);
           return;
         }
         if (err instanceof ApiError) {
-          setError({
-            message: "Не удалось загрузить аналитику документов.",
-            status: err.status,
-            correlationId: err.correlationId,
-            details: err.message,
-          });
+          setError({ status: err.status });
           return;
         }
-        setError({
-          message: "Не удалось загрузить аналитику документов.",
-          details: err instanceof Error ? err.message : String(err),
-        });
+        setError({ status });
       })
       .finally(() => setIsLoading(false));
   }, [user, filters.from, filters.to, t, isDemoClientAccount]);
@@ -106,9 +97,16 @@ export function AnalyticsDocumentsPage() {
 
       {isLoading ? <AppLoadingState label={t("analytics.loading")} /> : null}
       {error ? (
-        isDemoClientAccount && error.status === 404 ? (
+        <ClientErrorState
+          title="Аналитика документов недоступна"
+          description="Данные временно недоступны. Попробуйте обновить страницу."
+          onRetry={() => setFilters((prev) => ({ ...prev }))}
+        />
+      ) : null}
+      {!isLoading && !error && !hasData ? (
+        isDemoClientAccount ? (
           <DemoEmptyState
-            title="Раздел в демо недоступен"
+            title="Данные в демо появятся позже"
             description="В рабочем контуре здесь будут метрики по документообороту и ЭДО."
             action={
               <Link className="ghost neft-btn-secondary" to="/dashboard">
@@ -117,16 +115,8 @@ export function AnalyticsDocumentsPage() {
             }
           />
         ) : (
-          <ClientErrorState
-            title="Аналитика документов недоступна"
-            description="Данные временно недоступны. Попробуйте обновить страницу."
-            details={error.details}
-            onRetry={() => setFilters((prev) => ({ ...prev }))}
-          />
+          <AppEmptyState title={t("analytics.empty.title")} description={t("analytics.empty.description")} />
         )
-      ) : null}
-      {!isLoading && !error && !hasData ? (
-        <AppEmptyState title={t("analytics.empty.title")} description={t("analytics.empty.description")} />
       ) : null}
 
       {!isLoading && !error && summary ? (

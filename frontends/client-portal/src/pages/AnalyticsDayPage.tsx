@@ -9,6 +9,7 @@ import { MoneyValue } from "../components/common/MoneyValue";
 import type { Column } from "../components/common/Table";
 import { Table } from "../components/common/Table";
 import { AppForbiddenState } from "../components/states";
+import { ClientErrorState } from "../components/ClientErrorState";
 import { StatusPage } from "../components/StatusPage";
 import type { ClientAnalyticsDrillTransaction } from "../types/clientAnalytics";
 import { buildDateRange } from "../utils/dateRange";
@@ -16,9 +17,7 @@ import { formatDate, formatDateTime, formatLiters } from "../utils/format";
 import { hasAnyRole } from "../utils/roles";
 
 interface AnalyticsErrorState {
-  message: string;
   status?: number;
-  correlationId?: string | null;
 }
 
 export function AnalyticsDayPage() {
@@ -113,14 +112,14 @@ export function AnalyticsDayPage() {
         setNextCursor(response.next_cursor);
       } catch (err: unknown) {
         if (err instanceof UnauthorizedError) {
-          setError({ message: err.message, status: 401 });
+          setError({ status: 401 });
           return;
         }
         if (err instanceof ApiError) {
-          setError({ message: err.message, status: err.status, correlationId: err.correlationId });
+          setError({ status: err.status });
           return;
         }
-        setError({ message: err instanceof Error ? err.message : "Не удалось загрузить операции." });
+        setError({ status: err instanceof ApiError ? err.status : undefined });
       } finally {
         setIsLoading(false);
         setIsLoadingMore(false);
@@ -150,6 +149,16 @@ export function AnalyticsDayPage() {
     return <StatusPage title="Сервис недоступен" description="Попробуйте обновить страницу позже." />;
   }
 
+  if (error) {
+    return (
+      <ClientErrorState
+        title="Не удалось загрузить операции"
+        description="Данные временно недоступны. Попробуйте обновить страницу."
+        onRetry={() => void loadData(null, false)}
+      />
+    );
+  }
+
   return (
     <DrilldownLayout
       title={`Транзакции за ${formatDate(dateValue)}`}
@@ -164,15 +173,6 @@ export function AnalyticsDayPage() {
           title: "Нет данных",
           description: "За выбранный день нет транзакций.",
         }}
-        errorState={
-          error
-            ? {
-                title: "Не удалось загрузить операции",
-                description: error.message,
-                details: error.correlationId ?? undefined,
-              }
-            : undefined
-        }
       />
       <CursorPagination hasMore={Boolean(nextCursor)} isLoading={isLoadingMore} onLoadMore={() => loadData(nextCursor, true)} />
     </DrilldownLayout>

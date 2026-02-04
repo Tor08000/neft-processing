@@ -283,7 +283,7 @@
     "forbiddenDescription": "Недостаточно прав для просмотра"
   },
   "errors": {
-    "actionFailedTitle": "Не удалось выполнить действие",
+    "actionFailedTitle": "Не удалось выполнить запрос",
     "retry": "Повторить",
     "errorCode": "Код ошибки: {code}",
     "correlationId": "Correlation ID: {id}"
@@ -1151,7 +1151,7 @@
     },
     "errors": {
       "loadFailed": "Не удалось загрузить данные Fleet",
-      "actionFailed": "Не удалось выполнить действие",
+      "actionFailed": "Не удалось выполнить запрос",
       "noPermission": "Недостаточно прав",
       "noPermissionGroup": "Нет доступа к выбранной группе",
       "unavailableTitle": "Fleet модуль недоступен",

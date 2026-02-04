@@ -19,10 +19,7 @@ import { hasAnyRole } from "../utils/roles";
 import { isDemoClient } from "@shared/demo/demo";
 
 interface AnalyticsErrorState {
-  message: string;
   status?: number;
-  correlationId?: string | null;
-  details?: string;
 }
 
 const presets = [
@@ -73,28 +70,22 @@ export function ClientAnalyticsPage() {
       .then((resp) => setData(resp))
       .catch((err: unknown) => {
         console.error("Не удалось загрузить аналитику", err);
-        if (isDemoClientAccount) {
+        const status = err instanceof ApiError ? err.status : undefined;
+        if (isDemoClientAccount && status === 404) {
           setData(demoClientAnalyticsSummary);
           setUseDemoData(true);
+          setError(null);
           return;
         }
         if (err instanceof UnauthorizedError) {
-          setError({ message: err.message, status: 401, details: err.message });
+          setError({ status: 401 });
           return;
         }
         if (err instanceof ApiError) {
-          setError({
-            message: "Не удалось загрузить аналитику.",
-            status: err.status,
-            correlationId: err.correlationId,
-            details: err.message,
-          });
+          setError({ status: err.status });
           return;
         }
-        setError({
-          message: "Не удалось загрузить аналитику.",
-          details: err instanceof Error ? err.message : String(err),
-        });
+        setError({ status });
       })
       .finally(() => setIsLoading(false));
   }, [user, filters.from, filters.to, scope, isDemoClientAccount]);
@@ -153,7 +144,6 @@ export function ClientAnalyticsPage() {
       <ClientErrorState
         title="Сервис временно недоступен"
         description="Попробуйте повторить запрос чуть позже."
-        details={error.details}
         onRetry={() => setFilters((prev) => ({ ...prev }))}
         secondaryActionTo="/dashboard"
         secondaryActionLabel="Обзор"
@@ -191,9 +181,16 @@ export function ClientAnalyticsPage() {
 
       {isLoading ? <AppLoadingState label="Loading analytics" /> : null}
       {error ? (
-        error.status === 404 && isDemoClientAccount ? (
+        <ClientErrorState
+          title="Аналитика недоступна"
+          description="Не удалось получить данные. Попробуйте обновить страницу."
+          onRetry={() => setFilters((prev) => ({ ...prev }))}
+        />
+      ) : null}
+      {!isLoading && !error && !hasData ? (
+        isDemoClientAccount ? (
           <DemoEmptyState
-            title="Раздел в демо недоступен"
+            title="Данные в демо появятся позже"
             description="В рабочем контуре здесь будет CFO-дашборд по расходам и показателям."
             action={
               <Link className="ghost neft-btn-secondary" to="/dashboard">
@@ -202,16 +199,8 @@ export function ClientAnalyticsPage() {
             }
           />
         ) : (
-          <ClientErrorState
-            title="Аналитика недоступна"
-            description="Не удалось получить данные. Попробуйте обновить страницу."
-            details={error.details}
-            onRetry={() => setFilters((prev) => ({ ...prev }))}
-          />
+          <AppEmptyState title="Нет данных" description="Нет данных за выбранный период." />
         )
-      ) : null}
-      {!isLoading && !error && !hasData ? (
-        <AppEmptyState title="Нет данных" description="Нет данных за выбранный период." />
       ) : null}
 
       {!isLoading && !error && hasData && data ? (

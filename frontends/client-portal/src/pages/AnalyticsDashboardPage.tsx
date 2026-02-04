@@ -8,7 +8,9 @@ import { AnalyticsKpiCard } from "../components/analytics/AnalyticsKpiCard";
 import { AnalyticsTabs } from "../components/analytics/AnalyticsTabs";
 import { AttentionList } from "../components/analytics/AttentionList";
 import { FilterBar, type DateFilters } from "../components/analytics/FilterBar";
-import { AppEmptyState, AppErrorState, AppForbiddenState, AppLoadingState } from "../components/states";
+import { AppEmptyState, AppForbiddenState, AppLoadingState } from "../components/states";
+import { ClientErrorState } from "../components/ClientErrorState";
+import { DemoEmptyState } from "../components/DemoEmptyState";
 import { useI18n } from "../i18n";
 import type {
   AnalyticsDeclinesResponse,
@@ -19,11 +21,11 @@ import type {
 import { buildDateRange } from "../utils/dateRange";
 import { MoneyValue } from "../components/common/MoneyValue";
 import { canAccessFinance, hasAnyRole } from "../utils/roles";
+import { demoAnalyticsDailyMetrics, demoAnalyticsDeclines, demoAnalyticsExportsSummary, demoDocumentsSummary } from "../demo/demoData";
+import { isDemoClient } from "@shared/demo/demo";
 
 interface AnalyticsErrorState {
-  message: string;
   status?: number;
-  correlationId?: string | null;
 }
 
 const extractMax = (series: Array<{ value: number }>) => Math.max(...series.map((item) => item.value), 0);
@@ -42,9 +44,11 @@ export function AnalyticsDashboardPage() {
   const [declines, setDeclines] = useState<AnalyticsDeclinesResponse | null>(null);
   const [documentsSummary, setDocumentsSummary] = useState<AnalyticsDocumentsSummaryResponse | null>(null);
   const [exportsSummary, setExportsSummary] = useState<AnalyticsExportsSummaryResponse | null>(null);
+  const [demoFallback, setDemoFallback] = useState(false);
 
   const canAccess = hasAnyRole(user, ["CLIENT_OWNER", "CLIENT_ACCOUNTANT", "CLIENT_FLEET_MANAGER", "CLIENT_USER"]);
   const financeAccess = canAccessFinance(user);
+  const isDemoClientAccount = isDemoClient(user?.email ?? null);
 
   useEffect(() => {
     if (filters.preset !== "custom") {
@@ -57,6 +61,7 @@ export function AnalyticsDashboardPage() {
     if (!user?.clientId || !filters.from || !filters.to) return;
     setIsLoading(true);
     setError(null);
+    setDemoFallback(false);
     const requests: Array<Promise<unknown>> = [
       fetchDailyMetrics(user, {
         scopeType: "CLIENT",
@@ -85,14 +90,24 @@ export function AnalyticsDashboardPage() {
         setExportsSummary(exportsResponse ?? null);
       })
       .catch((err: unknown) => {
-        if (err instanceof ApiError) {
-          setError({ message: err.message, status: err.status, correlationId: err.correlationId });
+        const status = err instanceof ApiError ? err.status : undefined;
+        if (isDemoClientAccount && status === 404) {
+          setDailyMetrics(demoAnalyticsDailyMetrics);
+          setDeclines(demoAnalyticsDeclines);
+          setDocumentsSummary(demoDocumentsSummary);
+          setExportsSummary(financeAccess ? demoAnalyticsExportsSummary : null);
+          setDemoFallback(true);
+          setError(null);
           return;
         }
-        setError({ message: err instanceof Error ? err.message : t("analytics.errors.loadFailed") });
+        if (err instanceof ApiError) {
+          setError({ status: err.status });
+          return;
+        }
+        setError({ status });
       })
       .finally(() => setIsLoading(false));
-  }, [user, filters.from, filters.to, financeAccess, t]);
+  }, [user, filters.from, filters.to, financeAccess, t, isDemoClientAccount]);
 
   const spendMax = useMemo(() => extractMax(dailyMetrics?.spend.series ?? []), [dailyMetrics]);
   const ordersMax = useMemo(() => extractMax(dailyMetrics?.orders.series ?? []), [dailyMetrics]);
@@ -118,7 +133,9 @@ export function AnalyticsDashboardPage() {
         <div className="card__header">
           <div>
             <h2>{t("analytics.dashboard.title")}</h2>
-            <p className="muted">{t("analytics.dashboard.subtitle")}</p>
+            <p className="muted">
+              {demoFallback ? "Демо-режим: показатели собраны на примере типовой компании." : t("analytics.dashboard.subtitle")}
+            </p>
           </div>
         </div>
         <FilterBar filters={filters} onChange={setFilters} />
@@ -126,13 +143,28 @@ export function AnalyticsDashboardPage() {
 
       {isLoading ? <AppLoadingState label={t("analytics.loading") } /> : null}
       {error ? (
-        <AppErrorState message={error.message} status={error.status} correlationId={error.correlationId} />
+        <ClientErrorState
+          title="Аналитика недоступна"
+          description="Не удалось получить данные. Попробуйте обновить страницу."
+          onRetry={() => setFilters((prev) => ({ ...prev }))}
+          secondaryActionTo="/dashboard"
+          secondaryActionLabel="Обзор"
+        />
       ) : null}
       {!isLoading && !error && !hasContent ? (
-        <AppEmptyState
-          title={t("analytics.empty.title")}
-          description={t("analytics.empty.description")}
-        />
+        isDemoClientAccount ? (
+          <DemoEmptyState
+            title="Данные в демо появятся позже"
+            description="В рабочем контуре здесь будет CFO-дашборд по расходам и показателям."
+            action={
+              <Link className="ghost neft-btn-secondary" to="/dashboard">
+                Перейти в обзор
+              </Link>
+            }
+          />
+        ) : (
+          <AppEmptyState title={t("analytics.empty.title")} description={t("analytics.empty.description")} />
+        )
       ) : null}
 
       {!isLoading && !error && dailyMetrics ? (
