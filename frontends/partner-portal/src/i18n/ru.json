@@ -601,11 +601,11 @@
       "to": "Период по",
       "status": "Статус",
       "search": "Поиск",
-      "searchPlaceholder": "order_id, клиент, сервис",
+      "searchPlaceholder": "Номер заказа или клиент",
       "station": "Станция",
-      "stationPlaceholder": "station_id",
+      "stationPlaceholder": "АЗС/станция",
       "service": "Услуга",
-      "servicePlaceholder": "service_id",
+      "servicePlaceholder": "Услуга",
       "slaRisk": "Риск SLA",
       "slaRiskNear": "Близко к дедлайну"
     },
@@ -623,7 +623,7 @@
       "total": "Всего"
     },
     "table": {
-      "orderId": "Заказ",
+      "orderId": "№ заказа",
       "client": "Клиент",
       "service": "Услуга",
       "createdAt": "Создан",
@@ -632,7 +632,11 @@
       "status": "Статус",
       "actions": "Действия"
     },
-    "pagination": "Страница {current} из {total}"
+    "pagination": {
+      "prev": "Назад",
+      "next": "Вперёд",
+      "page": "Страница {{current}} из {{total}}"
+    }
   },
   "orderDetails": {
     "title": "Заказ {id}",
@@ -753,14 +757,14 @@
   },
   "servicesCatalogPage": {
     "title": "Каталог услуг",
-    "subtitle": "Управление услугами партнёра",
+    "subtitle": "Управляйте услугами и бронированиями.",
     "empty": {
       "filteredTitle": "Нет результатов фильтра",
       "filteredDescription": "Измените фильтры или сбросьте настройки поиска."
     },
     "filters": {
       "search": "Поиск",
-      "searchPlaceholder": "Название, описание",
+      "searchPlaceholder": "Название или описание",
       "kind": "Тип",
       "kindOptions": {
         "service": "Услуга",
@@ -774,16 +778,16 @@
         "archived": "Архив"
       },
       "category": "Категория",
-      "categoryPlaceholder": "Например, автомойка"
+      "categoryPlaceholder": "Категория"
     },
     "table": {
-      "title": "Услуги",
+      "title": "Название",
       "name": "Название",
       "kind": "Тип",
       "category": "Категория",
       "status": "Статус",
       "price": "Цена",
-      "activeOffers": "Активные офферы",
+      "activeOffers": "Офферы",
       "updatedAt": "Обновлено",
       "actions": "Действия"
     },
@@ -843,8 +847,8 @@
       "resultSkipped": "Пропущено: {count}",
       "refreshList": "Обновить список",
       "csvFormat": "Формат CSV",
-      "requiredFields": "Обязательные поля: kind, title, category, uom",
-      "sampleRow": "SERVICE,Комплексная мойка,Автомойка,услуга,Полная мойка,ACTIVE",
+      "requiredFields": "Обязательные поля",
+      "sampleRow": "Пример строки",
       "upload": "Загрузить",
       "downloadTemplate": "Скачать шаблон",
       "errors": {
