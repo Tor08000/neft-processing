@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { Wrench } from "../components/icons";
+import { useTranslation } from "react-i18next";
+import { Wrench } from "../../components/icons";
 import {
   activateCatalogItem,
   createCatalogItem,
@@ -9,20 +10,17 @@ import {
   previewCatalogImport,
   updateCatalogItem,
   applyCatalogImport,
-} from "../api/catalog";
-import { ApiError } from "../api/http";
-import { useAuth } from "../auth/AuthContext";
-import { EmptyState } from "../components/EmptyState";
-import { ForbiddenState } from "../components/states";
-import { StatusBadge } from "../components/StatusBadge";
-import { formatDateTime, formatNumber } from "../utils/format";
-import { parseCatalogCsv } from "../utils/csv";
-import { canManageServices, canReadServices } from "../utils/roles";
-import type { CatalogItem, CatalogItemInput, CatalogItemKind, CatalogItemStatus, CatalogImportPreview } from "../types/marketplace";
-import { useTranslation } from "react-i18next";
-import { PartnerErrorState } from "../components/PartnerErrorState";
-import { demoCatalogItems } from "../demo/partnerDemoData";
-import { isDemoPartner } from "@shared/demo/demo";
+} from "../../api/catalog";
+import { useAuth } from "../../auth/AuthContext";
+import { EmptyState } from "../../components/EmptyState";
+import { ForbiddenState } from "../../components/states";
+import { StatusBadge } from "../../components/StatusBadge";
+import { formatDateTime, formatNumber } from "../../utils/format";
+import { parseCatalogCsv } from "../../utils/csv";
+import { canManageServices, canReadServices } from "../../utils/roles";
+import type { CatalogItem, CatalogItemInput, CatalogItemKind, CatalogItemStatus, CatalogImportPreview } from "../../types/marketplace";
+import { PartnerErrorState } from "../../components/PartnerErrorState";
+import { ApiError } from "../../api/http";
 
 type ApiErrorState = {
   message: string;
@@ -112,12 +110,11 @@ const getSummary = (preview: CatalogImportPreview | null, fallbackRows: number, 
   };
 };
 
-export function ServicesCatalogPage() {
+export function ServicesCatalogPageProd() {
   const { user } = useAuth();
   const { t } = useTranslation();
   const canRead = canReadServices(user?.roles);
   const canManage = canManageServices(user?.roles);
-  const isDemoPartnerAccount = isDemoPartner(user?.email ?? null);
   const [items, setItems] = useState<CatalogItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [page, setPage] = useState(1);
@@ -130,7 +127,6 @@ export function ServicesCatalogPage() {
     category: "",
   });
   const [error, setError] = useState<unknown>(null);
-  const [isDemoFallback, setIsDemoFallback] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<CatalogItem | null>(null);
   const [formState, setFormState] = useState<CatalogFormState>(defaultFormState);
@@ -171,14 +167,6 @@ export function ServicesCatalogPage() {
 
   const fetchItems = async () => {
     if (!user) return;
-    if (isDemoPartnerAccount) {
-      setItems(demoCatalogItems);
-      setTotal(demoCatalogItems.length);
-      setIsDemoFallback(true);
-      setError(null);
-      setIsLoading(false);
-      return;
-    }
     setIsLoading(true);
     setError(null);
     try {
@@ -192,15 +180,7 @@ export function ServicesCatalogPage() {
       });
       setItems(response.items ?? []);
       setTotal(response.total ?? 0);
-      setIsDemoFallback(false);
     } catch (err) {
-      if (err instanceof ApiError && isDemoPartnerAccount && (err.status === 403 || err.status === 404)) {
-        setItems(demoCatalogItems);
-        setTotal(demoCatalogItems.length);
-        setIsDemoFallback(true);
-        setError(null);
-        return;
-      }
       console.error(err);
       setError(err);
     } finally {
@@ -430,11 +410,6 @@ export function ServicesCatalogPage() {
                 <div>{actionNotice}</div>
               </div>
             ) : null}
-            {isDemoFallback ? (
-              <div className="notice">
-                <div>В демо-режиме доступен примерный каталог услуг.</div>
-              </div>
-            ) : null}
           </div>
         </div>
         {isLoading ? (
@@ -550,11 +525,6 @@ export function ServicesCatalogPage() {
           />
         ) : (
           <div className="page-section__content">
-            {isDemoPartnerAccount ? (
-              <div className="notice">
-                <div>В демо-режиме загрузка CSV отключена, но интерфейс импорта доступен.</div>
-              </div>
-            ) : null}
             <div className="form-grid neft-import-grid">
               <label className="form-field">
                 {t("servicesCatalogPage.import.csvFile")}
@@ -562,7 +532,6 @@ export function ServicesCatalogPage() {
                   type="file"
                   accept=".csv,text/csv"
                   onChange={(event) => setImportFile(event.target.files?.[0] ?? null)}
-                  disabled={isDemoPartnerAccount}
                 />
               </label>
               <label className="form-field">
@@ -573,7 +542,7 @@ export function ServicesCatalogPage() {
                 </select>
               </label>
               <div className="form-grid__actions">
-                <button type="button" className="secondary" onClick={handlePreviewImport} disabled={importLoading || isDemoPartnerAccount}>
+                <button type="button" className="secondary" onClick={handlePreviewImport} disabled={importLoading}>
                   {t("servicesCatalogPage.import.preview")}
                 </button>
               </div>
@@ -653,7 +622,7 @@ export function ServicesCatalogPage() {
                     type="button"
                     className="primary"
                     onClick={handleApplyImport}
-                    disabled={importApplyLoading || importPreview.errors.length > 0 || isDemoPartnerAccount}
+                    disabled={importApplyLoading || importPreview.errors.length > 0}
                   >
                     {t("servicesCatalogPage.import.apply")}
                   </button>

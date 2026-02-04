@@ -112,6 +112,13 @@ export const demoOrders: MarketplaceOrder[] = [
   },
 ];
 
+export const demoOrdersKpis = {
+  ordersToday: 2,
+  pendingConfirmation: 3,
+  docsPending: 2,
+  total: demoOrders.length,
+};
+
 export const demoCatalogItems: CatalogItem[] = [
   {
     id: "svc-101",

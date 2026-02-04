@@ -7,8 +7,8 @@ const cyrillicPattern = /["'`][^"'`]*[А-Яа-яЁё][^"'`]*["'`]/;
 const files = [
   "../pages/PricesPage.tsx",
   "../pages/IntegrationsPage.tsx",
-  "../pages/ServicesCatalogPage.tsx",
-  "../pages/OrdersPage.tsx",
+  "../pages/services/ServicesCatalogPageProd.tsx",
+  "../pages/orders/OrdersPageProd.tsx",
 ].map((file) => path.join(__dirname, file));
 
 describe("i18n key pages", () => {

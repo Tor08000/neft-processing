@@ -1,19 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { Package } from "../components/icons";
-import { ApiError } from "../api/http";
-import { fetchOrders, type OrderFilters } from "../api/orders";
-import { useAuth } from "../auth/AuthContext";
-import { EmptyState } from "../components/EmptyState";
-import { ForbiddenState, LoadingState } from "../components/states";
-import { StatusBadge } from "../components/StatusBadge";
-import type { MarketplaceOrder } from "../types/marketplace";
-import { formatCurrency, formatDateTime, formatNumber } from "../utils/format";
-import { canReadOrders } from "../utils/roles";
 import { useTranslation } from "react-i18next";
-import { PartnerErrorState } from "../components/PartnerErrorState";
-import { demoOrders } from "../demo/partnerDemoData";
-import { isDemoPartner } from "@shared/demo/demo";
+import { Package } from "../../components/icons";
+import { fetchOrders, type OrderFilters } from "../../api/orders";
+import { useAuth } from "../../auth/AuthContext";
+import { EmptyState } from "../../components/EmptyState";
+import { ForbiddenState, LoadingState } from "../../components/states";
+import { StatusBadge } from "../../components/StatusBadge";
+import { PartnerErrorState } from "../../components/PartnerErrorState";
+import type { MarketplaceOrder } from "../../types/marketplace";
+import { formatCurrency, formatDateTime, formatNumber } from "../../utils/format";
+import { canReadOrders } from "../../utils/roles";
 
 const STORAGE_KEY = "partner-orders-filters";
 const PAGE_SIZE = 20;
@@ -58,19 +55,17 @@ const getPresetRange = (preset: PeriodPreset) => {
 
 const shortId = (value: string) => (value.length > 10 ? `${value.slice(0, 6)}…${value.slice(-4)}` : value);
 
-export function OrdersPage() {
+export function OrdersPageProd() {
   const { user } = useAuth();
   const { t } = useTranslation();
   const [orders, setOrders] = useState<MarketplaceOrder[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<unknown>(null);
-  const [isDemoFallback, setIsDemoFallback] = useState(false);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [filters, setFilters] = useState<OrderFilters>({});
   const [periodPreset, setPeriodPreset] = useState<PeriodPreset>("7d");
   const canRead = canReadOrders(user?.roles);
-  const isDemoPartnerAccount = isDemoPartner(user?.email ?? null);
   const getSlaDeadline = (order: MarketplaceOrder) => {
     if (order.status === "CREATED") {
       return order.slaResponseDueAt ?? null;
@@ -140,14 +135,6 @@ export function OrdersPage() {
       setIsLoading(false);
       return;
     }
-    if (isDemoPartnerAccount) {
-      setOrders(demoOrders);
-      setTotal(demoOrders.length);
-      setIsDemoFallback(true);
-      setError(null);
-      setIsLoading(false);
-      return;
-    }
     let active = true;
     const offset = String((page - 1) * PAGE_SIZE);
     const limit = String(PAGE_SIZE);
@@ -158,17 +145,9 @@ export function OrdersPage() {
         if (!active) return;
         setOrders(data.items ?? []);
         setTotal(data.total ?? 0);
-        setIsDemoFallback(false);
       })
       .catch((err) => {
         if (!active) return;
-        if (err instanceof ApiError && isDemoPartnerAccount && (err.status === 403 || err.status === 404)) {
-          setOrders(demoOrders);
-          setTotal(demoOrders.length);
-          setIsDemoFallback(true);
-          setError(null);
-          return;
-        }
         console.error(err);
         setError(err);
       })
@@ -181,7 +160,7 @@ export function OrdersPage() {
     return () => {
       active = false;
     };
-  }, [user, filters, page, canRead, isDemoPartnerAccount]);
+  }, [user, filters, page, canRead]);
 
   useEffect(() => {
     if (!user) return;
@@ -342,11 +321,6 @@ export function OrdersPage() {
                 <div className="stat__value">{formatNumber(total)}</div>
               </div>
             </div>
-            {isDemoFallback ? (
-              <div className="notice">
-                <div>В демо-режиме показываются примерные заказы и показатели.</div>
-              </div>
-            ) : null}
           </div>
         </div>
 
