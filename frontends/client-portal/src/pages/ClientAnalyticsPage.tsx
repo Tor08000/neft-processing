@@ -7,17 +7,22 @@ import { AnalyticsChartPanel } from "../components/analytics/AnalyticsChartPanel
 import { AnalyticsKpiCard } from "../components/analytics/AnalyticsKpiCard";
 import { FilterBar, type DateFilters } from "../components/analytics/FilterBar";
 import { MoneyValue } from "../components/common/MoneyValue";
-import { AppEmptyState, AppErrorState, AppForbiddenState, AppLoadingState } from "../components/states";
+import { ClientErrorState } from "../components/ClientErrorState";
+import { DemoEmptyState } from "../components/DemoEmptyState";
+import { AppEmptyState, AppForbiddenState, AppLoadingState } from "../components/states";
 import { StatusPage } from "../components/StatusPage";
+import { demoClientAnalyticsSummary } from "../demo/demoData";
 import type { ClientAnalyticsSummaryResponse } from "../types/clientAnalytics";
 import { buildDateRange } from "../utils/dateRange";
 import { formatDate, formatLiters } from "../utils/format";
 import { hasAnyRole } from "../utils/roles";
+import { isDemoClient } from "@shared/demo/demo";
 
 interface AnalyticsErrorState {
   message: string;
   status?: number;
   correlationId?: string | null;
+  details?: string;
 }
 
 const presets = [
@@ -41,6 +46,7 @@ export function ClientAnalyticsPage() {
   const [data, setData] = useState<ClientAnalyticsSummaryResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<AnalyticsErrorState | null>(null);
+  const [useDemoData, setUseDemoData] = useState(false);
 
   const canAccess = hasAnyRole(user, [
     "CLIENT_OWNER",
@@ -48,6 +54,7 @@ export function ClientAnalyticsPage() {
     "CLIENT_ACCOUNTANT",
     "CLIENT_FLEET_MANAGER",
   ]);
+  const isDemoClientAccount = isDemoClient(user?.email ?? null);
 
   useEffect(() => {
     if (filters.preset !== "custom") {
@@ -61,21 +68,36 @@ export function ClientAnalyticsPage() {
     const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
     setIsLoading(true);
     setError(null);
+    setUseDemoData(false);
     fetchClientAnalyticsSummary(user, { from: filters.from, to: filters.to, scope, timezone })
       .then((resp) => setData(resp))
       .catch((err: unknown) => {
+        console.error("Не удалось загрузить аналитику", err);
+        if (isDemoClientAccount) {
+          setData(demoClientAnalyticsSummary);
+          setUseDemoData(true);
+          return;
+        }
         if (err instanceof UnauthorizedError) {
-          setError({ message: err.message, status: 401 });
+          setError({ message: err.message, status: 401, details: err.message });
           return;
         }
         if (err instanceof ApiError) {
-          setError({ message: err.message, status: err.status, correlationId: err.correlationId });
+          setError({
+            message: "Не удалось загрузить аналитику.",
+            status: err.status,
+            correlationId: err.correlationId,
+            details: err.message,
+          });
           return;
         }
-        setError({ message: err instanceof Error ? err.message : "Не удалось загрузить аналитику." });
+        setError({
+          message: "Не удалось загрузить аналитику.",
+          details: err instanceof Error ? err.message : String(err),
+        });
       })
       .finally(() => setIsLoading(false));
-  }, [user, filters.from, filters.to, scope]);
+  }, [user, filters.from, filters.to, scope, isDemoClientAccount]);
 
   const scopeOptions = useMemo(() => {
     const items = [{ value: "all", label: "All cards" }];
@@ -127,7 +149,16 @@ export function ClientAnalyticsPage() {
   }
 
   if (error?.status && error.status >= 500) {
-    return <StatusPage title="Сервис недоступен" description="Попробуйте обновить страницу позже." />;
+    return (
+      <ClientErrorState
+        title="Сервис временно недоступен"
+        description="Попробуйте повторить запрос чуть позже."
+        details={error.details}
+        onRetry={() => setFilters((prev) => ({ ...prev }))}
+        secondaryActionTo="/dashboard"
+        secondaryActionLabel="Обзор"
+      />
+    );
   }
 
   return (
@@ -136,7 +167,11 @@ export function ClientAnalyticsPage() {
         <div className="card__header">
           <div>
             <h2>Analytics</h2>
-            <p className="muted">Операционные инсайты по расходам, картам и поддержке.</p>
+            <p className="muted">
+              {useDemoData
+                ? "Демо-режим: данные сформированы на основе типового сценария."
+                : "Операционные инсайты по расходам, картам и поддержке."}
+            </p>
           </div>
         </div>
         <FilterBar filters={filters} onChange={setFilters} presets={presets} />
@@ -155,7 +190,26 @@ export function ClientAnalyticsPage() {
       </section>
 
       {isLoading ? <AppLoadingState label="Loading analytics" /> : null}
-      {error ? <AppErrorState message={error.message} status={error.status} correlationId={error.correlationId} /> : null}
+      {error ? (
+        error.status === 404 && isDemoClientAccount ? (
+          <DemoEmptyState
+            title="Раздел в демо недоступен"
+            description="В рабочем контуре здесь будет CFO-дашборд по расходам и показателям."
+            action={
+              <Link className="ghost neft-btn-secondary" to="/dashboard">
+                Перейти в обзор
+              </Link>
+            }
+          />
+        ) : (
+          <ClientErrorState
+            title="Аналитика недоступна"
+            description="Не удалось получить данные. Попробуйте обновить страницу."
+            details={error.details}
+            onRetry={() => setFilters((prev) => ({ ...prev }))}
+          />
+        )
+      ) : null}
       {!isLoading && !error && !hasData ? (
         <AppEmptyState title="Нет данных" description="Нет данных за выбранный период." />
       ) : null}

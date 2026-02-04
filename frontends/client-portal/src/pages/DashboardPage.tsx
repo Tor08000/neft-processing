@@ -94,7 +94,7 @@ export function DashboardPage() {
   }
 
   if (blockedState) {
-    return <AccessStateView state={blockedState} title="Дашборд" error={portalError} />;
+    return <AccessStateView state={blockedState} title="Дашборд" error={portalError} isDemo={isDemoClientAccount} />;
   }
 
   if (error) {

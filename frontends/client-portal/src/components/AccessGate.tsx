@@ -3,6 +3,7 @@ import { Link, Navigate } from "react-router-dom";
 import { useClient, type PortalError, type PortalState } from "../auth/ClientContext";
 import { useAuth } from "../auth/AuthContext";
 import { AccessState, resolveAccessState } from "../access/accessState";
+import { DemoEmptyState } from "./DemoEmptyState";
 import { AppErrorState, AppForbiddenState, AppLoadingState } from "./states";
 import { StatusPage } from "./StatusPage";
 import { ModuleUnavailablePage } from "../pages/ModuleUnavailablePage";
@@ -151,6 +152,7 @@ const AccessStateView = ({
   correlationId,
   error,
   homePath,
+  isDemo = false,
 }: {
   state: AccessState;
   title?: string;
@@ -159,6 +161,7 @@ const AccessStateView = ({
   correlationId?: string | null;
   error?: PortalError | null;
   homePath?: string;
+  isDemo?: boolean;
 }) => {
   const { user } = useAuth();
   const fallbackHome = homePath ?? (user ? "/" : "/login");
@@ -243,8 +246,34 @@ const AccessStateView = ({
     case AccessState.FORBIDDEN_ROLE:
       return <AppForbiddenState message="Недостаточно прав для просмотра раздела." />;
     case AccessState.MODULE_DISABLED:
+      if (isDemo) {
+        return (
+          <DemoEmptyState
+            title="Раздел в демо недоступен"
+            description={`В рабочем контуре здесь будут доступны возможности "${title}".`}
+            action={
+              <Link className="ghost neft-btn-secondary" to="/dashboard">
+                Перейти в обзор
+              </Link>
+            }
+          />
+        );
+      }
       return <ModuleUnavailablePage title={title} />;
     case AccessState.MISSING_CAPABILITY:
+      if (isDemo) {
+        return (
+          <DemoEmptyState
+            title="Раздел в демо недоступен"
+            description={`В рабочем контуре здесь будут доступны возможности "${title}".`}
+            action={
+              <Link className="ghost neft-btn-secondary" to="/dashboard">
+                Перейти в обзор
+              </Link>
+            }
+          />
+        );
+      }
       return (
         <StatusPage
           title="Недоступно по подписке"
@@ -360,7 +389,7 @@ export const AccessGate = ({
     if (decision.state === AccessState.OVERDUE) {
       return <BillingOverdueState billing={client?.billing} />;
     }
-    return <AccessStateView state={decision.state} title={title} reason={decision.reason} />;
+    return <AccessStateView state={decision.state} title={title} reason={decision.reason} isDemo={isDemoClientAccount} />;
   }
 
   return <>{children}</>;
