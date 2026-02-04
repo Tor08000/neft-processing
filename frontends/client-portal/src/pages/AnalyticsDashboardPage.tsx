@@ -173,6 +173,9 @@ export function AnalyticsDashboardPage() {
           <AnalyticsChartPanel
             title={t("analytics.dashboard.charts.spend.title")}
             subtitle={t("analytics.dashboard.charts.spend.subtitle")}
+            isEmpty={!dailyMetrics.spend.series.length}
+            emptyTitle={t("analytics.empty.title")}
+            emptyDescription={t("analytics.dashboard.charts.spend.empty")}
             action={
               <Link className="ghost" to="/analytics/spend">
                 {t("analytics.dashboard.charts.spend.action")}
@@ -196,14 +199,15 @@ export function AnalyticsDashboardPage() {
                   </div>
                 ))}
               </div>
-            ) : (
-              <div className="muted">{t("analytics.dashboard.charts.spend.empty")}</div>
-            )}
+            ) : null}
           </AnalyticsChartPanel>
 
           <AnalyticsChartPanel
             title={t("analytics.dashboard.charts.orders.title")}
             subtitle={t("analytics.dashboard.charts.orders.subtitle")}
+            isEmpty={!dailyMetrics.orders.series.length}
+            emptyTitle={t("analytics.empty.title")}
+            emptyDescription={t("analytics.dashboard.charts.orders.empty")}
             action={
               <Link className="ghost" to="/analytics/marketplace">
                 {t("analytics.dashboard.charts.orders.action")}
@@ -225,9 +229,7 @@ export function AnalyticsDashboardPage() {
                   </div>
                 ))}
               </div>
-            ) : (
-              <div className="muted">{t("analytics.dashboard.charts.orders.empty")}</div>
-            )}
+            ) : null}
           </AnalyticsChartPanel>
         </section>
       ) : null}
@@ -237,6 +239,9 @@ export function AnalyticsDashboardPage() {
           <AnalyticsChartPanel
             title={t("analytics.dashboard.charts.declines.title")}
             subtitle={t("analytics.dashboard.charts.declines.subtitle")}
+            isEmpty={!declines?.top_reasons?.length}
+            emptyTitle={t("analytics.empty.title")}
+            emptyDescription={t("analytics.dashboard.charts.declines.empty")}
             action={
               <Link className="ghost" to="/analytics/declines">
                 {t("analytics.dashboard.charts.declines.action")}
@@ -258,14 +263,15 @@ export function AnalyticsDashboardPage() {
                   </li>
                 ))}
               </ul>
-            ) : (
-              <div className="muted">{t("analytics.dashboard.charts.declines.empty")}</div>
-            )}
+            ) : null}
           </AnalyticsChartPanel>
 
           <AnalyticsChartPanel
             title={t("analytics.dashboard.charts.documents.title")}
             subtitle={t("analytics.dashboard.charts.documents.subtitle")}
+            isEmpty={!documentsSummary || docsMax === 0}
+            emptyTitle={t("analytics.empty.title")}
+            emptyDescription={t("analytics.dashboard.charts.documents.empty")}
             action={
               <Link className="ghost" to="/analytics/documents">
                 {t("analytics.dashboard.charts.documents.action")}
@@ -292,15 +298,19 @@ export function AnalyticsDashboardPage() {
                   </li>
                 ))}
               </ul>
-            ) : (
-              <div className="muted">{t("analytics.dashboard.charts.documents.empty")}</div>
-            )}
+            ) : null}
           </AnalyticsChartPanel>
         </section>
       ) : null}
 
       {!isLoading && !error && dailyMetrics ? (
-        <AnalyticsChartPanel title={t("analytics.attention.title")} subtitle={t("analytics.attention.subtitle")}> 
+        <AnalyticsChartPanel
+          title={t("analytics.attention.title")}
+          subtitle={t("analytics.attention.subtitle")}
+          isEmpty={!dailyMetrics.attention?.length}
+          emptyTitle={t("analytics.empty.title")}
+          emptyDescription={t("analytics.attention.empty")}
+        >
           <AttentionList items={dailyMetrics.attention ?? []} />
         </AnalyticsChartPanel>
       ) : null}
@@ -309,6 +319,9 @@ export function AnalyticsDashboardPage() {
         <AnalyticsChartPanel
           title={t("analytics.dashboard.exports.title")}
           subtitle={t("analytics.dashboard.exports.subtitle")}
+          isEmpty={!exportsSummary}
+          emptyTitle={t("analytics.empty.title")}
+          emptyDescription={t("analytics.empty.description")}
           action={
             <Link className="ghost" to="/analytics/exports">
               {t("analytics.dashboard.exports.action")}

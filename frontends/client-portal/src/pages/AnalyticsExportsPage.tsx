@@ -90,7 +90,12 @@ export function AnalyticsExportsPage() {
       ) : null}
 
       {!isLoading && !error && summary ? (
-        <AnalyticsChartPanel title={t("analytics.exports.recent")}> 
+        <AnalyticsChartPanel
+          title={t("analytics.exports.recent")}
+          isEmpty={!summary.items.length}
+          emptyTitle={t("analytics.empty.title")}
+          emptyDescription={t("analytics.exports.empty")}
+        >
           {summary.items.length ? (
             <table className="data-table">
               <thead>
@@ -130,9 +135,7 @@ export function AnalyticsExportsPage() {
                 ))}
               </tbody>
             </table>
-          ) : (
-            <div className="muted">{t("analytics.exports.empty")}</div>
-          )}
+          ) : null}
         </AnalyticsChartPanel>
       ) : null}
     </div>

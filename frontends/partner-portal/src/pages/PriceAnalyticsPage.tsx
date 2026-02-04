@@ -3,6 +3,7 @@ import { Link, NavLink } from "react-router-dom";
 import { EmptyState } from "../components/EmptyState";
 import { ErrorState, ForbiddenState, LoadingState } from "../components/states";
 import { PriceAnalyticsCharts } from "../components/PriceAnalyticsCharts";
+import { ChartFrame } from "@shared/ui/charts/ChartFrame";
 import { useAuth } from "../auth/AuthContext";
 import { useI18n } from "../i18n";
 import {
@@ -275,15 +276,14 @@ export function PriceAnalyticsPage() {
             )}
           </section>
 
-          <section className="card">
-            <div className="section-title">
-              <div>
-                <h3>{t("priceAnalyticsPage.blocks.timeline.title")}</h3>
-                <p className="muted">{t("priceAnalyticsPage.blocks.timeline.subtitle")}</p>
-              </div>
-            </div>
+          <ChartFrame
+            title={t("priceAnalyticsPage.blocks.timeline.title")}
+            subtitle={t("priceAnalyticsPage.blocks.timeline.subtitle")}
+            isEmpty={!series.length}
+            emptyDescription={t("priceAnalyticsPage.blocks.timeline.empty")}
+          >
             <PriceAnalyticsCharts series={series} />
-          </section>
+          </ChartFrame>
 
           <section className="card">
             <div className="section-title">

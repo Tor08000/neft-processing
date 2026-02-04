@@ -1,6 +1,5 @@
 import { Link } from "react-router-dom";
 import type { AnalyticsAttentionItem } from "../../types/analytics";
-import { useI18n } from "../../i18n";
 
 interface AttentionListProps {
   items: AnalyticsAttentionItem[];
@@ -9,9 +8,8 @@ interface AttentionListProps {
 const isExternalLink = (href: string) => href.startsWith("http://") || href.startsWith("https://");
 
 export function AttentionList({ items }: AttentionListProps) {
-  const { t } = useI18n();
   if (!items.length) {
-    return <div className="muted">{t("analytics.attention.empty")}</div>;
+    return null;
   }
 
   return (

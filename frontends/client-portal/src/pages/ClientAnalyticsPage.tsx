@@ -174,7 +174,12 @@ export function ClientAnalyticsPage() {
       ) : null}
 
       {!isLoading && !error && hasData && data ? (
-        <AnalyticsChartPanel title="Spend per day" subtitle="Сумма по дням">
+        <AnalyticsChartPanel
+          title="Spend per day"
+          subtitle="Сумма по дням"
+          isEmpty={!data.timeseries.length}
+          emptyDescription="Нет данных за выбранный период."
+        >
           {data.timeseries.length ? (
             <div className="chart">
               {data.timeseries.map((point) => (
@@ -199,15 +204,18 @@ export function ClientAnalyticsPage() {
                 </Link>
               ))}
             </div>
-          ) : (
-            <div className="muted">Нет данных за выбранный период.</div>
-          )}
+          ) : null}
         </AnalyticsChartPanel>
       ) : null}
 
       {!isLoading && !error && hasData && data ? (
         <section className="grid analytics-top-grid">
-          <AnalyticsChartPanel title="Top cards" subtitle="По сумме расходов">
+          <AnalyticsChartPanel
+            title="Top cards"
+            subtitle="По сумме расходов"
+            isEmpty={!data.tops.cards.length}
+            emptyDescription="Нет данных по картам."
+          >
             {data.tops.cards.length ? (
               <div className="chart">
                 {data.tops.cards.map((card) => (
@@ -233,12 +241,15 @@ export function ClientAnalyticsPage() {
                   </div>
                 ))}
               </div>
-            ) : (
-              <div className="muted">Нет данных по картам.</div>
-            )}
+            ) : null}
           </AnalyticsChartPanel>
 
-          <AnalyticsChartPanel title="Top drivers" subtitle="По сумме расходов">
+          <AnalyticsChartPanel
+            title="Top drivers"
+            subtitle="По сумме расходов"
+            isEmpty={!data.tops.drivers.length}
+            emptyDescription="Нет данных по водителям."
+          >
             {data.tops.drivers.length ? (
               <div className="chart">
                 {data.tops.drivers.map((driver) => (
@@ -262,12 +273,15 @@ export function ClientAnalyticsPage() {
                   </div>
                 ))}
               </div>
-            ) : (
-              <div className="muted">Нет данных по водителям.</div>
-            )}
+            ) : null}
           </AnalyticsChartPanel>
 
-          <AnalyticsChartPanel title="Top stations" subtitle="По сумме расходов">
+          <AnalyticsChartPanel
+            title="Top stations"
+            subtitle="По сумме расходов"
+            isEmpty={!data.tops.stations.length}
+            emptyDescription="Нет данных по станциям."
+          >
             {data.tops.stations.length ? (
               <div className="chart">
                 {data.tops.stations.map((station) => (
@@ -288,9 +302,7 @@ export function ClientAnalyticsPage() {
                   </div>
                 ))}
               </div>
-            ) : (
-              <div className="muted">Нет данных по станциям.</div>
-            )}
+            ) : null}
           </AnalyticsChartPanel>
         </section>
       ) : null}
@@ -299,6 +311,7 @@ export function ClientAnalyticsPage() {
         <AnalyticsChartPanel
           title="Support health"
           subtitle="SLA и время реакции"
+          isEmpty={false}
           action={
             <Link className="ghost" to={`/client/analytics/support?t=open&from=${filters.from}&to=${filters.to}`}>
               Открытые тикеты

@@ -1,23 +1,41 @@
 import type { ReactNode } from "react";
+import { ChartFrame } from "@shared/ui/charts/ChartFrame";
 
 interface AnalyticsChartPanelProps {
   title: string;
   subtitle?: string;
   action?: ReactNode;
+  height?: number;
+  isEmpty?: boolean;
+  emptyTitle?: string;
+  emptyDescription?: string;
+  onRefresh?: () => void;
   children: ReactNode;
 }
 
-export function AnalyticsChartPanel({ title, subtitle, action, children }: AnalyticsChartPanelProps) {
+export function AnalyticsChartPanel({
+  title,
+  subtitle,
+  action,
+  height,
+  isEmpty = false,
+  emptyTitle,
+  emptyDescription,
+  onRefresh,
+  children,
+}: AnalyticsChartPanelProps) {
   return (
-    <section className="card analytics-panel">
-      <div className="card__header">
-        <div>
-          <h3>{title}</h3>
-          {subtitle ? <p className="muted">{subtitle}</p> : null}
-        </div>
-        {action ? <div className="analytics-panel__action">{action}</div> : null}
-      </div>
-      {children}
-    </section>
+    <ChartFrame
+      title={title}
+      subtitle={subtitle}
+      action={action ? <div className="analytics-panel__action">{action}</div> : null}
+      height={height}
+      isEmpty={isEmpty}
+      emptyTitle={emptyTitle}
+      emptyDescription={emptyDescription}
+      onRefresh={onRefresh}
+    >
+      <div className="analytics-panel">{children}</div>
+    </ChartFrame>
   );
 }
