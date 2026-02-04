@@ -202,7 +202,7 @@ export function Layout({ pwaMode = isPwaMode }: LayoutProps) {
                 <strong>{user?.email}</strong>
                 <div className="roles">{user?.roles.join(", ")}</div>
               </div>
-              <button type="button" className="neftc-btn-primary" onClick={() => setTheme(toggleTheme(theme))}>
+              <button type="button" className="neftc-btn-primary" onClick={() => setTheme(toggleTheme())}>
                 Theme: {theme}
               </button>
               <button className="ghost neft-btn-secondary" onClick={logout} type="button">

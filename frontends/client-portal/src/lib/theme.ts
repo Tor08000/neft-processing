@@ -1,21 +1,23 @@
-export type NeftTheme = "light" | "dark";
+export type ClientTheme = "light" | "dark";
 
 const STORAGE_KEY = "neft.client.theme";
 
-export function getInitialTheme(): NeftTheme {
-  const saved = localStorage.getItem(STORAGE_KEY) as NeftTheme | null;
+export function getInitialTheme(): ClientTheme {
+  const saved = localStorage.getItem(STORAGE_KEY);
   if (saved === "light" || saved === "dark") return saved;
 
-  return "dark";
+  const prefersDark = window.matchMedia?.("(prefers-color-scheme: dark)")?.matches;
+  return prefersDark ? "dark" : "light";
 }
 
-export function applyTheme(theme: NeftTheme) {
-  document.documentElement.setAttribute("data-theme", theme);
+export function applyTheme(theme: ClientTheme) {
+  document.documentElement.dataset.theme = theme;
   localStorage.setItem(STORAGE_KEY, theme);
 }
 
-export function toggleTheme(current: NeftTheme): NeftTheme {
-  const next: NeftTheme = current === "dark" ? "light" : "dark";
+export function toggleTheme(): ClientTheme {
+  const current = (document.documentElement.dataset.theme as ClientTheme) || "light";
+  const next: ClientTheme = current === "dark" ? "light" : "dark";
   applyTheme(next);
   return next;
 }
