@@ -182,7 +182,7 @@ export function Layout({ pwaMode = isPwaMode }: LayoutProps) {
   }
 
   return (
-    <div className="brand-shell neft-page neft-app">
+    <div className="brand-shell neftc-app">
       <BrandSidebar items={sidebarItems} title="Client" />
       <main className="brand-main">
         <BrandHeader
@@ -202,7 +202,7 @@ export function Layout({ pwaMode = isPwaMode }: LayoutProps) {
                 <strong>{user?.email}</strong>
                 <div className="roles">{user?.roles.join(", ")}</div>
               </div>
-              <button type="button" className="neft-btn neft-btn-outline" onClick={() => setTheme(toggleTheme(theme))}>
+              <button type="button" className="neftc-btn-primary" onClick={() => setTheme(toggleTheme(theme))}>
                 Theme: {theme}
               </button>
               <button className="ghost neft-btn-secondary" onClick={logout} type="button">

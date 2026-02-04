@@ -1,0 +1,592 @@
+html, body {
+  background: var(--neftc-bg);
+  color: var(--neftc-text);
+  font-family: var(--neftc-font-sans);
+}
+
+.neft-page {
+  background: var(--neftc-bg);
+  min-height: 100vh;
+}
+
+/* Typography utilities */
+.neft-h1 {
+  font-size: 26px;
+  line-height: 1.2;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--neftc-text);
+}
+
+@media (max-width: 960px) {
+  .neft-h1 {
+    font-size: 24px;
+  }
+}
+
+.neft-h1-subtitle {
+  margin-top: 6px;
+  font-size: 13px;
+  line-height: 1.4;
+  font-weight: 500;
+  color: var(--neftc-text-muted);
+}
+
+/* KPI card text hierarchy */
+.neft-kpi-label {
+  font-size: 12.5px;
+  line-height: 1.3;
+  font-weight: 500;
+  color: var(--neftc-text-muted);
+}
+
+.neft-kpi-value {
+  margin-top: 6px;
+  font-size: 26px;
+  line-height: 1.15;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--neftc-text);
+}
+
+.neft-kpi-meta {
+  margin-top: 6px;
+  font-size: 12.5px;
+  line-height: 1.35;
+  font-weight: 500;
+  color: var(--neftc-text-secondary);
+}
+
+.neft-input,
+.neft-select {
+  background: var(--neftc-surface);
+  color: var(--neftc-text);
+  border: 1px solid var(--neftc-border);
+  padding: 10px 12px;
+  outline: none;
+  border-radius: var(--neftc-radius-md);
+  min-height: 44px;
+}
+
+.neft-input:focus,
+.neft-select:focus {
+  border-color: var(--neftc-primary);
+  box-shadow: 0 0 0 4px var(--neftc-focus);
+}
+
+.neft-input::placeholder,
+.neft-select::placeholder {
+  color: var(--neftc-text-muted);
+}
+
+.neft-btn-primary {
+  background: var(--neftc-primary);
+  color: #0B1F2A;
+  border: 1px solid transparent;
+  padding: 10px 14px;
+  font-weight: 600;
+  cursor: pointer;
+  border-radius: 10px;
+}
+
+.neft-btn-outline,
+.neft-btn-secondary {
+  background: transparent;
+  color: var(--neftc-text);
+  border: 1px solid var(--neftc-border);
+  padding: 10px 14px;
+  cursor: pointer;
+  border-radius: 10px;
+}
+
+.neft-btn-outline:hover,
+.neft-btn-secondary:hover {
+  border-color: var(--neftc-primary);
+}
+
+.neft-focus-ring:focus-visible {
+  box-shadow: 0 0 0 4px var(--neftc-focus);
+}
+
+.neft-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 10px 16px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  background: var(--neftc-primary);
+  color: #0B1F2A;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.1s ease, opacity 0.2s ease, background 0.2s ease;
+}
+
+.neft-button:hover:not(:disabled) {
+  opacity: 0.92;
+}
+
+.neft-button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.neft-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.neft-brand-wrapper {
+  display: inline-flex;
+  align-items: center;
+}
+
+.neft-brand-mark {
+  height: var(--neftc-brand-mark-size, 32px);
+  width: auto;
+  display: inline-block;
+  color: var(--neftc-text);
+}
+
+[data-theme="dark"] .neft-brand-mark {
+  color: var(--neftc-text);
+}
+
+.neft-brand-fallback {
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: var(--neftc-text);
+}
+
+/* Chart frame */
+.neft-chart-frame {
+  background: var(--neftc-card);
+  border: 1px solid var(--neftc-border);
+  border-radius: var(--neftc-radius-md);
+  box-shadow: var(--neftc-shadow-1);
+  padding: 16px;
+}
+
+.neft-chart-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.neft-chart-title {
+  font-size: 16px;
+  line-height: 1.25;
+  font-weight: 600;
+  color: var(--neftc-text);
+}
+
+.neft-chart-subtitle {
+  font-size: 12.5px;
+  line-height: 1.35;
+  font-weight: 500;
+  color: var(--neftc-text-muted);
+  margin-top: 4px;
+}
+
+/* Tooltip */
+.neft-chart-tooltip {
+  background: var(--neftc-chart-tooltip-bg);
+  border: 1px solid var(--neftc-chart-tooltip-border);
+  border-radius: 12px;
+  box-shadow: var(--neftc-shadow-2);
+  padding: 10px 12px;
+  min-width: 180px;
+}
+
+.neft-chart-tooltip-title {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--neftc-text);
+  margin-bottom: 6px;
+}
+
+.neft-chart-tooltip-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 12.5px;
+  line-height: 1.35;
+}
+
+.neft-chart-tooltip-label {
+  color: var(--neftc-text-muted);
+  font-weight: 500;
+}
+
+.neft-chart-tooltip-value {
+  color: var(--neftc-text);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Empty chart */
+.neft-chart-empty {
+  padding: 12px 0;
+}
+
+.muted {
+  color: var(--neftc-text-muted);
+}
+
+.small {
+  font-size: 0.85rem;
+}
+
+.roles {
+  font-size: 0.85rem;
+  color: var(--neftc-text-secondary);
+}
+
+.ghost {
+  padding: 0.5rem 0.75rem;
+  border-radius: 10px;
+  border: 1px solid var(--neftc-border);
+  background: var(--neftc-surface);
+  color: var(--neftc-text);
+  cursor: pointer;
+}
+
+.brand-shell {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  min-height: 100vh;
+}
+
+.brand-sidebar {
+  background: var(--neftc-surface);
+  color: var(--neftc-text);
+  padding: 20px 16px;
+  border-right: 1px solid var(--neftc-border);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.brand-sidebar__title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 800;
+  font-size: 18px;
+}
+
+.brand-sidebar__logo {
+  width: 28px;
+  height: 28px;
+}
+
+.brand-sidebar__nav {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.brand-sidebar__footer {
+  margin-top: auto;
+  display: grid;
+  gap: 8px;
+}
+
+.brand-nav-link {
+  padding: 10px 12px;
+  border-radius: 10px;
+  text-decoration: none;
+  color: var(--neftc-text-secondary);
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  position: relative;
+}
+
+.brand-nav-link__label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.brand-nav-link__hint {
+  margin-left: auto;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--neftc-text-muted);
+}
+
+.brand-nav-link__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.brand-nav-link:hover {
+  color: var(--neftc-text);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.brand-nav-link.is-disabled {
+  color: var(--neftc-text-muted);
+  background: var(--neftc-surface);
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.brand-nav-link.is-active {
+  color: var(--neftc-text);
+  background: rgba(21, 161, 199, 0.1);
+}
+
+.brand-nav-link.is-active::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 6px;
+  bottom: 6px;
+  width: 4px;
+  border-radius: 4px;
+  background: var(--neftc-primary);
+}
+
+.brand-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: var(--neftc-header-height);
+  padding: 0 24px;
+  background: var(--neftc-surface);
+  border-bottom: 1px solid var(--neftc-border);
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+
+.brand-header__meta {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.brand-logo {
+  width: 32px;
+  height: 32px;
+}
+
+.brand-header__titles {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.brand-header__title {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.brand-header__subtitle {
+  font-size: 12px;
+  color: var(--neftc-text-muted);
+}
+
+.brand-header__tag {
+  color: var(--neftc-text-muted);
+  font-size: 12px;
+}
+
+.brand-header__user {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+}
+
+.brand-main {
+  display: grid;
+  grid-template-rows: var(--neftc-header-height) 1fr;
+}
+
+.brand-content {
+  padding: 24px;
+  padding-top: var(--neftc-header-height);
+}
+
+.brand-page-shell {
+  animation: brand-fade-in 240ms ease;
+}
+
+@keyframes brand-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.modal-backdrop {
+  animation: brand-fade-in 200ms ease;
+}
+
+.modal,
+.modal-card {
+  animation: brand-slide-up 240ms ease;
+}
+
+@keyframes brand-slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.neft-skeleton {
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--neftc-border) 45%, transparent) 25%,
+    color-mix(in srgb, var(--neftc-border) 65%, transparent) 37%,
+    color-mix(in srgb, var(--neftc-border) 45%, transparent) 63%
+  );
+  background-size: 400% 100%;
+  animation: skeleton-shimmer 1.2s ease infinite;
+  border-radius: 12px;
+  min-height: 12px;
+}
+
+@keyframes skeleton-shimmer {
+  0% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: 0 0;
+  }
+}
+
+.empty-state {
+  display: grid;
+  gap: 12px;
+  text-align: center;
+  align-items: center;
+  justify-items: center;
+  padding: 24px;
+  background: var(--neftc-card);
+  border: 1px solid var(--neftc-border);
+  border-radius: var(--neftc-radius-md);
+  box-shadow: var(--neftc-shadow-1);
+}
+
+.empty-state__title {
+  margin: 0;
+}
+
+.empty-state__description {
+  margin: 0;
+  color: var(--neftc-text-secondary);
+}
+
+.empty-state__hint {
+  margin: 0;
+  color: var(--neftc-text-muted);
+}
+
+.empty-state__actions {
+  display: inline-flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.empty-state__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  color: var(--neftc-text-secondary);
+}
+
+.neft-container {
+  width: 100%;
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+.neft-container--form {
+  width: 100%;
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+textarea.neft-input {
+  background: var(--neftc-surface);
+  color: var(--neftc-text);
+  border: 1px solid var(--neftc-border);
+}
+
+textarea.neft-input:focus {
+  border-color: var(--neftc-primary);
+  box-shadow: 0 0 0 4px var(--neftc-focus);
+}
+
+.toast {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  padding: 12px 16px;
+  border-radius: 12px;
+  color: #0B1F2A;
+  font-weight: 700;
+  z-index: 50;
+  box-shadow: var(--neftc-shadow-2);
+}
+
+.toast.success {
+  background: var(--neftc-success);
+}
+
+.toast.error {
+  background: var(--neftc-error);
+}
+
+.toast.info {
+  background: var(--neftc-info);
+}
+
+.login-wrapper {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.login-card {
+  width: min(480px, 100%);
+  display: grid;
+  gap: 16px;
+  padding: 24px;
+}
+
+.login-brand {
+  display: flex;
+  justify-content: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .brand-page-shell,
+  .modal-backdrop,
+  .modal,
+  .modal-card,
+  .neft-skeleton {
+    animation: none !important;
+  }
+}

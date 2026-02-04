@@ -1,15 +1,17 @@
+@import "../../../brand/v1/neft-client/tokens.client.css";
+
 :root {
-  font-family: var(--neft-font-sans);
-  color: var(--neft-text);
-  background-color: var(--neft-bg);
-  --neft-header-height: 64px;
-  --neft-focus-ring: 0 0 0 4px var(--neft-focus);
+  font-family: var(--neftc-font-sans);
+  color: var(--neftc-text);
+  background-color: var(--neftc-bg);
+  --neftc-header-height: 64px;
+  --neftc-focus-ring: 0 0 0 4px var(--neftc-focus);
 }
 
 body {
   margin: 0;
   min-height: 100vh;
-  background: var(--neft-bg);
+  background: var(--neftc-bg);
 }
 
 @keyframes spin {
@@ -44,11 +46,11 @@ button:disabled {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: var(--neft-header-height);
+  height: var(--neftc-header-height);
   padding: 0 1.5rem;
-  background: var(--neft-surface);
-  color: var(--neft-text);
-  border-bottom: 1px solid var(--neft-border);
+  background: var(--neftc-surface);
+  color: var(--neftc-text);
+  border-bottom: 1px solid var(--neftc-border);
   position: sticky;
   top: 0;
   z-index: 20;
@@ -72,23 +74,23 @@ button:disabled {
 
 .topbar__context {
   font-size: 0.75rem;
-  color: var(--neft-text-muted);
+  color: var(--neftc-text-muted);
 }
 
 .sidebar-layout {
   display: grid;
   grid-template-columns: 240px 1fr;
-  min-height: calc(100vh - var(--neft-header-height));
+  min-height: calc(100vh - var(--neftc-header-height));
 }
 
 .sidebar {
-  background: var(--neft-surface);
-  color: var(--neft-text);
+  background: var(--neftc-surface);
+  color: var(--neftc-text);
   padding: 1rem;
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  border-right: 1px solid var(--neft-border);
+  border-right: 1px solid var(--neftc-border);
 }
 
 .sidebar a {
@@ -98,7 +100,7 @@ button:disabled {
   text-decoration: none;
   padding: 0.75rem 0.85rem;
   border-radius: 0.75rem;
-  color: var(--neft-text-muted);
+  color: var(--neftc-text-muted);
   font-weight: 600;
   position: relative;
 }
@@ -106,7 +108,7 @@ button:disabled {
 .sidebar a.active,
 .sidebar a.active {
   background: rgba(21, 161, 199, 0.1);
-  color: var(--neft-text);
+  color: var(--neftc-text);
 }
 
 .sidebar a.active::before {
@@ -117,12 +119,12 @@ button:disabled {
   bottom: 8px;
   width: 4px;
   border-radius: 4px;
-  background: var(--neft-primary);
+  background: var(--neftc-primary);
 }
 
 .sidebar a:hover {
   background: rgba(255, 255, 255, 0.04);
-  color: var(--neft-text);
+  color: var(--neftc-text);
 }
 
 .nav-section {
@@ -131,21 +133,21 @@ button:disabled {
   font-size: 0.75rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: var(--neft-text-muted);
+  color: var(--neftc-text-muted);
   font-weight: 700;
 }
 
 .main-area {
   padding: 1.5rem;
-  padding-top: var(--neft-header-height);
+  padding-top: var(--neftc-header-height);
 }
 
 .card {
-  background: var(--neft-card);
-  border: 1px solid var(--neft-border);
-  border-radius: var(--neft-radius-md);
+  background: var(--neftc-card);
+  border: 1px solid var(--neftc-border);
+  border-radius: var(--neftc-radius-md);
   padding: 1rem 1.25rem;
-  box-shadow: var(--neft-shadow-1);
+  box-shadow: var(--neftc-shadow-1);
 }
 
 .grid {
@@ -166,7 +168,7 @@ button:disabled {
 .data-table td {
   padding: 0.75rem;
   text-align: left;
-  border-bottom: 1px solid var(--neft-border);
+  border-bottom: 1px solid var(--neftc-border);
 }
 
 .badge {
@@ -174,38 +176,38 @@ button:disabled {
   align-items: center;
   justify-content: center;
   padding: 0.15rem 0.6rem;
-  border-radius: var(--neft-radius-md);
+  border-radius: var(--neftc-radius-md);
   font-size: 0.85rem;
   text-transform: uppercase;
   letter-spacing: 0.02em;
   font-weight: 700;
-  border: 1px solid var(--neft-border);
+  border: 1px solid var(--neftc-border);
   background: rgba(156, 163, 175, 0.10);
-  color: var(--neft-text-muted);
+  color: var(--neftc-text-muted);
 }
 
 .badge.success {
   background: rgba(14, 232, 168, 0.14);
-  color: var(--neft-text);
+  color: var(--neftc-text);
   border-color: rgba(14, 232, 168, 0.35);
 }
 
 .badge.warning,
 .badge.pending {
   background: rgba(255, 176, 32, 0.14);
-  color: var(--neft-text);
+  color: var(--neftc-text);
   border-color: rgba(255, 176, 32, 0.35);
 }
 
 .badge.error {
   background: rgba(229, 72, 77, 0.14);
-  color: var(--neft-text);
+  color: var(--neftc-text);
   border-color: rgba(229, 72, 77, 0.35);
 }
 
 .badge.neutral {
   background: rgba(156, 163, 175, 0.10);
-  color: var(--neft-text-muted);
+  color: var(--neftc-text-muted);
   border-color: rgba(156, 163, 175, 0.35);
 }
 
@@ -260,19 +262,19 @@ button:disabled {
 
 input, select, button, textarea {
   padding: 0.6rem 0.75rem;
-  border-radius: var(--neft-radius-md);
-  border: 1px solid var(--neft-border);
+  border-radius: var(--neftc-radius-md);
+  border: 1px solid var(--neftc-border);
   font-size: 1rem;
-  background: var(--neft-surface);
-  color: var(--neft-text);
+  background: var(--neftc-surface);
+  color: var(--neftc-text);
 }
 
 input:focus,
 select:focus,
 textarea:focus {
   outline: none;
-  border-color: var(--neft-primary);
-  box-shadow: var(--neft-focus-ring);
+  border-color: var(--neftc-primary);
+  box-shadow: var(--neftc-focus-ring);
 }
 
 textarea {
@@ -280,7 +282,7 @@ textarea {
 }
 
 button.primary {
-  background: var(--neft-primary);
+  background: var(--neftc-primary);
   color: #0B1F2A;
   border: none;
   font-weight: 700;
@@ -292,9 +294,9 @@ button:focus-visible,
 input:focus-visible,
 select:focus-visible,
 textarea:focus-visible {
-  outline: 2px solid var(--neft-primary);
+  outline: 2px solid var(--neftc-primary);
   outline-offset: 2px;
-  box-shadow: var(--neft-focus-ring);
+  box-shadow: var(--neftc-focus-ring);
 }
 
 .login-wrapper {
@@ -310,7 +312,7 @@ textarea:focus-visible {
   display: flex;
   flex-direction: column;
   box-shadow: none;
-  border-radius: var(--neft-radius-md);
+  border-radius: var(--neftc-radius-md);
 }
 
 .login-card label {
@@ -333,7 +335,7 @@ textarea:focus-visible {
   align-items: flex-start;
   gap: 0.5rem;
   font-size: 0.9rem;
-  color: var(--neft-text);
+  color: var(--neftc-text);
 }
 
 .checkbox-row input {
@@ -347,43 +349,43 @@ textarea:focus-visible {
   padding: 8px 12px;
   border-radius: 10px;
   background: transparent;
-  border: 1px solid var(--neft-border);
-  color: var(--neft-text-muted);
+  border: 1px solid var(--neftc-border);
+  color: var(--neftc-text-muted);
 }
 
 .copy-chip__label {
   font-size: 12px;
   font-weight: 700;
-  color: var(--neft-text-muted);
+  color: var(--neftc-text-muted);
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
 
 .copy-chip__value {
-  font-family: var(--neft-font-mono);
+  font-family: var(--neftc-font-mono);
   font-size: 13px;
-  color: var(--neft-text-muted);
+  color: var(--neftc-text-muted);
 }
 
 .copy-chip__button {
   border-radius: 10px;
   padding: 6px 10px;
   font-size: 12px;
-  color: var(--neft-text-muted);
-  border-color: var(--neft-border);
+  color: var(--neftc-text-muted);
+  border-color: var(--neftc-border);
 }
 
 .capslock-hint {
   font-size: 12px;
-  color: var(--neft-warning);
+  color: var(--neftc-warning);
 }
 
 .neft-spinner {
   width: 16px;
   height: 16px;
   border-radius: 50%;
-  border: 2px solid color-mix(in srgb, var(--neft-text) 20%, transparent);
-  border-top-color: color-mix(in srgb, var(--neft-text) 60%, transparent);
+  border: 2px solid color-mix(in srgb, var(--neftc-text) 20%, transparent);
+  border-top-color: color-mix(in srgb, var(--neftc-text) 60%, transparent);
   animation: spin 1s linear infinite;
 }
 
@@ -392,7 +394,7 @@ textarea:focus-visible {
 }
 
 .muted {
-  color: var(--neft-text-muted);
+  color: var(--neftc-text-muted);
 }
 
 .small {
@@ -401,7 +403,7 @@ textarea:focus-visible {
 
 .roles {
   font-size: 0.85rem;
-  color: var(--neft-text-secondary);
+  color: var(--neftc-text-secondary);
 }
 
 .onboarding-page {
@@ -425,7 +427,7 @@ textarea:focus-visible {
   display: grid;
   gap: 0.75rem;
   padding-top: 0.75rem;
-  border-top: 1px solid var(--neft-border);
+  border-top: 1px solid var(--neftc-border);
 }
 
 .onboarding-files {
@@ -434,7 +436,7 @@ textarea:focus-visible {
   margin: 0;
   display: grid;
   gap: 0.35rem;
-  color: var(--neft-text-muted);
+  color: var(--neftc-text-muted);
 }
 
 .onboarding-status {
@@ -445,14 +447,14 @@ textarea:focus-visible {
 
 .contract-summary {
   padding: 0.75rem;
-  border-radius: var(--neft-radius-md);
-  border: 1px solid var(--neft-border);
-  background: var(--neft-surface2);
-  color: var(--neft-text-muted);
+  border-radius: var(--neftc-radius-md);
+  border: 1px solid var(--neftc-border);
+  background: var(--neftc-surface2);
+  color: var(--neftc-text-muted);
 }
 
 .neft-link {
-  color: var(--neft-accent);
+  color: var(--neftc-accent);
   text-decoration: underline;
   width: fit-content;
 }
@@ -461,8 +463,8 @@ textarea:focus-visible {
   padding: 0.75rem 0.85rem;
   border-radius: 0.75rem;
   opacity: 0.6;
-  background: var(--neft-surface);
-  color: var(--neft-text-muted);
+  background: var(--neftc-surface);
+  color: var(--neftc-text-muted);
   cursor: not-allowed;
 }
 
@@ -484,11 +486,11 @@ textarea:focus-visible {
   align-items: center;
   gap: 10px;
   padding: 6px 10px;
-  border-radius: var(--neft-radius-md);
-  border: 1px solid var(--neft-border);
-  background: var(--neft-surface2);
+  border-radius: var(--neftc-radius-md);
+  border: 1px solid var(--neftc-border);
+  background: var(--neftc-surface2);
   font-size: 12px;
-  color: var(--neft-text-muted);
+  color: var(--neftc-text-muted);
 }
 
 .table-density__label {
@@ -504,17 +506,17 @@ textarea:focus-visible {
 
 .table-density__button {
   border: 1px solid transparent;
-  border-radius: var(--neft-radius-md);
+  border-radius: var(--neftc-radius-md);
   padding: 4px 10px;
   font-size: 12px;
   font-weight: 700;
   background: transparent;
-  color: var(--neft-text-muted);
+  color: var(--neftc-text-muted);
   cursor: pointer;
 }
 
 .table-density__button.is-active {
-  background: var(--neft-accent);
+  background: var(--neftc-accent);
   color: #0b0f14;
 }
 
@@ -556,12 +558,12 @@ textarea:focus-visible {
 }
 
 .pill-list li {
-  background: var(--neft-surface2);
-  color: var(--neft-text);
+  background: var(--neftc-surface2);
+  color: var(--neftc-text);
   padding: 0.4rem 0.85rem;
-  border-radius: var(--neft-radius-md);
+  border-radius: var(--neftc-radius-md);
   font-weight: 700;
-  border: 1px solid var(--neft-border);
+  border: 1px solid var(--neftc-border);
 }
 
 .bullets {
@@ -580,15 +582,15 @@ textarea:focus-visible {
 .label {
   font-size: 0.85rem;
   font-weight: 700;
-  color: var(--neft-text-muted);
+  color: var(--neftc-text-muted);
 }
 
 .ghost {
   padding: 0.5rem 0.75rem;
-  border-radius: var(--neft-radius-control);
-  border: 1px solid var(--neft-border);
-  background: var(--neft-surface);
-  color: var(--neft-text);
+  border-radius: var(--neftc-radius-control);
+  border: 1px solid var(--neftc-border);
+  background: var(--neftc-surface);
+  color: var(--neftc-text);
   cursor: pointer;
 }
 
@@ -610,7 +612,7 @@ textarea:focus-visible {
 .card__section {
   padding-top: 1.5rem;
   margin-top: 1.5rem;
-  border-top: 1px solid var(--neft-border);
+  border-top: 1px solid var(--neftc-border);
   display: grid;
   gap: 1rem;
 }
@@ -630,8 +632,8 @@ textarea:focus-visible {
 }
 
 .kpi-card {
-  background: var(--neft-surface2);
-  border: 1px solid var(--neft-border);
+  background: var(--neftc-surface2);
+  border: 1px solid var(--neftc-border);
   border-radius: 0.75rem;
   padding: 0.75rem;
   display: grid;
@@ -648,7 +650,7 @@ textarea:focus-visible {
 .kpi-card__title {
   font-size: 0.75rem;
   font-weight: 600;
-  color: var(--neft-text-muted);
+  color: var(--neftc-text-muted);
 }
 
 .kpi-card__value {
@@ -658,7 +660,7 @@ textarea:focus-visible {
 
 .kpi-card__subvalue {
   font-size: 0.75rem;
-  color: var(--neft-text-muted);
+  color: var(--neftc-text-muted);
 }
 
 .kpi-card__callout {
@@ -675,13 +677,13 @@ textarea:focus-visible {
 .kpi-card__callout.is-problem {
   background: rgba(255, 77, 77, 0.08);
   border: 1px solid rgba(255, 77, 77, 0.35);
-  color: var(--neft-danger);
+  color: var(--neftc-danger);
 }
 
 .kpi-card__callout.is-good {
   background: rgba(47, 234, 155, 0.12);
   border: 1px solid rgba(47, 234, 155, 0.35);
-  color: var(--neft-success);
+  color: var(--neftc-success);
 }
 
 .kpi-card__link,
@@ -694,7 +696,7 @@ textarea:focus-visible {
 .kpi-card__explain {
   margin-left: auto;
   padding: 0.2rem 0.45rem;
-  border-radius: var(--neft-radius-md);
+  border-radius: var(--neftc-radius-md);
   border: 1px solid currentColor;
   font-size: 0.65rem;
 }
@@ -708,28 +710,28 @@ textarea:focus-visible {
   font-size: 0.7rem;
   font-weight: 700;
   padding: 0.2rem 0.5rem;
-  border-radius: var(--neft-radius-md);
-  border: 1px solid var(--neft-border);
+  border-radius: var(--neftc-radius-md);
+  border: 1px solid var(--neftc-border);
   background: rgba(255, 255, 255, 0.04);
-  color: var(--neft-text-muted);
+  color: var(--neftc-text-muted);
 }
 
 .kpi-card__delta.is-positive {
   background: rgba(47, 234, 155, 0.12);
   border-color: rgba(47, 234, 155, 0.35);
-  color: var(--neft-success);
+  color: var(--neftc-success);
 }
 
 .kpi-card__delta.is-negative {
   background: rgba(255, 77, 77, 0.14);
   border-color: rgba(255, 77, 77, 0.35);
-  color: var(--neft-danger);
+  color: var(--neftc-danger);
 }
 
 .kpi-card__delta.is-neutral {
   background: rgba(255, 255, 255, 0.04);
-  border-color: var(--neft-border);
-  color: var(--neft-text-muted);
+  border-color: var(--neftc-border);
+  color: var(--neftc-text-muted);
 }
 
 .dashboard-grid {
@@ -745,7 +747,7 @@ textarea:focus-visible {
 .dashboard-sparkline {
   width: 100%;
   max-width: 320px;
-  color: var(--neft-primary);
+  color: var(--neftc-primary);
 }
 
 .dashboard-list {
@@ -777,8 +779,8 @@ textarea:focus-visible {
 }
 
 .dashboard-health__item {
-  background: var(--neft-surface2);
-  border: 1px solid var(--neft-border);
+  background: var(--neftc-surface2);
+  border: 1px solid var(--neftc-border);
   border-radius: 0.75rem;
   padding: 0.75rem;
   display: grid;
@@ -787,7 +789,7 @@ textarea:focus-visible {
 
 .dashboard-health__label {
   font-size: 0.75rem;
-  color: var(--neft-text-muted);
+  color: var(--neftc-text-muted);
 }
 
 .dashboard-health__value {
@@ -816,10 +818,10 @@ textarea:focus-visible {
 }
 
 .dashboard-limits__card {
-  border: 1px solid var(--neft-border);
+  border: 1px solid var(--neftc-border);
   border-radius: 0.75rem;
   padding: 0.75rem;
-  background: var(--neft-surface2);
+  background: var(--neftc-surface2);
   display: grid;
   gap: 0.5rem;
 }
@@ -834,7 +836,7 @@ textarea:focus-visible {
 .kpi-card__progress {
   position: relative;
   height: 4px;
-  border-radius: var(--neft-radius-md);
+  border-radius: var(--neftc-radius-md);
   background: rgba(182, 255, 59, 0.16);
   overflow: hidden;
 }
@@ -843,8 +845,8 @@ textarea:focus-visible {
   position: absolute;
   inset: 0;
   width: 0;
-  background: var(--neft-accent);
-  border-radius: var(--neft-radius-md);
+  background: var(--neftc-accent);
+  border-radius: var(--neftc-radius-md);
 }
 
 .kpi-card__targets {
@@ -854,7 +856,7 @@ textarea:focus-visible {
 
 .kpi-card__target {
   font-size: 0.75rem;
-  color: var(--neft-text-muted);
+  color: var(--neftc-text-muted);
 }
 
 .kpi-card__target--empty {
@@ -869,7 +871,7 @@ textarea:focus-visible {
 .export-progress__bar {
   position: relative;
   height: 4px;
-  border-radius: var(--neft-radius-md);
+  border-radius: var(--neftc-radius-md);
   background: rgba(255, 255, 255, 0.08);
   overflow: hidden;
 }
@@ -878,8 +880,8 @@ textarea:focus-visible {
   position: absolute;
   inset: 0;
   width: 0;
-  background: var(--neft-accent);
-  border-radius: var(--neft-radius-md);
+  background: var(--neftc-accent);
+  border-radius: var(--neftc-radius-md);
   transition: width 0.3s ease;
 }
 
@@ -910,7 +912,7 @@ textarea:focus-visible {
   padding: 0;
   display: grid;
   gap: 0.6rem;
-  color: var(--neft-text);
+  color: var(--neftc-text);
   font-weight: 600;
 }
 
@@ -921,7 +923,7 @@ textarea:focus-visible {
   padding: 0.6rem 0.75rem;
   border-radius: 0.75rem;
   background: rgba(22, 34, 53, 0.5);
-  border: 1px solid var(--neft-border);
+  border: 1px solid var(--neftc-border);
 }
 
 .kpi-hints__item.is-positive {
@@ -931,7 +933,7 @@ textarea:focus-visible {
 .kpi-hints__icon {
   font-size: 0.75rem;
   font-weight: 700;
-  color: var(--neft-text-muted);
+  color: var(--neftc-text-muted);
 }
 
 .achievement-grid {
@@ -942,10 +944,10 @@ textarea:focus-visible {
 }
 
 .achievement-badge {
-  border: 1px solid var(--neft-border);
+  border: 1px solid var(--neftc-border);
   border-radius: 0.75rem;
   padding: 0.75rem;
-  background: var(--neft-surface2);
+  background: var(--neftc-surface2);
   display: grid;
   gap: 0.5rem;
 }
@@ -993,14 +995,14 @@ textarea:focus-visible {
 .achievement-badge__description {
   margin-top: 0.25rem;
   font-size: 0.75rem;
-  color: var(--neft-text-muted);
+  color: var(--neftc-text-muted);
 }
 
 .achievement-badge__action {
-  border: 1px solid var(--neft-border);
+  border: 1px solid var(--neftc-border);
   background: transparent;
-  color: var(--neft-text-muted);
-  border-radius: var(--neft-radius-md);
+  color: var(--neftc-text-muted);
+  border-radius: var(--neftc-radius-md);
   width: 1.25rem;
   height: 1.25rem;
   display: inline-flex;
@@ -1012,15 +1014,15 @@ textarea:focus-visible {
 }
 
 .achievement-badge__action:hover {
-  color: var(--neft-text);
-  border-color: var(--neft-text-muted);
+  color: var(--neftc-text);
+  border-color: var(--neftc-text-muted);
 }
 
 .achievement-badge__details {
   font-size: 0.75rem;
-  color: var(--neft-text-muted);
+  color: var(--neftc-text-muted);
   background: rgba(22, 34, 53, 0.35);
-  border: 1px solid var(--neft-border);
+  border: 1px solid var(--neftc-border);
   border-radius: 0.6rem;
   padding: 0.5rem 0.6rem;
 }
@@ -1030,21 +1032,21 @@ textarea:focus-visible {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: var(--neft-text-muted);
+  color: var(--neftc-text-muted);
 }
 
 .achievement-badge__status.status-unlocked {
-  color: var(--neft-success);
+  color: var(--neftc-success);
 }
 
 .achievement-badge__status.status-in-progress {
-  color: var(--neft-accent);
+  color: var(--neftc-accent);
 }
 
 .achievement-badge__progress {
   position: relative;
   height: 4px;
-  border-radius: var(--neft-radius-md);
+  border-radius: var(--neftc-radius-md);
   background: rgba(182, 255, 59, 0.16);
   overflow: hidden;
 }
@@ -1053,13 +1055,13 @@ textarea:focus-visible {
   position: absolute;
   inset: 0;
   width: 0;
-  background: var(--neft-accent);
-  border-radius: var(--neft-radius-md);
+  background: var(--neftc-accent);
+  border-radius: var(--neftc-radius-md);
 }
 
 .achievement-badge__remaining {
   font-size: 0.7rem;
-  color: var(--neft-text-muted);
+  color: var(--neftc-text-muted);
 }
 
 .achievement-streak {
@@ -1067,8 +1069,8 @@ textarea:focus-visible {
 }
 
 .streak-widget {
-  background: var(--neft-surface2);
-  border: 1px solid var(--neft-border);
+  background: var(--neftc-surface2);
+  border: 1px solid var(--neftc-border);
   border-radius: 0.75rem;
   padding: 0.75rem;
   display: grid;
@@ -1082,7 +1084,7 @@ textarea:focus-visible {
 
 .streak-widget__description {
   font-size: 0.75rem;
-  color: var(--neft-text-muted);
+  color: var(--neftc-text-muted);
 }
 
 .streak-widget__dots {
@@ -1094,17 +1096,17 @@ textarea:focus-visible {
 .streak-dot {
   width: 8px;
   height: 8px;
-  border-radius: var(--neft-radius-md);
+  border-radius: var(--neftc-radius-md);
   background: rgba(148, 163, 184, 0.25);
 }
 
 .streak-dot.is-active {
-  background: var(--neft-accent);
+  background: var(--neftc-accent);
 }
 
 .streak-widget__meta {
   font-size: 0.75rem;
-  color: var(--neft-text-muted);
+  color: var(--neftc-text-muted);
 }
 
 .streak-widget__tooltip {
@@ -1112,7 +1114,7 @@ textarea:focus-visible {
   right: 0.75rem;
   top: 0.75rem;
   background: rgba(10, 15, 27, 0.95);
-  border: 1px solid var(--neft-border);
+  border: 1px solid var(--neftc-border);
   border-radius: 0.75rem;
   padding: 0.6rem 0.75rem;
   display: grid;
@@ -1143,14 +1145,14 @@ textarea:focus-visible {
 
 .streak-widget__tooltip-text {
   font-size: 0.7rem;
-  color: var(--neft-text);
+  color: var(--neftc-text);
 }
 
 .invoice-actions {
   display: grid;
   gap: 1.5rem;
   padding: 1rem 0 1.5rem;
-  border-bottom: 1px solid var(--neft-border);
+  border-bottom: 1px solid var(--neftc-border);
   margin-bottom: 1.5rem;
 }
 
@@ -1158,9 +1160,9 @@ textarea:focus-visible {
   display: grid;
   gap: 0.75rem;
   padding: 1rem;
-  border: 1px solid var(--neft-border);
+  border: 1px solid var(--neftc-border);
   border-radius: 0.75rem;
-  background: var(--neft-surface2);
+  background: var(--neftc-surface2);
 }
 
 .thread-header {
@@ -1191,8 +1193,8 @@ textarea:focus-visible {
 .invoice-thread__message {
   padding: 0.75rem;
   border-radius: 0.75rem;
-  border: 1px solid var(--neft-border);
-  background: var(--neft-surface);
+  border: 1px solid var(--neftc-border);
+  background: var(--neftc-surface);
   display: grid;
   gap: 0.35rem;
 }
@@ -1203,20 +1205,20 @@ textarea:focus-visible {
 }
 
 .invoice-thread__message.is-support {
-  border-color: var(--neft-border);
-  background: var(--neft-surface2);
+  border-color: var(--neftc-border);
+  background: var(--neftc-surface2);
 }
 
 .stat {
   padding: 0.75rem;
   border-radius: 0.75rem;
-  background: var(--neft-surface2);
-  border: 1px solid var(--neft-border);
+  background: var(--neftc-surface2);
+  border: 1px solid var(--neftc-border);
 }
 
 .stat__label {
   font-size: 0.85rem;
-  color: var(--neft-text-muted);
+  color: var(--neftc-text-muted);
   font-weight: 600;
 }
 
@@ -1249,35 +1251,35 @@ textarea:focus-visible {
 .pill {
   display: inline-flex;
   padding: 0.15rem 0.6rem;
-  border-radius: var(--neft-radius-md);
+  border-radius: var(--neftc-radius-md);
   font-size: 0.85rem;
   font-weight: 700;
-  border: 1px solid var(--neft-border);
+  border: 1px solid var(--neftc-border);
   background: rgba(255, 255, 255, 0.04);
-  color: var(--neft-text-muted);
+  color: var(--neftc-text-muted);
 }
 
 .pill--success {
   background: rgba(47, 234, 155, 0.12);
-  color: var(--neft-success);
+  color: var(--neftc-success);
   border-color: rgba(47, 234, 155, 0.35);
 }
 
 .pill--warning {
   background: rgba(255, 176, 32, 0.16);
-  color: var(--neft-warning);
+  color: var(--neftc-warning);
   border-color: rgba(255, 176, 32, 0.35);
 }
 
 .pill--danger {
   background: rgba(255, 77, 77, 0.16);
-  color: var(--neft-danger);
+  color: var(--neftc-danger);
   border-color: rgba(255, 77, 77, 0.35);
 }
 
 .pill--neutral {
-  background: var(--neft-surface2);
-  color: var(--neft-text);
+  background: var(--neftc-surface2);
+  color: var(--neftc-text);
 }
 
 .pill--accent {
@@ -1289,7 +1291,7 @@ textarea:focus-visible {
 .pill--outline {
   background: transparent;
   border-color: rgba(148, 163, 184, 0.4);
-  color: var(--neft-text-muted);
+  color: var(--neftc-text-muted);
 }
 
 .actions {
@@ -1348,18 +1350,18 @@ textarea:focus-visible {
 .copy-button {
   padding: 0.35rem 0.6rem;
   border-radius: 0.4rem;
-  border: 1px solid var(--neft-border);
-  background: var(--neft-surface2);
+  border: 1px solid var(--neftc-border);
+  background: var(--neftc-surface2);
   font-size: 0.75rem;
   cursor: pointer;
-  color: var(--neft-text);
+  color: var(--neftc-text);
 }
 
 .secondary {
-  background: var(--neft-surface);
-  border: 1px solid var(--neft-border);
+  background: var(--neftc-surface);
+  border: 1px solid var(--neftc-border);
   cursor: pointer;
-  color: var(--neft-text);
+  color: var(--neftc-text);
 }
 
 .amount-due {
@@ -1367,7 +1369,7 @@ textarea:focus-visible {
 }
 
 .amount-due--positive {
-  color: var(--neft-danger);
+  color: var(--neftc-danger);
 }
 
 .pagination {
@@ -1378,13 +1380,13 @@ textarea:focus-visible {
 }
 
 .mono {
-  font-family: var(--neft-font-mono);
+  font-family: var(--neftc-font-mono);
   font-variant-numeric: tabular-nums;
 }
 
 .muted-card {
-  background: var(--neft-surface2);
-  border: 1px solid var(--neft-border);
+  background: var(--neftc-surface2);
+  border: 1px solid var(--neftc-border);
 }
 
 .success-card {
@@ -1404,18 +1406,18 @@ textarea:focus-visible {
 
 .skeleton-line {
   height: 16px;
-  border-radius: var(--neft-radius-md);
+  border-radius: var(--neftc-radius-md);
   background: linear-gradient(90deg, #1f2a3a 0%, #182131 50%, #1f2a3a 100%);
   background-size: 200% 100%;
   animation: skeleton 1.2s ease-in-out infinite;
 }
 
 .table-container {
-  border: 1px solid var(--neft-border);
-  border-radius: var(--neft-radius-card);
+  border: 1px solid var(--neftc-border);
+  border-radius: var(--neftc-radius-card);
   overflow: auto;
-  background: var(--neft-surface);
-  box-shadow: var(--neft-shadow-sm);
+  background: var(--neftc-surface);
+  box-shadow: var(--neftc-shadow-sm);
 }
 
 .table-skeleton__row td {
@@ -1424,7 +1426,7 @@ textarea:focus-visible {
 
 .table-skeleton__cell {
   height: 12px;
-  border-radius: var(--neft-radius-md);
+  border-radius: var(--neftc-radius-md);
   background: linear-gradient(90deg, #1f2a3a 0%, #182131 50%, #1f2a3a 100%);
   background-size: 200% 100%;
   animation: skeleton 1.2s ease-in-out infinite;
@@ -1439,19 +1441,19 @@ textarea:focus-visible {
   color: #0b0f14;
   font-weight: 700;
   z-index: 50;
-  box-shadow: var(--neft-shadow-lg);
+  box-shadow: var(--neftc-shadow-lg);
 }
 
 .toast.success {
-  background: var(--neft-success);
+  background: var(--neftc-success);
 }
 
 .toast.error {
-  background: var(--neft-danger);
+  background: var(--neftc-danger);
 }
 
 .toast.info {
-  background: var(--neft-info);
+  background: var(--neftc-info);
 }
 
 @keyframes skeleton {
@@ -1473,7 +1475,7 @@ textarea:focus-visible {
   display: inline-flex;
   align-items: center;
   padding: 0.15rem 0.6rem;
-  border-radius: var(--neft-radius-md);
+  border-radius: var(--neftc-radius-md);
   font-size: 0.75rem;
   font-weight: 600;
   text-transform: uppercase;
@@ -1517,7 +1519,7 @@ textarea:focus-visible {
   background: rgba(15, 23, 42, 0.08);
   border-radius: 0.5rem;
   font-size: 0.85rem;
-  color: var(--neft-text);
+  color: var(--neftc-text);
   overflow-x: auto;
 }
 
@@ -1530,17 +1532,17 @@ textarea:focus-visible {
 
 .summary-chip {
   padding: 0.35rem 0.75rem;
-  border-radius: var(--neft-radius-md);
+  border-radius: var(--neftc-radius-md);
   background: rgba(148, 163, 184, 0.16);
-  border: 1px solid var(--neft-border);
+  border: 1px solid var(--neftc-border);
   font-weight: 600;
   font-size: 0.9rem;
 }
 
 .summary-chip.is-active {
-  border-color: var(--neft-accent);
+  border-color: var(--neftc-accent);
   background: rgba(59, 130, 246, 0.15);
-  color: var(--neft-accent);
+  color: var(--neftc-accent);
 }
 
 .alert-list {
@@ -1549,9 +1551,9 @@ textarea:focus-visible {
 }
 
 .alert-card {
-  border-radius: var(--neft-radius-card);
-  border: 1px solid var(--neft-border);
-  background: var(--neft-surface2);
+  border-radius: var(--neftc-radius-card);
+  border: 1px solid var(--neftc-border);
+  background: var(--neftc-surface2);
   padding: 1rem;
   display: grid;
   gap: 0.75rem;
@@ -1582,7 +1584,7 @@ textarea:focus-visible {
   display: flex;
   justify-content: space-between;
   gap: 1rem;
-  color: var(--neft-text-muted);
+  color: var(--neftc-text-muted);
   font-size: 0.9rem;
 }
 
@@ -1643,7 +1645,7 @@ textarea:focus-visible {
 }
 
 .channel-card__meta {
-  color: var(--neft-text-muted);
+  color: var(--neftc-text-muted);
   font-size: 0.9rem;
 }
 
@@ -1676,7 +1678,7 @@ textarea:focus-visible {
 }
 
 .warning-text {
-  color: var(--neft-warning);
+  color: var(--neftc-warning);
   font-size: 0.85rem;
   margin-top: 0.5rem;
 }
@@ -1703,7 +1705,7 @@ textarea:focus-visible {
 
 .policy-explain summary {
   cursor: pointer;
-  color: var(--neft-accent);
+  color: var(--neftc-accent);
   font-size: 0.85rem;
 }
 
@@ -1728,7 +1730,7 @@ textarea:focus-visible {
 .policy-advanced summary {
   cursor: pointer;
   font-size: 0.85rem;
-  color: var(--neft-text-muted);
+  color: var(--neftc-text-muted);
 }
 
 .policy-advanced__content {
@@ -1755,11 +1757,11 @@ textarea:focus-visible {
 
 .modal-card {
   width: min(720px, 100%);
-  background: var(--neft-surface);
+  background: var(--neftc-surface);
   border-radius: 0.9rem;
   padding: 1.5rem;
-  box-shadow: var(--neft-shadow-lg);
-  border: 1px solid var(--neft-border);
+  box-shadow: var(--neftc-shadow-lg);
+  border: 1px solid var(--neftc-border);
 }
 
 .timeline {
@@ -1780,24 +1782,24 @@ textarea:focus-visible {
   width: 10px;
   height: 10px;
   margin-top: 0.35rem;
-  border-radius: var(--neft-radius-md);
-  background: var(--neft-accent);
-  box-shadow: 0 0 0 4px var(--neft-accent-soft);
+  border-radius: var(--neftc-radius-md);
+  background: var(--neftc-accent);
+  box-shadow: 0 0 0 4px var(--neftc-accent-soft);
 }
 
 .tab {
   padding: 0.5rem 0.9rem;
-  border-radius: var(--neft-radius-md);
-  border: 1px solid var(--neft-border);
-  background: var(--neft-surface2);
+  border-radius: var(--neftc-radius-md);
+  border: 1px solid var(--neftc-border);
+  background: var(--neftc-surface2);
   cursor: pointer;
   font-weight: 600;
-  color: var(--neft-text);
+  color: var(--neftc-text);
 }
 
 .tab.active {
-  background: var(--neft-accent);
-  border-color: var(--neft-accent);
+  background: var(--neftc-accent);
+  border-color: var(--neftc-accent);
   color: #0b0f14;
 }
 
@@ -1843,13 +1845,13 @@ textarea:focus-visible {
   width: 100%;
   max-width: 520px;
   text-align: left;
-  color: var(--neft-text-muted);
+  color: var(--neftc-text-muted);
 }
 
 .error-state__details summary {
   cursor: pointer;
   font-weight: 600;
-  color: var(--neft-text);
+  color: var(--neftc-text);
 }
 
 .error-state__details pre {
@@ -1857,10 +1859,10 @@ textarea:focus-visible {
   padding: 0.75rem;
   border-radius: 0.75rem;
   background: rgba(15, 23, 42, 0.6);
-  border: 1px solid var(--neft-border);
+  border: 1px solid var(--neftc-border);
   white-space: pre-wrap;
-  color: var(--neft-text-muted);
-  font-family: var(--neft-font-mono);
+  color: var(--neftc-text-muted);
+  font-family: var(--neftc-font-mono);
   font-size: 0.75rem;
 }
 
@@ -1971,7 +1973,7 @@ textarea:focus-visible {
 .link-button {
   border: none;
   background: none;
-  color: var(--neft-accent);
+  color: var(--neftc-accent);
   padding: 0;
   cursor: pointer;
   font: inherit;
@@ -1982,7 +1984,7 @@ textarea:focus-visible {
 }
 
 .error-text {
-  color: var(--neft-danger);
+  color: var(--neftc-danger);
   font-size: 0.85rem;
   margin-top: 0.5rem;
 }
@@ -2008,7 +2010,7 @@ textarea:focus-visible {
   text-decoration: none;
   color: inherit;
   padding: 0.35rem 0;
-  border-radius: var(--neft-radius-md);
+  border-radius: var(--neftc-radius-md);
 }
 
 .chart-row--link:hover {
@@ -2016,8 +2018,8 @@ textarea:focus-visible {
 }
 
 .chart-bar {
-  background: var(--neft-border);
-  border-radius: var(--neft-radius-md);
+  background: var(--neftc-border);
+  border-radius: var(--neftc-radius-md);
   height: 8px;
   overflow: hidden;
 }
@@ -2025,8 +2027,8 @@ textarea:focus-visible {
 .chart-bar__fill {
   display: block;
   height: 100%;
-  background: var(--neft-accent);
-  border-radius: var(--neft-radius-md);
+  background: var(--neftc-accent);
+  border-radius: var(--neftc-radius-md);
 }
 
 .bars {
@@ -2038,8 +2040,8 @@ textarea:focus-visible {
 }
 
 .bar {
-  background: var(--neft-border);
-  border-radius: var(--neft-radius-md);
+  background: var(--neftc-border);
+  border-radius: var(--neftc-radius-md);
   height: 8px;
   overflow: hidden;
   margin-top: 0.35rem;
@@ -2048,8 +2050,8 @@ textarea:focus-visible {
 .bar__fill {
   display: block;
   height: 100%;
-  background: var(--neft-info);
-  border-radius: var(--neft-radius-md);
+  background: var(--neftc-info);
+  border-radius: var(--neftc-radius-md);
 }
 
 .analytics-kpi-grid {
@@ -2065,7 +2067,7 @@ textarea:focus-visible {
   font-size: 0.8rem;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  color: var(--neft-text-faint);
+  color: var(--neftc-text-faint);
   font-weight: 700;
 }
 
@@ -2125,10 +2127,10 @@ textarea:focus-visible {
 }
 
 .attention-list__item {
-  border: 1px solid var(--neft-border);
+  border: 1px solid var(--neftc-border);
   border-radius: 0.75rem;
   padding: 0.75rem;
-  background: var(--neft-surface2);
+  background: var(--neftc-surface2);
 }
 
 .attention-list__item a {
@@ -2178,8 +2180,8 @@ textarea:focus-visible {
 .action-card {
   padding: 0.75rem;
   border-radius: 0.75rem;
-  border: 1px solid var(--neft-border);
-  background: var(--neft-surface2);
+  border: 1px solid var(--neftc-border);
+  background: var(--neftc-surface2);
   display: grid;
   gap: 0.5rem;
 }
@@ -2219,9 +2221,9 @@ textarea:focus-visible {
   width: 24px;
   height: 24px;
   border-radius: 6px;
-  border: 1px solid var(--neft-border);
+  border: 1px solid var(--neftc-border);
   background: transparent;
-  color: var(--neft-text);
+  color: var(--neftc-text);
 }
 
 .explain-tree__title {
@@ -2249,23 +2251,23 @@ textarea:focus-visible {
 
 .explain-tree__count {
   background: rgba(148, 163, 184, 0.2);
-  border-radius: var(--neft-radius-md);
+  border-radius: var(--neftc-radius-md);
   padding: 0.1rem 0.4rem;
   font-size: 0.65rem;
-  color: var(--neft-text-muted);
+  color: var(--neftc-text-muted);
 }
 
 .explain-tree__selected {
   font-size: 0.6rem;
   padding: 0.1rem 0.4rem;
-  border-radius: var(--neft-radius-md);
+  border-radius: var(--neftc-radius-md);
   border: 1px solid rgba(59, 130, 246, 0.4);
   color: #60a5fa;
 }
 
 .explain-tree__weight {
   font-size: 0.75rem;
-  color: var(--neft-text-muted);
+  color: var(--neftc-text-muted);
 }
 
 .explain-tree__children {
@@ -2286,10 +2288,10 @@ textarea:focus-visible {
 }
 
 .explain-evidence__card {
-  border: 1px solid var(--neft-border);
+  border: 1px solid var(--neftc-border);
   border-radius: 0.75rem;
   padding: 0.6rem;
-  background: var(--neft-surface2);
+  background: var(--neftc-surface2);
   display: grid;
   gap: 0.4rem;
 }
@@ -2325,7 +2327,7 @@ textarea:focus-visible {
 .explain-evidence__details summary {
   cursor: pointer;
   font-size: 0.7rem;
-  color: var(--neft-text-muted);
+  color: var(--neftc-text-muted);
 }
 
 .explain-evidence__kv {
@@ -2351,8 +2353,8 @@ textarea:focus-visible {
   align-items: flex-start;
   padding: 0.6rem;
   border-radius: 0.75rem;
-  border: 1px solid var(--neft-border);
-  background: var(--neft-surface2);
+  border: 1px solid var(--neftc-border);
+  background: var(--neftc-surface2);
 }
 
 .explain-action__body {
@@ -2389,16 +2391,16 @@ textarea:focus-visible {
   display: grid;
   gap: 0.35rem;
   font-size: 0.8rem;
-  color: var(--neft-text-muted);
+  color: var(--neftc-text-muted);
 }
 
 .explain-diff__controls input,
 .explain-diff__controls select {
   padding: 0.45rem 0.6rem;
   border-radius: 0.5rem;
-  border: 1px solid var(--neft-border);
-  background: var(--neft-surface2);
-  color: var(--neft-text);
+  border: 1px solid var(--neftc-border);
+  background: var(--neftc-surface2);
+  color: var(--neftc-text);
 }
 
 .explain-diff__controls-actions {
@@ -2465,11 +2467,11 @@ textarea:focus-visible {
 }
 
 .explain-diff__tab {
-  border: 1px solid var(--neft-border);
-  background: var(--neft-surface2);
-  color: var(--neft-text);
+  border: 1px solid var(--neftc-border);
+  background: var(--neftc-surface2);
+  color: var(--neftc-text);
   padding: 0.3rem 0.6rem;
-  border-radius: var(--neft-radius-md);
+  border-radius: var(--neftc-radius-md);
   font-size: 0.75rem;
 }
 
@@ -2491,8 +2493,8 @@ textarea:focus-visible {
   align-items: center;
   padding: 0.4rem 0.6rem;
   border-radius: 0.6rem;
-  border: 1px solid var(--neft-border);
-  background: var(--neft-surface2);
+  border: 1px solid var(--neftc-border);
+  background: var(--neftc-surface2);
   font-size: 0.85rem;
 }
 
@@ -2500,7 +2502,7 @@ textarea:focus-visible {
   border: none;
   background: transparent;
   font-weight: 600;
-  color: var(--neft-text-muted);
+  color: var(--neftc-text-muted);
   padding: 0;
 }
 
@@ -2550,10 +2552,10 @@ textarea:focus-visible {
   gap: 0.5rem;
   padding: 0.5rem;
   border-radius: 0.6rem;
-  border: 1px solid var(--neft-border);
-  background: var(--neft-surface2);
+  border: 1px solid var(--neftc-border);
+  background: var(--neftc-surface2);
   text-align: left;
-  color: var(--neft-text);
+  color: var(--neftc-text);
 }
 
 .explain-diff__item.is-added {
@@ -2582,8 +2584,8 @@ textarea:focus-visible {
   gap: 0.75rem;
   padding: 1rem;
   border-radius: 0.8rem;
-  border: 1px solid var(--neft-border);
-  background: var(--neft-surface2);
+  border: 1px solid var(--neftc-border);
+  background: var(--neftc-surface2);
 }
 
 .legal-actions {
@@ -2595,8 +2597,8 @@ textarea:focus-visible {
 .legal-preview {
   padding: 1rem;
   border-radius: 0.8rem;
-  border: 1px solid var(--neft-border);
-  background: var(--neft-surface2);
+  border: 1px solid var(--neftc-border);
+  background: var(--neftc-surface2);
 }
 
 .legal-content {
@@ -2621,9 +2623,9 @@ textarea:focus-visible {
   width: 36px;
   height: 36px;
   border-radius: 999px;
-  color: var(--neft-text);
-  background: var(--neft-surface-muted);
-  border: 1px solid var(--neft-border);
+  color: var(--neftc-text);
+  background: var(--neftc-surface-muted);
+  border: 1px solid var(--neftc-border);
 }
 
 .notification-bell__badge {
@@ -2634,7 +2636,7 @@ textarea:focus-visible {
   height: 18px;
   padding: 0 5px;
   border-radius: 999px;
-  background: var(--neft-danger, #f43f5e);
+  background: var(--neftc-danger, #f43f5e);
   color: #fff;
   font-size: 11px;
   line-height: 18px;
@@ -2656,8 +2658,8 @@ textarea:focus-visible {
 
 .notification-card {
   text-align: left;
-  background: var(--neft-surface);
-  border: 1px solid var(--neft-border);
+  background: var(--neftc-surface);
+  border: 1px solid var(--neftc-border);
   border-radius: 16px;
   padding: 16px;
   display: grid;
@@ -2667,7 +2669,7 @@ textarea:focus-visible {
 }
 
 .notification-card:hover {
-  border-color: var(--neft-primary);
+  border-color: var(--neftc-primary);
   box-shadow: 0 12px 24px rgba(15, 23, 42, 0.08);
 }
 
@@ -2689,10 +2691,70 @@ textarea:focus-visible {
 }
 
 .notification-card__body {
-  color: var(--neft-text-muted);
+  color: var(--neftc-text-muted);
 }
 
 .notification-card__link {
-  color: var(--neft-primary);
+  color: var(--neftc-primary);
   font-weight: 600;
+}
+
+.neftc-app {
+  min-height: 100vh;
+  background: var(--neftc-bg);
+  color: var(--neftc-text);
+  font-family: var(--neftc-font-sans);
+}
+
+.neftc-surface {
+  background: var(--neftc-surface);
+  border: 1px solid var(--neftc-border);
+  border-radius: var(--neftc-radius-md);
+  box-shadow: var(--neftc-shadow-1);
+}
+
+.neftc-card {
+  background: var(--neftc-card);
+  border: 1px solid var(--neftc-border);
+  border-radius: var(--neftc-radius-lg);
+  box-shadow: var(--neftc-shadow-2);
+}
+
+.neftc-glass {
+  background: var(--neftc-glass);
+  border: 1px solid var(--neftc-border);
+  border-radius: var(--neftc-radius-lg);
+  box-shadow: var(--neftc-shadow-3);
+  backdrop-filter: blur(18px);
+}
+
+.neftc-btn-primary {
+  background: var(--neftc-primary);
+  color: var(--neftc-on-primary);
+  border: 1px solid transparent;
+  padding: 10px 16px;
+  border-radius: var(--neftc-radius-md);
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.1s ease, box-shadow 0.2s ease, background 0.2s ease;
+}
+
+.neftc-btn-primary:hover {
+  background: var(--neftc-primary-hover);
+  box-shadow: var(--neftc-shadow-1);
+}
+
+.neftc-input {
+  background: var(--neftc-surface2);
+  color: var(--neftc-text);
+  border: 1px solid var(--neftc-border);
+  border-radius: var(--neftc-radius-md);
+  padding: 10px 12px;
+  min-height: 44px;
+}
+
+.neftc-input:focus {
+  border-color: var(--neftc-primary);
+  box-shadow: var(--neftc-focus-ring);
+  outline: none;
 }

@@ -1,0 +1,114 @@
+:root {
+  --neftc-font-sans: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --neftc-font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  --neftc-radius-sm: 10px;
+  --neftc-radius-md: 12px;
+  --neftc-radius-lg: 16px;
+  --neftc-radius-pill: 999px;
+  --neftc-radius-card: var(--neftc-radius-md);
+  --neftc-radius-control: var(--neftc-radius-sm);
+  --neftc-header-height: 64px;
+  --neftc-focus-ring: 0 0 0 4px var(--neftc-focus);
+  --neftc-shadow-sm: var(--neftc-shadow-1);
+  --neftc-shadow-md: var(--neftc-shadow-2);
+  --neftc-shadow-lg: var(--neftc-shadow-3);
+  --neftc-accent: var(--neftc-primary);
+  --neftc-accent-hover: var(--neftc-primary-hover);
+  --neftc-accent-soft: var(--neftc-focus);
+  --neftc-accent-glow: var(--neftc-focus);
+  --neftc-danger: var(--neftc-error);
+  --neftc-neutral: var(--neftc-text-muted);
+  --neftc-text-faint: var(--neftc-text-muted);
+}
+
+[data-theme="light"] {
+  --neftc-bg: #F5F6F8;
+  --neftc-bg2: #ECEFF4;
+  --neftc-surface: #FFFFFF;
+  --neftc-surface2: #F2F5F8;
+  --neftc-surface-muted: #E8EDF3;
+  --neftc-card: #FFFFFF;
+  --neftc-glass: rgba(255, 255, 255, 0.7);
+  --neftc-border: rgba(15, 23, 42, 0.12);
+
+  --neftc-text: #0B1B2A;
+  --neftc-text-secondary: #2C3A4A;
+  --neftc-text-muted: #5F6C7B;
+  --neftc-text-faint: #8B98A7;
+
+  --neftc-primary: #0F6B82;
+  --neftc-primary-hover: #0D5B70;
+  --neftc-accent: #0F6B82;
+  --neftc-accent-hover: #0D5B70;
+  --neftc-accent-soft: rgba(15, 107, 130, 0.16);
+  --neftc-accent-glow: rgba(15, 107, 130, 0.3);
+  --neftc-focus: rgba(15, 107, 130, 0.25);
+  --neftc-on-primary: #F7FAFC;
+
+  --neftc-success: #1BBF8E;
+  --neftc-warning: #F5A524;
+  --neftc-error: #E5484D;
+  --neftc-info: #3B82F6;
+  --neftc-neutral: #94A3B8;
+
+  --neftc-shadow-1: 0 1px 3px rgba(15, 23, 42, 0.08);
+  --neftc-shadow-2: 0 12px 28px rgba(15, 23, 42, 0.12);
+  --neftc-shadow-3: 0 18px 40px rgba(15, 23, 42, 0.16);
+
+  --neftc-chart-grid: rgba(15, 23, 42, 0.08);
+  --neftc-chart-axis: rgba(15, 23, 42, 0.2);
+  --neftc-chart-tick: rgba(15, 23, 42, 0.5);
+  --neftc-chart-tooltip-bg: #FFFFFF;
+  --neftc-chart-tooltip-border: rgba(15, 23, 42, 0.12);
+  --neftc-chart-series-1: var(--neftc-primary);
+  --neftc-chart-series-2: var(--neftc-info);
+  --neftc-chart-series-3: var(--neftc-success);
+  --neftc-chart-series-4: var(--neftc-warning);
+  --neftc-chart-series-err: var(--neftc-error);
+}
+
+[data-theme="dark"] {
+  --neftc-bg: #080C12;
+  --neftc-bg2: #0D141C;
+  --neftc-surface: #0F1720;
+  --neftc-surface2: #141E2A;
+  --neftc-surface-muted: #172232;
+  --neftc-card: #111B26;
+  --neftc-glass: rgba(17, 27, 38, 0.65);
+  --neftc-border: rgba(148, 163, 184, 0.2);
+
+  --neftc-text: #E6EDF4;
+  --neftc-text-secondary: #B4C0CF;
+  --neftc-text-muted: #93A1B1;
+  --neftc-text-faint: #6F7E8F;
+
+  --neftc-primary: #21B7D6;
+  --neftc-primary-hover: #18A1BE;
+  --neftc-accent: #21B7D6;
+  --neftc-accent-hover: #18A1BE;
+  --neftc-accent-soft: rgba(33, 183, 214, 0.18);
+  --neftc-accent-glow: rgba(33, 183, 214, 0.35);
+  --neftc-focus: rgba(33, 183, 214, 0.3);
+  --neftc-on-primary: #081016;
+
+  --neftc-success: #23D1A0;
+  --neftc-warning: #FFB44C;
+  --neftc-error: #F05A63;
+  --neftc-info: #60A5FA;
+  --neftc-neutral: #9AA7B5;
+
+  --neftc-shadow-1: 0 1px 3px rgba(2, 6, 23, 0.55);
+  --neftc-shadow-2: 0 18px 36px rgba(2, 6, 23, 0.65);
+  --neftc-shadow-3: 0 24px 48px rgba(2, 6, 23, 0.7);
+
+  --neftc-chart-grid: rgba(229, 231, 235, 0.08);
+  --neftc-chart-axis: rgba(229, 231, 235, 0.18);
+  --neftc-chart-tick: rgba(229, 231, 235, 0.55);
+  --neftc-chart-tooltip-bg: var(--neftc-card);
+  --neftc-chart-tooltip-border: var(--neftc-border);
+  --neftc-chart-series-1: var(--neftc-primary);
+  --neftc-chart-series-2: var(--neftc-info);
+  --neftc-chart-series-3: var(--neftc-success);
+  --neftc-chart-series-4: var(--neftc-warning);
+  --neftc-chart-series-err: var(--neftc-error);
+}
