@@ -4,10 +4,15 @@ import { fetchPartnerActs, fetchPartnerInvoices } from "../api/partnerFinance";
 import { useAuth } from "../auth/AuthContext";
 import { usePortal } from "../auth/PortalContext";
 import { StatusBadge } from "../components/StatusBadge";
-import { ErrorState, LoadingState } from "../components/states";
+import { LoadingState } from "../components/states";
 import { EmptyState } from "../components/EmptyState";
 import { formatCurrency, formatDate } from "../utils/format";
 import type { PartnerDocument } from "../types/partnerFinance";
+import { PartnerErrorState } from "../components/PartnerErrorState";
+import { isDemoPartner } from "@shared/demo/demo";
+import { ApiError } from "../api/http";
+import { DemoEmptyState } from "../components/DemoEmptyState";
+import { demoActs, demoInvoices } from "../demo/partnerDemoData";
 
 export function DocumentsPage() {
   const { user } = useAuth();
@@ -15,7 +20,8 @@ export function DocumentsPage() {
   const [invoices, setInvoices] = useState<PartnerDocument[]>([]);
   const [acts, setActs] = useState<PartnerDocument[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<unknown>(null);
+  const [isDemoFallback, setIsDemoFallback] = useState(false);
 
   const meta = portal?.partner?.profile?.meta_json ?? {};
   const legalStatus =
@@ -23,6 +29,7 @@ export function DocumentsPage() {
       ? ((meta as Record<string, unknown>).legal_status as string)
       : null;
   const needsLegal = Boolean(legalStatus && legalStatus !== "VERIFIED");
+  const isDemoPartnerAccount = isDemoPartner(user?.email ?? null);
 
   useEffect(() => {
     let active = true;
@@ -33,10 +40,19 @@ export function DocumentsPage() {
         if (!active) return;
         setInvoices(invoiceResp.items ?? []);
         setActs(actResp.items ?? []);
+        setIsDemoFallback(false);
       })
       .catch((err) => {
         console.error(err);
-        if (active) setError("Не удалось загрузить документы");
+        if (!active) return;
+        if (err instanceof ApiError && err.status === 404 && isDemoPartnerAccount) {
+          setInvoices(demoInvoices);
+          setActs(demoActs);
+          setIsDemoFallback(true);
+          setError(null);
+          return;
+        }
+        setError(err);
       })
       .finally(() => {
         if (active) setIsLoading(false);
@@ -44,11 +60,17 @@ export function DocumentsPage() {
     return () => {
       active = false;
     };
-  }, [user]);
+  }, [user, isDemoPartnerAccount]);
 
   const renderTable = (items: PartnerDocument[], emptyText: string) => {
     if (items.length === 0) {
-      return (
+      return isDemoFallback ? (
+        <DemoEmptyState
+          description="В демо-режиме документы доступны только в виде примеров."
+          primaryAction={{ label: "Обновить", onClick: () => window.location.reload() }}
+          secondaryAction={{ label: "Связаться", to: "/support/requests" }}
+        />
+      ) : (
         <EmptyState
           title="Документы отсутствуют"
           description={emptyText}
@@ -104,13 +126,25 @@ export function DocumentsPage() {
         <div className="section-title">
           <h2>Счета</h2>
         </div>
-        {isLoading ? <LoadingState /> : error ? <ErrorState description={error} /> : renderTable(invoices, "Новые счета появятся в конце месяца.")}
+        {isLoading ? (
+          <LoadingState />
+        ) : error ? (
+          <PartnerErrorState error={error} description="Не удалось загрузить документы" />
+        ) : (
+          renderTable(invoices, "Новые счета появятся в конце месяца.")
+        )}
       </section>
       <section className="card">
         <div className="section-title">
           <h2>Акты</h2>
         </div>
-        {isLoading ? <LoadingState /> : error ? <ErrorState description={error} /> : renderTable(acts, "Акты появятся после начислений.")}
+        {isLoading ? (
+          <LoadingState />
+        ) : error ? (
+          <PartnerErrorState error={error} description="Не удалось загрузить документы" />
+        ) : (
+          renderTable(acts, "Акты появятся после начислений.")
+        )}
       </section>
     </div>
   );

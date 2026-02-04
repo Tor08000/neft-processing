@@ -10,7 +10,7 @@ interface Translations {
 }
 
 const translations: Record<Locale, Translations> = { ru, en };
-const fallbackLocale: Locale = "en";
+const fallbackLocale: Locale = "ru";
 
 const resolveLocale = (value?: string): Locale => {
   if (value === "en") return "en";

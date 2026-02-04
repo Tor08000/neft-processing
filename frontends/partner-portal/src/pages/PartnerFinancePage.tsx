@@ -11,10 +11,15 @@ import {
 import { useAuth } from "../auth/AuthContext";
 import { usePortal } from "../auth/PortalContext";
 import { StatusBadge } from "../components/StatusBadge";
-import { ErrorState, LoadingState } from "../components/states";
+import { LoadingState } from "../components/states";
 import { EmptyState } from "../components/EmptyState";
 import { formatCurrency, formatDateTime } from "../utils/format";
 import type { PartnerBalance, PartnerExportJob, PartnerLedgerEntry, PartnerLedgerExplain } from "../types/partnerFinance";
+import { PartnerErrorState } from "../components/PartnerErrorState";
+import { isDemoPartner } from "@shared/demo/demo";
+import { DemoEmptyState } from "../components/DemoEmptyState";
+import { ApiError } from "../api/http";
+import { demoBalance, demoExportJobs, demoLedger, demoLedgerTotals } from "../demo/partnerDemoData";
 
 export function PartnerFinancePage() {
   const { user } = useAuth();
@@ -26,7 +31,9 @@ export function PartnerFinancePage() {
   const [ledgerLimit] = useState(20);
   const [exportJobs, setExportJobs] = useState<PartnerExportJob[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<unknown>(null);
+  const [isDemoFallback, setIsDemoFallback] = useState(false);
+  const [loadMoreError, setLoadMoreError] = useState<unknown>(null);
   const [explainEntry, setExplainEntry] = useState<PartnerLedgerExplain | null>(null);
   const [isExplainOpen, setIsExplainOpen] = useState(false);
   const [exportFrom, setExportFrom] = useState("");
@@ -42,6 +49,7 @@ export function PartnerFinancePage() {
       ? ((meta as Record<string, unknown>).legal_status as string)
       : null;
   const needsLegal = Boolean(legalStatus && legalStatus !== "VERIFIED");
+  const isDemoPartnerAccount = isDemoPartner(user?.email ?? null);
 
   useEffect(() => {
     let active = true;
@@ -59,11 +67,22 @@ export function PartnerFinancePage() {
         setLedgerTotals(ledgerResp.totals ?? null);
         setLedgerCursor(ledgerResp.next_cursor ?? null);
         setExportJobs(exportResp.items ?? []);
+        setIsDemoFallback(false);
       })
       .catch((err) => {
         console.error(err);
         if (!active) return;
-        setError("Не удалось загрузить финансы партнёра");
+        if (err instanceof ApiError && err.status === 404 && isDemoPartnerAccount) {
+          setBalance(demoBalance);
+          setLedger(demoLedger);
+          setLedgerTotals(demoLedgerTotals);
+          setLedgerCursor(null);
+          setExportJobs(demoExportJobs);
+          setIsDemoFallback(true);
+          setError(null);
+          return;
+        }
+        setError(err);
       })
       .finally(() => {
         if (active) setIsLoading(false);
@@ -71,7 +90,7 @@ export function PartnerFinancePage() {
     return () => {
       active = false;
     };
-  }, [user]);
+  }, [user, isDemoPartnerAccount]);
 
   const handleExplain = async (entry: PartnerLedgerEntry) => {
     if (!user) return;
@@ -101,7 +120,7 @@ export function PartnerFinancePage() {
       setLedgerCursor(next.next_cursor ?? null);
     } catch (err) {
       console.error(err);
-      setError("Не удалось загрузить следующую страницу ledger");
+      setLoadMoreError(err);
     }
   };
 
@@ -156,7 +175,7 @@ export function PartnerFinancePage() {
         {isLoading ? (
           <LoadingState />
         ) : error ? (
-          <ErrorState description={error} />
+          <PartnerErrorState error={error} description="Не удалось загрузить финансы партнёра" />
         ) : (
           <div className="grid three">
             <div className="metric-card">
@@ -176,23 +195,29 @@ export function PartnerFinancePage() {
       </section>
       <section className="card">
         <div className="section-title">
-          <h2>Ledger totals</h2>
+          <h2>Итоги по счёту</h2>
         </div>
         {ledgerTotals ? (
           <div className="grid three">
             <div className="metric-card">
-              <div className="muted">In</div>
+              <div className="muted">Поступления</div>
               <strong>{formatCurrency(ledgerTotals.in ?? null, currency)}</strong>
             </div>
             <div className="metric-card">
-              <div className="muted">Out</div>
+              <div className="muted">Списания</div>
               <strong>{formatCurrency(ledgerTotals.out ?? null, currency)}</strong>
             </div>
             <div className="metric-card">
-              <div className="muted">Net</div>
+              <div className="muted">Итого</div>
               <strong>{formatCurrency(ledgerTotals.net ?? null, currency)}</strong>
             </div>
           </div>
+        ) : isDemoFallback ? (
+          <DemoEmptyState
+            description="В демо-режиме доступны только примерные итоги по счету."
+            primaryAction={{ label: "Обновить", onClick: () => window.location.reload() }}
+            secondaryAction={{ label: "Связаться", to: "/support/requests" }}
+          />
         ) : (
           <EmptyState
             title="Нет итогов"
@@ -203,20 +228,39 @@ export function PartnerFinancePage() {
       </section>
       <section className="card">
         <div className="section-title">
-          <h2>Ledger</h2>
+          <h2>Движения по счёту</h2>
         </div>
         {isLoading ? (
           <LoadingState />
         ) : error ? (
-          <ErrorState description={error} />
+          <PartnerErrorState error={error} description="Не удалось загрузить движения по счету" />
         ) : ledger.length === 0 ? (
-          <EmptyState
-            title="Нет движений"
-            description="Начисления и списания появятся после завершения заказов."
-            primaryAction={{ label: "Обновить", onClick: () => window.location.reload() }}
-          />
+          isDemoFallback ? (
+            <DemoEmptyState
+              description="В демо-режиме история операций недоступна."
+              primaryAction={{ label: "Обновить", onClick: () => window.location.reload() }}
+              secondaryAction={{ label: "Связаться", to: "/support/requests" }}
+            />
+          ) : (
+            <EmptyState
+              title="Нет движений"
+              description="Начисления и списания появятся после завершения заказов."
+              primaryAction={{ label: "Обновить", onClick: () => window.location.reload() }}
+            />
+          )
         ) : (
           <>
+            {loadMoreError ? (
+              <PartnerErrorState
+                error={loadMoreError}
+                description="Не удалось загрузить следующую страницу ledger"
+                action={
+                  <button type="button" className="secondary" onClick={loadMoreLedger}>
+                    Повторить
+                  </button>
+                }
+              />
+            ) : null}
             <table className="data-table">
               <thead>
                 <tr>
@@ -226,7 +270,7 @@ export function PartnerFinancePage() {
                   <th>Направление</th>
                   <th>Заказ</th>
                   <th>Источник</th>
-                  <th>Explain</th>
+                  <th>Расшифровка</th>
                 </tr>
               </thead>
               <tbody>
@@ -242,7 +286,7 @@ export function PartnerFinancePage() {
                     <td>{resolveLedgerSource(entry)}</td>
                     <td>
                       <button type="button" className="secondary" onClick={() => handleExplain(entry)}>
-                        Explain
+                        Подробнее
                       </button>
                     </td>
                   </tr>
@@ -260,74 +304,83 @@ export function PartnerFinancePage() {
 
       <section className="card">
         <div className="section-title">
-          <h2>Export settlements</h2>
+          <h2>Экспорт расчётов</h2>
         </div>
-        <div className="stack">
-          <div className="grid three">
-            <label className="form-field">
-              Период с
-              <input type="date" value={exportFrom} onChange={(event) => setExportFrom(event.target.value)} />
-            </label>
-            <label className="form-field">
-              Период по
-              <input type="date" value={exportTo} onChange={(event) => setExportTo(event.target.value)} />
-            </label>
-            <label className="form-field">
-              Формат
-              <select value={exportFormat} onChange={(event) => setExportFormat(event.target.value as "CSV" | "ZIP")}>
-                <option value="CSV">CSV</option>
-                <option value="ZIP">ZIP</option>
-              </select>
-            </label>
-          </div>
-          <button type="button" className="primary" onClick={handleExport} disabled={!exportFrom || !exportTo || exportLoading}>
-            {exportLoading ? "Готовим..." : "Export settlements"}
-          </button>
-          {exportError ? <div className="notice error">{exportError}</div> : null}
-          {exportJobs.length ? (
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Файл</th>
-                  <th>Статус</th>
-                  <th>Создано</th>
-                  <th>Скачать</th>
-                </tr>
-              </thead>
-              <tbody>
-                {exportJobs.map((job) => (
-                  <tr key={job.id}>
-                    <td>{job.file_name ?? job.id}</td>
-                    <td>{job.status}</td>
-                    <td>{formatDateTime(job.created_at)}</td>
-                    <td>
-                      {job.status === "DONE" ? (
-                        <a className="link-button" href={getPartnerExportDownloadUrl(job.id)}>
-                          Скачать
-                        </a>
-                      ) : (
-                        <span className="muted">—</span>
-                      )}
-                    </td>
+        {isDemoFallback ? (
+          <DemoEmptyState
+            title="Экспорт доступен в рабочем контуре"
+            description="В демо-режиме экспорт недоступен. В рабочем контуре доступны выгрузки по расчетам."
+            primaryAction={{ label: "Обновить", onClick: () => window.location.reload() }}
+            secondaryAction={{ label: "Связаться", to: "/support/requests" }}
+          />
+        ) : (
+          <div className="stack">
+            <div className="grid three">
+              <label className="form-field">
+                Период с
+                <input type="date" value={exportFrom} onChange={(event) => setExportFrom(event.target.value)} />
+              </label>
+              <label className="form-field">
+                Период по
+                <input type="date" value={exportTo} onChange={(event) => setExportTo(event.target.value)} />
+              </label>
+              <label className="form-field">
+                Формат
+                <select value={exportFormat} onChange={(event) => setExportFormat(event.target.value as "CSV" | "ZIP")}>
+                  <option value="CSV">CSV</option>
+                  <option value="ZIP">ZIP</option>
+                </select>
+              </label>
+            </div>
+            <button type="button" className="primary" onClick={handleExport} disabled={!exportFrom || !exportTo || exportLoading}>
+              {exportLoading ? "Готовим..." : "Экспортировать расчёты"}
+            </button>
+            {exportError ? <div className="notice error">{exportError}</div> : null}
+            {exportJobs.length ? (
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Файл</th>
+                    <th>Статус</th>
+                    <th>Создано</th>
+                    <th>Скачать</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          ) : (
-            <EmptyState
-              title="Экспортов пока нет"
-              description="Создайте первый экспорт расчетов."
-              primaryAction={{ label: "Обновить", onClick: () => window.location.reload() }}
-            />
-          )}
-        </div>
+                </thead>
+                <tbody>
+                  {exportJobs.map((job) => (
+                    <tr key={job.id}>
+                      <td>{job.file_name ?? job.id}</td>
+                      <td>{job.status}</td>
+                      <td>{formatDateTime(job.created_at)}</td>
+                      <td>
+                        {job.status === "DONE" ? (
+                          <a className="link-button" href={getPartnerExportDownloadUrl(job.id)}>
+                            Скачать
+                          </a>
+                        ) : (
+                          <span className="muted">—</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <EmptyState
+                title="Экспортов пока нет"
+                description="Создайте первый экспорт расчетов."
+                primaryAction={{ label: "Обновить", onClick: () => window.location.reload() }}
+              />
+            )}
+          </div>
+        )}
       </section>
 
       {isExplainOpen ? (
         <div className="modal-backdrop" role="dialog" aria-modal="true">
           <div className="modal">
             <div className="section-title">
-              <h3>Explain</h3>
+              <h3>Расшифровка</h3>
               <button type="button" className="ghost" onClick={() => setIsExplainOpen(false)}>
                 Закрыть
               </button>
@@ -352,7 +405,7 @@ export function PartnerFinancePage() {
                     <div>{explainEntry.source_label ?? "—"}</div>
                   </div>
                   <div>
-                    <div className="label">Admin actor</div>
+                    <div className="label">Администратор</div>
                     <div className="mono">{explainEntry.admin_actor_id ?? "—"}</div>
                   </div>
                 </div>
@@ -364,13 +417,13 @@ export function PartnerFinancePage() {
                 ) : null}
                 {explainEntry.settlement_snapshot_hash ? (
                   <div>
-                    <div className="label">Snapshot hash</div>
+                    <div className="label">Хэш снапшота</div>
                     <div className="mono">{explainEntry.settlement_snapshot_hash}</div>
                   </div>
                 ) : null}
                 {explainEntry.settlement_breakdown_url ? (
                   <div>
-                    <div className="label">Settlement breakdown</div>
+                    <div className="label">Детализация расчёта</div>
                     <a className="link-button" href={explainEntry.settlement_breakdown_url}>
                       Открыть
                     </a>

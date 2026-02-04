@@ -5,12 +5,15 @@ import { ApiError } from "../api/http";
 import { fetchOrders, type OrderFilters } from "../api/orders";
 import { useAuth } from "../auth/AuthContext";
 import { EmptyState } from "../components/EmptyState";
-import { ErrorState, ForbiddenState, LoadingState } from "../components/states";
+import { ForbiddenState, LoadingState } from "../components/states";
 import { StatusBadge } from "../components/StatusBadge";
 import type { MarketplaceOrder } from "../types/marketplace";
 import { formatCurrency, formatDateTime, formatNumber } from "../utils/format";
 import { canReadOrders } from "../utils/roles";
 import { useI18n } from "../i18n";
+import { PartnerErrorState } from "../components/PartnerErrorState";
+import { demoOrders } from "../demo/partnerDemoData";
+import { isDemoPartner } from "@shared/demo/demo";
 
 const STORAGE_KEY = "partner-orders-filters";
 const PAGE_SIZE = 20;
@@ -60,13 +63,14 @@ export function OrdersPage() {
   const { t } = useI18n();
   const [orders, setOrders] = useState<MarketplaceOrder[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [correlationId, setCorrelationId] = useState<string | null>(null);
+  const [error, setError] = useState<unknown>(null);
+  const [isDemoFallback, setIsDemoFallback] = useState(false);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [filters, setFilters] = useState<OrderFilters>({});
   const [periodPreset, setPeriodPreset] = useState<PeriodPreset>("7d");
   const canRead = canReadOrders(user?.roles);
+  const isDemoPartnerAccount = isDemoPartner(user?.email ?? null);
   const getSlaDeadline = (order: MarketplaceOrder) => {
     if (order.status === "CREATED") {
       return order.slaResponseDueAt ?? null;
@@ -141,22 +145,24 @@ export function OrdersPage() {
     const limit = String(PAGE_SIZE);
     setIsLoading(true);
     setError(null);
-    setCorrelationId(null);
     fetchOrders(user.token, { ...filters, offset, limit })
       .then((data) => {
         if (!active) return;
         setOrders(data.items ?? []);
         setTotal(data.total ?? 0);
+        setIsDemoFallback(false);
       })
       .catch((err) => {
         console.error(err);
         if (!active) return;
-        if (err instanceof ApiError) {
-          setError(t("ordersPage.errors.apiError", { status: err.status, message: err.message }));
-          setCorrelationId(err.correlationId);
-        } else {
-          setError(t("ordersPage.errors.loadFailed"));
+        if (err instanceof ApiError && err.status === 404 && isDemoPartnerAccount) {
+          setOrders(demoOrders);
+          setTotal(demoOrders.length);
+          setIsDemoFallback(true);
+          setError(null);
+          return;
         }
+        setError(err);
       })
       .finally(() => {
         if (active) {
@@ -167,7 +173,7 @@ export function OrdersPage() {
     return () => {
       active = false;
     };
-  }, [user, filters, page, canRead]);
+  }, [user, filters, page, canRead, isDemoPartnerAccount]);
 
   useEffect(() => {
     if (!user) return;
@@ -324,15 +330,20 @@ export function OrdersPage() {
             <div className="stat__value">{formatNumber(total)}</div>
           </div>
         </div>
+        {isDemoFallback ? (
+          <div className="notice">
+            <div>В демо-режиме показываются примерные заказы и показатели.</div>
+          </div>
+        ) : null}
 
         {isLoading ? (
           <LoadingState />
         ) : error ? (
-          <ErrorState
-            description={error}
-            correlationId={correlationId}
+          <PartnerErrorState
+            error={error}
+            description={t("ordersPage.errors.apiError")}
             action={
-              <button type="button" className="secondary" onClick={() => setPage(1)}>
+              <button type="button" className="secondary" onClick={refreshOrders}>
                 {t("errors.retry")}
               </button>
             }

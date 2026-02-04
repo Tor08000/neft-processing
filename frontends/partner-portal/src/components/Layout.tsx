@@ -57,15 +57,15 @@ export function Layout() {
   };
 
   const NAV_ITEMS: NavItem[] = [
-    { to: "/products", label: "Products", icon: <Package size={18} />, capability: "PARTNER_PRICING" },
-    { to: "/orders", label: "Orders", icon: <ShoppingBag size={18} />, capability: "PARTNER_CORE" },
-    { to: "/bookings", label: "Bookings", icon: <Briefcase size={18} />, capability: "PARTNER_CORE" },
-    { to: "/promotions", label: "Promotions", icon: <Percent size={18} />, capability: "PARTNER_PRICING" },
-    { to: "/analytics", label: "Analytics", icon: <BarChart3 size={18} />, capability: "PARTNER_CORE" },
-    { to: "/finance", label: "Финансы", icon: <Wallet size={18} />, capability: "PARTNER_FINANCE_VIEW" },
-    { to: "/payouts", label: "Выплаты", icon: <Wallet size={18} />, capability: "PARTNER_PAYOUT_REQUEST" },
-    { to: "/documents", label: "Документы", icon: <FileText size={18} />, capability: "PARTNER_DOCUMENTS_LIST" },
-    { to: "/legal", label: "Legal", icon: <Package size={18} /> },
+    { to: "/products", label: t("nav.products"), icon: <Package size={18} />, capability: "PARTNER_PRICING" },
+    { to: "/orders", label: t("nav.orders"), icon: <ShoppingBag size={18} />, capability: "PARTNER_CORE" },
+    { to: "/bookings", label: t("nav.bookings"), icon: <Briefcase size={18} />, capability: "PARTNER_CORE" },
+    { to: "/promotions", label: t("nav.promotions"), icon: <Percent size={18} />, capability: "PARTNER_PRICING" },
+    { to: "/analytics", label: t("nav.analytics"), icon: <BarChart3 size={18} />, capability: "PARTNER_CORE" },
+    { to: "/finance", label: t("nav.finance"), icon: <Wallet size={18} />, capability: "PARTNER_FINANCE_VIEW" },
+    { to: "/payouts", label: t("nav.payouts"), icon: <Wallet size={18} />, capability: "PARTNER_PAYOUT_REQUEST" },
+    { to: "/documents", label: t("nav.documents"), icon: <FileText size={18} />, capability: "PARTNER_DOCUMENTS_LIST" },
+    { to: "/legal", label: t("nav.legal"), icon: <Package size={18} /> },
   ];
 
   const navItems = NAV_ITEMS.map((item) => {

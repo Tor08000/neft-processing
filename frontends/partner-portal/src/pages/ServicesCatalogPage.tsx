@@ -13,13 +13,16 @@ import {
 import { ApiError } from "../api/http";
 import { useAuth } from "../auth/AuthContext";
 import { EmptyState } from "../components/EmptyState";
-import { ErrorState, ForbiddenState } from "../components/states";
+import { ForbiddenState } from "../components/states";
 import { StatusBadge } from "../components/StatusBadge";
 import { formatDateTime, formatNumber } from "../utils/format";
 import { parseCatalogCsv } from "../utils/csv";
 import { canManageServices, canReadServices } from "../utils/roles";
 import type { CatalogItem, CatalogItemInput, CatalogItemKind, CatalogItemStatus, CatalogImportPreview } from "../types/marketplace";
 import { useI18n } from "../i18n";
+import { PartnerErrorState } from "../components/PartnerErrorState";
+import { demoCatalogItems } from "../demo/partnerDemoData";
+import { isDemoPartner } from "@shared/demo/demo";
 
 type ApiErrorState = {
   message: string;
@@ -126,7 +129,8 @@ export function ServicesCatalogPage() {
     status: "ALL",
     category: "",
   });
-  const [error, setError] = useState<ApiErrorState | null>(null);
+  const [error, setError] = useState<unknown>(null);
+  const [isDemoFallback, setIsDemoFallback] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<CatalogItem | null>(null);
   const [formState, setFormState] = useState<CatalogFormState>(defaultFormState);
@@ -181,8 +185,16 @@ export function ServicesCatalogPage() {
       });
       setItems(response.items ?? []);
       setTotal(response.total ?? 0);
+      setIsDemoFallback(false);
     } catch (err) {
-      setError(normalizeError(err, t("servicesCatalogPage.errors.loadFailed")));
+      if (err instanceof ApiError && err.status === 404 && isDemoPartner(user.email ?? null)) {
+        setItems(demoCatalogItems);
+        setTotal(demoCatalogItems.length);
+        setIsDemoFallback(true);
+        setError(null);
+        return;
+      }
+      setError(err);
     } finally {
       setIsLoading(false);
     }
@@ -411,6 +423,11 @@ export function ServicesCatalogPage() {
             {actionCorrelation ? <div className="muted small">{t("errors.correlationId", { id: actionCorrelation })}</div> : null}
           </div>
         ) : null}
+        {isDemoFallback ? (
+          <div className="notice">
+            <div>В демо-режиме доступен примерный каталог услуг.</div>
+          </div>
+        ) : null}
         {isLoading ? (
           <div className="skeleton-stack" aria-busy="true">
             <div className="skeleton-line" />
@@ -418,9 +435,9 @@ export function ServicesCatalogPage() {
             <div className="skeleton-line" />
           </div>
         ) : error ? (
-          <ErrorState
-            description={formatErrorDescription(error)}
-            correlationId={error.correlationId}
+          <PartnerErrorState
+            error={error}
+            description={t("servicesCatalogPage.errors.loadFailed")}
             action={
               <button type="button" className="secondary" onClick={fetchItems}>
                 {t("errors.retry")}
