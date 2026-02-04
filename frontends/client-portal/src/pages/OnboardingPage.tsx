@@ -23,7 +23,7 @@ import {
 import { Toast } from "../components/Toast/Toast";
 import { useToast } from "../components/Toast/useToast";
 import { AppErrorState, AppForbiddenState, AppLoadingState } from "../components/states";
-import { isDemoClientEmail } from "../auth/demo";
+import { isDemoClient } from "@shared/demo/demo";
 
 type Step = "profile" | "plan" | "contract" | "activation";
 
@@ -36,7 +36,8 @@ export function OnboardingPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const onboardingEnabled = client?.gating?.onboarding_enabled ?? client?.features?.onboarding_enabled ?? SELF_SIGNUP_ENABLED;
-  const isDemoClient = isDemoClientEmail(user?.email ?? client?.user?.email ?? null);
+  const isDemoClientAccount = isDemoClient(user?.email ?? client?.user?.email ?? null);
+  const hasProfile = Boolean(client?.org?.id || client?.org?.name || client?.org_status);
 
   const [clientType, setClientType] = useState<"LEGAL" | "IP" | "INDIVIDUAL">("LEGAL");
   const [companyName, setCompanyName] = useState("");
@@ -124,6 +125,14 @@ export function OnboardingPage() {
     return <Navigate to="/login" replace />;
   }
 
+  if (isDemoClientAccount) {
+    return <Navigate to="/" replace />;
+  }
+
+  if (portalState === "READY" && hasProfile) {
+    return <Navigate to="/" replace />;
+  }
+
   if (portalState === "FORBIDDEN") {
     return <AppForbiddenState message="Недостаточно прав для подключения клиента." />;
   }
@@ -166,10 +175,6 @@ export function OnboardingPage() {
         status={portalError?.status}
       />
     );
-  }
-
-  if (isDemoClient) {
-    return <Navigate to="/" replace />;
   }
 
   if (

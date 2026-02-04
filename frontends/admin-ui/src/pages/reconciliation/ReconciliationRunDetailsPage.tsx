@@ -16,6 +16,7 @@ import { Tabs } from "../../components/common/Tabs";
 import { Toast } from "../../components/common/Toast";
 import { useToast } from "../../components/Toast/useToast";
 import { formatDate, formatDateTime } from "../../utils/format";
+import { AdminUnauthorizedPage } from "../admin/AdminStatusPages";
 
 const parseNumber = (value: unknown): number | null => {
   if (typeof value === "number" && Number.isFinite(value)) return value;
@@ -324,7 +325,7 @@ export function ReconciliationRunDetailsPage() {
   );
 
   if (unauthorized) {
-    return <div className="neft-card error-state">Not authorized</div>;
+    return <AdminUnauthorizedPage />;
   }
 
   return (

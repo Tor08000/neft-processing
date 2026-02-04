@@ -11,6 +11,7 @@ import { formatDateTime } from "../../utils/format";
 import { createIdempotencyKey } from "../../utils/uuid";
 import type { BillingPayment, BillingRefund } from "../../types/billingFlows";
 import { formatMoney, paymentStatusBadge, refundStatusBadge, renderBadge } from "./billingUtils";
+import { AdminUnauthorizedPage } from "../admin/AdminStatusPages";
 
 const BillingPaymentDetailsPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -164,7 +165,7 @@ const BillingPaymentDetailsPage: React.FC = () => {
   };
 
   if (unauthorized) {
-    return <div className="card error-state">Unauthorized</div>;
+    return <AdminUnauthorizedPage />;
   }
 
   if (loading) {

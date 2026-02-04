@@ -11,6 +11,7 @@ import { formatDateTime } from "../../utils/format";
 import { createIdempotencyKey } from "../../utils/uuid";
 import type { BillingInvoice, BillingPayment, BillingReconciliationLink } from "../../types/billingFlows";
 import { withBase } from "@shared/lib/path";
+import { AdminUnauthorizedPage } from "../admin/AdminStatusPages";
 import {
   formatMoney,
   invoiceStatusBadge,
@@ -273,7 +274,7 @@ const BillingInvoiceDetailsPage: React.FC = () => {
   };
 
   if (unauthorized) {
-    return <div className="card error-state">Unauthorized</div>;
+    return <AdminUnauthorizedPage />;
   }
 
   if (loading) {

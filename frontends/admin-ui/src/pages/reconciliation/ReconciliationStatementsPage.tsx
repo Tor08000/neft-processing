@@ -15,6 +15,7 @@ import { JsonViewer } from "../../components/common/JsonViewer";
 import { Toast } from "../../components/common/Toast";
 import { useToast } from "../../components/Toast/useToast";
 import { formatDate, formatDateTime } from "../../utils/format";
+import { AdminUnauthorizedPage } from "../admin/AdminStatusPages";
 
 const formatPeriod = (start?: string | null, end?: string | null) =>
   `${formatDate(start)} — ${formatDate(end)}`;
@@ -235,7 +236,7 @@ export function ReconciliationStatementsPage() {
   };
 
   if (unauthorized) {
-    return <div className="card error-state">Not authorized</div>;
+    return <AdminUnauthorizedPage />;
   }
 
   return (

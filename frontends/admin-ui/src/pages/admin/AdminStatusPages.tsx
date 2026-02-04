@@ -23,10 +23,10 @@ export const AdminLoadingPage: React.FC = () => (
 
 export const AdminUnauthorizedPage: React.FC<AdminStatusProps> = ({ requestId, errorId }) => (
   <EmptyState
-    title="AUTH_REQUIRED"
+    title="Требуется вход"
     description={
       <>
-        Требуется повторный вход в админ-портал.
+        Войдите в админ-портал, чтобы продолжить работу.
         <RequestMeta requestId={requestId} errorId={errorId} />
       </>
     }
@@ -86,12 +86,17 @@ export const AdminMisconfigPage: React.FC<AdminStatusProps> = ({ requestId, erro
 
 export const AdminCrashPage: React.FC = () => (
   <EmptyState
-    title="TECH_ERROR"
+    title="Техническая ошибка"
     description="Произошла непредвиденная ошибка. Попробуйте обновить страницу."
     action={
-      <Link className="ghost neft-btn-secondary" to="/">
-        На главную
-      </Link>
+      <div className="actions">
+        <Link className="ghost neft-btn-secondary" to="/">
+          На главную
+        </Link>
+        <button className="ghost neft-btn-secondary" type="button" onClick={() => window.location.reload()}>
+          Обновить
+        </button>
+      </div>
     }
   />
 );
@@ -102,7 +107,7 @@ export const AdminTechErrorPage: React.FC<AdminStatusProps & { message?: string 
   message,
 }) => (
   <EmptyState
-    title="TECH_ERROR"
+    title="Техническая ошибка"
     description={
       <>
         {message ?? "Не удалось загрузить данные админ-портала. Попробуйте позже."}
@@ -110,9 +115,14 @@ export const AdminTechErrorPage: React.FC<AdminStatusProps & { message?: string 
       </>
     }
     action={
-      <Link className="ghost neft-btn-secondary" to="/login">
-        Перейти к входу
-      </Link>
+      <div className="actions">
+        <Link className="ghost neft-btn-secondary" to="/">
+          На главную
+        </Link>
+        <button className="ghost neft-btn-secondary" type="button" onClick={() => window.location.reload()}>
+          Обновить
+        </button>
+      </div>
     }
   />
 );

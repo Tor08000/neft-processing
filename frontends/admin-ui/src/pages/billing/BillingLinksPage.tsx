@@ -9,6 +9,7 @@ import { Table, type Column } from "../../components/Table/Table";
 import { formatDateTime } from "../../utils/format";
 import type { BillingReconciliationLink } from "../../types/billingFlows";
 import { directionBadge, entityTypeBadge, formatMoney, linkStatusBadge, renderBadge } from "./billingUtils";
+import { AdminUnauthorizedPage } from "../admin/AdminStatusPages";
 
 const STATUS_OPTIONS = ["PENDING", "MATCHED", "MISMATCHED"];
 const ENTITY_OPTIONS = ["invoice", "payment", "refund"];
@@ -187,7 +188,7 @@ const BillingLinksPage: React.FC = () => {
   );
 
   if (unauthorized) {
-    return <div className="card error-state">Unauthorized</div>;
+    return <AdminUnauthorizedPage />;
   }
 
   return (

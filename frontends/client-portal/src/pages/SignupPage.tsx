@@ -1,6 +1,6 @@
 import { FormEvent, useMemo, useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
-import { register } from "../api/auth";
+import { login as loginApi, register } from "../api/auth";
 import { ApiError } from "../api/http";
 import { useAuth } from "../auth/AuthContext";
 import type { AuthSession } from "../api/types";
@@ -31,6 +31,7 @@ export function SignupPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [errorKind, setErrorKind] = useState<"SERVICE_UNAVAILABLE" | "TECH_ERROR" | null>(null);
+  const [loginFallback, setLoginFallback] = useState(false);
 
   const contactPayload = useMemo(() => resolveContactPayload(contact), [contact]);
 
@@ -54,6 +55,7 @@ export function SignupPage() {
     setIsSubmitting(true);
     setError(null);
     setErrorKind(null);
+    setLoginFallback(false);
     try {
       const registerResponse = await register({
         email: contactPayload.email,
@@ -73,18 +75,26 @@ export function SignupPage() {
         await activateSession(session);
         navigate("/onboarding", { replace: true });
       } else {
-        showToast("success", "Аккаунт создан — войдите.");
-        navigate("/login?signup=success", { replace: true });
+        try {
+          const session = await loginApi({ email: contactPayload.email, password });
+          await activateSession(session);
+          navigate("/onboarding", { replace: true });
+        } catch (loginError) {
+          console.error("Не удалось войти после регистрации", loginError);
+          setLoginFallback(true);
+          setError("Аккаунт создан. Войдите, чтобы продолжить онбординг.");
+          return;
+        }
       }
     } catch (err) {
       console.error("Ошибка регистрации", err);
       if (err instanceof ApiError) {
         if (err.status === 502 || err.status === 503) {
           setErrorKind("SERVICE_UNAVAILABLE");
-          setError("SERVICE_UNAVAILABLE: сервис временно недоступен");
+          setError("Сервис временно недоступен. Попробуйте позже.");
         } else {
           setErrorKind("TECH_ERROR");
-          setError("TECH_ERROR: произошла ошибка регистрации");
+          setError("Техническая ошибка регистрации. Попробуйте позже.");
         }
         showToast("error", "Сервис временно недоступен");
       } else if (err instanceof Error) {
@@ -108,6 +118,26 @@ export function SignupPage() {
         {error ? (
           <div className="error" role="alert">
             <div>{error}</div>
+            {loginFallback ? (
+              <button
+                type="button"
+                className="ghost neft-btn-secondary"
+                onClick={async () => {
+                  if (!contactPayload?.email) return;
+                  try {
+                    const session = await loginApi({ email: contactPayload.email, password });
+                    await activateSession(session);
+                    navigate("/onboarding", { replace: true });
+                  } catch (loginError) {
+                    console.error("Не удалось войти после регистрации", loginError);
+                    setError("Не удалось войти. Проверьте email и пароль.");
+                  }
+                }}
+                disabled={isSubmitting}
+              >
+                Войти и продолжить
+              </button>
+            ) : null}
             {errorKind ? (
               <button
                 type="button"

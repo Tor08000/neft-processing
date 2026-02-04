@@ -213,6 +213,11 @@ export function OrdersPage() {
     );
   };
 
+  const refreshOrders = () => {
+    setPage(1);
+    setFilters((prev) => ({ ...prev }));
+  };
+
   if (!canRead) {
     return <ForbiddenState />;
   }
@@ -337,6 +342,7 @@ export function OrdersPage() {
             icon={<Package />}
             title={t("emptyStates.orders.title")}
             description={t("emptyStates.orders.description")}
+            primaryAction={{ label: t("actions.refresh"), onClick: refreshOrders }}
           />
         ) : (
           <>

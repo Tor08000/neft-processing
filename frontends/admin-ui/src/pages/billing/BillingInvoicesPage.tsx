@@ -16,6 +16,7 @@ import { formatDateTime } from "../../utils/format";
 import { createIdempotencyKey } from "../../utils/uuid";
 import type { BillingInvoice } from "../../types/billingFlows";
 import { formatMoney, invoiceStatusBadge, renderBadge } from "./billingUtils";
+import { AdminUnauthorizedPage } from "../admin/AdminStatusPages";
 
 const STATUS_OPTIONS = ["ISSUED", "PARTIALLY_PAID", "PAID", "VOID"];
 const CURRENCY_OPTIONS = ["RUB", "USD", "EUR"];
@@ -306,7 +307,7 @@ const BillingInvoicesPage: React.FC = () => {
   };
 
   if (unauthorized) {
-    return <div className="card error-state">Unauthorized</div>;
+    return <AdminUnauthorizedPage />;
   }
 
   return (

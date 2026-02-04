@@ -12,6 +12,7 @@ import { useAuth } from "../auth/AuthContext";
 import { usePortal } from "../auth/PortalContext";
 import { StatusBadge } from "../components/StatusBadge";
 import { ErrorState, LoadingState } from "../components/states";
+import { EmptyState } from "../components/EmptyState";
 import { formatCurrency, formatDateTime } from "../utils/format";
 import type { PartnerBalance, PartnerExportJob, PartnerLedgerEntry, PartnerLedgerExplain } from "../types/partnerFinance";
 
@@ -193,7 +194,11 @@ export function PartnerFinancePage() {
             </div>
           </div>
         ) : (
-          <div className="muted">Нет totals</div>
+          <EmptyState
+            title="Нет итогов"
+            description="Итоги появятся после операций по счету."
+            primaryAction={{ label: "Обновить", onClick: () => window.location.reload() }}
+          />
         )}
       </section>
       <section className="card">
@@ -205,10 +210,11 @@ export function PartnerFinancePage() {
         ) : error ? (
           <ErrorState description={error} />
         ) : ledger.length === 0 ? (
-          <div className="empty-state">
-            <strong>Нет движений</strong>
-            <span className="muted">Начисления и списания появятся после завершения заказов.</span>
-          </div>
+          <EmptyState
+            title="Нет движений"
+            description="Начисления и списания появятся после завершения заказов."
+            primaryAction={{ label: "Обновить", onClick: () => window.location.reload() }}
+          />
         ) : (
           <>
             <table className="data-table">
@@ -308,7 +314,11 @@ export function PartnerFinancePage() {
               </tbody>
             </table>
           ) : (
-            <div className="muted">Экспортов пока нет.</div>
+            <EmptyState
+              title="Экспортов пока нет"
+              description="Создайте первый экспорт расчетов."
+              primaryAction={{ label: "Обновить", onClick: () => window.location.reload() }}
+            />
           )}
         </div>
       </section>

@@ -9,6 +9,7 @@ import { Table, type Column } from "../../components/Table/Table";
 import { formatDateTime } from "../../utils/format";
 import type { BillingPayment } from "../../types/billingFlows";
 import { formatMoney, paymentStatusBadge, linkStatusBadge, renderBadge } from "./billingUtils";
+import { AdminUnauthorizedPage } from "../admin/AdminStatusPages";
 
 const STATUS_OPTIONS = ["CAPTURED", "FAILED", "REFUNDED_PARTIAL", "REFUNDED_FULL"];
 
@@ -136,7 +137,7 @@ const BillingPaymentsPage: React.FC = () => {
   );
 
   if (unauthorized) {
-    return <div className="card error-state">Unauthorized</div>;
+    return <AdminUnauthorizedPage />;
   }
 
   return (

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   archiveMarketplaceProduct,
   createMarketplaceProduct,
@@ -135,6 +135,7 @@ export function MarketplaceProductsPage() {
   const [editing, setEditing] = useState<MarketplaceProduct | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const formRef = useRef<HTMLDivElement | null>(null);
 
   const filters = useMemo(
     () => ({
@@ -343,11 +344,16 @@ export function MarketplaceProductsPage() {
             title={t("marketplace.products.emptyTitle")}
             description={t("marketplace.products.emptyDescription")}
             hint="Добавьте первую позицию через форму ниже."
+            primaryAction={{
+              label: "Создать позицию",
+              onClick: () => formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }),
+            }}
+            secondaryAction={{ label: t("actions.refresh"), onClick: loadProducts }}
           />
         )}
       </section>
 
-      <section className="card">
+      <section className="card" ref={formRef}>
         <div className="section-title">
           <h3>{editing ? t("marketplace.products.editTitle") : t("marketplace.products.createTitle")}</h3>
           {editing ? (

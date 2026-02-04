@@ -128,6 +128,7 @@ export function LegalPage() {
               title="Нет обязательных документов"
               description="Юридические документы ещё не настроены."
               hint="Мы уведомим вас, как только они будут доступны для подписания."
+              primaryAction={{ label: "Обновить", onClick: () => void refresh() }}
             />
           ) : (
             required.map((item) => (
