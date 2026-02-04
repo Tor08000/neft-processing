@@ -35,7 +35,7 @@ export function SignupPage() {
   const contactPayload = useMemo(() => resolveContactPayload(contact), [contact]);
 
   if (user) {
-    return <Navigate to="/onboarding" replace />;
+    return <Navigate to="/" replace />;
   }
 
   const submitRegistration = async () => {
@@ -71,10 +71,10 @@ export function SignupPage() {
           expiresAt: Date.now() + (registerResponse.expires_in ?? 3600) * 1000,
         };
         await activateSession(session);
-        navigate("/client/onboarding", { replace: true });
+        navigate("/onboarding", { replace: true });
       } else {
         showToast("success", "Аккаунт создан — войдите.");
-        navigate("/client/login?signup=success", { replace: true });
+        navigate("/login?signup=success", { replace: true });
       }
     } catch (err) {
       console.error("Ошибка регистрации", err);
@@ -170,7 +170,7 @@ export function SignupPage() {
         <button
           type="button"
           className="ghost neft-btn-secondary"
-          onClick={() => navigate("/client/login")}
+          onClick={() => navigate("/login")}
           disabled={isSubmitting}
         >
           Вернуться к входу

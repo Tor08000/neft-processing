@@ -9,10 +9,10 @@ import { AppLogo } from "@shared/brand/components";
 
 export function LoginPage() {
   const { login, error, user } = useAuth();
-  const { client, portalState, refresh } = useClient();
+  const { portalState, refresh } = useClient();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const returnUrl = useMemo(() => searchParams.get("returnUrl") || "/client/dashboard", [searchParams]);
+  const returnUrl = useMemo(() => searchParams.get("returnUrl") || "/", [searchParams]);
   const [email, setEmail] = useState("client@neft.local");
   const [password, setPassword] = useState("client");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -23,27 +23,7 @@ export function LoginPage() {
   const emailRef = useRef<HTMLInputElement | null>(null);
   const errorRef = useRef<HTMLDivElement | null>(null);
 
-  const accessState = client?.access_state;
-  const redirectTarget = useMemo(() => {
-    switch (accessState) {
-      case "NEEDS_ONBOARDING":
-        return "/client/onboarding";
-      case "NEEDS_PLAN":
-        return "/client/onboarding/plan";
-      case "NEEDS_CONTRACT":
-        return "/client/onboarding/contract";
-      case "OVERDUE":
-        return "/client/billing/overdue";
-      case "SERVICE_UNAVAILABLE":
-        return "/client/service-unavailable";
-      case "TECH_ERROR":
-        return "/client/tech-error";
-      case "ACTIVE":
-        return returnUrl;
-      default:
-        return returnUrl;
-    }
-  }, [accessState, returnUrl]);
+  const redirectTarget = useMemo(() => returnUrl, [returnUrl]);
 
   useEffect(() => {
     if (!user || portalState !== "READY") return;
@@ -187,7 +167,7 @@ export function LoginPage() {
           {isSubmitting ? <span className="neft-spinner" aria-hidden /> : null}
           {isSubmitting ? "Входим..." : "Войти"}
         </button>
-        <Link to="/client/signup" className="neft-button neft-btn-secondary neft-btn-outline login-secondary-action">
+        <Link to="/register" className="neft-button neft-btn-secondary neft-btn-outline login-secondary-action">
           {selfSignupLabel}
         </Link>
         <button

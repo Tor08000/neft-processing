@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Navigate, useNavigate } from "react-router-dom";
 import { EmptyState } from "@shared/brand/components";
 import { useAuth } from "../auth/AuthContext";
 import { useClient } from "../auth/ClientContext";
@@ -23,7 +23,7 @@ import {
 import { Toast } from "../components/Toast/Toast";
 import { useToast } from "../components/Toast/useToast";
 import { AppErrorState, AppForbiddenState, AppLoadingState } from "../components/states";
-import { StatusPage } from "../components/StatusPage";
+import { isDemoClientEmail } from "../auth/demo";
 
 type Step = "profile" | "plan" | "contract" | "activation";
 
@@ -36,6 +36,7 @@ export function OnboardingPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const onboardingEnabled = client?.gating?.onboarding_enabled ?? client?.features?.onboarding_enabled ?? SELF_SIGNUP_ENABLED;
+  const isDemoClient = isDemoClientEmail(user?.email ?? client?.user?.email ?? null);
 
   const [clientType, setClientType] = useState<"LEGAL" | "IP" | "INDIVIDUAL">("LEGAL");
   const [companyName, setCompanyName] = useState("");
@@ -120,14 +121,7 @@ export function OnboardingPage() {
   }
 
   if (portalState === "AUTH_REQUIRED") {
-    return (
-      <StatusPage
-        title="Требуется вход"
-        description="Пожалуйста, войдите, чтобы продолжить подключение."
-        actionLabel="Перейти к входу"
-        actionTo="/login"
-      />
-    );
+    return <Navigate to="/login" replace />;
   }
 
   if (portalState === "FORBIDDEN") {
@@ -172,6 +166,19 @@ export function OnboardingPage() {
         status={portalError?.status}
       />
     );
+  }
+
+  if (isDemoClient) {
+    return <Navigate to="/" replace />;
+  }
+
+  if (
+    client?.access_state &&
+    ![AccessState.NEEDS_ONBOARDING, AccessState.NEEDS_PLAN, AccessState.NEEDS_CONTRACT].includes(
+      client.access_state as AccessState,
+    )
+  ) {
+    return <Navigate to="/" replace />;
   }
 
   if (!onboardingEnabled) {

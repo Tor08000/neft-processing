@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { Link } from "react-router-dom";
+import { Link, Navigate } from "react-router-dom";
 import { useClient, type PortalError, type PortalState } from "../auth/ClientContext";
 import { useAuth } from "../auth/AuthContext";
 import { AccessState, resolveAccessState } from "../access/accessState";
@@ -7,6 +7,7 @@ import { AppErrorState, AppForbiddenState, AppLoadingState } from "./states";
 import { StatusPage } from "./StatusPage";
 import { ModuleUnavailablePage } from "../pages/ModuleUnavailablePage";
 import { BillingOverdueState } from "./BillingOverdueState";
+import { isDemoClientEmail } from "../auth/demo";
 
 type AccessGateProps = {
   capability?: string;
@@ -61,14 +62,7 @@ const PortalStateView = ({
 }) => {
   switch (state) {
     case "AUTH_REQUIRED":
-      return (
-        <StatusPage
-          title="Требуется вход"
-          description="Пожалуйста, войдите, чтобы продолжить."
-          actionLabel="Перейти к входу"
-          actionTo="/login"
-        />
-      );
+      return <Navigate to="/login" replace />;
     case "FORBIDDEN":
       return (
         <StatusPage
@@ -327,6 +321,10 @@ export const AccessGate = ({
   }
 
   let decision = resolveAccessState({ client, requiredRoles, capability, module });
+  const isDemoClient = isDemoClientEmail(user.email ?? client?.user?.email ?? null);
+  if (isDemoClient && [AccessState.NEEDS_ONBOARDING, AccessState.NEEDS_PLAN, AccessState.NEEDS_CONTRACT].includes(decision.state)) {
+    decision = { state: AccessState.ACTIVE };
+  }
 
   if (
     (decision.state === AccessState.MISSING_CAPABILITY || decision.state === AccessState.MODULE_DISABLED) &&
