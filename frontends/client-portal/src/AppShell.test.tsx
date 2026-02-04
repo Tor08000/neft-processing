@@ -33,8 +33,8 @@ describe("Client portal shell", () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByText(/Client Portal/i)).toBeInTheDocument();
-    expect(screen.getByText(/Дашборд/)).toBeInTheDocument();
+    expect(await screen.findByText(/Клиентский портал/i)).toBeInTheDocument();
+    expect(screen.getByText(/Обзор/)).toBeInTheDocument();
     expect(screen.getByText(/Документы/)).toBeInTheDocument();
     expect(screen.getByText(/Настройки/)).toBeInTheDocument();
     expect(screen.queryByText(/Пользователи/i)).not.toBeInTheDocument();

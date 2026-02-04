@@ -3,7 +3,7 @@ import { AuthProvider } from "./auth/AuthContext";
 import { ClientProvider, useClient } from "./auth/ClientContext";
 import { LegalGateProvider } from "./auth/LegalGateContext";
 import type { AuthSession } from "./api/types";
-import { Layout } from "./components/Layout";
+import { ClientLayout } from "./layout/ClientLayout";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { ModuleGate } from "./components/ModuleGate";
 import { AccessGate } from "./components/AccessGate";
@@ -146,7 +146,7 @@ export function App({ initialSession = null }: AppProps) {
               <Route path="/onboarding" element={<OnboardingPage />} />
               <Route path="/onboarding/plan" element={<OnboardingPage />} />
               <Route path="/onboarding/contract" element={<OnboardingPage />} />
-              <Route element={<Layout pwaMode={isPwaMode} />}>
+              <Route element={<ClientLayout pwaMode={isPwaMode} />}>
               {isPwaMode ? (
                 <>
                   <Route index element={<PwaIndexRedirect />} />
