@@ -124,7 +124,11 @@ export function LegalPage() {
       <div className="legal-grid">
         <div className="legal-list">
           {required.length === 0 && !isLoading ? (
-            <EmptyState title="Нет обязательных документов" description="Юридические документы появятся после настройки." />
+            <EmptyState
+              title="Нет обязательных документов"
+              description="Юридические документы ещё не настроены."
+              hint="Мы уведомим вас, как только они будут доступны для подписания."
+            />
           ) : (
             required.map((item) => (
               <div key={`${item.code}-${item.required_version}-${item.locale}`} className="legal-item">

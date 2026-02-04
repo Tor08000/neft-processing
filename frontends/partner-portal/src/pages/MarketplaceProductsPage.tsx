@@ -11,6 +11,7 @@ import { useAuth } from "../auth/AuthContext";
 import { StatusBadge } from "../components/StatusBadge";
 import { formatDateTime, formatNumber } from "../utils/format";
 import { useI18n } from "../i18n";
+import { EmptyState } from "@shared/ui/EmptyState";
 import type {
   MarketplacePriceConfig,
   MarketplacePriceModel,
@@ -338,10 +339,11 @@ export function MarketplaceProductsPage() {
             </tbody>
           </table>
         ) : (
-          <div className="empty-state">
-            <h3>{t("marketplace.products.emptyTitle")}</h3>
-            <p>{t("marketplace.products.emptyDescription")}</p>
-          </div>
+          <EmptyState
+            title={t("marketplace.products.emptyTitle")}
+            description={t("marketplace.products.emptyDescription")}
+            hint="Добавьте первую позицию через форму ниже."
+          />
         )}
       </section>
 

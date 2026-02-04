@@ -425,8 +425,13 @@ export function AuditPage() {
         data={items}
         loading={isLoading && items.length === 0}
         emptyState={{
-          title: t("auditViewer.emptyTitle"),
-          description: t("auditViewer.emptyDescription"),
+          title: "Нет событий аудита",
+          description: "За выбранный период события не зафиксированы.",
+          hint: "Попробуйте изменить фильтры или период.",
+          primaryAction: {
+            label: "Обновить",
+            onClick: handleClearFilters,
+          },
         }}
         errorState={
           errorType === "unknown" && items.length === 0

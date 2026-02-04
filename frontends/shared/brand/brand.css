@@ -441,7 +441,19 @@ html, body {
 
 .empty-state__description {
   margin: 0;
+  color: var(--neft-text-secondary);
+}
+
+.empty-state__hint {
+  margin: 0;
   color: var(--neft-text-muted);
+}
+
+.empty-state__actions {
+  display: inline-flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
 }
 
 .empty-state__icon {

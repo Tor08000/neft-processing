@@ -7,7 +7,11 @@ interface ComingSoonPageProps {
 
 export const ComingSoonPage: React.FC<ComingSoonPageProps> = ({ title }) => (
   <div className="neft-container">
-    <EmptyState title={title} description="Coming soon" />
+    <EmptyState
+      title={title}
+      description="Раздел в разработке."
+      hint="Мы завершаем настройки и скоро добавим эту страницу."
+    />
   </div>
 );
 
