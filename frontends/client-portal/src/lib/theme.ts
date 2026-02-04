@@ -1,6 +1,6 @@
 export type NeftTheme = "light" | "dark";
 
-const STORAGE_KEY = "neft.theme";
+const STORAGE_KEY = "neft.client.theme";
 
 export function getInitialTheme(): NeftTheme {
   const saved = localStorage.getItem(STORAGE_KEY) as NeftTheme | null;

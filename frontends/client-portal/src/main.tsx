@@ -6,7 +6,7 @@ import { ErrorBoundary } from "./components/ErrorBoundary";
 import { I18nProvider } from "./i18n";
 import { registerServiceWorker } from "./pwa/registerServiceWorker";
 import "./index.css";
-import "@shared/brand/brand.css";
+import "./styles/neft-client-brand.css";
 import { applyTheme, getInitialTheme } from "./lib/theme";
 import { normalizeBase } from "@shared/lib/path";
 
