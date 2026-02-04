@@ -41,12 +41,12 @@ export function PayoutsPage() {
         setItems(data.items ?? []);
       })
       .catch((err) => {
-        console.error(err);
         if (err instanceof ApiError && isDemoPartnerAccount && (err.status === 403 || err.status === 404)) {
           setItems([]);
           setError(null);
           return;
         }
+        console.error(err);
         setError(err);
       })
       .finally(() => setIsLoading(false));
@@ -70,12 +70,12 @@ export function PayoutsPage() {
         setPayoutPreview({ legal_status: data.legal_status, warnings: data.warnings ?? [] });
       })
       .catch((err) => {
-        console.error(err);
         if (err instanceof ApiError && isDemoPartnerAccount && (err.status === 403 || err.status === 404)) {
           setPayoutPreview({ legal_status: "VERIFIED", warnings: [] });
           setPreviewError(null);
           return;
         }
+        console.error(err);
         setPreviewError(err);
       });
   }, [user, isDemoPartnerAccount]);

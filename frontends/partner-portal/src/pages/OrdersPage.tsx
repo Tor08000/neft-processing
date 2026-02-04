@@ -140,6 +140,14 @@ export function OrdersPage() {
       setIsLoading(false);
       return;
     }
+    if (isDemoPartnerAccount) {
+      setOrders(demoOrders);
+      setTotal(demoOrders.length);
+      setIsDemoFallback(true);
+      setError(null);
+      setIsLoading(false);
+      return;
+    }
     let active = true;
     const offset = String((page - 1) * PAGE_SIZE);
     const limit = String(PAGE_SIZE);
@@ -153,7 +161,6 @@ export function OrdersPage() {
         setIsDemoFallback(false);
       })
       .catch((err) => {
-        console.error(err);
         if (!active) return;
         if (err instanceof ApiError && isDemoPartnerAccount && (err.status === 403 || err.status === 404)) {
           setOrders(demoOrders);
@@ -162,6 +169,7 @@ export function OrdersPage() {
           setError(null);
           return;
         }
+        console.error(err);
         setError(err);
       })
       .finally(() => {
