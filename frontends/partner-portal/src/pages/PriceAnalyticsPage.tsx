@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, NavLink } from "react-router-dom";
 import { EmptyState } from "../components/EmptyState";
-import { ErrorState, ForbiddenState, LoadingState } from "../components/states";
+import { ForbiddenState, LoadingState } from "../components/states";
 import { PriceAnalyticsCharts } from "../components/PriceAnalyticsCharts";
 import { ChartFrame } from "@shared/ui/charts/ChartFrame";
 import { useAuth } from "../auth/AuthContext";
@@ -21,6 +21,14 @@ import type {
   PriceAnalyticsSeriesPoint,
   PriceAnalyticsVersion,
 } from "../types/prices";
+import { PartnerErrorState } from "../components/PartnerErrorState";
+import { isDemoPartner } from "@shared/demo/demo";
+import {
+  demoAnalyticsInsights,
+  demoAnalyticsOffers,
+  demoAnalyticsSeries,
+  demoAnalyticsVersions,
+} from "../demo/partnerDemoData";
 
 const buildDefaultRange = () => {
   const today = new Date();
@@ -52,8 +60,10 @@ export function PriceAnalyticsPage() {
   const [offerSort, setOfferSort] = useState<"orders" | "revenue">("orders");
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<ApiError | null>(null);
+  const [isDemoFallback, setIsDemoFallback] = useState(false);
 
   const canRead = canReadPriceAnalytics(user?.roles);
+  const isDemoPartnerAccount = isDemoPartner(user?.email ?? null);
 
   useEffect(() => {
     if (!user || !canRead) return;
@@ -68,17 +78,25 @@ export function PriceAnalyticsPage() {
         setOffers(offersResponse ?? []);
         setInsights(insightsResponse ?? []);
         setError(null);
+        setIsDemoFallback(false);
       })
       .catch((err) => {
         console.error(err);
-        setError(
-          err instanceof ApiError ? err : new ApiError(t("priceAnalyticsPage.errors.loadFailed"), 500, null, null, null),
-        );
+        if (err instanceof ApiError && err.status === 404 && isDemoPartnerAccount) {
+          setVersions(demoAnalyticsVersions);
+          setOffers(demoAnalyticsOffers);
+          setInsights(demoAnalyticsInsights);
+          setSeries(demoAnalyticsSeries);
+          setError(null);
+          setIsDemoFallback(true);
+          return;
+        }
+        setError(err instanceof ApiError ? err : new ApiError(t("priceAnalyticsPage.errors.loadFailed"), 500, null, null, null));
       })
       .finally(() => {
         setIsLoading(false);
       });
-  }, [user, canRead, filters, selectedVersion, t]);
+  }, [user, canRead, filters, selectedVersion, t, isDemoPartnerAccount]);
 
   useEffect(() => {
     if (!versions.length) return;
@@ -94,6 +112,10 @@ export function PriceAnalyticsPage() {
   }, [versions, selectedVersion, compareLeft, compareRight]);
 
   useEffect(() => {
+    if (isDemoFallback) {
+      setSeries(demoAnalyticsSeries);
+      return;
+    }
     if (!user || !selectedVersion || !canRead) {
       setSeries([]);
       return;
@@ -104,7 +126,7 @@ export function PriceAnalyticsPage() {
         console.error(err);
         setSeries([]);
       });
-  }, [user, selectedVersion, filters, canRead]);
+  }, [user, selectedVersion, filters, canRead, isDemoFallback]);
 
   const comparison = useMemo(() => {
     const left = versions.find((version) => version.price_version_id === compareLeft);
@@ -142,10 +164,10 @@ export function PriceAnalyticsPage() {
 
   if (error) {
     return (
-      <ErrorState
+      <PartnerErrorState
+        error={error}
         title={t("priceAnalyticsPage.errors.loadTitle", { status: error.status })}
-        description={error.message}
-        correlationId={error.correlationId}
+        description={t("priceAnalyticsPage.errors.loadFailed")}
         action={
           <button type="button" onClick={() => window.location.reload()}>
             {t("errors.retry")}
@@ -201,6 +223,11 @@ export function PriceAnalyticsPage() {
             </select>
           </label>
         </div>
+        {isDemoFallback ? (
+          <div className="notice">
+            <div>В демо-режиме отображаются примерные данные аналитики.</div>
+          </div>
+        ) : null}
       </section>
 
       {isEmpty ? (

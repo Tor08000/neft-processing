@@ -15,6 +15,12 @@
     "refunds": "Refunds",
     "payouts": "Payouts",
     "documents": "Documents",
+    "products": "Products",
+    "bookings": "Bookings",
+    "promotions": "Promotions",
+    "analytics": "Analytics",
+    "finance": "Finance",
+    "legal": "Legal",
     "services": "Services",
     "integrations": "Integrations",
     "marketplace": "Marketplace",
@@ -68,8 +74,10 @@
   },
   "errors": {
     "actionFailedTitle": "Action failed",
+    "actionFailedDescription": "Please try again later.",
     "retry": "Retry",
     "errorCode": "Error code: {code}",
+    "requestId": "Request ID: {id}",
     "correlationId": "Correlation ID: {id}"
   },
   "supportRequests": {

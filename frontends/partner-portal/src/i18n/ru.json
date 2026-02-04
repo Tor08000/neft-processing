@@ -15,6 +15,12 @@
     "refunds": "Возвраты",
     "payouts": "Выплаты",
     "documents": "Документы",
+    "products": "Товары",
+    "bookings": "Бронирования",
+    "promotions": "Промо",
+    "analytics": "Аналитика",
+    "finance": "Финансы",
+    "legal": "Юридические данные",
     "services": "Сервисы",
     "integrations": "Интеграции",
     "marketplace": "Маркетплейс",
@@ -68,8 +74,10 @@
   },
   "errors": {
     "actionFailedTitle": "Не удалось выполнить действие",
+    "actionFailedDescription": "Попробуйте повторить позже.",
     "retry": "Повторить",
     "errorCode": "Код ошибки: {code}",
+    "requestId": "Request ID: {id}",
     "correlationId": "Correlation ID: {id}"
   },
   "supportRequests": {
@@ -585,8 +593,8 @@
         "30d": "30 дней",
         "custom": "Произвольно"
       },
-      "from": "С",
-      "to": "По",
+      "from": "Период с",
+      "to": "Период по",
       "status": "Статус",
       "search": "Поиск",
       "searchPlaceholder": "order_id, клиент, сервис",
@@ -598,11 +606,11 @@
       "slaRiskNear": "Близко к дедлайну"
     },
     "actions": {
-      "saveFilters": "Сохранить фильтры"
+      "saveFilters": "Сохранить фильтр"
     },
     "errors": {
       "loadFailed": "Не удалось загрузить заказы",
-      "apiError": "HTTP {status}: {message}"
+      "apiError": "Не удалось загрузить заказы"
     },
     "kpis": {
       "today": "Заказы сегодня",
@@ -739,8 +747,8 @@
     }
   },
   "servicesCatalogPage": {
-    "title": "Каталог услуг и товаров",
-    "subtitle": "Marketplace partner catalog",
+    "title": "Каталог услуг",
+    "subtitle": "Управляйте услугами и бронированиями.",
     "empty": {
       "filteredTitle": "Нет результатов фильтра",
       "filteredDescription": "Измените фильтры или сбросьте настройки поиска."
@@ -750,15 +758,15 @@
       "searchPlaceholder": "Название, описание",
       "kind": "Тип",
       "kindOptions": {
-        "service": "Service",
-        "product": "Product"
+        "service": "Услуга",
+        "product": "Товар"
       },
       "status": "Статус",
       "statusOptions": {
-        "draft": "Draft",
-        "active": "Active",
-        "disabled": "Disabled",
-        "archived": "Archived"
+        "draft": "Черновик",
+        "active": "Активен",
+        "disabled": "Отключён",
+        "archived": "Архив"
       },
       "category": "Категория",
       "categoryPlaceholder": "Например, автомойка"
@@ -772,8 +780,8 @@
       "updatedAt": "Обновлено"
     },
     "actions": {
-      "disable": "Disable",
-      "activate": "Activate",
+      "disable": "Отключить",
+      "activate": "Активировать",
       "resetFilters": "Сбросить фильтры"
     },
     "pagination": "Страница {current} из {total}",
@@ -790,34 +798,34 @@
       "activated": "Элемент каталога активирован"
     },
     "import": {
-      "title": "Импорт каталога",
-      "subtitle": "CSV import with preview",
+      "title": "Импорт CSV",
+      "subtitle": "Загрузите CSV для массового добавления.",
       "unavailableTitle": "Импорт недоступен",
       "unavailableDescription": "Доступ только для PARTNER_OWNER или PARTNER_SERVICE_MANAGER.",
-      "csvFile": "CSV файл",
+      "csvFile": "Файл CSV",
       "mode": "Режим",
       "modes": {
-        "create": "create-only",
-        "upsert": "upsert"
+        "create": "Создать",
+        "upsert": "Обновить"
       },
-      "preview": "Preview",
+      "preview": "Предпросмотр",
       "csvError": "Ошибка CSV:",
-      "previewSummary": "Preview summary",
-      "rowsParsed": "Rows parsed: {count}",
-      "willCreate": "Will create: {count}",
-      "willUpdate": "Will update: {count}",
-      "errorsCount": "Errors count: {count}",
+      "previewSummary": "Сводка",
+      "rowsParsed": "Строк обработано: {count}",
+      "willCreate": "Будет создано: {count}",
+      "willUpdate": "Будет обновлено: {count}",
+      "errorsCount": "Ошибок: {count}",
       "errorsTitle": "Ошибки импорта",
       "table": {
         "row": "Строка",
         "description": "Описание"
       },
       "sampleTitle": "Пример строк (первые 20)",
-      "apply": "Apply import",
+      "apply": "Применить импорт",
       "resultTitle": "Результат импорта",
-      "resultCreated": "Created: {count}",
-      "resultUpdated": "Updated: {count}",
-      "resultSkipped": "Skipped: {count}",
+      "resultCreated": "Создано: {count}",
+      "resultUpdated": "Обновлено: {count}",
+      "resultSkipped": "Пропущено: {count}",
       "refreshList": "Обновить список",
       "csvFormat": "Формат CSV",
       "requiredFields": "Обязательные поля: kind, title, category, uom",
@@ -842,7 +850,7 @@
         "status": "Статус"
       },
       "actions": {
-        "saveActivate": "Save & Activate"
+        "saveActivate": "Сохранить и активировать"
       }
     }
   },
