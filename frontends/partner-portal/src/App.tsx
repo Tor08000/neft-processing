@@ -14,13 +14,13 @@ import { StationDetailsPage } from "./pages/StationDetailsPage";
 import { TransactionsPage } from "./pages/TransactionsPage";
 import { TransactionDetailsPage } from "./pages/TransactionDetailsPage";
 import { PartnerContractsPage } from "./pages/PartnerContractsPage";
-import { PayoutsPage } from "./pages/PayoutsPage";
+import { PayoutsPage } from "./pages/payouts/PayoutsPage";
 import { SettlementDetailsPage } from "./pages/SettlementDetailsPage";
 import { PayoutBatchesPage } from "./pages/PayoutBatchesPage";
 import { PayoutTracePage } from "./pages/PayoutTracePage";
-import { DocumentsPage } from "./pages/DocumentsPage";
+import { DocumentsPage } from "./pages/documents/DocumentsPage";
 import { DocumentDetailsPage } from "./pages/DocumentDetailsPage";
-import { PartnerFinancePage } from "./pages/PartnerFinancePage";
+import { FinancePage } from "./pages/finance/FinancePage";
 import { OrdersPage } from "./pages/orders/OrdersPage";
 import { OrderDetailsPage } from "./pages/OrderDetailsPage";
 import { RefundsPage } from "./pages/RefundsPage";
@@ -28,7 +28,7 @@ import { RefundDetailsPage } from "./pages/RefundDetailsPage";
 import { ServicesCatalogPage } from "./pages/services/ServicesCatalogPage";
 import { ServiceDetailsPage } from "./pages/ServiceDetailsPage";
 import { PricesPage } from "./pages/PricesPage";
-import { PriceAnalyticsPage } from "./pages/PriceAnalyticsPage";
+import { AnalyticsPage } from "./pages/analytics/AnalyticsPage";
 import { PriceVersionDetailsPage } from "./pages/PriceVersionDetailsPage";
 import { IntegrationsPage } from "./pages/IntegrationsPage";
 import { SettingsPage } from "./pages/SettingsPage";
@@ -65,20 +65,20 @@ export function App({ initialSession = null }: AppProps) {
                 <Route path="/bookings" element={<ServicesCatalogPage />} />
                 <Route path="/bookings/:id" element={<ServiceDetailsPage />} />
                 <Route path="/promotions" element={<MarketplaceProfilePage />} />
-                <Route path="/analytics" element={<PriceAnalyticsPage />} />
+                <Route path="/analytics" element={<AnalyticsPage />} />
                 <Route path="/contracts" element={<PartnerContractsPage />} />
                 <Route path="/stations" element={<StationsPage />} />
                 <Route path="/stations/:id" element={<StationDetailsPage />} />
                 <Route path="/transactions" element={<TransactionsPage />} />
                 <Route path="/transactions/:id" element={<TransactionDetailsPage />} />
                 <Route path="/prices" element={<PricesPage />} />
-                <Route path="/prices/analytics" element={<PriceAnalyticsPage />} />
+                <Route path="/prices/analytics" element={<AnalyticsPage />} />
                 <Route path="/prices/:id" element={<PriceVersionDetailsPage />} />
                 <Route
                   path="/finance"
                   element={
                     <AccessGate title="Финансы">
-                      <PartnerFinancePage />
+                      <FinancePage />
                     </AccessGate>
                   }
                 />

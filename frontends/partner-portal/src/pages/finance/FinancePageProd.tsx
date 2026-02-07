@@ -7,21 +7,17 @@ import {
   fetchPartnerLedger,
   fetchPartnerLedgerExplain,
   getPartnerExportDownloadUrl,
-} from "../api/partnerFinance";
-import { useAuth } from "../auth/AuthContext";
-import { usePortal } from "../auth/PortalContext";
-import { StatusBadge } from "../components/StatusBadge";
-import { LoadingState } from "../components/states";
-import { EmptyState } from "../components/EmptyState";
-import { formatCurrency, formatDateTime } from "../utils/format";
-import type { PartnerBalance, PartnerExportJob, PartnerLedgerEntry, PartnerLedgerExplain } from "../types/partnerFinance";
-import { PartnerErrorState } from "../components/PartnerErrorState";
-import { isDemoPartner } from "@shared/demo/demo";
-import { DemoEmptyState } from "../components/DemoEmptyState";
-import { ApiError } from "../api/http";
-import { demoBalance, demoExportJobs, demoLedger, demoLedgerTotals } from "../demo/partnerDemoData";
+} from "../../api/partnerFinance";
+import { useAuth } from "../../auth/AuthContext";
+import { usePortal } from "../../auth/PortalContext";
+import { StatusBadge } from "../../components/StatusBadge";
+import { LoadingState } from "../../components/states";
+import { EmptyState } from "../../components/EmptyState";
+import { formatCurrency, formatDateTime } from "../../utils/format";
+import type { PartnerBalance, PartnerExportJob, PartnerLedgerEntry, PartnerLedgerExplain } from "../../types/partnerFinance";
+import { PartnerErrorState } from "../../components/PartnerErrorState";
 
-export function PartnerFinancePage() {
+export function FinancePageProd() {
   const { user } = useAuth();
   const { portal } = usePortal();
   const [balance, setBalance] = useState<PartnerBalance | null>(null);
@@ -32,7 +28,6 @@ export function PartnerFinancePage() {
   const [exportJobs, setExportJobs] = useState<PartnerExportJob[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<unknown>(null);
-  const [isDemoFallback, setIsDemoFallback] = useState(false);
   const [loadMoreError, setLoadMoreError] = useState<unknown>(null);
   const [explainEntry, setExplainEntry] = useState<PartnerLedgerExplain | null>(null);
   const [isExplainOpen, setIsExplainOpen] = useState(false);
@@ -49,22 +44,10 @@ export function PartnerFinancePage() {
       ? ((meta as Record<string, unknown>).legal_status as string)
       : null;
   const needsLegal = Boolean(legalStatus && legalStatus !== "VERIFIED");
-  const isDemoPartnerAccount = isDemoPartner(user?.email ?? null);
 
   useEffect(() => {
     let active = true;
     if (!user) return;
-    if (isDemoPartnerAccount) {
-      setBalance(demoBalance);
-      setLedger(demoLedger);
-      setLedgerTotals(demoLedgerTotals);
-      setLedgerCursor(null);
-      setExportJobs(demoExportJobs);
-      setIsDemoFallback(true);
-      setError(null);
-      setIsLoading(false);
-      return;
-    }
     setIsLoading(true);
     Promise.all([
       fetchPartnerBalance(user.token),
@@ -78,20 +61,9 @@ export function PartnerFinancePage() {
         setLedgerTotals(ledgerResp.totals ?? null);
         setLedgerCursor(ledgerResp.next_cursor ?? null);
         setExportJobs(exportResp.items ?? []);
-        setIsDemoFallback(false);
       })
       .catch((err) => {
         if (!active) return;
-        if (err instanceof ApiError && isDemoPartnerAccount && (err.status === 403 || err.status === 404)) {
-          setBalance(demoBalance);
-          setLedger(demoLedger);
-          setLedgerTotals(demoLedgerTotals);
-          setLedgerCursor(null);
-          setExportJobs(demoExportJobs);
-          setIsDemoFallback(true);
-          setError(null);
-          return;
-        }
         console.error(err);
         setError(err);
       })
@@ -101,7 +73,7 @@ export function PartnerFinancePage() {
     return () => {
       active = false;
     };
-  }, [user, isDemoPartnerAccount]);
+  }, [user, ledgerLimit]);
 
   const handleExplain = async (entry: PartnerLedgerEntry) => {
     if (!user) return;
@@ -157,7 +129,9 @@ export function PartnerFinancePage() {
     const sourceType = typeof meta.source_type === "string" ? meta.source_type : null;
     const sourceId = typeof meta.source_id === "string" ? meta.source_id : null;
     if (sourceType === "payout_request") return `Payout ${sourceId ?? "—"}`;
-    if (sourceType === "marketplace_order" || sourceType === "partner_order" || sourceType === "order") return `Order ${sourceId ?? entry.order_id ?? "—"}`;
+    if (sourceType === "marketplace_order" || sourceType === "partner_order" || sourceType === "order") {
+      return `Order ${sourceId ?? entry.order_id ?? "—"}`;
+    }
     return sourceId ? `${sourceType ?? "Источник"} ${sourceId}` : "—";
   };
 
@@ -223,12 +197,6 @@ export function PartnerFinancePage() {
               <strong>{formatCurrency(ledgerTotals.net ?? null, currency)}</strong>
             </div>
           </div>
-        ) : isDemoFallback ? (
-          <EmptyState
-            title="Нет итогов"
-            description="Итоги появятся после операций по счету."
-            primaryAction={{ label: "Обновить", onClick: () => window.location.reload() }}
-          />
         ) : (
           <EmptyState
             title="Нет итогов"
@@ -246,19 +214,11 @@ export function PartnerFinancePage() {
         ) : error ? (
           <PartnerErrorState error={error} />
         ) : ledger.length === 0 ? (
-          isDemoFallback ? (
-            <EmptyState
-              title="Нет движений"
-              description="История операций появится после перехода в рабочий контур."
-              primaryAction={{ label: "Обновить", onClick: () => window.location.reload() }}
-            />
-          ) : (
-            <EmptyState
-              title="Нет движений"
-              description="Начисления и списания появятся после завершения заказов."
-              primaryAction={{ label: "Обновить", onClick: () => window.location.reload() }}
-            />
-          )
+          <EmptyState
+            title="Нет движений"
+            description="Начисления и списания появятся после завершения заказов."
+            primaryAction={{ label: "Обновить", onClick: () => window.location.reload() }}
+          />
         ) : (
           <>
             {loadMoreError ? <PartnerErrorState error={loadMoreError} /> : null}
@@ -307,74 +267,65 @@ export function PartnerFinancePage() {
         <div className="section-title">
           <h2>Экспорт расчётов</h2>
         </div>
-        {isDemoFallback ? (
-          <DemoEmptyState
-            title="Экспорт доступен в рабочем контуре"
-            description="В демо-режиме экспорт недоступен. В рабочем контуре доступны выгрузки по расчетам."
-            primaryAction={{ label: "Обновить", onClick: () => window.location.reload() }}
-            secondaryAction={{ label: "Связаться", to: "/support/requests" }}
-          />
-        ) : (
-          <div className="stack">
-            <div className="grid three">
-              <label className="form-field">
-                Период с
-                <input type="date" value={exportFrom} onChange={(event) => setExportFrom(event.target.value)} />
-              </label>
-              <label className="form-field">
-                Период по
-                <input type="date" value={exportTo} onChange={(event) => setExportTo(event.target.value)} />
-              </label>
-              <label className="form-field">
-                Формат
-                <select value={exportFormat} onChange={(event) => setExportFormat(event.target.value as "CSV" | "ZIP")}>
-                  <option value="CSV">CSV</option>
-                  <option value="ZIP">ZIP</option>
-                </select>
-              </label>
-            </div>
-            <button type="button" className="primary" onClick={handleExport} disabled={!exportFrom || !exportTo || exportLoading}>
-              {exportLoading ? "Готовим..." : "Экспортировать расчёты"}
-            </button>
-            {exportError ? <div className="notice error">{exportError}</div> : null}
-            {exportJobs.length ? (
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Файл</th>
-                    <th>Статус</th>
-                    <th>Создано</th>
-                    <th>Скачать</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {exportJobs.map((job) => (
-                    <tr key={job.id}>
-                      <td>{job.file_name ?? job.id}</td>
-                      <td>{job.status}</td>
-                      <td>{formatDateTime(job.created_at)}</td>
-                      <td>
-                        {job.status === "DONE" ? (
-                          <a className="link-button" href={getPartnerExportDownloadUrl(job.id)}>
-                            Скачать
-                          </a>
-                        ) : (
-                          <span className="muted">—</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            ) : (
-              <EmptyState
-                title="Экспортов пока нет"
-                description="Создайте первый экспорт расчетов."
-                primaryAction={{ label: "Обновить", onClick: () => window.location.reload() }}
-              />
-            )}
+        <div className="stack">
+          <div className="grid three">
+            <label className="form-field">
+              Период с
+              <input type="date" value={exportFrom} onChange={(event) => setExportFrom(event.target.value)} />
+            </label>
+            <label className="form-field">
+              Период по
+              <input type="date" value={exportTo} onChange={(event) => setExportTo(event.target.value)} />
+            </label>
+            <label className="form-field">
+              Формат
+              <select value={exportFormat} onChange={(event) => setExportFormat(event.target.value as "CSV" | "ZIP")}>
+                <option value="CSV">CSV</option>
+                <option value="ZIP">ZIP</option>
+              </select>
+            </label>
           </div>
-        )}
+          <button type="button" className="primary" onClick={handleExport} disabled={!exportFrom || !exportTo || exportLoading}>
+            {exportLoading ? "Готовим..." : "Экспортировать расчёты"}
+          </button>
+          {exportError ? <div className="notice error">{exportError}</div> : null}
+          {exportJobs.length ? (
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Файл</th>
+                  <th>Статус</th>
+                  <th>Создано</th>
+                  <th>Скачать</th>
+                </tr>
+              </thead>
+              <tbody>
+                {exportJobs.map((job) => (
+                  <tr key={job.id}>
+                    <td>{job.file_name ?? job.id}</td>
+                    <td>{job.status}</td>
+                    <td>{formatDateTime(job.created_at)}</td>
+                    <td>
+                      {job.status === "DONE" ? (
+                        <a className="link-button" href={getPartnerExportDownloadUrl(job.id)}>
+                          Скачать
+                        </a>
+                      ) : (
+                        <span className="muted">—</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <EmptyState
+              title="Экспортов пока нет"
+              description="Создайте первый экспорт расчетов."
+              primaryAction={{ label: "Обновить", onClick: () => window.location.reload() }}
+            />
+          )}
+        </div>
       </section>
 
       {isExplainOpen ? (
