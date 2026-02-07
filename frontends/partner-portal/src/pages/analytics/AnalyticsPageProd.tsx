@@ -1,34 +1,27 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, NavLink } from "react-router-dom";
-import { EmptyState } from "../components/EmptyState";
-import { ForbiddenState, LoadingState } from "../components/states";
-import { PriceAnalyticsCharts } from "../components/PriceAnalyticsCharts";
+import { EmptyState } from "../../components/EmptyState";
+import { ForbiddenState, LoadingState } from "../../components/states";
+import { PriceAnalyticsCharts } from "../../components/PriceAnalyticsCharts";
 import { ChartFrame } from "@shared/ui/charts/ChartFrame";
-import { useAuth } from "../auth/AuthContext";
+import { useAuth } from "../../auth/AuthContext";
 import { useTranslation } from "react-i18next";
 import {
   fetchPriceAnalyticsInsights,
   fetchPriceAnalyticsOffers,
   fetchPriceAnalyticsVersionSeries,
   fetchPriceAnalyticsVersions,
-} from "../api/prices";
-import { ApiError } from "../api/http";
-import { formatCurrency, formatDate, formatNumber } from "../utils/format";
-import { canReadPriceAnalytics } from "../utils/roles";
+} from "../../api/prices";
+import { ApiError } from "../../api/http";
+import { formatCurrency, formatDate, formatNumber } from "../../utils/format";
+import { canReadPriceAnalytics } from "../../utils/roles";
 import type {
   PriceAnalyticsInsight,
   PriceAnalyticsOffer,
   PriceAnalyticsSeriesPoint,
   PriceAnalyticsVersion,
-} from "../types/prices";
-import { PartnerErrorState } from "../components/PartnerErrorState";
-import { isDemoPartner } from "@shared/demo/demo";
-import {
-  demoAnalyticsInsights,
-  demoAnalyticsOffers,
-  demoAnalyticsSeries,
-  demoAnalyticsVersions,
-} from "../demo/partnerDemoData";
+} from "../../types/prices";
+import { PartnerErrorState } from "../../components/PartnerErrorState";
 
 const buildDefaultRange = () => {
   const today = new Date();
@@ -46,7 +39,7 @@ const formatPercent = (value: number | null) => {
   return `${sign}${Math.abs(value).toFixed(0)}%`;
 };
 
-export function PriceAnalyticsPage() {
+export function AnalyticsPageProd() {
   const { user } = useAuth();
   const { t } = useTranslation();
   const [versions, setVersions] = useState<PriceAnalyticsVersion[]>([]);
@@ -60,23 +53,11 @@ export function PriceAnalyticsPage() {
   const [offerSort, setOfferSort] = useState<"orders" | "revenue">("orders");
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<ApiError | null>(null);
-  const [isDemoFallback, setIsDemoFallback] = useState(false);
 
   const canRead = canReadPriceAnalytics(user?.roles);
-  const isDemoPartnerAccount = isDemoPartner(user?.email ?? null);
 
   useEffect(() => {
     if (!user || !canRead) return;
-    if (isDemoPartnerAccount) {
-      setVersions(demoAnalyticsVersions);
-      setOffers(demoAnalyticsOffers);
-      setInsights(demoAnalyticsInsights);
-      setSeries(demoAnalyticsSeries);
-      setError(null);
-      setIsDemoFallback(true);
-      setIsLoading(false);
-      return;
-    }
     setIsLoading(true);
     Promise.all([
       fetchPriceAnalyticsVersions(user.token, filters),
@@ -88,25 +69,15 @@ export function PriceAnalyticsPage() {
         setOffers(offersResponse ?? []);
         setInsights(insightsResponse ?? []);
         setError(null);
-        setIsDemoFallback(false);
       })
       .catch((err) => {
-        if (err instanceof ApiError && isDemoPartnerAccount && (err.status === 403 || err.status === 404)) {
-          setVersions(demoAnalyticsVersions);
-          setOffers(demoAnalyticsOffers);
-          setInsights(demoAnalyticsInsights);
-          setSeries(demoAnalyticsSeries);
-          setError(null);
-          setIsDemoFallback(true);
-          return;
-        }
         console.error(err);
         setError(err instanceof ApiError ? err : new ApiError(t("priceAnalyticsPage.errors.loadFailed"), 500, null, null, null));
       })
       .finally(() => {
         setIsLoading(false);
       });
-  }, [user, canRead, filters, selectedVersion, t, isDemoPartnerAccount]);
+  }, [user, canRead, filters, selectedVersion, t]);
 
   useEffect(() => {
     if (!versions.length) return;
@@ -122,10 +93,6 @@ export function PriceAnalyticsPage() {
   }, [versions, selectedVersion, compareLeft, compareRight]);
 
   useEffect(() => {
-    if (isDemoPartnerAccount || isDemoFallback) {
-      setSeries(demoAnalyticsSeries);
-      return;
-    }
     if (!user || !selectedVersion || !canRead) {
       setSeries([]);
       return;
@@ -136,7 +103,7 @@ export function PriceAnalyticsPage() {
         console.error(err);
         setSeries([]);
       });
-  }, [user, selectedVersion, filters, canRead, isDemoFallback, isDemoPartnerAccount]);
+  }, [user, selectedVersion, filters, canRead]);
 
   const comparison = useMemo(() => {
     const left = versions.find((version) => version.price_version_id === compareLeft);
@@ -173,9 +140,7 @@ export function PriceAnalyticsPage() {
   }
 
   if (error) {
-    return (
-      <PartnerErrorState error={error} />
-    );
+    return <PartnerErrorState error={error} />;
   }
 
   return (
@@ -224,11 +189,6 @@ export function PriceAnalyticsPage() {
             </select>
           </label>
         </div>
-        {isDemoFallback ? (
-          <div className="notice">
-            <div>В демо-режиме отображаются примерные данные аналитики.</div>
-          </div>
-        ) : null}
       </section>
 
       {isEmpty ? (

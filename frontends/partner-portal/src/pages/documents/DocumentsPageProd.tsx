@@ -1,27 +1,22 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { fetchPartnerActs, fetchPartnerInvoices } from "../api/partnerFinance";
-import { useAuth } from "../auth/AuthContext";
-import { usePortal } from "../auth/PortalContext";
-import { StatusBadge } from "../components/StatusBadge";
-import { LoadingState } from "../components/states";
-import { EmptyState } from "../components/EmptyState";
-import { formatCurrency, formatDate } from "../utils/format";
-import type { PartnerDocument } from "../types/partnerFinance";
-import { PartnerErrorState } from "../components/PartnerErrorState";
-import { isDemoPartner } from "@shared/demo/demo";
-import { ApiError } from "../api/http";
-import { DemoEmptyState } from "../components/DemoEmptyState";
-import { demoActs, demoInvoices } from "../demo/partnerDemoData";
+import { fetchPartnerActs, fetchPartnerInvoices } from "../../api/partnerFinance";
+import { useAuth } from "../../auth/AuthContext";
+import { usePortal } from "../../auth/PortalContext";
+import { StatusBadge } from "../../components/StatusBadge";
+import { LoadingState } from "../../components/states";
+import { EmptyState } from "../../components/EmptyState";
+import { formatCurrency, formatDate } from "../../utils/format";
+import type { PartnerDocument } from "../../types/partnerFinance";
+import { PartnerErrorState } from "../../components/PartnerErrorState";
 
-export function DocumentsPage() {
+export function DocumentsPageProd() {
   const { user } = useAuth();
   const { portal } = usePortal();
   const [invoices, setInvoices] = useState<PartnerDocument[]>([]);
   const [acts, setActs] = useState<PartnerDocument[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<unknown>(null);
-  const [isDemoFallback, setIsDemoFallback] = useState(false);
 
   const meta = portal?.partner?.profile?.meta_json ?? {};
   const legalStatus =
@@ -29,36 +24,19 @@ export function DocumentsPage() {
       ? ((meta as Record<string, unknown>).legal_status as string)
       : null;
   const needsLegal = Boolean(legalStatus && legalStatus !== "VERIFIED");
-  const isDemoPartnerAccount = isDemoPartner(user?.email ?? null);
 
   useEffect(() => {
     let active = true;
     if (!user) return;
-    if (isDemoPartnerAccount) {
-      setInvoices(demoInvoices);
-      setActs(demoActs);
-      setIsDemoFallback(true);
-      setError(null);
-      setIsLoading(false);
-      return;
-    }
     setIsLoading(true);
     Promise.all([fetchPartnerInvoices(user.token), fetchPartnerActs(user.token)])
       .then(([invoiceResp, actResp]) => {
         if (!active) return;
         setInvoices(invoiceResp.items ?? []);
         setActs(actResp.items ?? []);
-        setIsDemoFallback(false);
       })
       .catch((err) => {
         if (!active) return;
-        if (err instanceof ApiError && isDemoPartnerAccount && (err.status === 403 || err.status === 404)) {
-          setInvoices([]);
-          setActs([]);
-          setIsDemoFallback(true);
-          setError(null);
-          return;
-        }
         console.error(err);
         setError(err);
       })
@@ -68,16 +46,11 @@ export function DocumentsPage() {
     return () => {
       active = false;
     };
-  }, [user, isDemoPartnerAccount]);
+  }, [user]);
 
   const renderTable = (items: PartnerDocument[], emptyText: string) => {
     if (items.length === 0) {
-      return isDemoFallback ? (
-        <DemoEmptyState
-          primaryAction={{ label: "Обновить", onClick: () => window.location.reload() }}
-          secondaryAction={{ label: "Связаться", to: "/support/requests" }}
-        />
-      ) : (
+      return (
         <EmptyState
           title="Документы отсутствуют"
           description={emptyText}
@@ -139,21 +112,13 @@ export function DocumentsPage() {
             <div className="section-title">
               <h2>Счета</h2>
             </div>
-            {isLoading ? (
-              <LoadingState />
-            ) : (
-              renderTable(invoices, "Новые счета появятся в конце месяца.")
-            )}
+            {isLoading ? <LoadingState /> : renderTable(invoices, "Новые счета появятся в конце месяца.")}
           </section>
           <section className="card">
             <div className="section-title">
               <h2>Акты</h2>
             </div>
-            {isLoading ? (
-              <LoadingState />
-            ) : (
-              renderTable(acts, "Акты появятся после начислений.")
-            )}
+            {isLoading ? <LoadingState /> : renderTable(acts, "Акты появятся после начислений.")}
           </section>
         </>
       )}

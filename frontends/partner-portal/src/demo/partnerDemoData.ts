@@ -11,11 +11,24 @@ import type {
 } from "../types/prices";
 import type {
   PartnerBalance,
-  PartnerDocument,
-  PartnerExportJob,
   PartnerLedgerEntry,
   PartnerPayoutRequest,
 } from "../types/partnerFinance";
+
+type DemoDocument = {
+  id: string;
+  number: string;
+  date: string;
+  amount: number;
+  status: string;
+};
+
+type DemoPayoutStatus = {
+  availableAmount: number;
+  currency: string;
+  legalStatus: string;
+  warnings: string[];
+};
 
 const toDate = (offsetDays: number) => {
   const value = new Date();
@@ -220,7 +233,7 @@ export const demoAnalyticsOffers: PriceAnalyticsOffer[] = [
   { offer_id: "Шиномонтаж", orders_count: 18, conversion_rate: 0.18, avg_price: 3200, revenue_total: 57600 },
 ];
 
-export const demoAnalyticsInsights: PriceAnalyticsInsight[] = [
+export const demoInsights: PriceAnalyticsInsight[] = [
   {
     type: "trend",
     severity: "INFO",
@@ -240,6 +253,13 @@ export const demoAnalyticsSeries: PriceAnalyticsSeriesPoint[] = Array.from({ len
   revenue_total: 42000 + index * 6500,
 }));
 
+export const demoAnalyticsKpis = {
+  revenueTotal: 456000,
+  ordersCount: 124,
+  avgOrderValue: 3677,
+  refundsCount: 2,
+};
+
 export const demoBalance: PartnerBalance = {
   partner_org_id: "demo-partner",
   currency: "RUB",
@@ -250,7 +270,7 @@ export const demoBalance: PartnerBalance = {
 
 export const demoLedgerTotals = { in: 240000, out: 120000, net: 120000 };
 
-export const demoLedger: PartnerLedgerEntry[] = [
+export const demoLedgerMovements: PartnerLedgerEntry[] = [
   {
     id: "led-101",
     partner_org_id: "demo-partner",
@@ -275,22 +295,14 @@ export const demoLedger: PartnerLedgerEntry[] = [
   },
 ];
 
-export const demoExportJobs: PartnerExportJob[] = [
-  {
-    id: "exp-101",
-    org_id: "demo-partner",
-    created_by_user_id: "demo-user",
-    report_type: "settlement_chain",
-    format: "CSV",
-    status: "DONE",
-    filters: { from: toDate(30), to: toDate(0) },
-    file_name: "settlements_demo.csv",
-    processed_rows: 12,
-    created_at: toDateTime(6),
-  },
-];
+export const demoPayoutStatus: DemoPayoutStatus = {
+  availableAmount: 70000,
+  currency: "RUB",
+  legalStatus: "VERIFIED",
+  warnings: [],
+};
 
-export const demoPayouts: PartnerPayoutRequest[] = [
+export const demoPayoutHistory: PartnerPayoutRequest[] = [
   {
     id: "pay-101",
     partner_org_id: "demo-partner",
@@ -311,28 +323,26 @@ export const demoPayouts: PartnerPayoutRequest[] = [
   },
 ];
 
-export const demoInvoices: PartnerDocument[] = [
+export const payoutRequestDisabledReason = "Доступно в рабочем контуре";
+
+export const demoInvoices: DemoDocument[] = [
   {
     id: "inv-2024-07",
-    partner_org_id: "demo-partner",
-    period_from: toDate(30),
-    period_to: toDate(1),
-    total_amount: 98000,
-    currency: "RUB",
+    number: "Счёт №07-2024",
+    date: toDate(2),
+    amount: 98000,
     status: "ISSUED",
-    created_at: toDateTime(1),
   },
 ];
 
-export const demoActs: PartnerDocument[] = [
+export const demoActs: DemoDocument[] = [
   {
     id: "act-2024-06",
-    partner_org_id: "demo-partner",
-    period_from: toDate(60),
-    period_to: toDate(31),
-    total_amount: 87500,
-    currency: "RUB",
+    number: "Акт №06-2024",
+    date: toDate(25),
+    amount: 87500,
     status: "SIGNED",
-    created_at: toDateTime(20),
   },
 ];
+
+export const demoAnalyticsInsights = demoInsights;

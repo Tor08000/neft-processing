@@ -31,6 +31,11 @@ const logDemoStatus = (url: string, status: number) => {
     console.debug("[api-demo]", { final_url: url, status });
   }
 };
+const warnDemoApiCall = (url: string) => {
+  if (import.meta.env.DEV && isDemoPartner(getDemoPartnerEmail())) {
+    console.warn("API call in demo is not allowed", url);
+  }
+};
 
 export class UnauthorizedError extends Error {
   constructor(message = "Требуется повторный вход") {
@@ -153,6 +158,7 @@ export async function request<T>(
   const headers: HttpHeaders = { ...buildHeaders(token ?? undefined), ...(init.headers as HttpHeaders | undefined) };
   const apiBase = base === "auth" ? AUTH_API_BASE : base === "core_root" ? CORE_ROOT_API_BASE : CORE_API_BASE;
   const url = `${apiBase}${path}`;
+  warnDemoApiCall(url);
   const response = await fetch(url, { ...init, headers });
   const correlationId = response.headers.get("x-correlation-id") ?? response.headers.get("x-request-id");
   const contentType = response.headers.get("content-type") ?? "";
@@ -274,6 +280,7 @@ export async function requestWithMeta<T>(
   const headers: HttpHeaders = { ...buildHeaders(token ?? undefined), ...(init.headers as HttpHeaders | undefined) };
   const apiBase = base === "auth" ? AUTH_API_BASE : base === "core_root" ? CORE_ROOT_API_BASE : CORE_API_BASE;
   const url = `${apiBase}${path}`;
+  warnDemoApiCall(url);
   const response = await fetch(url, { ...init, headers });
   const correlationId = response.headers.get("x-correlation-id") ?? response.headers.get("x-request-id");
   const contentType = response.headers.get("content-type") ?? "";
@@ -377,6 +384,7 @@ export async function requestFormData<T>(
 
   const headers: HttpHeaders = buildAuthHeaders(token ?? undefined);
   const apiBase = base === "auth" ? AUTH_API_BASE : base === "core_root" ? CORE_ROOT_API_BASE : CORE_API_BASE;
+  warnDemoApiCall(`${apiBase}${path}`);
   const response = await fetch(`${apiBase}${path}`, { method: "POST", body: data, headers });
   const correlationId = response.headers.get("x-correlation-id") ?? response.headers.get("x-request-id");
 

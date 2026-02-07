@@ -1,19 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { fetchPartnerPayoutPreview, fetchPartnerPayouts, requestPartnerPayout } from "../api/partnerFinance";
-import { useAuth } from "../auth/AuthContext";
-import { LoadingState } from "../components/states";
-import { EmptyState } from "../components/EmptyState";
-import { StatusBadge } from "../components/StatusBadge";
-import { formatCurrency, formatDateTime } from "../utils/format";
-import type { PartnerPayoutRequest } from "../types/partnerFinance";
-import { ApiError } from "../api/http";
-import { PartnerErrorState } from "../components/PartnerErrorState";
-import { isDemoPartner } from "@shared/demo/demo";
-import { DemoEmptyState } from "../components/DemoEmptyState";
-import { demoPayouts } from "../demo/partnerDemoData";
+import { fetchPartnerPayoutPreview, fetchPartnerPayouts, requestPartnerPayout } from "../../api/partnerFinance";
+import { useAuth } from "../../auth/AuthContext";
+import { LoadingState } from "../../components/states";
+import { EmptyState } from "../../components/EmptyState";
+import { StatusBadge } from "../../components/StatusBadge";
+import { formatCurrency, formatDateTime } from "../../utils/format";
+import type { PartnerPayoutRequest } from "../../types/partnerFinance";
+import { ApiError } from "../../api/http";
+import { PartnerErrorState } from "../../components/PartnerErrorState";
 
-export function PayoutsPage() {
+export function PayoutsPageProd() {
   const { user } = useAuth();
   const [amount, setAmount] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -25,27 +22,15 @@ export function PayoutsPage() {
   const [previewError, setPreviewError] = useState<unknown>(null);
 
   const currency = useMemo(() => "RUB", []);
-  const isDemoPartnerAccount = isDemoPartner(user?.email ?? null);
 
   const loadPayouts = () => {
     if (!user) return;
-    if (isDemoPartnerAccount) {
-      setItems(demoPayouts);
-      setError(null);
-      setIsLoading(false);
-      return;
-    }
     setIsLoading(true);
     fetchPartnerPayouts(user.token)
       .then((data) => {
         setItems(data.items ?? []);
       })
       .catch((err) => {
-        if (err instanceof ApiError && isDemoPartnerAccount && (err.status === 403 || err.status === 404)) {
-          setItems([]);
-          setError(null);
-          return;
-        }
         console.error(err);
         setError(err);
       })
@@ -55,30 +40,20 @@ export function PayoutsPage() {
   useEffect(() => {
     if (!user) return;
     loadPayouts();
-  }, [user, isDemoPartnerAccount]);
+  }, [user]);
 
   useEffect(() => {
     if (!user) return;
-    if (isDemoPartnerAccount) {
-      setPayoutPreview({ legal_status: "VERIFIED", warnings: [] });
-      setPreviewError(null);
-      return;
-    }
     setPreviewError(null);
     fetchPartnerPayoutPreview(user.token)
       .then((data) => {
         setPayoutPreview({ legal_status: data.legal_status, warnings: data.warnings ?? [] });
       })
       .catch((err) => {
-        if (err instanceof ApiError && isDemoPartnerAccount && (err.status === 403 || err.status === 404)) {
-          setPayoutPreview({ legal_status: "VERIFIED", warnings: [] });
-          setPreviewError(null);
-          return;
-        }
         console.error(err);
         setPreviewError(err);
       });
-  }, [user, isDemoPartnerAccount]);
+  }, [user]);
 
   const handleRequest = async () => {
     if (!user) return;
@@ -132,11 +107,6 @@ export function PayoutsPage() {
             </div>
           </div>
         ) : null}
-        {isDemoPartnerAccount ? (
-          <div className="notice">
-            <div>В демо-режиме запросы на выплату недоступны.</div>
-          </div>
-        ) : null}
         {previewError ? <PartnerErrorState error={previewError} /> : null}
         <div className="form-grid">
           <label className="field">
@@ -147,7 +117,6 @@ export function PayoutsPage() {
               value={amount}
               onChange={(event) => setAmount(Number(event.target.value))}
               placeholder="0"
-              disabled={isDemoPartnerAccount}
             />
           </label>
           <label className="field">
@@ -155,13 +124,7 @@ export function PayoutsPage() {
             <input type="text" value={currency} disabled />
           </label>
           <div className="field">
-            <button
-              className="primary"
-              type="button"
-              disabled={isSubmitting || isDemoPartnerAccount}
-              onClick={handleRequest}
-              title={isDemoPartnerAccount ? "Доступно в рабочем контуре" : undefined}
-            >
+            <button className="primary" type="button" disabled={isSubmitting} onClick={handleRequest}>
               {isSubmitting ? "Отправка..." : "Запросить"}
             </button>
           </div>
@@ -176,34 +139,6 @@ export function PayoutsPage() {
           <LoadingState />
         ) : error ? (
           <PartnerErrorState error={error} />
-        ) : isDemoPartnerAccount && items.length ? (
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Дата</th>
-                <th>Сумма</th>
-                <th>Статус</th>
-                <th>Причина</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((item) => (
-                <tr key={item.id}>
-                  <td>{formatDateTime(item.created_at)}</td>
-                  <td>{formatCurrency(item.amount ?? null, item.currency)}</td>
-                  <td>
-                    <StatusBadge status={item.status} />
-                  </td>
-                  <td>{item.blocked_reason ?? "—"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        ) : isDemoPartnerAccount ? (
-          <DemoEmptyState
-            primaryAction={{ label: "Обновить", onClick: () => loadPayouts() }}
-            secondaryAction={{ label: "Связаться", to: "/support/requests" }}
-          />
         ) : items.length === 0 ? (
           <EmptyState
             title="Пока нет запросов"
