@@ -240,7 +240,6 @@ class MarketplaceOrdersService:
             currency=currency,
         )
         self.db.add(order)
-        self.db.flush()
 
         subtotal = Decimal("0")
         for offer, item in zip(offers, items):
@@ -270,6 +269,12 @@ class MarketplaceOrdersService:
             self.db.add(line)
             subtotal += line_amount
 
+        order.price_snapshot = {
+            "currency": currency,
+            "subtotal": str(subtotal),
+            "discount": "0",
+            "total": str(subtotal),
+        }
         order.subtotal_amount = subtotal
         order.discount_amount = Decimal("0")
         order.total_amount = subtotal
