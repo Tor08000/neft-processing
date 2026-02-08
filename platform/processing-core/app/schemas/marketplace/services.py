@@ -18,6 +18,7 @@ ALLOWED_TRANSITIONS: dict[MarketplaceServiceStatus, dict[MarketplaceServiceStatu
     },
     MarketplaceServiceStatus.PENDING_REVIEW: {
         MarketplaceServiceStatus.ACTIVE: {ROLE_ADMIN},
+        MarketplaceServiceStatus.DRAFT: {ROLE_ADMIN},
         MarketplaceServiceStatus.ARCHIVED: {ROLE_PARTNER, ROLE_ADMIN},
     },
     MarketplaceServiceStatus.ACTIVE: {

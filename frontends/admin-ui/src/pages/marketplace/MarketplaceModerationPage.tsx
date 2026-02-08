@@ -1,92 +1,54 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { approveMarketplaceProduct, fetchModerationQueue, rejectMarketplaceProduct } from "../../api/marketplaceModeration";
-import type { MarketplaceModerationProduct, MarketplaceModerationStatus } from "../../types/marketplaceModeration";
+import React, { useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
+import { fetchModerationQueue } from "../../api/marketplaceModeration";
+import type {
+  MarketplaceModerationEntityType,
+  MarketplaceModerationQueueItem,
+  MarketplaceModerationStatus,
+} from "../../types/marketplaceModeration";
 import { Table, type Column } from "../../components/Table/Table";
 import { Pagination } from "../../components/Pagination/Pagination";
 import { formatDateTime } from "../../utils/format";
 import { Loader } from "../../components/Loader/Loader";
-import { useToast } from "../../components/Toast/useToast";
-import { Toast } from "../../components/Toast/Toast";
 
-interface RejectModalProps {
-  open: boolean;
-  product?: MarketplaceModerationProduct | null;
-  onConfirm: (reason: string) => void;
-  onCancel: () => void;
-}
+const typeOptions: Array<{ value: MarketplaceModerationEntityType; label: string }> = [
+  { value: "PRODUCT", label: "Product" },
+  { value: "SERVICE", label: "Service" },
+  { value: "OFFER", label: "Offer" },
+];
 
-const RejectModal: React.FC<RejectModalProps> = ({ open, product, onConfirm, onCancel }) => {
-  const [reason, setReason] = useState("");
+const statusOptions: MarketplaceModerationStatus[] = [
+  "PENDING_REVIEW",
+  "DRAFT",
+  "ACTIVE",
+  "SUSPENDED",
+  "ARCHIVED",
+];
 
-  useEffect(() => {
-    if (open) {
-      setReason("");
-    }
-  }, [open, product?.id]);
-
-  if (!open || !product) return null;
-
-  const canSubmit = reason.trim().length > 0;
-
-  return (
-    <div className="modal-backdrop" role="dialog" aria-modal="true">
-      <div className="modal">
-        <h3 style={{ marginTop: 0 }}>Reject {product.title}</h3>
-        <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-          <span>Причина</span>
-          <textarea
-            value={reason}
-            onChange={(event) => setReason(event.target.value)}
-            rows={4}
-            placeholder="Укажите причину отклонения"
-            style={{ resize: "vertical" }}
-          />
-        </label>
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16 }}>
-          <button type="button" className="ghost" onClick={onCancel}>
-            Отмена
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              onConfirm(reason.trim());
-              setReason("");
-            }}
-            disabled={!canSubmit}
-            style={{
-              padding: "8px 12px",
-              borderRadius: 8,
-              border: "none",
-              background: canSubmit ? "#dc2626" : "#cbd5e1",
-              color: "#fff",
-              fontWeight: 600,
-              cursor: canSubmit ? "pointer" : "not-allowed",
-            }}
-          >
-            Reject
-          </button>
-        </div>
-      </div>
-    </div>
-  );
+const typeBadgeStyles: Record<MarketplaceModerationEntityType, React.CSSProperties> = {
+  PRODUCT: { background: "#e0f2fe", color: "#0369a1" },
+  SERVICE: { background: "#fef9c3", color: "#a16207" },
+  OFFER: { background: "#ede9fe", color: "#6d28d9" },
 };
 
 export const MarketplaceModerationPage: React.FC = () => {
+  const navigate = useNavigate();
+  const [type, setType] = useState<MarketplaceModerationEntityType | "">("");
   const [status, setStatus] = useState<MarketplaceModerationStatus>("PENDING_REVIEW");
+  const [q, setQ] = useState("");
   const [limit, setLimit] = useState(20);
   const [offset, setOffset] = useState(0);
-  const [rejectTarget, setRejectTarget] = useState<MarketplaceModerationProduct | null>(null);
-  const queryClient = useQueryClient();
-  const { toast, showToast } = useToast();
 
   const queryParams = useMemo(
     () => ({
+      type: type || undefined,
       status,
+      q: q || undefined,
       limit,
       offset,
     }),
-    [status, limit, offset],
+    [type, status, q, limit, offset],
   );
 
   const { data, isLoading, error, isFetching } = useQuery({
@@ -96,63 +58,55 @@ export const MarketplaceModerationPage: React.FC = () => {
     placeholderData: (previousData) => previousData,
   });
 
-  const approveMutation = useMutation({
-    mutationFn: (productId: string) => approveMarketplaceProduct(productId),
-    onSuccess: () => {
-      showToast("success", "Product approved");
-      queryClient.invalidateQueries({ queryKey: ["marketplaceModerationQueue"] });
-    },
-    onError: (err) => showToast("error", err instanceof Error ? err.message : "Ошибка подтверждения"),
-  });
-
-  const rejectMutation = useMutation({
-    mutationFn: ({ productId, reason }: { productId: string; reason: string }) =>
-      rejectMarketplaceProduct(productId, reason),
-    onSuccess: () => {
-      showToast("success", "Product rejected");
-      queryClient.invalidateQueries({ queryKey: ["marketplaceModerationQueue"] });
-    },
-    onError: (err) => showToast("error", err instanceof Error ? err.message : "Ошибка отклонения"),
-  });
-
   const items = data?.items ?? [];
   const total = data?.total ?? 0;
 
-  const columns: Column<MarketplaceModerationProduct>[] = [
-    { key: "created_at", title: "Создан", render: (row) => (row.created_at ? formatDateTime(row.created_at) : "—") },
-    { key: "title", title: "Товар/услуга", render: (row) => row.title },
-    { key: "partner", title: "Партнер", render: (row) => row.partner_id },
-    { key: "category", title: "Категория", render: (row) => row.category },
-    { key: "status", title: "Статус", render: (row) => row.moderation_status },
+  const columns: Column<MarketplaceModerationQueueItem>[] = [
+    {
+      key: "type",
+      title: "Type",
+      render: (row) => (
+        <span
+          style={{
+            ...typeBadgeStyles[row.type],
+            padding: "2px 8px",
+            borderRadius: 999,
+            fontSize: 12,
+            fontWeight: 600,
+          }}
+        >
+          {row.type}
+        </span>
+      ),
+    },
+    { key: "title", title: "Title", render: (row) => row.title },
+    { key: "partner", title: "Partner", render: (row) => row.partner_id },
+    { key: "status", title: "Status", render: (row) => row.status },
+    {
+      key: "submitted_at",
+      title: "Submitted",
+      render: (row) => (row.submitted_at ? formatDateTime(row.submitted_at) : "—"),
+    },
     {
       key: "actions",
-      title: "Действия",
+      title: "Actions",
       render: (row) => (
-        <div style={{ display: "flex", gap: 8 }}>
-          <button
-            type="button"
-            className="neft-btn-secondary"
-            onClick={(event) => {
-              event.stopPropagation();
-              approveMutation.mutate(row.id);
-            }}
-            disabled={approveMutation.isPending || rejectMutation.isPending}
-          >
-            Approve
-          </button>
-          <button
-            type="button"
-            className="ghost"
-            onClick={(event) => {
-              event.stopPropagation();
-              setRejectTarget(row);
-            }}
-            disabled={approveMutation.isPending || rejectMutation.isPending}
-            style={{ color: "#dc2626" }}
-          >
-            Reject
-          </button>
-        </div>
+        <button
+          type="button"
+          className="neft-btn-secondary"
+          onClick={(event) => {
+            event.stopPropagation();
+            const path =
+              row.type === "PRODUCT"
+                ? `/marketplace/moderation/product/${row.id}`
+                : row.type === "SERVICE"
+                  ? `/marketplace/moderation/service/${row.id}`
+                  : `/marketplace/moderation/offer/${row.id}`;
+            navigate(path);
+          }}
+        >
+          Open
+        </button>
       ),
     },
   ];
@@ -165,11 +119,26 @@ export const MarketplaceModerationPage: React.FC = () => {
         {error && <span style={{ color: "#dc2626" }}>{error.message}</span>}
       </div>
 
-      <Toast toast={toast} />
-
-      <div className="filters">
+      <div className="filters" style={{ alignItems: "flex-end" }}>
         <div className="filter">
-          <span className="label">Статус</span>
+          <span className="label">Type</span>
+          <select
+            value={type}
+            onChange={(event) => {
+              setType(event.target.value as MarketplaceModerationEntityType | "");
+              setOffset(0);
+            }}
+          >
+            <option value="">All</option>
+            {typeOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="filter">
+          <span className="label">Status</span>
           <select
             value={status}
             onChange={(event) => {
@@ -177,14 +146,26 @@ export const MarketplaceModerationPage: React.FC = () => {
               setOffset(0);
             }}
           >
-            <option value="PENDING_REVIEW">PENDING_REVIEW</option>
-            <option value="DRAFT">DRAFT</option>
-            <option value="APPROVED">APPROVED</option>
-            <option value="REJECTED">REJECTED</option>
+            {statusOptions.map((value) => (
+              <option key={value} value={value}>
+                {value}
+              </option>
+            ))}
           </select>
         </div>
+        <div className="filter" style={{ minWidth: 220 }}>
+          <span className="label">Search</span>
+          <input
+            value={q}
+            onChange={(event) => {
+              setQ(event.target.value);
+              setOffset(0);
+            }}
+            placeholder="Title"
+          />
+        </div>
         <div className="filter">
-          <span className="label">Лимит</span>
+          <span className="label">Limit</span>
           <select
             value={limit}
             onChange={(event) => {
@@ -201,27 +182,11 @@ export const MarketplaceModerationPage: React.FC = () => {
         </div>
       </div>
 
-      <Table
-        columns={columns}
-        data={items}
-        loading={isLoading}
-        emptyMessage="Очередь модерации пуста"
-      />
+      <Table columns={columns} data={items} loading={isLoading} emptyMessage="Очередь модерации пуста" />
 
       <div style={{ marginTop: 12 }}>
         <Pagination total={total} limit={limit} offset={offset} onChange={setOffset} />
       </div>
-
-      <RejectModal
-        open={Boolean(rejectTarget)}
-        product={rejectTarget}
-        onCancel={() => setRejectTarget(null)}
-        onConfirm={(reason) => {
-          if (!rejectTarget) return;
-          rejectMutation.mutate({ productId: rejectTarget.id, reason });
-          setRejectTarget(null);
-        }}
-      />
     </div>
   );
 };

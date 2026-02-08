@@ -439,6 +439,30 @@ class MarketplaceCatalogService:
         self.db.flush()
         return product
 
+    def reject_product_card(
+        self,
+        *,
+        product: MarketplaceProductCard,
+        actor_role: str = ROLE_ADMIN,
+        reason: str | None = None,
+    ) -> MarketplaceProductCard:
+        assert_transition(product.status, MarketplaceProductCardStatus.DRAFT, actor_role=actor_role)
+        before = {"status": product.status.value if hasattr(product.status, "value") else product.status}
+        product.status = MarketplaceProductCardStatus.DRAFT
+        product.updated_at = datetime.now(timezone.utc)
+        after = {"status": product.status.value if hasattr(product.status, "value") else product.status}
+        self._audit(
+            event_type="PRODUCT_CARD_REJECTED",
+            entity_type="marketplace_product_card",
+            entity_id=str(product.id),
+            action="PRODUCT_CARD_REJECTED",
+            before=before,
+            after=after,
+            reason=reason,
+        )
+        self.db.flush()
+        return product
+
     def suspend_product_card(self, *, product: MarketplaceProductCard, actor_role: str = ROLE_ADMIN) -> MarketplaceProductCard:
         assert_transition(product.status, MarketplaceProductCardStatus.SUSPENDED, actor_role=actor_role)
         before = {"status": product.status.value if hasattr(product.status, "value") else product.status}
