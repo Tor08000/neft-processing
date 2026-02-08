@@ -154,8 +154,11 @@
     },
     "marketplace": {
       "PENDING": "На проверке",
+      "PENDING_REVIEW": "На модерации",
       "VERIFIED": "Подтверждён",
       "REJECTED": "Отклонён",
+      "ACTIVE": "Активен",
+      "SUSPENDED": "Приостановлен",
       "PUBLISHED": "Опубликован",
       "ARCHIVED": "Архив"
     }
@@ -181,70 +184,65 @@
       "subtitle": "Создавайте черновики и публикуйте готовые позиции.",
       "filters": {
         "status": "Статус",
-        "type": "Тип",
+        "category": "Категория",
         "search": "Поиск",
         "searchPlaceholder": "Название или описание"
       },
       "table": {
         "title": "Название",
-        "type": "Тип",
         "category": "Категория",
-        "price": "Цена",
+        "status": "Статус",
         "updated": "Обновлено"
-      },
-      "types": {
-        "SERVICE": "Услуга",
-        "PRODUCT": "Товар"
       },
       "statuses": {
         "DRAFT": "Черновик",
-        "PUBLISHED": "Опубликован",
+        "PENDING_REVIEW": "На модерации",
+        "ACTIVE": "Активен",
+        "SUSPENDED": "Приостановлен",
         "ARCHIVED": "Архив"
       },
-      "priceModels": {
-        "FIXED": "Фиксированная",
-        "PER_UNIT": "За единицу",
-        "TIERED": "По объёму"
-      },
-      "units": {
-        "item": "шт.",
-        "liter": "литр",
-        "hour": "час"
-      },
       "fields": {
-        "type": "Тип",
         "title": "Название",
         "description": "Описание",
         "category": "Категория",
-        "priceModel": "Модель цены",
-        "amount": "Сумма (₽)",
-        "unit": "Единица",
-        "amountPerUnit": "Сумма за единицу (₽)",
-        "tiers": "Диапазоны",
-        "tierFrom": "От",
-        "tierTo": "До",
-        "tierAmount": "Сумма"
+        "tags": "Теги",
+        "attributes": "Атрибуты",
+        "attributeKey": "Ключ",
+        "attributeValue": "Значение",
+        "variants": "Варианты",
+        "variantName": "Название",
+        "variantSku": "SKU",
+        "variantProps": "Параметры (JSON)",
+        "media": "Медиа",
+        "mediaUrl": "Ссылка",
+        "mediaMime": "MIME",
+        "mediaSort": "Порядок"
       },
       "actions": {
         "createDraft": "Сохранить черновик",
         "saveChanges": "Сохранить изменения",
+        "submit": "Отправить на модерацию",
         "archive": "Архивировать",
-        "addTier": "Добавить диапазон"
+        "addTag": "Добавить тег",
+        "addAttribute": "Добавить атрибут",
+        "addVariant": "Добавить вариант",
+        "addMedia": "Добавить медиа"
       },
       "emptyTitle": "Пока нет товаров",
       "emptyDescription": "Создайте первый черновик и опубликуйте его для клиентов.",
       "createTitle": "Создание позиции",
       "editTitle": "Редактирование",
       "cancelEdit": "Отменить",
-      "confirmPublish": "Опубликовать позицию? Она станет видна клиентам.",
+      "confirmSubmit": "Отправить позицию на модерацию?",
       "confirmArchive": "Архивировать позицию? Клиенты больше не увидят её.",
       "loadError": "Не удалось загрузить позиции",
       "saveError": "Не удалось сохранить позицию",
-      "publishError": "Не удалось опубликовать",
+      "submitError": "Не удалось отправить на модерацию",
       "archiveError": "Не удалось архивировать",
       "validationError": "Проверьте подсвеченные поля",
       "validation": {
-        "amount": "Введите корректную сумму"
+        "required": "Поле обязательно",
+        "invalidJson": "Некорректный JSON"
       }
     }
   },

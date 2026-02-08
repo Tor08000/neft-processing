@@ -39,7 +39,10 @@ const toneMap: Record<string, StatusBadgeProps["tone"]> = {
   disabled: "error",
   paused: "pending",
   pending: "pending",
+  pending_review: "pending",
   published: "success",
+  active: "success",
+  suspended: "error",
   verified: "success",
   archived: "error",
   rejected: "error",
@@ -68,9 +71,11 @@ const statusLabelMap: Record<string, string> = {
   FAILED: "statuses.webhooks.FAILED",
   DEAD: "statuses.webhooks.DEAD",
   PENDING: "statuses.marketplace.PENDING",
+  PENDING_REVIEW: "statuses.marketplace.PENDING_REVIEW",
   VERIFIED: "statuses.marketplace.VERIFIED",
   REJECTED: "statuses.marketplace.REJECTED",
-  PUBLISHED: "statuses.marketplace.PUBLISHED",
+  ACTIVE: "statuses.marketplace.ACTIVE",
+  SUSPENDED: "statuses.marketplace.SUSPENDED",
   ARCHIVED: "statuses.marketplace.ARCHIVED",
 };
 

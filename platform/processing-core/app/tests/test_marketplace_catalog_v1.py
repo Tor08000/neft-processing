@@ -1,31 +1,22 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
 import pytest
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from app.fastapi_utils import generate_unique_id
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
-from sqlalchemy.pool import StaticPool
 
-from app.api.dependencies.admin import require_admin_user
 from app.db import get_db
-from app.models.audit_log import AuditLog
-from app.models.cases import CaseEvent
-from app.models.decision_memory import DecisionMemoryRecord
-from app.models.marketplace_catalog import MarketplaceProduct, PartnerProfile
-from app.routers.admin.marketplace_catalog import router as admin_router
-from app.routers.admin.marketplace_moderation import router as moderation_router
-from app.routers.client_marketplace import router as client_router
+from app.models.marketplace_catalog import MarketplaceProductCard, MarketplaceProductCardStatus
+from app.routers.marketplace_catalog import router as catalog_router
 from app.routers.partner.marketplace_catalog import router as partner_router
 from app.security.client_auth import require_client_user
 from app.security.rbac.principal import Principal, get_principal
+from app.services.marketplace_catalog_service import MarketplaceCatalogService
 
 CURRENT_PRINCIPAL: Principal | None = None
-CURRENT_ADMIN_TOKEN: dict | None = {"user_id": str(uuid4()), "roles": ["admin"]}
 CURRENT_CLIENT_TOKEN: dict = {"client_id": str(uuid4())}
 
 
@@ -42,28 +33,13 @@ def _build_principal(partner_id: str) -> Principal:
 
 
 @pytest.fixture()
-def api_client() -> tuple[TestClient, sessionmaker]:
-    engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
-    SessionLocal = sessionmaker(autocommit=False, autoflush=False, expire_on_commit=False, bind=engine)
-
-    tables = [
-        AuditLog.__table__,
-        CaseEvent.__table__,
-        DecisionMemoryRecord.__table__,
-        PartnerProfile.__table__,
-        MarketplaceProduct.__table__,
-    ]
-    for table in tables:
-        table.create(bind=engine)
-
+def api_client(test_db_sessionmaker) -> tuple[TestClient, sessionmaker]:
     app = FastAPI(generate_unique_id_function=generate_unique_id)
     app.include_router(partner_router, prefix="/api")
-    app.include_router(client_router, prefix="/api")
-    app.include_router(admin_router, prefix="/api/admin")
-    app.include_router(moderation_router, prefix="/api/admin")
+    app.include_router(catalog_router, prefix="/api")
 
     def override_get_db():
-        db = SessionLocal()
+        db = test_db_sessionmaker()
         try:
             yield db
         finally:
@@ -76,60 +52,31 @@ def api_client() -> tuple[TestClient, sessionmaker]:
 
     app.dependency_overrides[get_db] = override_get_db
     app.dependency_overrides[get_principal] = override_get_principal
-    def override_admin_user() -> dict:
-        if CURRENT_ADMIN_TOKEN is None:
-            raise HTTPException(status_code=403, detail="forbidden")
-        return CURRENT_ADMIN_TOKEN
-
-    app.dependency_overrides[require_admin_user] = override_admin_user
     app.dependency_overrides[require_client_user] = lambda: CURRENT_CLIENT_TOKEN
 
     with TestClient(app) as client:
-        yield client, SessionLocal
+        yield client, test_db_sessionmaker
 
-    for table in reversed(tables):
-        table.drop(bind=engine)
-    engine.dispose()
+
+@pytest.fixture(autouse=True)
+def _cleanup_cards(test_db_session):
+    test_db_session.query(MarketplaceProductCard).delete()
+    test_db_session.commit()
 
 
 def _create_product_payload() -> dict:
     return {
-        "type": "SERVICE",
         "title": "Diagnostics",
         "description": "Full engine diagnostics",
         "category": "Auto",
-        "price_model": "FIXED",
-        "price_config": {"amount": 1500, "currency": "RUB"},
+        "tags": ["engine", "inspection"],
+        "attributes": {"brand": "Acme"},
+        "variants": [{"name": "Base", "sku": "DX-1", "props": {"duration": "2h"}}],
     }
 
 
-def test_partner_profile_create_update_audited(api_client: tuple[TestClient, sessionmaker]):
-    client, SessionLocal = api_client
-    partner_id = str(uuid4())
-    global CURRENT_PRINCIPAL
-    CURRENT_PRINCIPAL = _build_principal(partner_id)
-
-    response = client.post(
-        "/api/partner/profile",
-        json={"company_name": "Acme", "description": "Fleet services"},
-    )
-    assert response.status_code == 200
-
-    update_response = client.post(
-        "/api/partner/profile",
-        json={"company_name": "Acme", "description": "Updated"},
-    )
-    assert update_response.status_code == 200
-
-    with SessionLocal() as db:
-        audit_records = db.query(AuditLog).filter(AuditLog.event_type == "PARTNER_PROFILE_CREATED").all()
-        assert audit_records
-        update_records = db.query(AuditLog).filter(AuditLog.event_type == "PARTNER_PROFILE_UPDATED").all()
-        assert update_records
-
-
-def test_product_create_update(api_client: tuple[TestClient, sessionmaker]):
-    client, SessionLocal = api_client
+def test_product_create_update_get(api_client: tuple[TestClient, sessionmaker]):
+    client, _ = api_client
     partner_id = str(uuid4())
     global CURRENT_PRINCIPAL
     CURRENT_PRINCIPAL = _build_principal(partner_id)
@@ -138,16 +85,17 @@ def test_product_create_update(api_client: tuple[TestClient, sessionmaker]):
     assert response.status_code == 201
     product_id = response.json()["id"]
 
-    update_payload = {"title": "Diagnostics+", "price_config": {"amount": 1800, "currency": "RUB"}}
+    update_payload = {"title": "Diagnostics+", "attributes": {"brand": "Acme", "model": "X"}}
     update_response = client.patch(f"/api/partner/products/{product_id}", json=update_payload)
     assert update_response.status_code == 200
+    assert update_response.json()["title"] == "Diagnostics+"
 
-    with SessionLocal() as db:
-        audit_records = db.query(AuditLog).filter(AuditLog.event_type == "PRODUCT_UPDATED").all()
-        assert audit_records
+    get_response = client.get(f"/api/partner/products/{product_id}")
+    assert get_response.status_code == 200
+    assert get_response.json()["attributes"]["model"] == "X"
 
 
-def test_submit_review_requires_approval_for_visibility(api_client: tuple[TestClient, sessionmaker]):
+def test_status_transitions(api_client: tuple[TestClient, sessionmaker]):
     client, _ = api_client
     partner_id = str(uuid4())
     global CURRENT_PRINCIPAL
@@ -156,75 +104,16 @@ def test_submit_review_requires_approval_for_visibility(api_client: tuple[TestCl
     response = client.post("/api/partner/products", json=_create_product_payload())
     product_id = response.json()["id"]
 
-    submit_response = client.post(f"/api/partner/products/{product_id}/submit-review")
+    submit_response = client.post(f"/api/partner/products/{product_id}/submit")
     assert submit_response.status_code == 200
-    assert submit_response.json()["moderation_status"] == "PENDING_REVIEW"
+    assert submit_response.json()["status"] == "PENDING_REVIEW"
 
-    client_list_response = client.get("/api/client/marketplace/products")
-    assert client_list_response.status_code == 200
-    items = client_list_response.json()["items"]
-    assert not any(item["id"] == product_id for item in items)
-
-    approve_response = client.post(f"/api/admin/marketplace/moderation/{product_id}/approve")
-    assert approve_response.status_code == 200
-    assert approve_response.json()["moderation_status"] == "APPROVED"
-
-    approved_list_response = client.get("/api/client/marketplace/products")
-    approved_items = approved_list_response.json()["items"]
-    assert any(item["id"] == product_id for item in approved_items)
+    archive_response = client.post(f"/api/partner/products/{product_id}/archive")
+    assert archive_response.status_code == 200
+    assert archive_response.json()["status"] == "ARCHIVED"
 
 
-def test_admin_reject_hides_product_and_exposes_reason_to_partner(api_client: tuple[TestClient, sessionmaker]):
-    client, _ = api_client
-    partner_id = str(uuid4())
-    global CURRENT_PRINCIPAL
-    CURRENT_PRINCIPAL = _build_principal(partner_id)
-
-    response = client.post("/api/partner/products", json=_create_product_payload())
-    product_id = response.json()["id"]
-
-    submit_response = client.post(f"/api/partner/products/{product_id}/submit-review")
-    assert submit_response.status_code == 200
-
-    reject_response = client.post(
-        f"/api/admin/marketplace/moderation/{product_id}/reject",
-        json={"reason": "policy"},
-    )
-    assert reject_response.status_code == 200
-    assert reject_response.json()["moderation_status"] == "REJECTED"
-
-    client_list_response = client.get("/api/client/marketplace/products")
-    assert client_list_response.status_code == 200
-    items = client_list_response.json()["items"]
-    assert not any(item["id"] == product_id for item in items)
-
-    partner_response = client.get(f"/api/partner/products/{product_id}")
-    assert partner_response.status_code == 200
-    assert partner_response.json()["moderation_reason"] == "policy"
-
-
-def test_partner_cannot_moderate(api_client: tuple[TestClient, sessionmaker]):
-    client, _ = api_client
-    partner_id = str(uuid4())
-    global CURRENT_PRINCIPAL, CURRENT_ADMIN_TOKEN
-    CURRENT_PRINCIPAL = _build_principal(partner_id)
-
-    response = client.post("/api/partner/products", json=_create_product_payload())
-    product_id = response.json()["id"]
-
-    submit_response = client.post(f"/api/partner/products/{product_id}/submit-review")
-    assert submit_response.status_code == 200
-
-    previous_admin = CURRENT_ADMIN_TOKEN
-    CURRENT_ADMIN_TOKEN = None
-    try:
-        approve_response = client.post(f"/api/admin/marketplace/moderation/{product_id}/approve")
-        assert approve_response.status_code == 403
-    finally:
-        CURRENT_ADMIN_TOKEN = previous_admin
-
-
-def test_partner_cannot_update_foreign_product(api_client: tuple[TestClient, sessionmaker]):
+def test_partner_cannot_access_foreign_product(api_client: tuple[TestClient, sessionmaker]):
     client, _ = api_client
     partner_id = str(uuid4())
     other_partner_id = str(uuid4())
@@ -235,34 +124,38 @@ def test_partner_cannot_update_foreign_product(api_client: tuple[TestClient, ses
     product_id = response.json()["id"]
 
     CURRENT_PRINCIPAL = _build_principal(other_partner_id)
-    update_response = client.patch(
-        f"/api/partner/products/{product_id}",
-        json={"title": "Hack"},
-    )
+    get_response = client.get(f"/api/partner/products/{product_id}")
+    assert get_response.status_code == 403
+
+    update_response = client.patch(f"/api/partner/products/{product_id}", json={"title": "Hack"})
     assert update_response.status_code == 403
 
 
-def test_admin_verify_partner(api_client: tuple[TestClient, sessionmaker]):
-    client, SessionLocal = api_client
+def test_client_catalog_active_only(api_client: tuple[TestClient, sessionmaker], test_db_session):
+    client, _ = api_client
     partner_id = str(uuid4())
     global CURRENT_PRINCIPAL
     CURRENT_PRINCIPAL = _build_principal(partner_id)
 
-    create_response = client.post(
-        "/api/partner/profile",
-        json={"company_name": "Acme", "description": "Fleet services"},
-    )
-    assert create_response.status_code == 200
+    response = client.post("/api/partner/products", json=_create_product_payload())
+    active_id = response.json()["id"]
 
-    verify_response = client.post(f"/api/admin/partners/{partner_id}/verify", json={"status": "VERIFIED"})
-    assert verify_response.status_code == 200
+    response_draft = client.post("/api/partner/products", json=_create_product_payload())
+    draft_id = response_draft.json()["id"]
 
-    with SessionLocal() as db:
-        audit_records = db.query(AuditLog).filter(AuditLog.event_type == "PARTNER_VERIFIED").all()
-        assert audit_records
+    product = test_db_session.query(MarketplaceProductCard).filter(MarketplaceProductCard.id == active_id).one()
+    product.status = MarketplaceProductCardStatus.ACTIVE
+    test_db_session.commit()
+
+    list_response = client.get("/api/marketplace/catalog/products")
+    assert list_response.status_code == 200
+    items = list_response.json()["items"]
+    ids = {item["id"] for item in items}
+    assert active_id in ids
+    assert draft_id not in ids
 
 
-def test_admin_can_force_product_status(api_client: tuple[TestClient, sessionmaker]):
+def test_submit_requires_draft(api_client: tuple[TestClient, sessionmaker], test_db_session):
     client, _ = api_client
     partner_id = str(uuid4())
     global CURRENT_PRINCIPAL
@@ -271,9 +164,44 @@ def test_admin_can_force_product_status(api_client: tuple[TestClient, sessionmak
     response = client.post("/api/partner/products", json=_create_product_payload())
     product_id = response.json()["id"]
 
-    admin_response = client.post(
-        f"/api/admin/products/{product_id}/status",
-        json={"status": "ARCHIVED", "reason": "policy"},
-    )
-    assert admin_response.status_code == 200
-    assert admin_response.json()["status"] == "ARCHIVED"
+    product = test_db_session.query(MarketplaceProductCard).filter(MarketplaceProductCard.id == product_id).one()
+    product.status = MarketplaceProductCardStatus.ACTIVE
+    test_db_session.commit()
+
+    submit_response = client.post(f"/api/partner/products/{product_id}/submit")
+    assert submit_response.status_code == 409
+    assert submit_response.json()["detail"]["error"] == "PRODUCT_CARD_STATE_INVALID"
+
+
+def test_patch_active_forbidden(api_client: tuple[TestClient, sessionmaker], test_db_session):
+    client, _ = api_client
+    partner_id = str(uuid4())
+    global CURRENT_PRINCIPAL
+    CURRENT_PRINCIPAL = _build_principal(partner_id)
+
+    response = client.post("/api/partner/products", json=_create_product_payload())
+    product_id = response.json()["id"]
+
+    product = test_db_session.query(MarketplaceProductCard).filter(MarketplaceProductCard.id == product_id).one()
+    product.status = MarketplaceProductCardStatus.ACTIVE
+    test_db_session.commit()
+
+    update_response = client.patch(f"/api/partner/products/{product_id}", json={"title": "Updated"})
+    assert update_response.status_code == 409
+    assert update_response.json()["detail"]["error"] == "INVALID_STATE"
+
+
+def test_approve_requires_admin_role(test_db_session):
+    service = MarketplaceCatalogService(test_db_session)
+    product = service.create_product_card(partner_id=str(uuid4()), payload=_create_product_payload())
+    test_db_session.commit()
+
+    service.submit_product_card(product=product)
+    test_db_session.commit()
+
+    with pytest.raises(ValueError, match="PRODUCT_CARD_STATE_INVALID"):
+        service.approve_product_card(product=product, actor_role="partner")
+
+    service.approve_product_card(product=product, actor_role="admin")
+    test_db_session.commit()
+    assert product.status == MarketplaceProductCardStatus.ACTIVE
