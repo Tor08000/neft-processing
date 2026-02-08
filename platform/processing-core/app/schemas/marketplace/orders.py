@@ -7,19 +7,36 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 
-PaymentFlow = Literal["PLATFORM_MOR"]
+PaymentStatus = Literal["UNPAID", "AUTHORIZED", "PAID", "FAILED", "REFUNDED"]
+PaymentMethod = Literal["NEFT_INTERNAL", "EXTERNAL_STUB"]
 
 OrderStatus = Literal[
     "CREATED",
-    "ACCEPTED",
-    "REJECTED",
+    "PENDING_PAYMENT",
+    "PAID",
+    "CONFIRMED_BY_PARTNER",
     "IN_PROGRESS",
     "COMPLETED",
+    "CLOSED",
+    "DECLINED_BY_PARTNER",
+    "CANCELED_BY_CLIENT",
+    "PAYMENT_FAILED",
+    "ACCEPTED",
+    "REJECTED",
     "FAILED",
     "CANCELLED",
 ]
 
 OrderEventType = Literal[
+    "CREATED",
+    "PAYMENT_PENDING",
+    "PAYMENT_PAID",
+    "PAYMENT_FAILED",
+    "CONFIRMED",
+    "DECLINED",
+    "COMPLETED",
+    "CANCELED",
+    "NOTE",
     "ORDER_CREATED",
     "ORDER_ACCEPTED",
     "ORDER_REJECTED",
@@ -33,54 +50,66 @@ OrderEventType = Literal[
 
 OrderActorType = Literal["client", "partner", "admin", "system"]
 
+OrderLineSubjectType = Literal["PRODUCT", "SERVICE"]
+OrderProofKind = Literal["PHOTO", "PDF", "ACT", "CHECK", "OTHER"]
 
-class SettlementBreakdown(BaseModel):
-    gross_amount: Decimal
-    platform_fee_amount: Decimal
-    platform_fee_basis: Literal["PERCENT", "FIXED", "TIER"]
-    penalties_amount: Decimal
-    partner_net_amount: Decimal
-    currency: str
+
+class OrderLineIn(BaseModel):
+    offer_id: str
+    qty: Decimal = Field(..., gt=0)
 
 
 class OrderCreateRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
-    product_id: str
-    quantity: Decimal = Field(..., gt=0)
-    note: str | None = None
-    external_ref: str | None = Field(default=None, alias="idempotency_key")
-    promotion_id: str | None = None
-    coupon_code: str | None = None
+    items: list[OrderLineIn]
+    payment_method: PaymentMethod
 
 
-class OrderCancelRequest(BaseModel):
-    reason: str
+class OrderPayRequest(BaseModel):
+    payment_method: PaymentMethod
 
 
-class OrderAcceptRequest(BaseModel):
-    note: str | None = None
-
-
-class OrderRejectRequest(BaseModel):
-    reason: str
-
-
-class OrderStartRequest(BaseModel):
-    note: str | None = None
-
-
-class OrderProgressUpdateRequest(BaseModel):
-    progress_percent: int | None = Field(default=None, ge=0, le=100)
-    message: str | None = None
+class OrderDeclineRequest(BaseModel):
+    reason_code: str
+    comment: str
 
 
 class OrderCompleteRequest(BaseModel):
-    summary: str
+    comment: str | None = None
 
 
-class OrderFailRequest(BaseModel):
-    reason: str
+class OrderCancelRequest(BaseModel):
+    reason: str | None = None
+
+
+class ProofCreateRequest(BaseModel):
+    attachment_id: str
+    kind: OrderProofKind
+    note: str | None = None
+
+
+class OrderLineOut(BaseModel):
+    id: str
+    order_id: str
+    offer_id: str
+    subject_type: OrderLineSubjectType
+    subject_id: str
+    title_snapshot: str
+    qty: Decimal
+    unit_price: Decimal
+    line_amount: Decimal
+    meta: dict | None = None
+
+
+class OrderProofOut(BaseModel):
+    id: str
+    order_id: str
+    kind: OrderProofKind
+    attachment_id: str
+    note: str | None = None
+    created_at: datetime
+    meta: dict | None = None
 
 
 class OrderEventOut(BaseModel):
@@ -93,22 +122,24 @@ class OrderEventOut(BaseModel):
     actor_id: str | None = None
     audit_event_id: str
     created_at: datetime
+    before_status: OrderStatus | None = None
+    after_status: OrderStatus | None = None
+    reason_code: str | None = None
+    comment: str | None = None
+    meta: dict | None = None
 
 
 class OrderOut(BaseModel):
     id: str
     client_id: str
     partner_id: str
-    product_id: str
-    quantity: Decimal
-    price_snapshot: dict
-    price_snapshot_json: dict | None = None
-    pricing_version: str | None = None
-    applied_promotions_json: dict | None = None
-    coupon_code_used: str | None = None
     status: OrderStatus
-    payment_flow: PaymentFlow
-    settlement_breakdown: SettlementBreakdown | None = None
+    payment_status: PaymentStatus | None = None
+    payment_method: PaymentMethod | None = None
+    currency: str | None = None
+    subtotal_amount: Decimal | None = None
+    discount_amount: Decimal | None = None
+    total_amount: Decimal | None = None
     created_at: datetime
     updated_at: datetime | None = None
     audit_event_id: str | None = None
@@ -116,4 +147,13 @@ class OrderOut(BaseModel):
 
 
 class OrderDetailOut(OrderOut):
+    lines: list[OrderLineOut] = Field(default_factory=list)
+    proofs: list[OrderProofOut] = Field(default_factory=list)
     events: list[OrderEventOut] = Field(default_factory=list)
+
+
+class OrderListResponse(BaseModel):
+    items: list[OrderOut]
+    total: int
+    limit: int
+    offset: int

@@ -20,14 +20,12 @@ type PeriodPreset = "today" | "7d" | "30d" | "custom";
 const statusOptions = [
   "",
   "CREATED",
+  "PENDING_PAYMENT",
   "PAID",
-  "ACCEPTED",
-  "IN_PROGRESS",
+  "CONFIRMED_BY_PARTNER",
   "COMPLETED",
-  "FAILED",
-  "CANCELLED",
-  "REFUNDED",
-  "DISPUTED",
+  "DECLINED_BY_PARTNER",
+  "CANCELED_BY_CLIENT",
 ];
 
 const toDateInput = (date: Date) => date.toISOString().slice(0, 10);
@@ -176,7 +174,7 @@ export function OrdersPageProd() {
     const today = toDateInput(new Date());
     const ordersToday = orders.filter((order) => order.createdAt?.slice(0, 10) === today).length;
     const pendingConfirmation = orders.filter((order) =>
-      ["CREATED", "PAID", "AUTHORIZED"].includes(order.status),
+      ["PAID", "PENDING_PAYMENT"].includes(order.status),
     ).length;
     const docsPending = orders.filter((order) =>
       (order.documentsStatus ?? "").toLowerCase().includes("pending") ||

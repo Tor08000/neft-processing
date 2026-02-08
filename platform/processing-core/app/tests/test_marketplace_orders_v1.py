@@ -22,13 +22,21 @@ from app.db import get_db
 from app.db.schema import DB_SCHEMA
 from app.models.cases import Case, CaseEvent
 from app.models.decision_memory import DecisionMemoryRecord
-from app.models.marketplace_catalog import (
-    MarketplacePriceModel,
-    MarketplaceProduct,
-    MarketplaceProductStatus,
-    MarketplaceProductType,
+from app.models.marketplace_catalog import MarketplaceService, MarketplaceServiceStatus
+from app.models.marketplace_offers import (
+    MarketplaceOffer,
+    MarketplaceOfferEntitlementScope,
+    MarketplaceOfferGeoScope,
+    MarketplaceOfferPriceModel,
+    MarketplaceOfferStatus,
+    MarketplaceOfferSubjectType,
 )
-from app.models.marketplace_orders import MarketplaceOrder, MarketplaceOrderEvent
+from app.models.marketplace_orders import (
+    MarketplaceOrder,
+    MarketplaceOrderEvent,
+    MarketplaceOrderLine,
+    MarketplaceOrderProof,
+)
 from app.routers.client_marketplace_orders import router as client_orders_router
 from app.routers.partner.marketplace_orders import router as partner_orders_router
 from app.security.rbac.principal import Principal, get_principal
@@ -99,8 +107,11 @@ def api_client() -> tuple[TestClient, sessionmaker]:
         Case.__table__,
         CaseEvent.__table__,
         DecisionMemoryRecord.__table__,
-        MarketplaceProduct.__table__,
+        MarketplaceService.__table__,
+        MarketplaceOffer.__table__,
         MarketplaceOrder.__table__,
+        MarketplaceOrderLine.__table__,
+        MarketplaceOrderProof.__table__,
         MarketplaceOrderEvent.__table__,
     ]
     for table in tables:
@@ -133,34 +144,46 @@ def api_client() -> tuple[TestClient, sessionmaker]:
     engine.dispose()
 
 
-def _create_product(db: Session, partner_id: str) -> MarketplaceProduct:
-    product = MarketplaceProduct(
+def _create_offer(db: Session, partner_id: str) -> MarketplaceOffer:
+    service = MarketplaceService(
         id=str(uuid4()),
         partner_id=partner_id,
-        type=MarketplaceProductType.SERVICE,
         title="Diagnostics",
         description="Engine diagnostics",
         category="Auto",
-        price_model=MarketplacePriceModel.FIXED,
-        price_config={"amount": 1500, "currency": "RUB"},
-        status=MarketplaceProductStatus.PUBLISHED,
-        moderation_status="APPROVED",
+        status=MarketplaceServiceStatus.ACTIVE,
+        duration_min=30,
     )
-    db.add(product)
+    offer = MarketplaceOffer(
+        id=str(uuid4()),
+        partner_id=partner_id,
+        subject_type=MarketplaceOfferSubjectType.SERVICE,
+        subject_id=str(service.id),
+        title_override="Diagnostics",
+        status=MarketplaceOfferStatus.ACTIVE,
+        currency="RUB",
+        price_model=MarketplaceOfferPriceModel.FIXED,
+        price_amount=Decimal("1500"),
+        geo_scope=MarketplaceOfferGeoScope.ALL_PARTNER_LOCATIONS,
+        location_ids=[],
+        entitlement_scope=MarketplaceOfferEntitlementScope.ALL_CLIENTS,
+        allowed_subscription_codes=[],
+        allowed_client_ids=[],
+    )
+    db.add(service)
+    db.add(offer)
     db.commit()
-    return product
+    return offer
 
 
-def _create_order(client: TestClient, client_id: str, product_id: str, *, idempotency_key: str | None = None) -> str:
+def _create_order(client: TestClient, client_id: str, offer_id: str) -> str:
     global CURRENT_PRINCIPAL
     CURRENT_PRINCIPAL = _build_client_principal(client_id)
     response = client.post(
-        "/api/client/marketplace/orders",
+        "/api/v1/marketplace/client/orders",
         json={
-            "product_id": product_id,
-            "quantity": 2,
-            "note": "Need this soon",
-            "idempotency_key": idempotency_key or f"order-{uuid4()}",
+            "items": [{"offer_id": offer_id, "qty": 1}],
+            "payment_method": "NEFT_INTERNAL",
         },
     )
     assert response.status_code == 201
@@ -173,13 +196,13 @@ def test_client_creates_order_with_audit(api_client: tuple[TestClient, sessionma
     partner_id = str(uuid4())
 
     with SessionLocal() as db:
-        product = _create_product(db, partner_id)
+        offer = _create_offer(db, partner_id)
 
-    order_id = _create_order(client, client_id, product.id)
+    order_id = _create_order(client, client_id, offer.id)
 
     with SessionLocal() as db:
         order = db.query(MarketplaceOrder).filter(MarketplaceOrder.id == order_id).one()
-        assert order.status == "CREATED"
+        assert order.status == "PENDING_PAYMENT"
         events = db.query(MarketplaceOrderEvent).filter(MarketplaceOrderEvent.order_id == order_id).all()
         assert events
         assert events[0].audit_event_id is not None
@@ -189,35 +212,39 @@ def test_client_creates_order_with_audit(api_client: tuple[TestClient, sessionma
         assert signature_check.verified is True
 
 
-def test_partner_accepts_and_progresses_order(api_client: tuple[TestClient, sessionmaker]) -> None:
+def test_partner_confirms_and_completes_order(api_client: tuple[TestClient, sessionmaker]) -> None:
     client, SessionLocal = api_client
     client_id = str(uuid4())
     partner_id = str(uuid4())
 
     with SessionLocal() as db:
-        product = _create_product(db, partner_id)
+        offer = _create_offer(db, partner_id)
 
-    order_id = _create_order(client, client_id, product.id)
+    order_id = _create_order(client, client_id, offer.id)
 
     global CURRENT_PRINCIPAL
-    CURRENT_PRINCIPAL = _build_partner_principal(partner_id)
-    accept_response = client.post(f"/api/partner/orders/{order_id}/accept", json={})
-    assert accept_response.status_code == 200
-    assert accept_response.json()["status"] == "ACCEPTED"
-
-    start_response = client.post(f"/api/partner/orders/{order_id}/start", json={})
-    assert start_response.status_code == 200
-    assert start_response.json()["status"] == "IN_PROGRESS"
-
-    progress_response = client.post(
-        f"/api/partner/orders/{order_id}/progress",
-        json={"progress_percent": 40, "message": "Halfway"},
+    CURRENT_PRINCIPAL = _build_client_principal(client_id)
+    pay_response = client.post(
+        f"/api/v1/marketplace/client/orders/{order_id}:pay",
+        json={"payment_method": "NEFT_INTERNAL"},
     )
-    assert progress_response.status_code == 200
+    assert pay_response.status_code == 200
+    assert pay_response.json()["status"] == "PAID"
+
+    CURRENT_PRINCIPAL = _build_partner_principal(partner_id)
+    confirm_response = client.post(f"/api/v1/marketplace/partner/orders/{order_id}:confirm", json={})
+    assert confirm_response.status_code == 200
+    assert confirm_response.json()["status"] == "CONFIRMED_BY_PARTNER"
+
+    proof_response = client.post(
+        f"/api/v1/marketplace/partner/orders/{order_id}/proofs",
+        json={"attachment_id": str(uuid4()), "kind": "PHOTO", "note": "Done"},
+    )
+    assert proof_response.status_code == 201
 
     complete_response = client.post(
-        f"/api/partner/orders/{order_id}/complete",
-        json={"summary": "Done"},
+        f"/api/v1/marketplace/partner/orders/{order_id}:complete",
+        json={"comment": "Done"},
     )
     assert complete_response.status_code == 200
     assert complete_response.json()["status"] == "COMPLETED"
@@ -230,13 +257,13 @@ def test_invalid_partner_access_denied(api_client: tuple[TestClient, sessionmake
     other_partner_id = str(uuid4())
 
     with SessionLocal() as db:
-        product = _create_product(db, partner_id)
+        offer = _create_offer(db, partner_id)
 
-    order_id = _create_order(client, client_id, product.id)
+    order_id = _create_order(client, client_id, offer.id)
 
     global CURRENT_PRINCIPAL
     CURRENT_PRINCIPAL = _build_partner_principal(other_partner_id)
-    response = client.post(f"/api/partner/orders/{order_id}/accept", json={})
+    response = client.post(f"/api/v1/marketplace/partner/orders/{order_id}:confirm", json={})
     assert response.status_code == 403
 
 

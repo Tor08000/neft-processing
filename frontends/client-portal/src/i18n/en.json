@@ -491,6 +491,8 @@
       "contactSupport": "Contact support",
       "downloadInvoice": "Download invoice",
       "confirmCancel": "Cancel this order?",
+      "pay": "Pay now",
+      "paying": "Processing payment...",
       "backToOrders": "Back to orders"
     },
     "timeline": {
@@ -544,7 +546,8 @@
       "consequencesFailed": "Unable to load consequences",
       "invoicesFailed": "Unable to load invoices",
       "incidentsFailed": "Unable to load incidents",
-      "cancelFailed": "Unable to cancel the order"
+      "cancelFailed": "Unable to cancel the order",
+      "payFailed": "Unable to process payment"
     },
     "forbidden": {
       "noAccess": "You do not have access to this order.",
@@ -643,13 +646,19 @@
   "statuses": {
     "orders": {
       "CREATED": "Created",
+      "PENDING_PAYMENT": "Pending payment",
       "ACCEPTED": "Accepted",
       "PAID": "Paid",
       "CONFIRMED": "Confirmed by partner",
+      "CONFIRMED_BY_PARTNER": "Confirmed by partner",
       "IN_PROGRESS": "In progress",
       "COMPLETED": "Completed",
+      "DECLINED_BY_PARTNER": "Declined by partner",
       "CANCELLED": "Cancelled",
+      "CANCELED_BY_CLIENT": "Cancelled by client",
       "FAILED": "Failed",
+      "PAYMENT_FAILED": "Payment failed",
+      "CLOSED": "Closed",
       "REFUNDED": "Refunded"
     },
     "documents": {

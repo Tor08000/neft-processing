@@ -133,11 +133,16 @@
   "statuses": {
     "orders": {
       "CREATED": "Created",
+      "PENDING_PAYMENT": "Pending payment",
       "PAID": "Paid",
+      "CONFIRMED_BY_PARTNER": "Confirmed by partner",
       "ACCEPTED": "Accepted",
-      "IN_PROGRESS": "In progress",
       "COMPLETED": "Completed",
+      "DECLINED_BY_PARTNER": "Declined by partner",
+      "CANCELED_BY_CLIENT": "Cancelled by client",
       "FAILED": "Failed",
+      "PAYMENT_FAILED": "Payment failed",
+      "CLOSED": "Closed",
       "CANCELLED": "Cancelled",
       "REFUNDED": "Refunded"
     },
@@ -696,10 +701,9 @@
     "actions": {
       "support": "Contact support",
       "back": "Back to list",
-      "accept": "Accept",
-      "reject": "Reject",
-      "start": "Start",
-      "progress": "Update progress",
+      "confirm": "Confirm",
+      "decline": "Decline",
+      "uploadProof": "Upload proof",
       "complete": "Complete",
       "fail": "Fail"
     },
@@ -742,10 +746,9 @@
       }
     },
     "notifications": {
-      "accepted": "Order accepted.",
-      "rejected": "Order rejected.",
-      "started": "Order started.",
-      "progressed": "Progress updated.",
+      "confirmed": "Order confirmed.",
+      "declined": "Order declined.",
+      "proofUploaded": "Proof uploaded.",
       "completed": "Order completed.",
       "failed": "Order failed."
     },
@@ -759,30 +762,41 @@
       "actionFailed": "Action failed"
     },
     "supportTitle": "Issue with order {id}",
+    "proofs": {
+      "title": "Proofs",
+      "empty": "No proofs uploaded yet."
+    },
     "modals": {
       "close": "Close",
       "cancel": "Cancel",
       "confirm": "Confirm",
-      "accept": {
-        "title": "Accept order",
-        "description": "Confirm that you are ready to handle this order."
+      "confirm": {
+        "title": "Confirm order",
+        "description": "Confirm that you can fulfill this order."
       },
-      "reject": {
-        "title": "Reject order",
-        "description": "Provide a reason for rejection.",
-        "reason": "Reason",
-        "placeholder": "Describe the reason"
+      "decline": {
+        "title": "Decline order",
+        "description": "Provide a reason and comment for decline.",
+        "reason": "Decline reason",
+        "reasonPlaceholder": "e.g., OUT_OF_STOCK",
+        "comment": "Comment",
+        "commentPlaceholder": "Provide details for the client"
       },
-      "start": {
-        "title": "Start order",
-        "description": "Start working on the order."
-      },
-      "progress": {
-        "title": "Update progress",
-        "description": "Share progress with the client.",
-        "percent": "Progress, %",
-        "message": "Message",
-        "placeholder": "Progress update"
+      "proof": {
+        "title": "Upload proof",
+        "description": "Attach a photo or document as proof of completion.",
+        "kind": "Proof type",
+        "attachment": "Attachment ID (optional)",
+        "attachmentPlaceholder": "Leave empty to auto-generate",
+        "note": "Note",
+        "notePlaceholder": "Optional comment",
+        "kinds": {
+          "photo": "Photo",
+          "pdf": "PDF",
+          "act": "Act",
+          "check": "Receipt",
+          "other": "Other"
+        }
       },
       "complete": {
         "title": "Complete order",

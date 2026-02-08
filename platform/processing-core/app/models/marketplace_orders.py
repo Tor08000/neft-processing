@@ -15,15 +15,44 @@ JSON_TYPE = JSON().with_variant(postgresql.JSONB(none_as_null=True), "postgresql
 
 class MarketplaceOrderStatus(str, Enum):
     CREATED = "CREATED"
+    PENDING_PAYMENT = "PENDING_PAYMENT"
+    PAID = "PAID"
+    CONFIRMED_BY_PARTNER = "CONFIRMED_BY_PARTNER"
     ACCEPTED = "ACCEPTED"
     REJECTED = "REJECTED"
     IN_PROGRESS = "IN_PROGRESS"
     COMPLETED = "COMPLETED"
+    CLOSED = "CLOSED"
     FAILED = "FAILED"
+    DECLINED_BY_PARTNER = "DECLINED_BY_PARTNER"
     CANCELLED = "CANCELLED"
+    CANCELED_BY_CLIENT = "CANCELED_BY_CLIENT"
+    PAYMENT_FAILED = "PAYMENT_FAILED"
+
+
+class MarketplaceOrderPaymentStatus(str, Enum):
+    UNPAID = "UNPAID"
+    AUTHORIZED = "AUTHORIZED"
+    PAID = "PAID"
+    FAILED = "FAILED"
+    REFUNDED = "REFUNDED"
+
+
+class MarketplaceOrderPaymentMethod(str, Enum):
+    NEFT_INTERNAL = "NEFT_INTERNAL"
+    EXTERNAL_STUB = "EXTERNAL_STUB"
 
 
 class MarketplaceOrderEventType(str, Enum):
+    CREATED = "CREATED"
+    PAYMENT_PENDING = "PAYMENT_PENDING"
+    PAYMENT_PAID = "PAYMENT_PAID"
+    PAYMENT_FAILED = "PAYMENT_FAILED"
+    CONFIRMED = "CONFIRMED"
+    DECLINED = "DECLINED"
+    COMPLETED = "COMPLETED"
+    CANCELED = "CANCELED"
+    NOTE = "NOTE"
     ORDER_CREATED = "ORDER_CREATED"
     ORDER_ACCEPTED = "ORDER_ACCEPTED"
     ORDER_REJECTED = "ORDER_REJECTED"
@@ -51,6 +80,19 @@ class MarketplacePaymentFlow(str, Enum):
     PLATFORM_MOR = "PLATFORM_MOR"
 
 
+class MarketplaceOrderLineSubjectType(str, Enum):
+    PRODUCT = "PRODUCT"
+    SERVICE = "SERVICE"
+
+
+class MarketplaceOrderProofKind(str, Enum):
+    PHOTO = "PHOTO"
+    PDF = "PDF"
+    ACT = "ACT"
+    CHECK = "CHECK"
+    OTHER = "OTHER"
+
+
 class MarketplaceOrderImmutableError(ValueError):
     """Raised when WORM-protected marketplace order records are mutated."""
 
@@ -64,6 +106,17 @@ class MarketplaceOrder(Base):
     product_id = Column(GUID(), nullable=False, index=True)
     quantity = Column(Numeric(18, 4), nullable=False)
     currency = Column(String(8), nullable=True)
+    subtotal_amount = Column(Numeric(18, 4), nullable=True)
+    discount_amount = Column(Numeric(18, 4), nullable=True)
+    total_amount = Column(Numeric(18, 4), nullable=True)
+    payment_status = Column(
+        ExistingEnum(MarketplaceOrderPaymentStatus, name="marketplace_order_payment_status"),
+        nullable=True,
+    )
+    payment_method = Column(
+        ExistingEnum(MarketplaceOrderPaymentMethod, name="marketplace_order_payment_method"),
+        nullable=True,
+    )
     price_snapshot = Column(JSON_TYPE, nullable=False)
     price_snapshot_json = Column(JSON_TYPE, nullable=True)
     pricing_version = Column(Text, nullable=True)
@@ -91,6 +144,37 @@ class MarketplaceOrder(Base):
     completed_at = Column(DateTime(timezone=True), nullable=True)
     audit_event_id = Column(String(36), nullable=True)
     external_ref = Column(Text, nullable=True)
+    meta = Column(JSON_TYPE, nullable=True)
+
+
+class MarketplaceOrderLine(Base):
+    __tablename__ = "marketplace_order_lines"
+
+    id = Column(GUID(), primary_key=True, default=new_uuid_str)
+    order_id = Column(GUID(), ForeignKey("marketplace_orders.id", ondelete="RESTRICT"), nullable=False, index=True)
+    offer_id = Column(GUID(), nullable=False, index=True)
+    subject_type = Column(
+        ExistingEnum(MarketplaceOrderLineSubjectType, name="marketplace_order_line_subject_type"),
+        nullable=False,
+    )
+    subject_id = Column(GUID(), nullable=False, index=True)
+    title_snapshot = Column(Text, nullable=False)
+    qty = Column(Numeric(18, 4), nullable=False)
+    unit_price = Column(Numeric(18, 4), nullable=False)
+    line_amount = Column(Numeric(18, 4), nullable=False)
+    meta = Column(JSON_TYPE, nullable=True)
+
+
+class MarketplaceOrderProof(Base):
+    __tablename__ = "marketplace_order_proofs"
+
+    id = Column(GUID(), primary_key=True, default=new_uuid_str)
+    order_id = Column(GUID(), ForeignKey("marketplace_orders.id", ondelete="RESTRICT"), nullable=False, index=True)
+    kind = Column(ExistingEnum(MarketplaceOrderProofKind, name="marketplace_order_proof_kind"), nullable=False)
+    attachment_id = Column(GUID(), nullable=False)
+    note = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    meta = Column(JSON_TYPE, nullable=True)
 
 
 class MarketplaceOrderEvent(Base):
@@ -105,6 +189,17 @@ class MarketplaceOrderEvent(Base):
     )
     occurred_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
     payload_redacted = Column(JSON_TYPE, nullable=False)
+    before_status = Column(
+        ExistingEnum(MarketplaceOrderStatus, name="marketplace_order_status"),
+        nullable=True,
+    )
+    after_status = Column(
+        ExistingEnum(MarketplaceOrderStatus, name="marketplace_order_status"),
+        nullable=True,
+    )
+    reason_code = Column(Text, nullable=True)
+    comment = Column(Text, nullable=True)
+    meta = Column(JSON_TYPE, nullable=True)
     actor_type = Column(
         ExistingEnum(MarketplaceOrderActorType, name="marketplace_order_actor_type"),
         nullable=False,
@@ -126,6 +221,12 @@ __all__ = [
     "MarketplaceOrderEvent",
     "MarketplaceOrderEventType",
     "MarketplaceOrderImmutableError",
+    "MarketplaceOrderLine",
+    "MarketplaceOrderLineSubjectType",
+    "MarketplaceOrderPaymentMethod",
+    "MarketplaceOrderPaymentStatus",
+    "MarketplaceOrderProof",
+    "MarketplaceOrderProofKind",
     "MarketplaceOrderStatus",
     "MarketplacePaymentFlow",
 ]

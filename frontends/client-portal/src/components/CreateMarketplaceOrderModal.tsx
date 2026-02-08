@@ -63,12 +63,10 @@ export function CreateMarketplaceOrderModal({
     setErrorStatus(null);
     try {
       const response = await createMarketplaceOrder(user, {
-        service_id: serviceId,
-        offer_id: selectedOfferId,
-        qty: qtyValue,
-        comment: comment || undefined,
+        items: [{ offer_id: selectedOfferId, qty: qtyValue }],
+        payment_method: "NEFT_INTERNAL",
       });
-      const newOrderId = response.data.order_id ?? null;
+      const newOrderId = response.data.id ?? null;
       setOrderId(newOrderId);
       setCorrelationId(response.correlationId);
       setStatus("success");

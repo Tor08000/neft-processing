@@ -5,12 +5,15 @@ import { formatDateTime } from "../utils/format";
 
 const eventLabels: Record<string, string> = {
   CREATED: "Создан",
+  PAYMENT_PENDING: "Ожидает оплаты",
+  PAYMENT_PAID: "Оплачен",
+  PAYMENT_FAILED: "Платёж не прошёл",
   PAID: "Оплачен",
   AUTHORIZED: "Авторизован",
-  CONFIRMED: "Подтверждён",
+  CONFIRMED: "Подтверждён партнёром",
   CONFIRMED_BY_PARTNER: "Подтверждён партнёром",
-  IN_PROGRESS: "В работе",
   COMPLETED: "Завершён",
+  DECLINED: "Отклонён",
   CANCELLED: "Отменён",
   REFUND_OPENED: "Открыт возврат",
   REFUND_APPROVED: "Возврат одобрен",

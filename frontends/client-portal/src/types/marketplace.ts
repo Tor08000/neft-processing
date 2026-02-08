@@ -87,9 +87,13 @@ export interface MarketplaceOrderSummary {
   partner_name?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
+  subtotal_amount?: number | null;
+  discount_amount?: number | null;
   total_amount?: number | null;
   currency?: string | null;
   status?: string | null;
+  payment_status?: string | null;
+  payment_method?: string | null;
   documents_status?: string | null;
   sla_status?: "OK" | "VIOLATION" | "UNKNOWN" | null;
   price_snapshot?: {
@@ -110,8 +114,12 @@ export interface MarketplaceOrderDetails {
   status?: string | null;
   service_title?: string | null;
   partner_name?: string | null;
+  subtotal_amount?: number | null;
+  discount_amount?: number | null;
   total_amount?: number | null;
   currency?: string | null;
+  payment_status?: string | null;
+  payment_method?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
   documents_status?: string | null;
@@ -123,7 +131,7 @@ export interface MarketplaceOrderDetails {
 
 export interface MarketplaceOrderEvent {
   id: string;
-  type: string;
+  event_type: string;
   status?: string | null;
   note?: string | null;
   actor_type?: "client" | "partner" | "system" | string | null;
@@ -189,10 +197,8 @@ export interface MarketplaceOrderInvoice {
 }
 
 export interface MarketplaceCreateOrderPayload {
-  service_id: string;
-  offer_id: string;
-  qty?: number | null;
-  comment?: string | null;
+  items: { offer_id: string; qty?: number | null }[];
+  payment_method: string;
 }
 
 export interface MarketplaceProductOrderPayload {
@@ -202,7 +208,7 @@ export interface MarketplaceProductOrderPayload {
 }
 
 export interface MarketplaceCreateOrderResponse {
-  order_id?: string | null;
+  id?: string | null;
   status?: string | null;
   message?: string | null;
 }

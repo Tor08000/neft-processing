@@ -2,17 +2,15 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { ApiError } from "../api/http";
 import {
-  acceptOrder,
-  failOrder,
+  completeOrder,
+  confirmOrder,
+  declineOrder,
   fetchOrder,
   fetchOrderEvents,
   fetchOrderSettlement,
   fetchOrderSettlementBreakdown,
   fetchOrderSla,
-  progressOrder,
-  rejectOrder,
-  startOrder,
-  completeOrder,
+  uploadOrderProof,
 } from "../api/orders";
 import { useAuth } from "../auth/AuthContext";
 import { StatusBadge } from "../components/StatusBadge";
@@ -30,12 +28,9 @@ import { canManageOrderLifecycle, canReadOrders } from "../utils/roles";
 import { OrderTimelinePanel } from "./OrderTimelinePanel";
 import { useTranslation } from "react-i18next";
 
-const canAcceptStatus = (status: string) => ["CREATED"].includes(status);
-const canStartStatus = (status: string) => ["ACCEPTED"].includes(status);
-const canProgressStatus = (status: string) => ["IN_PROGRESS"].includes(status);
-const canCompleteStatus = (status: string) => ["IN_PROGRESS"].includes(status);
-const canFailStatus = (status: string) => ["IN_PROGRESS"].includes(status);
-const canRejectStatus = (status: string) => ["CREATED"].includes(status);
+const canConfirmStatus = (status: string) => ["PAID"].includes(status);
+const canDeclineStatus = (status: string) => ["PAID"].includes(status);
+const canCompleteStatus = (status: string) => ["CONFIRMED_BY_PARTNER"].includes(status);
 
 const describeError = (err: unknown, fallback: string) => {
   if (err instanceof ApiError) {
@@ -47,7 +42,14 @@ const describeError = (err: unknown, fallback: string) => {
   return { message: fallback, correlationId: null };
 };
 
-type ActionModal = "accept" | "reject" | "start" | "progress" | "complete" | "fail" | null;
+type ActionModal = "confirm" | "decline" | "complete" | "proof" | null;
+
+const createAttachmentId = () => {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return crypto.randomUUID();
+  }
+  return `attachment-${Math.random().toString(16).slice(2)}`;
+};
 
 const formatCountdown = (seconds: number | null) => {
   if (seconds === null || seconds === undefined || Number.isNaN(seconds)) return "—";
@@ -101,11 +103,12 @@ export function OrderDetailsPage() {
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionCorrelationId, setActionCorrelationId] = useState<string | null>(null);
-  const [rejectReason, setRejectReason] = useState("");
-  const [failReason, setFailReason] = useState("");
-  const [progressPercent, setProgressPercent] = useState("");
-  const [progressMessage, setProgressMessage] = useState("");
+  const [declineReason, setDeclineReason] = useState("");
+  const [declineComment, setDeclineComment] = useState("");
   const [completeSummary, setCompleteSummary] = useState("");
+  const [proofKind, setProofKind] = useState("PHOTO");
+  const [proofNote, setProofNote] = useState("");
+  const [proofAttachmentId, setProofAttachmentId] = useState("");
   const [isSupportOpen, setIsSupportOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<"timeline" | "sla" | "payouts">("timeline");
 
@@ -213,45 +216,38 @@ export function OrderDetailsPage() {
     setActionMessage(null);
     setActionCorrelationId(null);
     try {
-      if (actionModal === "accept") {
-        const result = await acceptOrder(user.token, order.id);
-        setActionMessage(t("orderDetails.notifications.accepted"));
+      if (actionModal === "confirm") {
+        await confirmOrder(user.token, order.id);
+        setActionMessage(t("orderDetails.notifications.confirmed"));
         setActionCorrelationId(null);
       }
-      if (actionModal === "reject") {
-        const result = await rejectOrder(user.token, order.id, rejectReason.trim());
-        setActionMessage(t("orderDetails.notifications.rejected"));
+      if (actionModal === "decline") {
+        await declineOrder(user.token, order.id, declineReason.trim(), declineComment.trim());
+        setActionMessage(t("orderDetails.notifications.declined"));
         setActionCorrelationId(null);
       }
-      if (actionModal === "start") {
-        const result = await startOrder(user.token, order.id);
-        setActionMessage(t("orderDetails.notifications.started"));
-        setActionCorrelationId(null);
-      }
-      if (actionModal === "progress") {
-        const result = await progressOrder(user.token, order.id, {
-          percent: Number(progressPercent),
-          message: progressMessage.trim() || undefined,
+      if (actionModal === "proof") {
+        const attachmentId = proofAttachmentId.trim() || createAttachmentId();
+        await uploadOrderProof(user.token, order.id, {
+          attachment_id: attachmentId,
+          kind: proofKind,
+          note: proofNote.trim() || undefined,
         });
-        setActionMessage(t("orderDetails.notifications.progressed"));
+        setActionMessage(t("orderDetails.notifications.proofUploaded"));
         setActionCorrelationId(null);
       }
       if (actionModal === "complete") {
-        const result = await completeOrder(user.token, order.id, { summary: completeSummary.trim() || undefined });
+        await completeOrder(user.token, order.id, { comment: completeSummary.trim() || undefined });
         setActionMessage(t("orderDetails.notifications.completed"));
         setActionCorrelationId(null);
       }
-      if (actionModal === "fail") {
-        const result = await failOrder(user.token, order.id, failReason.trim());
-        setActionMessage(t("orderDetails.notifications.failed"));
-        setActionCorrelationId(null);
-      }
       setActionModal(null);
-      setRejectReason("");
-      setFailReason("");
-      setProgressPercent("");
-      setProgressMessage("");
+      setDeclineReason("");
+      setDeclineComment("");
       setCompleteSummary("");
+      setProofNote("");
+      setProofKind("PHOTO");
+      setProofAttachmentId("");
       loadOrder();
       loadEvents();
       loadSla();
@@ -267,10 +263,10 @@ export function OrderDetailsPage() {
   const responseSla = useMemo(() => sla.find((item) => item.metric?.toLowerCase().includes("response")) ?? null, [sla]);
   const completionSla = useMemo(() => sla.find((item) => item.metric?.toLowerCase().includes("completion")) ?? null, [sla]);
 
-  const disableReject = rejectReason.trim().length === 0;
-  const disableFail = failReason.trim().length === 0;
-  const disableProgress = !progressPercent || Number(progressPercent) < 0 || Number(progressPercent) > 100;
+  const disableDecline = declineReason.trim().length === 0 || declineComment.trim().length === 0;
   const disableComplete = completeSummary.trim().length === 0;
+  const disableProof = proofKind.trim().length === 0;
+  const proofsCount = order?.proofs?.length ?? 0;
 
   if (!canRead) {
     return <ForbiddenState />;
@@ -357,50 +353,34 @@ export function OrderDetailsPage() {
               <button
                 type="button"
                 className="secondary"
-                onClick={() => setActionModal("accept")}
-                disabled={!canAcceptStatus(order.status)}
+                onClick={() => setActionModal("confirm")}
+                disabled={!canConfirmStatus(order.status)}
               >
-                {t("orderDetails.actions.accept")}
+                {t("orderDetails.actions.confirm")}
               </button>
               <button
                 type="button"
                 className="secondary"
-                onClick={() => setActionModal("reject")}
-                disabled={!canRejectStatus(order.status)}
+                onClick={() => setActionModal("decline")}
+                disabled={!canDeclineStatus(order.status)}
               >
-                {t("orderDetails.actions.reject")}
+                {t("orderDetails.actions.decline")}
               </button>
               <button
                 type="button"
                 className="secondary"
-                onClick={() => setActionModal("start")}
-                disabled={!canStartStatus(order.status)}
+                onClick={() => setActionModal("proof")}
+                disabled={!canCompleteStatus(order.status)}
               >
-                {t("orderDetails.actions.start")}
-              </button>
-              <button
-                type="button"
-                className="secondary"
-                onClick={() => setActionModal("progress")}
-                disabled={!canProgressStatus(order.status)}
-              >
-                {t("orderDetails.actions.progress")}
+                {t("orderDetails.actions.uploadProof")}
               </button>
               <button
                 type="button"
                 className="secondary"
                 onClick={() => setActionModal("complete")}
-                disabled={!canCompleteStatus(order.status)}
+                disabled={!canCompleteStatus(order.status) || proofsCount === 0}
               >
                 {t("orderDetails.actions.complete")}
-              </button>
-              <button
-                type="button"
-                className="secondary"
-                onClick={() => setActionModal("fail")}
-                disabled={!canFailStatus(order.status)}
-              >
-                {t("orderDetails.actions.fail")}
               </button>
             </div>
           )}
@@ -410,6 +390,24 @@ export function OrderDetailsPage() {
               {actionError}
             </div>
           ) : null}
+        </div>
+        <div className="card__section">
+          <div className="section-title">
+            <h3>{t("orderDetails.proofs.title")}</h3>
+          </div>
+          {order.proofs && order.proofs.length ? (
+            <ul className="stack">
+              {order.proofs.map((proof) => (
+                <li key={proof.id}>
+                  <div className="muted small">{proof.kind}</div>
+                  <div className="mono">{proof.attachmentId}</div>
+                  {proof.note ? <div className="muted">{proof.note}</div> : null}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <div className="muted">{t("orderDetails.proofs.empty")}</div>
+          )}
         </div>
       </section>
 
@@ -656,36 +654,56 @@ export function OrderDetailsPage() {
               </button>
             </div>
             <div>{t(`orderDetails.modals.${actionModal}.description`)}</div>
-            {actionModal === "reject" ? (
-              <label className="form-field">
-                {t("orderDetails.modals.reject.reason")}
-                <textarea
-                  className="textarea"
-                  value={rejectReason}
-                  onChange={(event) => setRejectReason(event.target.value)}
-                  placeholder={t("orderDetails.modals.reject.placeholder")}
-                />
-              </label>
-            ) : null}
-            {actionModal === "progress" ? (
+            {actionModal === "decline" ? (
               <div className="stack">
                 <label className="form-field">
-                  {t("orderDetails.modals.progress.percent")}
+                  {t("orderDetails.modals.decline.reason")}
                   <input
-                    type="number"
-                    min={0}
-                    max={100}
-                    value={progressPercent}
-                    onChange={(event) => setProgressPercent(event.target.value)}
+                    type="text"
+                    value={declineReason}
+                    onChange={(event) => setDeclineReason(event.target.value)}
+                    placeholder={t("orderDetails.modals.decline.reasonPlaceholder")}
                   />
                 </label>
                 <label className="form-field">
-                  {t("orderDetails.modals.progress.message")}
+                  {t("orderDetails.modals.decline.comment")}
                   <textarea
                     className="textarea"
-                    value={progressMessage}
-                    onChange={(event) => setProgressMessage(event.target.value)}
-                    placeholder={t("orderDetails.modals.progress.placeholder")}
+                    value={declineComment}
+                    onChange={(event) => setDeclineComment(event.target.value)}
+                    placeholder={t("orderDetails.modals.decline.commentPlaceholder")}
+                  />
+                </label>
+              </div>
+            ) : null}
+            {actionModal === "proof" ? (
+              <div className="stack">
+                <label className="form-field">
+                  {t("orderDetails.modals.proof.kind")}
+                  <select value={proofKind} onChange={(event) => setProofKind(event.target.value)}>
+                    <option value="PHOTO">{t("orderDetails.modals.proof.kinds.photo")}</option>
+                    <option value="PDF">{t("orderDetails.modals.proof.kinds.pdf")}</option>
+                    <option value="ACT">{t("orderDetails.modals.proof.kinds.act")}</option>
+                    <option value="CHECK">{t("orderDetails.modals.proof.kinds.check")}</option>
+                    <option value="OTHER">{t("orderDetails.modals.proof.kinds.other")}</option>
+                  </select>
+                </label>
+                <label className="form-field">
+                  {t("orderDetails.modals.proof.attachment")}
+                  <input
+                    type="text"
+                    value={proofAttachmentId}
+                    onChange={(event) => setProofAttachmentId(event.target.value)}
+                    placeholder={t("orderDetails.modals.proof.attachmentPlaceholder")}
+                  />
+                </label>
+                <label className="form-field">
+                  {t("orderDetails.modals.proof.note")}
+                  <textarea
+                    className="textarea"
+                    value={proofNote}
+                    onChange={(event) => setProofNote(event.target.value)}
+                    placeholder={t("orderDetails.modals.proof.notePlaceholder")}
                   />
                 </label>
               </div>
@@ -701,17 +719,6 @@ export function OrderDetailsPage() {
                 />
               </label>
             ) : null}
-            {actionModal === "fail" ? (
-              <label className="form-field">
-                {t("orderDetails.modals.fail.reason")}
-                <textarea
-                  className="textarea"
-                  value={failReason}
-                  onChange={(event) => setFailReason(event.target.value)}
-                  placeholder={t("orderDetails.modals.fail.placeholder")}
-                />
-              </label>
-            ) : null}
             <div className="actions">
               <button type="button" className="secondary" onClick={() => setActionModal(null)}>
                 {t("orderDetails.modals.cancel")}
@@ -721,9 +728,8 @@ export function OrderDetailsPage() {
                 className="primary"
                 onClick={handleAction}
                 disabled={
-                  (actionModal === "reject" && disableReject) ||
-                  (actionModal === "fail" && disableFail) ||
-                  (actionModal === "progress" && disableProgress) ||
+                  (actionModal === "decline" && disableDecline) ||
+                  (actionModal === "proof" && disableProof) ||
                   (actionModal === "complete" && disableComplete)
                 }
               >

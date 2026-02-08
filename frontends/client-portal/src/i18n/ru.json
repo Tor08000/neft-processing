@@ -491,6 +491,8 @@
       "contactSupport": "Связаться с поддержкой",
       "downloadInvoice": "Скачать инвойс",
       "confirmCancel": "Отменить заказ?",
+      "pay": "Оплатить",
+      "paying": "Оплачиваем...",
       "backToOrders": "Назад к заказам"
     },
     "timeline": {
@@ -544,7 +546,8 @@
       "consequencesFailed": "Не удалось загрузить последствия",
       "invoicesFailed": "Не удалось загрузить инвойсы",
       "incidentsFailed": "Не удалось загрузить инциденты",
-      "cancelFailed": "Не удалось отменить заказ"
+      "cancelFailed": "Не удалось отменить заказ",
+      "payFailed": "Не удалось выполнить оплату"
     },
     "forbidden": {
       "noAccess": "Нет доступа к заказу.",
@@ -643,13 +646,19 @@
   "statuses": {
     "orders": {
       "CREATED": "Создан",
+      "PENDING_PAYMENT": "Ожидает оплаты",
       "ACCEPTED": "Принят",
       "PAID": "Оплачен",
       "CONFIRMED": "Подтверждён партнёром",
+      "CONFIRMED_BY_PARTNER": "Подтверждён партнёром",
       "IN_PROGRESS": "В работе",
       "COMPLETED": "Завершён",
+      "DECLINED_BY_PARTNER": "Отклонён партнёром",
       "CANCELLED": "Отменён",
+      "CANCELED_BY_CLIENT": "Отменён клиентом",
       "FAILED": "Завершён с ошибкой",
+      "PAYMENT_FAILED": "Платёж не прошёл",
+      "CLOSED": "Закрыт",
       "REFUNDED": "Возвращён"
     },
     "documents": {
