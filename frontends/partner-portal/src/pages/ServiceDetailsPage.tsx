@@ -1,146 +1,50 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
-  activateCatalogItem,
-  fetchCatalogItem,
-  updateCatalogItem,
-  disableCatalogItem,
-} from "../api/catalog";
-import { activateOffer, createOffer, disableOffer, fetchOffers, updateOffer } from "../api/offers";
-import { ApiError } from "../api/http";
+  addMarketplaceServiceLocation,
+  addMarketplaceServiceMedia,
+  addMarketplaceServiceScheduleException,
+  addMarketplaceServiceScheduleRule,
+  archiveMarketplaceService,
+  fetchMarketplaceService,
+  fetchMarketplaceServiceAvailability,
+  fetchMarketplaceServiceLocations,
+  fetchMarketplaceServiceSchedule,
+  removeMarketplaceServiceLocation,
+  removeMarketplaceServiceMedia,
+  removeMarketplaceServiceScheduleException,
+  removeMarketplaceServiceScheduleRule,
+  submitMarketplaceService,
+  updateMarketplaceService,
+} from "../api/marketplaceServices";
+import { fetchStations, type StationListItem } from "../api/partner";
 import { useAuth } from "../auth/AuthContext";
 import { EmptyState, ErrorState, ForbiddenState, LoadingState } from "../components/states";
 import { StatusBadge } from "../components/StatusBadge";
-import { formatDate, formatDateTime } from "../utils/format";
+import { formatDate } from "../utils/format";
 import { canManageServices, canReadServices } from "../utils/roles";
 import type {
-  CatalogItem,
-  CatalogItemInput,
-  CatalogItemKind,
-  CatalogItemStatus,
-  Offer,
-  OfferAvailability,
-  OfferInput,
-  OfferLocationScope,
+  MarketplaceService,
+  MarketplaceServiceAvailabilitySlot,
+  MarketplaceServiceLocation,
+  MarketplaceServiceSchedule,
 } from "../types/marketplace";
 
-type ApiErrorState = {
-  message: string;
-};
+type TabKey = "main" | "media" | "locations" | "schedule" | "preview";
 
-type CatalogFormState = {
-  title: string;
-  description: string;
-  kind: CatalogItemKind;
-  category: string;
-  baseUom: string;
-  status: CatalogItemStatus;
-};
-
-type OfferFormState = {
-  price: string;
-  currency: string;
-  vatRate: string;
-  validFrom: string;
-  validTo: string;
-  locationScope: OfferLocationScope;
-  locationIds: string;
-  availability: OfferAvailability;
-  active: boolean;
-};
-
-const normalizeError = (error: unknown, fallback: string): ApiErrorState => {
-  if (error instanceof ApiError) {
-    return { message: fallback };
-  }
-  if (error instanceof Error) {
-    return { message: fallback };
-  }
-  return { message: fallback };
-};
-
-const formatErrorDescription = (error: ApiErrorState): string => {
-  return error.message;
-};
-
-const resolveCatalogTone = (status: CatalogItemStatus): "success" | "pending" | "error" | "neutral" => {
-  switch (status) {
-    case "ACTIVE":
-      return "success";
-    case "DISABLED":
-      return "pending";
-    case "ARCHIVED":
-      return "error";
-    case "DRAFT":
-    default:
-      return "neutral";
-  }
-};
-
-const resolveOfferTone = (active: boolean): "success" | "pending" => (active ? "success" : "pending");
-
-const formatOfferPrice = (value: number, currency: string): string =>
-  new Intl.NumberFormat("ru-RU", { style: "currency", currency }).format(value);
-
-const buildCatalogPayload = (form: CatalogFormState): CatalogItemInput => ({
-  title: form.title.trim(),
-  description: form.description.trim() || null,
-  kind: form.kind,
-  category: form.category.trim() || null,
-  baseUom: form.baseUom.trim(),
-  status: form.status,
+const buildDefaultForm = (service?: MarketplaceService | null) => ({
+  title: service?.title ?? "",
+  category: service?.category ?? "",
+  description: service?.description ?? "",
+  duration_min: service?.duration_min ? String(service.duration_min) : "60",
+  requirements: service?.requirements ?? "",
+  tags: service?.tags?.join(", ") ?? "",
+  attributes: service?.attributes ? JSON.stringify(service.attributes, null, 2) : "{}",
 });
 
-const buildCatalogForm = (item: CatalogItem): CatalogFormState => ({
-  title: item.title,
-  description: item.description ?? "",
-  kind: item.kind,
-  category: item.category ?? "",
-  baseUom: item.baseUom ?? "",
-  status: item.status,
-});
+const toDateInputValue = (value: Date) => value.toISOString().slice(0, 10);
 
-const buildOfferForm = (offer?: Offer | null): OfferFormState => ({
-  price: offer?.price ? String(offer.price) : "",
-  currency: offer?.currency ?? "RUB",
-  vatRate: offer?.vatRate !== null && offer?.vatRate !== undefined ? String(offer.vatRate) : "",
-  validFrom: offer?.validFrom ?? "",
-  validTo: offer?.validTo ?? "",
-  locationScope: offer?.locationScope ?? "all",
-  locationIds: offer?.locationIds?.join(", ") ?? "",
-  availability: offer?.availability ?? "always",
-  active: offer?.active ?? false,
-});
-
-const buildOfferPayload = (catalogItemId: string, form: OfferFormState, activate: boolean): OfferInput => ({
-  catalogItemId,
-  price: Number(form.price),
-  currency: form.currency,
-  vatRate: form.vatRate ? Number(form.vatRate) : null,
-  validFrom: form.validFrom || null,
-  validTo: form.validTo || null,
-  locationScope: form.locationScope,
-  locationIds:
-    form.locationScope === "selected"
-      ? form.locationIds
-          .split(",")
-          .map((id) => id.trim())
-          .filter(Boolean)
-      : [],
-  availability: form.availability,
-  active: activate ? true : form.active,
-});
-
-const isOfferValidOnDate = (offer: Offer, dateFilter: string): boolean => {
-  if (!dateFilter) return true;
-  const date = new Date(dateFilter);
-  if (Number.isNaN(date.getTime())) return true;
-  const from = offer.validFrom ? new Date(offer.validFrom) : null;
-  const to = offer.validTo ? new Date(offer.validTo) : null;
-  if (from && date < from) return false;
-  if (to && date > to) return false;
-  return true;
-};
+const weekdayLabels = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
 
 export function ServiceDetailsPage() {
   const { id } = useParams<{ id: string }>();
@@ -148,563 +52,646 @@ export function ServiceDetailsPage() {
   const navigate = useNavigate();
   const canRead = canReadServices(user?.roles);
   const canManage = canManageServices(user?.roles);
-  const [item, setItem] = useState<CatalogItem | null>(null);
-  const [itemLoading, setItemLoading] = useState(true);
-  const [itemError, setItemError] = useState<ApiErrorState | null>(null);
-  const [offers, setOffers] = useState<Offer[]>([]);
-  const [offersLoading, setOffersLoading] = useState(true);
-  const [offersError, setOffersError] = useState<ApiErrorState | null>(null);
-  const [filters, setFilters] = useState({
-    scope: "all",
-    locationId: "",
-    activeOnly: false,
-    date: "",
+  const [tab, setTab] = useState<TabKey>("main");
+  const [service, setService] = useState<MarketplaceService | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [form, setForm] = useState(buildDefaultForm());
+  const [formError, setFormError] = useState<string | null>(null);
+  const [mediaForm, setMediaForm] = useState({ attachment_id: "", bucket: "", path: "" });
+  const [locations, setLocations] = useState<MarketplaceServiceLocation[]>([]);
+  const [stations, setStations] = useState<StationListItem[]>([]);
+  const [selectedStation, setSelectedStation] = useState("");
+  const [selectedLocationId, setSelectedLocationId] = useState<string | null>(null);
+  const [schedule, setSchedule] = useState<MarketplaceServiceSchedule | null>(null);
+  const [ruleForm, setRuleForm] = useState({
+    weekday: "0",
+    time_from: "09:00",
+    time_to: "18:00",
+    slot_duration_min: "60",
+    capacity: "1",
   });
-  const [actionNotice, setActionNotice] = useState<string | null>(null);
-  const [actionCorrelation, setActionCorrelation] = useState<string | null>(null);
-  const [itemModalOpen, setItemModalOpen] = useState(false);
-  const [itemForm, setItemForm] = useState<CatalogFormState | null>(null);
-  const [itemFormError, setItemFormError] = useState<ApiErrorState | null>(null);
-  const [offerModalOpen, setOfferModalOpen] = useState(false);
-  const [editingOffer, setEditingOffer] = useState<Offer | null>(null);
-  const [offerForm, setOfferForm] = useState<OfferFormState>(buildOfferForm());
-  const [offerFormError, setOfferFormError] = useState<ApiErrorState | null>(null);
+  const [exceptionForm, setExceptionForm] = useState({
+    date: toDateInputValue(new Date()),
+    is_closed: false,
+    time_from: "",
+    time_to: "",
+    capacity_override: "",
+  });
+  const [availability, setAvailability] = useState<MarketplaceServiceAvailabilitySlot[]>([]);
+  const [availabilityRange, setAvailabilityRange] = useState(() => {
+    const today = new Date();
+    const end = new Date();
+    end.setDate(today.getDate() + 6);
+    return { from: toDateInputValue(today), to: toDateInputValue(end) };
+  });
 
   useEffect(() => {
     if (!user || !id || !canRead) return;
-    setItemLoading(true);
-    setItemError(null);
-    fetchCatalogItem(user.token, id)
+    setLoading(true);
+    setError(null);
+    fetchMarketplaceService(user.token, id)
       .then((data) => {
-        setItem(data);
+        setService(data);
+        setForm(buildDefaultForm(data));
       })
-      .catch((err) => setItemError(normalizeError(err, "Не удалось загрузить карточку услуги")))
-      .finally(() => setItemLoading(false));
+      .catch((err) => {
+        console.error(err);
+        setError("Не удалось загрузить карточку услуги");
+      })
+      .finally(() => setLoading(false));
   }, [user, id, canRead]);
 
-  const fetchItemOffers = async () => {
-    if (!user || !id) return;
-    setOffersLoading(true);
-    setOffersError(null);
-    try {
-      const response = await fetchOffers(user.token, {
-        catalog_item_id: id,
-        active: filters.activeOnly ? "true" : undefined,
-        location_id: filters.scope === "selected" ? filters.locationId || undefined : undefined,
-      });
-      setOffers(response.items ?? []);
-    } catch (err) {
-      setOffersError(normalizeError(err, "Не удалось загрузить офферы"));
-    } finally {
-      setOffersLoading(false);
-    }
-  };
-
   useEffect(() => {
     if (!user || !id || !canRead) return;
-    fetchItemOffers();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, id, canRead, filters.scope, filters.locationId, filters.activeOnly]);
+    fetchMarketplaceServiceLocations(user.token, id)
+      .then((data) => {
+        setLocations(data);
+        if (data.length > 0 && !selectedLocationId) {
+          setSelectedLocationId(data[0].id);
+        }
+      })
+      .catch((err) => console.error(err));
+  }, [user, id, canRead, selectedLocationId]);
 
-  const filteredOffers = useMemo(
-    () => offers.filter((offer) => isOfferValidOnDate(offer, filters.date)),
-    [offers, filters.date],
+  useEffect(() => {
+    if (!user || !canRead) return;
+    fetchStations(user.token)
+      .then((data) => setStations(data.items ?? []))
+      .catch((err) => console.error(err));
+  }, [user, canRead]);
+
+  useEffect(() => {
+    if (!user || !selectedLocationId) return;
+    fetchMarketplaceServiceSchedule(user.token, selectedLocationId)
+      .then((data) => setSchedule(data))
+      .catch((err) => console.error(err));
+  }, [user, selectedLocationId]);
+
+  useEffect(() => {
+    if (!user || !id || !canRead || tab !== "preview") return;
+    fetchMarketplaceServiceAvailability(user.token, id, availabilityRange.from, availabilityRange.to)
+      .then((data) => setAvailability(data.items ?? []))
+      .catch((err) => console.error(err));
+  }, [user, id, canRead, tab, availabilityRange]);
+
+  const selectedLocation = useMemo(
+    () => locations.find((location) => location.id === selectedLocationId) ?? null,
+    [locations, selectedLocationId],
   );
 
   if (!canRead) {
     return <ForbiddenState />;
   }
 
-  const openItemModal = () => {
-    if (!item) return;
-    setItemForm(buildCatalogForm(item));
-    setItemFormError(null);
-    setItemModalOpen(true);
-  };
+  if (loading) {
+    return <LoadingState label="Карточка услуги" />;
+  }
 
-  const handleSaveItem = async (activate = false) => {
-    if (!user || !item || !itemForm) return;
-    if (!itemForm.title.trim() || !itemForm.baseUom.trim()) {
-      setItemFormError({ message: "Заполните обязательные поля" });
+  if (error || !service) {
+    return <ErrorState title="Карточка услуги" description={error ?? undefined} />;
+  }
+
+  const handleSave = async () => {
+    if (!user || !service) return;
+    if (!form.title.trim() || !form.category.trim()) {
+      setFormError("Заполните обязательные поля");
       return;
     }
-    setItemFormError(null);
-    setActionNotice(null);
-    setActionCorrelation(null);
-    try {
-      const payload = buildCatalogPayload({ ...itemForm, status: activate ? "ACTIVE" : itemForm.status });
-      const result = await updateCatalogItem(user.token, item.id, payload);
-      setItem(result.data);
-      setActionNotice("Карточка услуги обновлена");
-      setActionCorrelation(result.correlationId ?? null);
-      setItemModalOpen(false);
-    } catch (err) {
-      setItemFormError(normalizeError(err, "Не удалось сохранить изменения"));
-    }
-  };
-
-  const handleToggleItem = async () => {
-    if (!user || !item) return;
-    setActionNotice(null);
-    setActionCorrelation(null);
-    try {
-      if (item.status === "ACTIVE") {
-        const result = await disableCatalogItem(user.token, item.id);
-        setItem({ ...item, status: "DISABLED" });
-        setActionNotice("Элемент отключён");
-        setActionCorrelation(result.correlationId ?? null);
-      } else {
-        const result = await activateCatalogItem(user.token, item.id);
-        setItem({ ...item, status: "ACTIVE" });
-        setActionNotice("Элемент активирован");
-        setActionCorrelation(result.correlationId ?? null);
-      }
-    } catch (err) {
-      setItemError(normalizeError(err, "Не удалось изменить статус"));
-    }
-  };
-
-  const openOfferModal = (offer?: Offer) => {
-    setEditingOffer(offer ?? null);
-    setOfferForm(buildOfferForm(offer));
-    setOfferFormError(null);
-    setOfferModalOpen(true);
-  };
-
-  const handleSaveOffer = async (activate = false) => {
-    if (!user || !id) return;
-    if (!offerForm.price) {
-      setOfferFormError({ message: "Укажите цену" });
+    const durationValue = Number(form.duration_min);
+    if (Number.isNaN(durationValue) || durationValue < 5) {
+      setFormError("Длительность должна быть числом не менее 5 минут");
       return;
     }
-    setOfferFormError(null);
-    setActionNotice(null);
-    setActionCorrelation(null);
+    let attributes = {};
     try {
-      const payload = buildOfferPayload(id, offerForm, activate);
-      if (editingOffer) {
-        const result = await updateOffer(user.token, editingOffer.id, payload);
-        setOffers((prev) => prev.map((entry) => (entry.id === editingOffer.id ? result.data : entry)));
-        setActionNotice("Оффер обновлён");
-        setActionCorrelation(result.correlationId ?? null);
-      } else {
-        const result = await createOffer(user.token, payload);
-        setOffers((prev) => [result.data, ...prev]);
-        setActionNotice("Оффер создан");
-        setActionCorrelation(result.correlationId ?? null);
-      }
-      setOfferModalOpen(false);
+      attributes = form.attributes ? JSON.parse(form.attributes) : {};
+    } catch {
+      setFormError("Атрибуты должны быть валидным JSON");
+      return;
+    }
+    setFormError(null);
+    try {
+      const updated = await updateMarketplaceService(user.token, service.id, {
+        title: form.title.trim(),
+        description: form.description.trim() || null,
+        category: form.category.trim(),
+        tags: form.tags
+          .split(",")
+          .map((tag) => tag.trim())
+          .filter(Boolean),
+        attributes,
+        duration_min: durationValue,
+        requirements: form.requirements.trim() || null,
+      });
+      setService(updated);
     } catch (err) {
-      setOfferFormError(normalizeError(err, "Не удалось сохранить оффер"));
+      console.error(err);
+      setFormError("Не удалось сохранить изменения");
     }
   };
 
-  const handleToggleOffer = async (offer: Offer) => {
-    if (!user) return;
-    setActionNotice(null);
-    setActionCorrelation(null);
+  const handleSubmit = async () => {
+    if (!user || !service) return;
     try {
-      if (offer.active) {
-        const result = await disableOffer(user.token, offer.id);
-        setOffers((prev) => prev.map((entry) => (entry.id === offer.id ? { ...entry, active: false } : entry)));
-        setActionNotice("Оффер отключён");
-        setActionCorrelation(result.correlationId ?? null);
-      } else {
-        const result = await activateOffer(user.token, offer.id);
-        setOffers((prev) => prev.map((entry) => (entry.id === offer.id ? { ...entry, active: true } : entry)));
-        setActionNotice("Оффер активирован");
-        setActionCorrelation(result.correlationId ?? null);
-      }
+      const updated = await submitMarketplaceService(user.token, service.id);
+      setService(updated);
     } catch (err) {
-      setOffersError(normalizeError(err, "Не удалось изменить статус оффера"));
+      console.error(err);
+      setFormError("Не удалось отправить на модерацию");
     }
+  };
+
+  const handleArchive = async () => {
+    if (!user || !service) return;
+    try {
+      const updated = await archiveMarketplaceService(user.token, service.id);
+      setService(updated);
+    } catch (err) {
+      console.error(err);
+      setFormError("Не удалось архивировать");
+    }
+  };
+
+  const handleAddMedia = async () => {
+    if (!user || !service) return;
+    if (!mediaForm.attachment_id.trim() || !mediaForm.bucket.trim() || !mediaForm.path.trim()) {
+      return;
+    }
+    try {
+      await addMarketplaceServiceMedia(user.token, service.id, mediaForm);
+      const refreshed = await fetchMarketplaceService(user.token, service.id);
+      setService(refreshed);
+      setMediaForm({ attachment_id: "", bucket: "", path: "" });
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleRemoveMedia = async (attachmentId: string) => {
+    if (!user || !service) return;
+    await removeMarketplaceServiceMedia(user.token, service.id, attachmentId);
+    const refreshed = await fetchMarketplaceService(user.token, service.id);
+    setService(refreshed);
+  };
+
+  const handleAddLocation = async () => {
+    if (!user || !service || !selectedStation) return;
+    const created = await addMarketplaceServiceLocation(user.token, service.id, {
+      location_id: selectedStation,
+      is_active: true,
+    });
+    setLocations((prev) => [...prev, created]);
+    setSelectedStation("");
+    if (!selectedLocationId) {
+      setSelectedLocationId(created.id);
+    }
+  };
+
+  const handleRemoveLocation = async (serviceLocationId: string) => {
+    if (!user || !service) return;
+    await removeMarketplaceServiceLocation(user.token, service.id, serviceLocationId);
+    setLocations((prev) => prev.filter((item) => item.id !== serviceLocationId));
+    if (selectedLocationId === serviceLocationId) {
+      setSelectedLocationId(null);
+    }
+  };
+
+  const handleAddRule = async () => {
+    if (!user || !selectedLocationId) return;
+    const payload = {
+      weekday: Number(ruleForm.weekday),
+      time_from: ruleForm.time_from,
+      time_to: ruleForm.time_to,
+      slot_duration_min: Number(ruleForm.slot_duration_min),
+      capacity: Number(ruleForm.capacity),
+    };
+    const created = await addMarketplaceServiceScheduleRule(user.token, selectedLocationId, payload);
+    setSchedule((prev) =>
+      prev ? { ...prev, rules: [...prev.rules, created] } : { rules: [created], exceptions: [] },
+    );
+  };
+
+  const handleRemoveRule = async (ruleId: string) => {
+    if (!user || !selectedLocationId) return;
+    await removeMarketplaceServiceScheduleRule(user.token, selectedLocationId, ruleId);
+    setSchedule((prev) => (prev ? { ...prev, rules: prev.rules.filter((rule) => rule.id !== ruleId) } : prev));
+  };
+
+  const handleAddException = async () => {
+    if (!user || !selectedLocationId) return;
+    const payload = {
+      date: exceptionForm.date,
+      is_closed: exceptionForm.is_closed,
+      time_from: exceptionForm.time_from || null,
+      time_to: exceptionForm.time_to || null,
+      capacity_override: exceptionForm.capacity_override ? Number(exceptionForm.capacity_override) : null,
+    };
+    const created = await addMarketplaceServiceScheduleException(user.token, selectedLocationId, payload);
+    setSchedule((prev) =>
+      prev ? { ...prev, exceptions: [...prev.exceptions, created] } : { rules: [], exceptions: [created] },
+    );
+  };
+
+  const handleRemoveException = async (exceptionId: string) => {
+    if (!user || !selectedLocationId) return;
+    await removeMarketplaceServiceScheduleException(user.token, selectedLocationId, exceptionId);
+    setSchedule((prev) =>
+      prev ? { ...prev, exceptions: prev.exceptions.filter((item) => item.id !== exceptionId) } : prev,
+    );
   };
 
   return (
     <div className="stack">
-      <button type="button" className="link-button" onClick={() => navigate("/services")}>
-        ← Назад к каталогу
-      </button>
-      {itemLoading ? (
-        <LoadingState label="Загружаем карточку сервиса..." />
-      ) : itemError ? (
-        <ErrorState description={formatErrorDescription(itemError)} />
-      ) : item ? (
-        <section className="card">
-          <div className="section-title">
-            <div>
-              <h2>{item.title}</h2>
-              <div className="stack-inline">
-                <StatusBadge status={item.kind} />
-                <StatusBadge status={item.status} tone={resolveCatalogTone(item.status)} />
-              </div>
-            </div>
-            {canManage ? (
-              <div className="stack-inline">
-                <button type="button" className="secondary" onClick={openItemModal}>
-                  Edit item
-                </button>
-                <button type="button" className="secondary" onClick={handleToggleItem}>
-                  {item.status === "ACTIVE" ? "Disable" : "Activate"}
-                </button>
-              </div>
-            ) : null}
-          </div>
-          <div className="grid two">
-            <div>
-              <div className="label">Категория</div>
-              <div>{item.category ?? "—"}</div>
-            </div>
-            <div>
-              <div className="label">Ед. измерения</div>
-              <div>{item.baseUom}</div>
-            </div>
-            <div>
-              <div className="label">Описание</div>
-              <div>{item.description ?? "—"}</div>
-            </div>
-            <div>
-              <div className="label">Обновлено</div>
-              <div>{formatDateTime(item.updatedAt)}</div>
-            </div>
-          </div>
-        </section>
-      ) : null}
-
       <section className="card">
         <div className="section-title">
           <div>
-            <h3>Offers / Цены и доступность</h3>
-            <div className="muted">Управление ценами и доступностью офферов</div>
+            <h2>{service.title}</h2>
+            <div className="muted">Обновлено {formatDate(service.updated_at ?? service.created_at ?? null)}</div>
           </div>
-          {canManage ? (
-            <button type="button" className="primary" onClick={() => openOfferModal()}>
-              Добавить offer
+          <div className="stack-inline">
+            <StatusBadge status={service.status} />
+            <button type="button" className="secondary" onClick={() => navigate("/services")}>
+              Назад
             </button>
-          ) : null}
+          </div>
         </div>
-        <div className="filters">
-          <label className="filter">
-            Локация
-            <select
-              value={filters.scope}
-              onChange={(event) => setFilters((prev) => ({ ...prev, scope: event.target.value }))}
-            >
-              <option value="all">Все локации</option>
-              <option value="selected">Конкретная станция</option>
-            </select>
-          </label>
-          {filters.scope === "selected" ? (
-            <label className="filter">
-              Station ID
-              <input
-                type="text"
-                value={filters.locationId}
-                onChange={(event) => setFilters((prev) => ({ ...prev, locationId: event.target.value }))}
-              />
-            </label>
-          ) : null}
-          <label className="checkbox">
-            <input
-              type="checkbox"
-              checked={filters.activeOnly}
-              onChange={(event) => setFilters((prev) => ({ ...prev, activeOnly: event.target.checked }))}
-            />
-            Только активные
-          </label>
-          <label className="filter">
-            Действует на дату
-            <input
-              type="date"
-              value={filters.date}
-              onChange={(event) => setFilters((prev) => ({ ...prev, date: event.target.value }))}
-            />
-          </label>
-        </div>
-        {actionNotice ? (
-          <div className="notice">
-            <div>{actionNotice}</div>
+        {formError ? (
+          <div className="error" role="alert">
+            {formError}
           </div>
         ) : null}
-        {offersLoading ? (
-          <div className="skeleton-stack" aria-busy="true">
-            <div className="skeleton-line" />
-            <div className="skeleton-line" />
+        <div className="tabs">
+          {[
+            { key: "main", label: "Основное" },
+            { key: "media", label: "Медиа" },
+            { key: "locations", label: "Локации" },
+            { key: "schedule", label: "Расписание" },
+            { key: "preview", label: "Preview" },
+          ].map((item) => (
+            <button
+              key={item.key}
+              type="button"
+              className={tab === item.key ? "tab active" : "tab"}
+              onClick={() => setTab(item.key as TabKey)}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+        {tab === "main" ? (
+          <div className="stack">
+            <label className="field">
+              <span>Название</span>
+              <input
+                type="text"
+                value={form.title}
+                onChange={(event) => setForm((prev) => ({ ...prev, title: event.target.value }))}
+                disabled={!canManage || service.status !== "DRAFT"}
+              />
+            </label>
+            <label className="field">
+              <span>Категория</span>
+              <input
+                type="text"
+                value={form.category}
+                onChange={(event) => setForm((prev) => ({ ...prev, category: event.target.value }))}
+                disabled={!canManage || service.status !== "DRAFT"}
+              />
+            </label>
+            <label className="field">
+              <span>Описание</span>
+              <textarea
+                value={form.description}
+                onChange={(event) => setForm((prev) => ({ ...prev, description: event.target.value }))}
+                disabled={!canManage || service.status !== "DRAFT"}
+              />
+            </label>
+            <label className="field">
+              <span>Длительность (мин)</span>
+              <input
+                type="number"
+                min={5}
+                max={1440}
+                value={form.duration_min}
+                onChange={(event) => setForm((prev) => ({ ...prev, duration_min: event.target.value }))}
+                disabled={!canManage || service.status !== "DRAFT"}
+              />
+            </label>
+            <label className="field">
+              <span>Требования</span>
+              <input
+                type="text"
+                value={form.requirements}
+                onChange={(event) => setForm((prev) => ({ ...prev, requirements: event.target.value }))}
+                disabled={!canManage || service.status !== "DRAFT"}
+              />
+            </label>
+            <label className="field">
+              <span>Теги</span>
+              <input
+                type="text"
+                value={form.tags}
+                onChange={(event) => setForm((prev) => ({ ...prev, tags: event.target.value }))}
+                disabled={!canManage || service.status !== "DRAFT"}
+              />
+            </label>
+            <label className="field">
+              <span>Атрибуты (JSON)</span>
+              <textarea
+                value={form.attributes}
+                onChange={(event) => setForm((prev) => ({ ...prev, attributes: event.target.value }))}
+                disabled={!canManage || service.status !== "DRAFT"}
+              />
+            </label>
+            {canManage ? (
+              <div className="stack-inline">
+                <button type="button" className="primary" onClick={handleSave} disabled={service.status !== "DRAFT"}>
+                  Сохранить
+                </button>
+                {service.status === "DRAFT" ? (
+                  <button type="button" className="secondary" onClick={handleSubmit}>
+                    Отправить на модерацию
+                  </button>
+                ) : null}
+                {service.status !== "ARCHIVED" ? (
+                  <button type="button" className="danger" onClick={handleArchive}>
+                    Архивировать
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
           </div>
-        ) : offersError ? (
-          <ErrorState description={formatErrorDescription(offersError)} />
-        ) : filteredOffers.length === 0 ? (
-          <EmptyState
-            title={offers.length === 0 ? "Офферов нет" : "Нет результатов фильтра"}
-            description={
-              offers.length === 0
-                ? "Создайте первый оффер для этой услуги."
-                : "Измените фильтры или сбросьте параметры."
-            }
-            action={
-              offers.length === 0 && canManage ? (
-                <button type="button" className="primary" onClick={() => openOfferModal()}>
-                  Добавить offer
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  className="secondary"
-                  onClick={() => setFilters({ scope: "all", locationId: "", activeOnly: false, date: "" })}
-                >
-                  Сбросить фильтры
-                </button>
-              )
-            }
-          />
-        ) : (
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Offer ID</th>
-                <th>Локации</th>
-                <th>Цена</th>
-                <th>НДС</th>
-                <th>Период</th>
-                <th>Доступность</th>
-                <th>Статус</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {filteredOffers.map((offer) => (
-                <tr key={offer.id}>
-                  <td className="mono">{offer.id.slice(0, 8)}</td>
-                  <td>
-                    {offer.locationScope === "all"
-                      ? "Все локации"
-                      : `${offer.locationIds?.length ?? 0} станций`}
-                  </td>
-                  <td>{formatOfferPrice(offer.price, offer.currency ?? "RUB")}</td>
-                  <td>{offer.vatRate ?? "—"}</td>
-                  <td>
-                    {formatDate(offer.validFrom)} → {formatDate(offer.validTo)}
-                  </td>
-                  <td>{offer.availability.toUpperCase()}</td>
-                  <td>
-                    <StatusBadge status={offer.active ? "ACTIVE" : "DISABLED"} tone={resolveOfferTone(offer.active)} />
-                  </td>
-                  <td>
+        ) : null}
+        {tab === "media" ? (
+          <div className="stack">
+            <div className="muted">Добавьте ссылки на файлы, загруженные в хранилище.</div>
+            <div className="stack-inline">
+              <input
+                type="text"
+                placeholder="attachment_id"
+                value={mediaForm.attachment_id}
+                onChange={(event) => setMediaForm((prev) => ({ ...prev, attachment_id: event.target.value }))}
+              />
+              <input
+                type="text"
+                placeholder="bucket"
+                value={mediaForm.bucket}
+                onChange={(event) => setMediaForm((prev) => ({ ...prev, bucket: event.target.value }))}
+              />
+              <input
+                type="text"
+                placeholder="path"
+                value={mediaForm.path}
+                onChange={(event) => setMediaForm((prev) => ({ ...prev, path: event.target.value }))}
+              />
+              <button type="button" className="secondary" onClick={handleAddMedia} disabled={!canManage}>
+                Добавить
+              </button>
+            </div>
+            {service.media.length === 0 ? (
+              <EmptyState title="Медиа не добавлены" description="Загрузите хотя бы одно изображение." />
+            ) : (
+              <ul className="list">
+                {service.media.map((item) => (
+                  <li key={item.attachment_id} className="list-item">
+                    <div>
+                      <strong>{item.path}</strong>
+                      <div className="muted">{item.bucket}</div>
+                    </div>
                     {canManage ? (
-                      <div className="stack-inline">
-                        <button type="button" className="ghost" onClick={() => openOfferModal(offer)}>
-                          Edit
-                        </button>
-                        <button type="button" className="ghost" onClick={() => handleToggleOffer(offer)}>
-                          {offer.active ? "Disable" : "Activate"}
-                        </button>
-                      </div>
+                      <button type="button" className="danger" onClick={() => handleRemoveMedia(item.attachment_id)}>
+                        Удалить
+                      </button>
                     ) : null}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </section>
-
-      {itemModalOpen && itemForm ? (
-        <div className="modal-backdrop" role="dialog" aria-modal="true">
-          <div className="modal">
-            <div className="card__header">
-              <h3>Редактировать элемент</h3>
-              <button type="button" className="ghost" onClick={() => setItemModalOpen(false)}>
-                Close
-              </button>
-            </div>
-            <div className="form-grid">
-              <label className="form-field">
-                Название *
-                <input
-                  type="text"
-                  value={itemForm.title}
-                  onChange={(event) => setItemForm((prev) => (prev ? { ...prev, title: event.target.value } : prev))}
-                />
-              </label>
-              <label className="form-field">
-                Тип
-                <select
-                  value={itemForm.kind}
-                  onChange={(event) =>
-                    setItemForm((prev) => (prev ? { ...prev, kind: event.target.value as CatalogItemKind } : prev))
-                  }
-                >
-                  <option value="SERVICE">SERVICE</option>
-                  <option value="PRODUCT">PRODUCT</option>
-                </select>
-              </label>
-              <label className="form-field">
-                Категория
-                <input
-                  type="text"
-                  value={itemForm.category}
-                  onChange={(event) => setItemForm((prev) => (prev ? { ...prev, category: event.target.value } : prev))}
-                />
-              </label>
-              <label className="form-field">
-                Ед. измерения *
-                <input
-                  type="text"
-                  value={itemForm.baseUom}
-                  onChange={(event) => setItemForm((prev) => (prev ? { ...prev, baseUom: event.target.value } : prev))}
-                />
-              </label>
-              <label className="form-field form-grid__full">
-                Описание
-                <textarea
-                  className="textarea"
-                  rows={3}
-                  value={itemForm.description}
-                  onChange={(event) => setItemForm((prev) => (prev ? { ...prev, description: event.target.value } : prev))}
-                />
-              </label>
-              <label className="form-field">
-                Статус
-                <select
-                  value={itemForm.status}
-                  onChange={(event) =>
-                    setItemForm((prev) => (prev ? { ...prev, status: event.target.value as CatalogItemStatus } : prev))
-                  }
-                >
-                  <option value="DRAFT">DRAFT</option>
-                  <option value="ACTIVE">ACTIVE</option>
-                </select>
-              </label>
-            </div>
-            {itemFormError ? (
-              <div className="notice error">
-                {formatErrorDescription(itemFormError)}
-              </div>
-            ) : null}
-            <div className="form-actions">
-              <button type="button" className="primary" onClick={() => handleSaveItem(false)}>
-                Save
-              </button>
-              <button type="button" className="secondary" onClick={() => handleSaveItem(true)}>
-                Save & Activate
-              </button>
-              <button type="button" className="ghost" onClick={() => setItemModalOpen(false)}>
-                Отмена
-              </button>
-            </div>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
-        </div>
-      ) : null}
-
-      {offerModalOpen ? (
-        <div className="modal-backdrop" role="dialog" aria-modal="true">
-          <div className="modal">
-            <div className="card__header">
-              <h3>{editingOffer ? "Редактировать оффер" : "Новый оффер"}</h3>
-              <button type="button" className="ghost" onClick={() => setOfferModalOpen(false)}>
-                Close
+        ) : null}
+        {tab === "locations" ? (
+          <div className="stack">
+            <div className="stack-inline">
+              <select value={selectedStation} onChange={(event) => setSelectedStation(event.target.value)}>
+                <option value="">Выберите точку партнёра</option>
+                {stations.map((station) => (
+                  <option key={station.id} value={station.id}>
+                    {station.name} — {station.address}
+                  </option>
+                ))}
+              </select>
+              <button type="button" className="secondary" onClick={handleAddLocation} disabled={!canManage}>
+                Добавить точку
               </button>
             </div>
-            <div className="notice">
-              Изменение оффера влияет на новые заказы, не пересчитывает старые.
+            {locations.length === 0 ? (
+              <EmptyState title="Нет привязанных точек" description="Добавьте точку оказания услуги." />
+            ) : (
+              <ul className="list">
+                {locations.map((location) => (
+                  <li key={location.id} className="list-item">
+                    <div>
+                      <strong>{location.address ?? location.location_id}</strong>
+                      <div className="muted">ID: {location.location_id}</div>
+                    </div>
+                    {canManage ? (
+                      <button type="button" className="danger" onClick={() => handleRemoveLocation(location.id)}>
+                        Удалить
+                      </button>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        ) : null}
+        {tab === "schedule" ? (
+          <div className="stack">
+            <div className="stack-inline">
+              <label className="field">
+                <span>Локация</span>
+                <select
+                  value={selectedLocationId ?? ""}
+                  onChange={(event) => setSelectedLocationId(event.target.value || null)}
+                >
+                  <option value="">Выберите локацию</option>
+                  {locations.map((location) => (
+                    <option key={location.id} value={location.id}>
+                      {location.address ?? location.location_id}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {selectedLocation ? <span className="muted">ID {selectedLocation.location_id}</span> : null}
             </div>
-            <div className="form-grid">
-              <label className="form-field">
-                Цена *
-                <input
-                  type="number"
-                  value={offerForm.price}
-                  onChange={(event) => setOfferForm((prev) => ({ ...prev, price: event.target.value }))}
-                />
-              </label>
-              <label className="form-field">
-                Валюта
-                <select
-                  value={offerForm.currency}
-                  onChange={(event) => setOfferForm((prev) => ({ ...prev, currency: event.target.value }))}
-                >
-                  <option value="RUB">RUB</option>
-                </select>
-              </label>
-              <label className="form-field">
-                НДС
-                <input
-                  type="number"
-                  value={offerForm.vatRate}
-                  onChange={(event) => setOfferForm((prev) => ({ ...prev, vatRate: event.target.value }))}
-                />
-              </label>
-              <label className="form-field">
-                Valid from
-                <input
-                  type="date"
-                  value={offerForm.validFrom}
-                  onChange={(event) => setOfferForm((prev) => ({ ...prev, validFrom: event.target.value }))}
-                />
-              </label>
-              <label className="form-field">
-                Valid to
-                <input
-                  type="date"
-                  value={offerForm.validTo}
-                  onChange={(event) => setOfferForm((prev) => ({ ...prev, validTo: event.target.value }))}
-                />
-              </label>
-              <label className="form-field">
-                Scope
-                <select
-                  value={offerForm.locationScope}
-                  onChange={(event) =>
-                    setOfferForm((prev) => ({ ...prev, locationScope: event.target.value as OfferLocationScope }))
-                  }
-                >
-                  <option value="all">Все локации</option>
-                  <option value="selected">Выбранные станции</option>
-                </select>
-              </label>
-              {offerForm.locationScope === "selected" ? (
-                <label className="form-field form-grid__full">
-                  Station IDs (через запятую)
+            {selectedLocationId ? (
+              <>
+                <div className="card-section">
+                  <h4>Правила недели</h4>
+                  <div className="stack-inline">
+                    <select
+                      value={ruleForm.weekday}
+                      onChange={(event) => setRuleForm((prev) => ({ ...prev, weekday: event.target.value }))}
+                    >
+                      {weekdayLabels.map((label, index) => (
+                        <option key={label} value={index}>
+                          {label}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      type="time"
+                      value={ruleForm.time_from}
+                      onChange={(event) => setRuleForm((prev) => ({ ...prev, time_from: event.target.value }))}
+                    />
+                    <input
+                      type="time"
+                      value={ruleForm.time_to}
+                      onChange={(event) => setRuleForm((prev) => ({ ...prev, time_to: event.target.value }))}
+                    />
+                    <input
+                      type="number"
+                      min={5}
+                      value={ruleForm.slot_duration_min}
+                      onChange={(event) => setRuleForm((prev) => ({ ...prev, slot_duration_min: event.target.value }))}
+                    />
+                    <input
+                      type="number"
+                      min={1}
+                      value={ruleForm.capacity}
+                      onChange={(event) => setRuleForm((prev) => ({ ...prev, capacity: event.target.value }))}
+                    />
+                    <button type="button" className="secondary" onClick={handleAddRule} disabled={!canManage}>
+                      Добавить правило
+                    </button>
+                  </div>
+                  {schedule?.rules?.length ? (
+                    <ul className="list">
+                      {schedule.rules.map((rule) => (
+                        <li key={rule.id} className="list-item">
+                          <div>
+                            <strong>{weekdayLabels[rule.weekday]}</strong> {rule.time_from}–{rule.time_to} ·{" "}
+                            {rule.slot_duration_min} мин · {rule.capacity} слота
+                          </div>
+                          {canManage ? (
+                            <button type="button" className="danger" onClick={() => handleRemoveRule(rule.id)}>
+                              Удалить
+                            </button>
+                          ) : null}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <EmptyState title="Правил нет" description="Добавьте расписание по дням недели." />
+                  )}
+                </div>
+                <div className="card-section">
+                  <h4>Исключения</h4>
+                  <div className="stack-inline">
+                    <input
+                      type="date"
+                      value={exceptionForm.date}
+                      onChange={(event) => setExceptionForm((prev) => ({ ...prev, date: event.target.value }))}
+                    />
+                    <label className="stack-inline">
+                      <input
+                        type="checkbox"
+                        checked={exceptionForm.is_closed}
+                        onChange={(event) => setExceptionForm((prev) => ({ ...prev, is_closed: event.target.checked }))}
+                      />
+                      <span>Закрыто</span>
+                    </label>
+                    <input
+                      type="time"
+                      value={exceptionForm.time_from}
+                      onChange={(event) => setExceptionForm((prev) => ({ ...prev, time_from: event.target.value }))}
+                      disabled={exceptionForm.is_closed}
+                    />
+                    <input
+                      type="time"
+                      value={exceptionForm.time_to}
+                      onChange={(event) => setExceptionForm((prev) => ({ ...prev, time_to: event.target.value }))}
+                      disabled={exceptionForm.is_closed}
+                    />
+                    <input
+                      type="number"
+                      min={1}
+                      placeholder="Capacity"
+                      value={exceptionForm.capacity_override}
+                      onChange={(event) => setExceptionForm((prev) => ({ ...prev, capacity_override: event.target.value }))}
+                      disabled={exceptionForm.is_closed}
+                    />
+                    <button type="button" className="secondary" onClick={handleAddException} disabled={!canManage}>
+                      Добавить исключение
+                    </button>
+                  </div>
+                  {schedule?.exceptions?.length ? (
+                    <ul className="list">
+                      {schedule.exceptions.map((item) => (
+                        <li key={item.id} className="list-item">
+                          <div>
+                            <strong>{item.date}</strong>{" "}
+                            {item.is_closed
+                              ? "Закрыто"
+                              : `${item.time_from ?? "—"}–${item.time_to ?? "—"} · capacity ${
+                                  item.capacity_override ?? "по правилу"
+                                }`}
+                          </div>
+                          {canManage ? (
+                            <button type="button" className="danger" onClick={() => handleRemoveException(item.id)}>
+                              Удалить
+                            </button>
+                          ) : null}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <EmptyState title="Исключений нет" description="Добавьте закрытые даты или override." />
+                  )}
+                </div>
+              </>
+            ) : (
+              <EmptyState title="Выберите локацию" description="Чтобы управлять расписанием, выберите точку." />
+            )}
+          </div>
+        ) : null}
+        {tab === "preview" ? (
+          <div className="stack">
+            <div className="stack-inline">
+              <label className="field">
+                <span>Период</span>
+                <div className="stack-inline">
                   <input
-                    type="text"
-                    value={offerForm.locationIds}
-                    onChange={(event) => setOfferForm((prev) => ({ ...prev, locationIds: event.target.value }))}
+                    type="date"
+                    value={availabilityRange.from}
+                    onChange={(event) => setAvailabilityRange((prev) => ({ ...prev, from: event.target.value }))}
                   />
-                </label>
-              ) : null}
-              <label className="form-field">
-                Availability
-                <select
-                  value={offerForm.availability}
-                  onChange={(event) =>
-                    setOfferForm((prev) => ({ ...prev, availability: event.target.value as OfferAvailability }))
-                  }
-                >
-                  <option value="always">ALWAYS</option>
-                  <option value="schedule">SCHEDULE</option>
-                  <option value="capacity">CAPACITY</option>
-                </select>
+                  <input
+                    type="date"
+                    value={availabilityRange.to}
+                    onChange={(event) => setAvailabilityRange((prev) => ({ ...prev, to: event.target.value }))}
+                  />
+                </div>
               </label>
             </div>
-            {offerFormError ? (
-              <div className="notice error">
-                {formatErrorDescription(offerFormError)}
-              </div>
-            ) : null}
-            <div className="form-actions">
-              <button type="button" className="primary" onClick={() => handleSaveOffer(false)}>
-                Save
-              </button>
-              <button type="button" className="secondary" onClick={() => handleSaveOffer(true)}>
-                Save & Activate
-              </button>
-              <button type="button" className="ghost" onClick={() => setOfferModalOpen(false)}>
-                Отмена
-              </button>
-            </div>
+            {availability.length === 0 ? (
+              <EmptyState title="Нет слотов" description="Создайте расписание для генерации слотов." />
+            ) : (
+              <ul className="list">
+                {availability.map((slot) => (
+                  <li key={`${slot.service_location_id}-${slot.date}-${slot.time_from}`} className="list-item">
+                    <div>
+                      <strong>{slot.date}</strong> {slot.time_from}–{slot.time_to}
+                      <div className="muted">capacity {slot.capacity}</div>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
-        </div>
-      ) : null}
+        ) : null}
+      </section>
     </div>
   );
 }

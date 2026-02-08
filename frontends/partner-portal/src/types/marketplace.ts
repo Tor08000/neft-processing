@@ -2,6 +2,7 @@ import type { ProductStatus } from "../components/StatusBadge";
 
 export type MarketplaceProductStatus = ProductStatus;
 export type MarketplaceVerificationStatus = "PENDING" | "VERIFIED" | "REJECTED";
+export type MarketplaceServiceStatus = ProductStatus;
 
 export interface MarketplaceProductMedia {
   attachment_id: string;
@@ -66,6 +67,114 @@ export interface MarketplaceProductListResponse {
   total: number;
   limit: number;
   offset: number;
+}
+
+export interface MarketplaceServiceMedia {
+  attachment_id: string;
+  bucket: string;
+  path: string;
+  checksum?: string | null;
+  size?: number | null;
+  mime?: string | null;
+  sort_index?: number | null;
+  created_at?: string | null;
+}
+
+export interface MarketplaceServiceSummary {
+  id: string;
+  partner_id: string;
+  title: string;
+  category: string;
+  status: MarketplaceServiceStatus;
+  duration_min: number;
+  updated_at?: string | null;
+  created_at?: string | null;
+}
+
+export interface MarketplaceService extends MarketplaceServiceSummary {
+  description?: string | null;
+  tags: string[];
+  attributes: Record<string, string | number | boolean | null>;
+  requirements?: string | null;
+  media: MarketplaceServiceMedia[];
+}
+
+export interface MarketplaceServiceInput {
+  title: string;
+  description?: string | null;
+  category: string;
+  tags?: string[];
+  attributes?: Record<string, string | number | boolean | null>;
+  duration_min: number;
+  requirements?: string | null;
+}
+
+export interface MarketplaceServiceUpdate {
+  title?: string;
+  description?: string | null;
+  category?: string;
+  tags?: string[];
+  attributes?: Record<string, string | number | boolean | null>;
+  duration_min?: number;
+  requirements?: string | null;
+}
+
+export interface MarketplaceServiceListResponse {
+  items: MarketplaceServiceSummary[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface MarketplaceServiceLocation {
+  id: string;
+  service_id: string;
+  location_id: string;
+  address?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  is_active: boolean;
+  created_at?: string | null;
+}
+
+export interface MarketplaceServiceScheduleRule {
+  id: string;
+  service_location_id: string;
+  weekday: number;
+  time_from: string;
+  time_to: string;
+  slot_duration_min: number;
+  capacity: number;
+  created_at?: string | null;
+}
+
+export interface MarketplaceServiceScheduleException {
+  id: string;
+  service_location_id: string;
+  date: string;
+  is_closed: boolean;
+  time_from?: string | null;
+  time_to?: string | null;
+  capacity_override?: number | null;
+  created_at?: string | null;
+}
+
+export interface MarketplaceServiceSchedule {
+  rules: MarketplaceServiceScheduleRule[];
+  exceptions: MarketplaceServiceScheduleException[];
+}
+
+export interface MarketplaceServiceAvailabilitySlot {
+  service_location_id: string;
+  location_id: string;
+  date: string;
+  time_from: string;
+  time_to: string;
+  capacity: number;
+}
+
+export interface MarketplaceServiceAvailabilityResponse {
+  items: MarketplaceServiceAvailabilitySlot[];
 }
 
 export type CatalogItemKind = "SERVICE" | "PRODUCT";
