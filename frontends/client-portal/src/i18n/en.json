@@ -62,7 +62,8 @@
     "download": "Download",
     "copyLink": "Copy link",
     "confirmReceived": "Confirm received",
-    "resetFilters": "Reset filters"
+    "resetFilters": "Reset filters",
+    "close": "Close"
   },
   "policyCenter": {
     "title": "Fleet · Policy Center",
@@ -344,6 +345,16 @@
   "marketplaceCatalog": {
     "title": "Marketplace",
     "subtitle": "Browse published partner products and services.",
+    "recommendations": {
+      "title": "For you",
+      "subtitle": "Personal picks based on your recent activity.",
+      "reasonFallback": "Recommended for you",
+      "whyAction": "Why?",
+      "whyTitle": "Why this offer?",
+      "whySubtitle": "The main reasons we show this recommendation.",
+      "whyEmpty": "We do not have enough history to explain this yet.",
+      "whyError": "Unable to load explanation."
+    },
     "errors": {
       "loadFailed": "Unable to load products",
       "unavailable": "Marketplace is unavailable in this environment."

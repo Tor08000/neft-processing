@@ -1,12 +1,21 @@
 import { type ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { ShoppingCart } from "../components/icons";
-import { listMarketplaceProducts, sendMarketplaceClientEvents } from "../api/marketplace";
+import {
+  fetchMarketplaceRecommendationWhy,
+  listMarketplaceProducts,
+  listMarketplaceRecommendations,
+  sendMarketplaceClientEvents,
+} from "../api/marketplace";
 import { ApiError } from "../api/http";
 import { useAuth } from "../auth/AuthContext";
 import { EmptyState } from "../components/EmptyState";
 import { AppErrorState, AppForbiddenState } from "../components/states";
-import type { MarketplaceProductSummary } from "../types/marketplace";
+import type {
+  MarketplaceProductSummary,
+  MarketplaceRecommendationItem,
+  MarketplaceRecommendationWhyResponse,
+} from "../types/marketplace";
 import { canOrder } from "../utils/marketplacePermissions";
 import { useI18n } from "../i18n";
 
@@ -23,6 +32,12 @@ export function MarketplaceCatalogPage() {
   const [items, setItems] = useState<MarketplaceProductSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<CatalogErrorState | null>(null);
+  const [recommendations, setRecommendations] = useState<MarketplaceRecommendationItem[]>([]);
+  const [isRecommendationsLoading, setIsRecommendationsLoading] = useState(false);
+  const [whyPayload, setWhyPayload] = useState<MarketplaceRecommendationWhyResponse | null>(null);
+  const [isWhyLoading, setIsWhyLoading] = useState(false);
+  const [isWhyOpen, setIsWhyOpen] = useState(false);
+  const [whyError, setWhyError] = useState<string | null>(null);
   const [filters, setFilters] = useState({
     q: "",
     category: "",
@@ -73,9 +88,22 @@ export function MarketplaceCatalogPage() {
       .finally(() => setIsLoading(false));
   };
 
+  const loadRecommendations = () => {
+    if (!user) return;
+    setIsRecommendationsLoading(true);
+    listMarketplaceRecommendations(user, 12)
+      .then((resp) => setRecommendations(resp.items ?? []))
+      .catch(() => setRecommendations([]))
+      .finally(() => setIsRecommendationsLoading(false));
+  };
+
   useEffect(() => {
     loadCatalog();
   }, [user, filters]);
+
+  useEffect(() => {
+    loadRecommendations();
+  }, [user]);
 
   useEffect(() => {
     if (!user) return;
@@ -129,6 +157,30 @@ export function MarketplaceCatalogPage() {
     setFilters((prev) => ({ ...prev, category }));
   };
 
+  const handleWhyClick = (item: MarketplaceRecommendationItem) => {
+    if (!user) return;
+    setIsWhyOpen(true);
+    setIsWhyLoading(true);
+    setWhyPayload(null);
+    setWhyError(null);
+    fetchMarketplaceRecommendationWhy(user, item.offer_id)
+      .then((resp) => setWhyPayload(resp))
+      .catch((err: unknown) => {
+        if (err instanceof ApiError) {
+          setWhyError(err.message);
+          return;
+        }
+        setWhyError(err instanceof Error ? err.message : t("marketplaceCatalog.recommendations.whyError"));
+      })
+      .finally(() => setIsWhyLoading(false));
+  };
+
+  const handleWhyClose = () => {
+    setIsWhyOpen(false);
+    setWhyPayload(null);
+    setWhyError(null);
+  };
+
   if (!user) {
     return <AppForbiddenState message={t("marketplaceCatalog.forbidden.clientOnly")} />;
   }
@@ -139,6 +191,45 @@ export function MarketplaceCatalogPage() {
 
   return (
     <div className="stack">
+      {!isRecommendationsLoading && recommendations.length > 0 ? (
+        <div className="card">
+          <div className="card__header">
+            <div>
+              <h2>{t("marketplaceCatalog.recommendations.title")}</h2>
+              <p className="muted">{t("marketplaceCatalog.recommendations.subtitle")}</p>
+            </div>
+          </div>
+          <div className="grid two">
+            {recommendations.map((item) => (
+              <div className="card" key={item.offer_id}>
+                <div className="stack">
+                  <div>
+                    <h3>{item.title}</h3>
+                    <div className="muted small">{item.reason_hint ?? t("marketplaceCatalog.recommendations.reasonFallback")}</div>
+                  </div>
+                  <div className="badge-row">
+                    <span className="neft-chip neft-chip-muted">
+                      {item.category ?? t("marketplaceCatalog.card.categoryFallback")}
+                    </span>
+                    <span className="neft-chip neft-chip-info">
+                      {item.subject_type === "SERVICE"
+                        ? t("marketplaceCatalog.types.service")
+                        : t("marketplaceCatalog.types.product")}
+                    </span>
+                  </div>
+                  {item.preview?.short ? <div className="muted">{item.preview.short}</div> : null}
+                  <div className="actions">
+                    <button type="button" className="ghost" onClick={() => handleWhyClick(item)}>
+                      {t("marketplaceCatalog.recommendations.whyAction")}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
       <div className="card">
         <div className="card__header">
           <div>
@@ -314,6 +405,41 @@ export function MarketplaceCatalogPage() {
               </div>
             </div>
           ))}
+        </div>
+      ) : null}
+
+      {isWhyOpen ? (
+        <div className="modal-backdrop" role="dialog" aria-modal="true">
+          <div className="modal-card">
+            <div className="card__header">
+              <div>
+                <h3>{t("marketplaceCatalog.recommendations.whyTitle")}</h3>
+                <p className="muted">{t("marketplaceCatalog.recommendations.whySubtitle")}</p>
+              </div>
+              <button type="button" className="ghost" onClick={handleWhyClose}>
+                {t("actions.close")}
+              </button>
+            </div>
+            <div className="stack">
+              {isWhyLoading ? (
+                <div className="skeleton-stack">
+                  <div className="skeleton-line" />
+                  <div className="skeleton-line" />
+                </div>
+              ) : null}
+              {whyError ? <div className="muted">{whyError}</div> : null}
+              {!isWhyLoading && !whyError ? (
+                <ul>
+                  {(whyPayload?.reasons ?? []).map((reason) => (
+                    <li key={reason.code}>{reason.label}</li>
+                  ))}
+                </ul>
+              ) : null}
+              {!isWhyLoading && !whyError && (whyPayload?.reasons?.length ?? 0) === 0 ? (
+                <div className="muted">{t("marketplaceCatalog.recommendations.whyEmpty")}</div>
+              ) : null}
+            </div>
+          </div>
         </div>
       ) : null}
     </div>
