@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import date
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from sqlalchemy.orm import Session
 
 from app.db import get_db
@@ -284,7 +284,7 @@ def remove_partner_service_media(
     request: Request,
     principal: Principal = Depends(require_permission("partner:catalog:*")),
     db: Session = Depends(get_db),
-) -> None:
+) -> Response:
     partner_id = _ensure_partner_context(principal)
     service = MarketplaceServicesService(db)
     card = service.get_service(service_id=service_id)
@@ -294,7 +294,7 @@ def remove_partner_service_media(
         raise HTTPException(status_code=403, detail="forbidden")
     service.remove_service_media(service_id=service_id, attachment_id=attachment_id)
     db.commit()
-    return None
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get("/services/{service_id}/locations", response_model=list[ServiceLocationOut])
@@ -342,7 +342,7 @@ def remove_partner_service_location(
     request: Request,
     principal: Principal = Depends(require_permission("partner:catalog:*")),
     db: Session = Depends(get_db),
-) -> None:
+) -> Response:
     partner_id = _ensure_partner_context(principal)
     service = MarketplaceServicesService(db)
     card = service.get_service(service_id=service_id)
@@ -352,7 +352,7 @@ def remove_partner_service_location(
         raise HTTPException(status_code=403, detail="forbidden")
     service.remove_service_location(service_id=service_id, service_location_id=service_location_id)
     db.commit()
-    return None
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get("/service-locations/{service_location_id}/schedule", response_model=ServiceScheduleOut)
@@ -420,7 +420,7 @@ def remove_partner_service_rule(
     request: Request,
     principal: Principal = Depends(require_permission("partner:catalog:*")),
     db: Session = Depends(get_db),
-) -> None:
+) -> Response:
     partner_id = _ensure_partner_context(principal)
     service = MarketplaceServicesService(db)
     location = service.get_service_location(service_location_id=service_location_id)
@@ -431,7 +431,7 @@ def remove_partner_service_rule(
         raise HTTPException(status_code=403, detail="forbidden")
     service.remove_schedule_rule(service_location_id=service_location_id, rule_id=rule_id)
     db.commit()
-    return None
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.post(
@@ -472,7 +472,7 @@ def remove_partner_service_exception(
     request: Request,
     principal: Principal = Depends(require_permission("partner:catalog:*")),
     db: Session = Depends(get_db),
-) -> None:
+) -> Response:
     partner_id = _ensure_partner_context(principal)
     service = MarketplaceServicesService(db)
     location = service.get_service_location(service_location_id=service_location_id)
@@ -483,7 +483,7 @@ def remove_partner_service_exception(
         raise HTTPException(status_code=403, detail="forbidden")
     service.remove_schedule_exception(service_location_id=service_location_id, exception_id=exception_id)
     db.commit()
-    return None
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get("/services/{service_id}/availability", response_model=ServiceAvailabilityResponse)

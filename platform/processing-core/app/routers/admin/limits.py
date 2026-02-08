@@ -218,13 +218,12 @@ def update_client_group(
 @router.delete(
     "/client-groups/{group_id}",
     status_code=status.HTTP_204_NO_CONTENT,
-    response_class=Response,
-    response_model=None,
 )
-def delete_client_group(group_id: str, db: Session = Depends(get_db)) -> None:
+def delete_client_group(group_id: str, db: Session = Depends(get_db)) -> Response:
     group = _get_client_group_or_404(db, group_id)
     db.delete(group)
     db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get(
@@ -271,18 +270,17 @@ def add_client_group_member(
 @router.delete(
     "/client-groups/{group_id}/members/{client_id}",
     status_code=status.HTTP_204_NO_CONTENT,
-    response_class=Response,
-    response_model=None,
 )
 def remove_client_group_member(
     group_id: str, client_id: str, db: Session = Depends(get_db)
-) -> None:
+) -> Response:
     group = _get_client_group_or_404(db, group_id)
     db.query(ClientGroupMember).filter(
         ClientGroupMember.client_group_id == group.id,
         ClientGroupMember.client_id == client_id,
     ).delete()
     db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 def _get_card_group_or_404(db: Session, group_id: str) -> CardGroup:
@@ -342,13 +340,12 @@ def update_card_group(
 @router.delete(
     "/card-groups/{group_id}",
     status_code=status.HTTP_204_NO_CONTENT,
-    response_class=Response,
-    response_model=None,
 )
-def delete_card_group(group_id: str, db: Session = Depends(get_db)) -> None:
+def delete_card_group(group_id: str, db: Session = Depends(get_db)) -> Response:
     group = _get_card_group_or_404(db, group_id)
     db.delete(group)
     db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get(
@@ -395,15 +392,14 @@ def add_card_group_member(
 @router.delete(
     "/card-groups/{group_id}/members/{card_id}",
     status_code=status.HTTP_204_NO_CONTENT,
-    response_class=Response,
-    response_model=None,
 )
 def remove_card_group_member(
     group_id: str, card_id: str, db: Session = Depends(get_db)
-) -> None:
+) -> Response:
     group = _get_card_group_or_404(db, group_id)
     db.query(CardGroupMember).filter(
         CardGroupMember.card_group_id == group.id,
         CardGroupMember.card_id == card_id,
     ).delete()
     db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
