@@ -247,3 +247,48 @@ export interface MarketplaceClientEventsIngestResponse {
   accepted: number;
   rejected: number;
 }
+
+export interface MarketplaceRecommendationPrice {
+  currency: string;
+  model: string;
+  amount?: number | null;
+}
+
+export interface MarketplaceRecommendationPreview {
+  image_url?: string | null;
+  short?: string | null;
+}
+
+export interface MarketplaceRecommendationItem {
+  offer_id: string;
+  title: string;
+  subject_type: MarketplaceProductType;
+  price?: MarketplaceRecommendationPrice | null;
+  partner_id: string;
+  category?: string | null;
+  preview?: MarketplaceRecommendationPreview | null;
+  reason_hint?: string | null;
+}
+
+export interface MarketplaceRecommendationsResponse {
+  items: MarketplaceRecommendationItem[];
+  generated_at: string;
+  ttl_seconds: number;
+}
+
+export interface MarketplaceRecommendationWhyReason {
+  code: string;
+  label: string;
+  evidence?: Record<string, unknown> | null;
+}
+
+export interface MarketplaceRecommendationScoreBreakdown {
+  signal: string;
+  value: number;
+}
+
+export interface MarketplaceRecommendationWhyResponse {
+  offer_id: string;
+  reasons: MarketplaceRecommendationWhyReason[];
+  score_breakdown: MarketplaceRecommendationScoreBreakdown[];
+}

@@ -15,6 +15,8 @@ import type {
   MarketplaceProductListResponse,
   MarketplaceProductOrderPayload,
   MarketplaceOrderInvoice,
+  MarketplaceRecommendationWhyResponse,
+  MarketplaceRecommendationsResponse,
 } from "../types/marketplace";
 import type { CaseListResponse } from "../types/cases";
 
@@ -205,6 +207,31 @@ export function sendMarketplaceClientEvents(
   return request<MarketplaceClientEventsIngestResponse>(
     "/v1/marketplace/client/events",
     { method: "POST", body: JSON.stringify({ events }) },
+    withToken(user),
+  );
+}
+
+export function listMarketplaceRecommendations(
+  user: AuthSession | null,
+  limit: number = 12,
+  mode: string = "default",
+): Promise<MarketplaceRecommendationsResponse> {
+  const search = new URLSearchParams({ limit: limit.toString(), mode });
+  return request<MarketplaceRecommendationsResponse>(
+    `/v1/marketplace/client/recommendations?${search.toString()}`,
+    { method: "GET" },
+    withToken(user),
+  );
+}
+
+export function fetchMarketplaceRecommendationWhy(
+  user: AuthSession | null,
+  offerId: string,
+): Promise<MarketplaceRecommendationWhyResponse> {
+  const search = new URLSearchParams({ offer_id: offerId });
+  return request<MarketplaceRecommendationWhyResponse>(
+    `/v1/marketplace/client/recommendations/why?${search.toString()}`,
+    { method: "GET" },
     withToken(user),
   );
 }
