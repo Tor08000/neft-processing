@@ -23,6 +23,11 @@ export interface OrderFilters {
   sla_risk?: string;
 }
 
+type OrdersListResponse = PaginatedResponse<Record<string, unknown>> & {
+  limit?: number;
+  offset?: number;
+};
+
 const toQuery = (filters: OrderFilters): string => {
   const params = new URLSearchParams();
   Object.entries(filters).forEach(([key, value]) => {
@@ -101,20 +106,18 @@ const mapOrderEvent = (event: Record<string, unknown>): MarketplaceOrderEvent =>
 });
 
 export const fetchOrders = (token: string, filters: OrderFilters = {}) =>
-  request<PaginatedResponse<Record<string, unknown>>>(`/v1/marketplace/partner/orders${toQuery(filters)}`, {}, token).then(
-    (data) => {
-      const limit = Number((data as Record<string, unknown>).limit ?? 0) || 0;
-      const offset = Number((data as Record<string, unknown>).offset ?? 0) || 0;
-      const pageSize = limit || (data.items ?? []).length || 1;
-      const page = pageSize ? Math.floor(offset / pageSize) + 1 : 1;
-      return {
-        ...data,
-        page,
-        pageSize,
-        items: (data.items ?? []).map((item) => mapOrder(item as Record<string, unknown>)),
-      };
-    },
-  );
+  request<OrdersListResponse>(`/v1/marketplace/partner/orders${toQuery(filters)}`, {}, token).then((data) => {
+    const limit = Number(data.limit ?? 0) || 0;
+    const offset = Number(data.offset ?? 0) || 0;
+    const pageSize = limit || (data.items ?? []).length || 1;
+    const page = pageSize ? Math.floor(offset / pageSize) + 1 : 1;
+    return {
+      ...data,
+      page,
+      pageSize,
+      items: (data.items ?? []).map((item) => mapOrder(item)),
+    };
+  });
 
 export const fetchOrder = (token: string, id: string) =>
   request<Record<string, unknown>>(`/v1/marketplace/partner/orders/${id}`, {}, token).then((data) =>
