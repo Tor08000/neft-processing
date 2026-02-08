@@ -132,7 +132,7 @@ def _create_escalation_case(
     existing = (
         db.query(Case)
         .filter(Case.kind == CaseKind.ORDER)
-        .filter(Case.entity_id == order_id)
+        .filter(Case.entity_id == str(order_id))
         .one_or_none()
     )
     if existing:
@@ -141,7 +141,7 @@ def _create_escalation_case(
     case = Case(
         tenant_id=request_ctx.tenant_id if request_ctx and request_ctx.tenant_id is not None else 0,
         kind=CaseKind.ORDER,
-        entity_id=order_id,
+        entity_id=str(order_id),
         kpi_key=None,
         window_days=None,
         title=f"Marketplace SLA escalation for order {order_id}",
@@ -157,14 +157,14 @@ def _create_escalation_case(
         actor=CaseEventActor(id=request_ctx.actor_id, email=request_ctx.actor_email) if request_ctx else None,
         request_id=request_ctx.request_id if request_ctx else None,
         trace_id=request_ctx.trace_id if request_ctx else None,
-        extra_payload={"order_id": order_id, "severity": severity.value},
+        extra_payload={"order_id": str(order_id), "severity": severity.value},
     )
     audit = AuditService(db).audit(
         event_type="SLA_ESCALATION_CASE_CREATED",
         entity_type="case",
         entity_id=str(case.id),
         action="SLA_ESCALATION_CASE_CREATED",
-        after={"order_id": order_id, "severity": severity.value},
+        after={"order_id": str(order_id), "severity": severity.value},
         request_ctx=request_ctx,
     )
     record_decision_memory(
@@ -174,7 +174,7 @@ def _create_escalation_case(
         decision_ref_id=str(case.id),
         decision_at=datetime.now(timezone.utc),
         decided_by_user_id=request_ctx.actor_id if request_ctx else None,
-        context_snapshot={"order_id": order_id, "severity": severity.value},
+        context_snapshot={"order_id": str(order_id), "severity": severity.value},
         rationale="SLA breach escalation triggered for marketplace order.",
         score_snapshot=None,
         mastery_snapshot=None,

@@ -63,6 +63,22 @@ def _lock_case(db: Session, case_id: str) -> None:
     db.query(Case).filter(Case.id == case_id).with_for_update().one()
 
 
+def _next_case_event_seq(db: Session, *, case_id: str) -> int:
+    if db.bind and db.bind.dialect.name == "sqlite":
+        next_seq = db.execute(
+            sa.text("SELECT COALESCE(MAX(seq), 0) + 1 AS next_seq FROM case_events WHERE case_id = :case_id"),
+            {"case_id": case_id},
+        ).scalar_one()
+        return int(next_seq)
+    next_seq = db.execute(
+        sa.text(
+            "SELECT COALESCE(MAX(seq), 0) + 1 AS next_seq FROM case_events WHERE case_id = :case_id FOR UPDATE"
+        ),
+        {"case_id": case_id},
+    ).scalar_one()
+    return int(next_seq)
+
+
 def _redact_changes(changes: list[CaseEventChange] | None) -> list[dict[str, Any]] | None:
     if not changes:
         return None
@@ -144,11 +160,7 @@ def emit_case_event(
     _lock_case(db, case_id)
     event_id = new_uuid_str()
     now = at or datetime.now(timezone.utc)
-    next_seq = (
-        db.query(sa.func.coalesce(sa.func.max(CaseEvent.seq), 0) + 1)
-        .filter(CaseEvent.case_id == case_id)
-        .scalar()
-    )
+    next_seq = _next_case_event_seq(db, case_id=case_id)
     prev_hash = GENESIS_HASH
     if next_seq and next_seq > 1:
         prev_hash = (
