@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useLocation, useParams } from "react-router-dom";
 import {
   cancelMarketplaceOrder,
   fetchMarketplaceOrderConsequences,
@@ -9,6 +9,7 @@ import {
   fetchMarketplaceOrderInvoices,
   fetchMarketplaceOrderSla,
   payMarketplaceOrder,
+  sendMarketplaceClientEvents,
 } from "../api/marketplace";
 import { ApiError } from "../api/http";
 import { useAuth } from "../auth/AuthContext";
@@ -61,6 +62,7 @@ const resolveActorLabel = (actor?: string | null) => {
 export function MarketplaceOrderDetailsPage() {
   const { orderId } = useParams<{ orderId: string }>();
   const { user } = useAuth();
+  const location = useLocation();
   const { t } = useI18n();
   const [order, setOrder] = useState<MarketplaceOrderDetails | null>(null);
   const [events, setEvents] = useState<MarketplaceOrderEvent[]>([]);
@@ -221,6 +223,20 @@ export function MarketplaceOrderDetailsPage() {
     setIsPaying(true);
     try {
       await payMarketplaceOrder(user, orderId, "NEFT_INTERNAL");
+      void sendMarketplaceClientEvents(user, [
+        {
+          event_type: "marketplace.order_paid",
+          entity_type: "ORDER",
+          entity_id: orderId,
+          source: "client_portal",
+          page: location.pathname,
+          payload: {
+            payment_method: "NEFT_INTERNAL",
+            amount: resolvedAmount,
+            currency: resolvedCurrency,
+          },
+        },
+      ]).catch(() => undefined);
       loadOrder();
       setActiveTab("timeline");
     } catch (err) {

@@ -1,7 +1,7 @@
-import { type ChangeEvent, useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { type ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
+import { Link, useLocation } from "react-router-dom";
 import { ShoppingCart } from "../components/icons";
-import { listMarketplaceProducts } from "../api/marketplace";
+import { listMarketplaceProducts, sendMarketplaceClientEvents } from "../api/marketplace";
 import { ApiError } from "../api/http";
 import { useAuth } from "../auth/AuthContext";
 import { EmptyState } from "../components/EmptyState";
@@ -18,6 +18,7 @@ interface CatalogErrorState {
 
 export function MarketplaceCatalogPage() {
   const { user } = useAuth();
+  const location = useLocation();
   const { t } = useI18n();
   const [items, setItems] = useState<MarketplaceProductSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -32,6 +33,8 @@ export function MarketplaceCatalogPage() {
   });
   const [showAllCategories, setShowAllCategories] = useState(false);
   const canOrderProduct = canOrder(user);
+  const initialSearchRef = useRef(true);
+  const searchDebounceRef = useRef<number | null>(null);
   const hasActiveFilters = Boolean(
     filters.q || filters.category || filters.type || filters.priceModel || filters.partnerId,
   );
@@ -73,6 +76,49 @@ export function MarketplaceCatalogPage() {
   useEffect(() => {
     loadCatalog();
   }, [user, filters]);
+
+  useEffect(() => {
+    if (!user) return;
+    if (initialSearchRef.current) {
+      initialSearchRef.current = false;
+      return;
+    }
+    if (searchDebounceRef.current) {
+      window.clearTimeout(searchDebounceRef.current);
+    }
+    searchDebounceRef.current = window.setTimeout(() => {
+      void sendMarketplaceClientEvents(user, [
+        {
+          event_type: "marketplace.search_performed",
+          entity_type: "NONE",
+          source: "client_portal",
+          page: location.pathname,
+          payload: {
+            q: filters.q || null,
+            category: filters.category || null,
+            type: filters.type || null,
+            price_model: filters.priceModel || null,
+            partner_id: filters.partnerId || null,
+            sort: filters.sort || null,
+          },
+        },
+      ]).catch(() => undefined);
+    }, 700);
+    return () => {
+      if (searchDebounceRef.current) {
+        window.clearTimeout(searchDebounceRef.current);
+      }
+    };
+  }, [
+    filters.category,
+    filters.partnerId,
+    filters.priceModel,
+    filters.q,
+    filters.sort,
+    filters.type,
+    location.pathname,
+    user,
+  ]);
 
   const handleFilterChange = (evt: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = evt.target;

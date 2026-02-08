@@ -212,3 +212,38 @@ export interface MarketplaceCreateOrderResponse {
   status?: string | null;
   message?: string | null;
 }
+
+export type MarketplaceClientEventType =
+  | "marketplace.offer_viewed"
+  | "marketplace.offer_clicked"
+  | "marketplace.search_performed"
+  | "marketplace.order_created"
+  | "marketplace.order_paid"
+  | "marketplace.order_canceled"
+  | "marketplace.product_viewed"
+  | "marketplace.service_viewed"
+  | "marketplace.filters_changed"
+  | "marketplace.checkout_started";
+
+export type MarketplaceClientEntityType = "OFFER" | "PRODUCT" | "SERVICE" | "ORDER" | "NONE";
+
+export type MarketplaceClientEventSource = "client_portal" | "web" | "mobile" | "api";
+
+export interface MarketplaceClientEventInput {
+  event_type: MarketplaceClientEventType;
+  entity_type: MarketplaceClientEntityType;
+  entity_id?: string | null;
+  session_id?: string | null;
+  source: MarketplaceClientEventSource;
+  page?: string | null;
+  utm?: Record<string, unknown> | null;
+  payload?: Record<string, unknown> | null;
+  client_ts?: string | null;
+  request_id?: string | null;
+  idempotency_key?: string | null;
+}
+
+export interface MarketplaceClientEventsIngestResponse {
+  accepted: number;
+  rejected: number;
+}

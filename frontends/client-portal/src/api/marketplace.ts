@@ -3,6 +3,8 @@ import type { AuthSession } from "./types";
 import type {
   MarketplaceCreateOrderPayload,
   MarketplaceCreateOrderResponse,
+  MarketplaceClientEventInput,
+  MarketplaceClientEventsIngestResponse,
   MarketplaceOrderDetails,
   MarketplaceOrderDocumentsResponse,
   MarketplaceOrderEvent,
@@ -193,5 +195,16 @@ export function fetchMarketplaceOrderIncidents(
     `/client/cases?order_id=${encodeURIComponent(orderId)}`,
     { method: "GET" },
     { token: user?.token ?? null, base: "core_root" },
+  );
+}
+
+export function sendMarketplaceClientEvents(
+  user: AuthSession | null,
+  events: MarketplaceClientEventInput[],
+): Promise<MarketplaceClientEventsIngestResponse> {
+  return request<MarketplaceClientEventsIngestResponse>(
+    "/v1/marketplace/client/events",
+    { method: "POST", body: JSON.stringify({ events }) },
+    withToken(user),
   );
 }
