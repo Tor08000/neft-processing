@@ -203,6 +203,11 @@ def test_client_creates_order_with_audit(api_client: tuple[TestClient, sessionma
     with SessionLocal() as db:
         order = db.query(MarketplaceOrder).filter(MarketplaceOrder.id == order_id).one()
         assert order.status == "PENDING_PAYMENT"
+        lines = db.query(MarketplaceOrderLine).filter(MarketplaceOrderLine.order_id == order_id).all()
+        assert len(lines) == 1
+        assert str(lines[0].offer_id) == str(offer.id)
+        subject_type = lines[0].subject_type.value if hasattr(lines[0].subject_type, "value") else lines[0].subject_type
+        assert subject_type == "SERVICE"
         events = db.query(MarketplaceOrderEvent).filter(MarketplaceOrderEvent.order_id == order_id).all()
         assert events
         assert events[0].audit_event_id is not None
@@ -273,13 +278,21 @@ def test_invalid_transition_conflict(api_client: tuple[TestClient, sessionmaker]
     partner_id = str(uuid4())
 
     with SessionLocal() as db:
-        product = _create_product(db, partner_id)
+        offer = _create_offer(db, partner_id)
 
-    order_id = _create_order(client, client_id, product.id)
+    order_id = _create_order(client, client_id, offer.id)
 
     global CURRENT_PRINCIPAL
-    CURRENT_PRINCIPAL = _build_partner_principal(partner_id)
-    response = client.post(f"/api/partner/orders/{order_id}/complete", json={"summary": "Too soon"})
+    CURRENT_PRINCIPAL = _build_client_principal(client_id)
+    pay_response = client.post(
+        f"/api/v1/marketplace/client/orders/{order_id}:pay",
+        json={"payment_method": "NEFT_INTERNAL"},
+    )
+    assert pay_response.status_code == 200
+    response = client.post(
+        f"/api/v1/marketplace/client/orders/{order_id}:pay",
+        json={"payment_method": "NEFT_INTERNAL"},
+    )
     assert response.status_code == 409
 
 
@@ -289,28 +302,36 @@ def test_client_cancel_allowed_only_when_created(api_client: tuple[TestClient, s
     partner_id = str(uuid4())
 
     with SessionLocal() as db:
-        product = _create_product(db, partner_id)
+        offer = _create_offer(db, partner_id)
 
-    order_id = _create_order(client, client_id, product.id)
+    order_id = _create_order(client, client_id, offer.id)
 
     global CURRENT_PRINCIPAL
     CURRENT_PRINCIPAL = _build_client_principal(client_id)
     cancel_response = client.post(
-        f"/api/client/marketplace/orders/{order_id}/cancel",
+        f"/api/v1/marketplace/client/orders/{order_id}/cancel",
         json={"reason": "Not needed"},
     )
     assert cancel_response.status_code == 200
-    assert cancel_response.json()["status"] == "CANCELLED"
+    assert cancel_response.json()["status"] == "CANCELED_BY_CLIENT"
 
-    new_order_id = _create_order(client, client_id, product.id)
+    new_order_id = _create_order(client, client_id, offer.id)
+    CURRENT_PRINCIPAL = _build_client_principal(client_id)
+    client.post(
+        f"/api/v1/marketplace/client/orders/{new_order_id}:pay",
+        json={"payment_method": "NEFT_INTERNAL"},
+    )
     CURRENT_PRINCIPAL = _build_partner_principal(partner_id)
-    client.post(f"/api/partner/orders/{new_order_id}/accept", json={})
-    client.post(f"/api/partner/orders/{new_order_id}/start", json={})
-    client.post(f"/api/partner/orders/{new_order_id}/complete", json={"summary": "Done"})
+    client.post(f"/api/v1/marketplace/partner/orders/{new_order_id}:confirm", json={})
+    client.post(
+        f"/api/v1/marketplace/partner/orders/{new_order_id}/proofs",
+        json={"attachment_id": str(uuid4()), "kind": "PHOTO", "note": "Done"},
+    )
+    client.post(f"/api/v1/marketplace/partner/orders/{new_order_id}:complete", json={"comment": "Done"})
 
     CURRENT_PRINCIPAL = _build_client_principal(client_id)
     invalid_cancel = client.post(
-        f"/api/client/marketplace/orders/{new_order_id}/cancel",
+        f"/api/v1/marketplace/client/orders/{new_order_id}/cancel",
         json={"reason": "Late"},
     )
     assert invalid_cancel.status_code == 409
