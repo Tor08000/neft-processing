@@ -36,6 +36,7 @@ import { SupportRequestsPage } from "./pages/SupportRequestsPage";
 import { SupportRequestDetailsPage } from "./pages/SupportRequestDetailsPage";
 import { MarketplaceProfilePage } from "./pages/MarketplaceProfilePage";
 import { MarketplaceProductsPage } from "./pages/MarketplaceProductsPage";
+import { MarketplaceOffersPage } from "./pages/MarketplaceOffersPage";
 import { LegalPage } from "./pages/LegalPage";
 
 interface AppProps {
@@ -124,6 +125,7 @@ export function App({ initialSession = null }: AppProps) {
                 <Route path="/services/:id" element={<ServiceDetailsPage />} />
                 <Route path="/marketplace/profile" element={<MarketplaceProfilePage />} />
                 <Route path="/marketplace/products" element={<MarketplaceProductsPage />} />
+                <Route path="/marketplace/offers" element={<MarketplaceOffersPage />} />
                 <Route path="/integrations" element={<IntegrationsPage />} />
                 <Route path="/support/requests" element={<SupportRequestsPage />} />
                 <Route path="/support/requests/:id" element={<SupportRequestDetailsPage />} />
