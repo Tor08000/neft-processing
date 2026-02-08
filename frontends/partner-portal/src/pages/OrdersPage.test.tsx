@@ -14,25 +14,23 @@ const session: AuthSession = {
 };
 
 const mockFetch = (url: string) => {
-  if (url.includes("/partner/orders")) {
+  if (url.includes("/v1/marketplace/partner/orders")) {
     return new Response(
       JSON.stringify({
         items: [
           {
             id: "order-1",
-            clientId: "client-1",
-            clientName: "Иван",
-            partnerId: "partner-1",
-            items: [
-              { offerId: "offer-1", title: "Мойка", qty: 1, unitPrice: 1000, amount: 1000 },
+            client_id: "client-1",
+            partner_id: "partner-1",
+            status: "PAID",
+            payment_status: "PAID",
+            total_amount: 1000,
+            lines: [
+              { offer_id: "offer-1", title_snapshot: "Мойка", qty: 1, unit_price: 1000, line_amount: 1000 },
             ],
-            status: "CREATED",
-            paymentStatus: "PAID",
-            totalAmount: 1000,
-            serviceTitle: "Мойка",
-            slaResponseRemainingSeconds: 600,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
+            sla_response_remaining_seconds: 600,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
           },
         ],
         page: 1,
@@ -63,7 +61,7 @@ describe("OrdersPage", () => {
     );
 
     expect(await screen.findByText("order-1")).toBeInTheDocument();
-    expect(screen.getByText("Иван")).toBeInTheDocument();
+    expect(screen.getByText("client-1")).toBeInTheDocument();
     expect(screen.getByText("Мойка")).toBeInTheDocument();
     expect(screen.getByText("00:10:00")).toBeInTheDocument();
   });

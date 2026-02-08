@@ -14,12 +14,12 @@ const session: AuthSession = {
 };
 
 const mockFetch = (url: string) => {
-  if (url.includes("/marketplace/orders/order-1/events")) {
+  if (url.includes("/v1/marketplace/client/orders/order-1/events")) {
     return new Response(
       JSON.stringify([
         {
           id: "event-1",
-          type: "CREATED",
+          event_type: "CREATED",
           actor_type: "client",
           created_at: new Date().toISOString(),
         },
@@ -27,10 +27,10 @@ const mockFetch = (url: string) => {
       { status: 200 },
     );
   }
-  if (url.includes("/marketplace/orders/order-1/sla")) {
+  if (url.includes("/v1/marketplace/client/orders/order-1/sla")) {
     return new Response(JSON.stringify({ obligations: [] }), { status: 200 });
   }
-  if (url.includes("/marketplace/orders/order-1/consequences")) {
+  if (url.includes("/v1/marketplace/client/orders/order-1/consequences")) {
     return new Response(JSON.stringify({ items: [] }), { status: 200 });
   }
   if (url.includes("/client/billing/invoices")) {
@@ -39,7 +39,7 @@ const mockFetch = (url: string) => {
   if (url.includes("/client/cases")) {
     return new Response(JSON.stringify({ items: [], total: 0, limit: 10 }), { status: 200 });
   }
-  if (url.includes("/marketplace/orders/order-1")) {
+  if (url.includes("/v1/marketplace/client/orders/order-1")) {
     return new Response(
       JSON.stringify({
         id: "order-1",

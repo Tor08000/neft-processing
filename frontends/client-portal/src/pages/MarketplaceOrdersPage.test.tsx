@@ -14,7 +14,7 @@ const session: AuthSession = {
 };
 
 const mockFetch = (url: string) => {
-  if (url.includes("/marketplace/orders")) {
+  if (url.includes("/v1/marketplace/client/orders")) {
     return new Response(
       JSON.stringify({
         items: [

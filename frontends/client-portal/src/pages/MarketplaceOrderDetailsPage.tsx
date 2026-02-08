@@ -8,6 +8,7 @@ import {
   fetchMarketplaceOrderIncidents,
   fetchMarketplaceOrderInvoices,
   fetchMarketplaceOrderSla,
+  payMarketplaceOrder,
 } from "../api/marketplace";
 import { ApiError } from "../api/http";
 import { useAuth } from "../auth/AuthContext";
@@ -83,6 +84,7 @@ export function MarketplaceOrderDetailsPage() {
   const resolvedCurrency = order ? resolveCurrency(order) : "RUB";
   const [isSupportOpen, setIsSupportOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<DetailsTab>("timeline");
+  const [isPaying, setIsPaying] = useState(false);
 
   const canCancel = canCancelMarketplaceOrder(user);
 
@@ -214,6 +216,21 @@ export function MarketplaceOrderDetailsPage() {
     }
   };
 
+  const handlePay = async () => {
+    if (!user || !orderId) return;
+    setIsPaying(true);
+    try {
+      await payMarketplaceOrder(user, orderId, "NEFT_INTERNAL");
+      loadOrder();
+      setActiveTab("timeline");
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : t("marketplaceOrderDetails.errors.payFailed");
+      setOrderError({ message });
+    } finally {
+      setIsPaying(false);
+    }
+  };
+
   if (!user) {
     return <AppForbiddenState message={t("marketplaceOrderDetails.forbidden.noAccess")} />;
   }
@@ -244,6 +261,11 @@ export function MarketplaceOrderDetailsPage() {
             {canCancel && order?.status === "CREATED" ? (
               <button type="button" className="secondary" onClick={handleCancel}>
                 {t("actions.cancel")}
+              </button>
+            ) : null}
+            {order?.payment_status !== "PAID" && ["CREATED", "PENDING_PAYMENT"].includes(order?.status ?? "") ? (
+              <button type="button" className="primary" onClick={handlePay} disabled={isPaying}>
+                {isPaying ? t("marketplaceOrderDetails.actions.paying") : t("marketplaceOrderDetails.actions.pay")}
               </button>
             ) : null}
             <Link to="/marketplace/orders" className="link-button">
@@ -325,7 +347,7 @@ export function MarketplaceOrderDetailsPage() {
                   <li key={event.id}>
                     <div className="timeline__marker" />
                     <div>
-                      <strong>{event.type}</strong>
+                      <strong>{event.event_type}</strong>
                       <div className="muted small">{event.created_at ? formatDateTime(event.created_at) : "—"}</div>
                       <div className="muted small">{t("marketplaceOrderDetails.timeline.actor", { actor: resolveActorLabel(event.actor_type) })}</div>
                       {event.note ? <div className="muted">{event.note}</div> : null}

@@ -60,6 +60,7 @@ ROLE_PERMISSIONS = {
         Permission.CLIENT_MARKETPLACE_ORDERS_LIST.value,
         Permission.CLIENT_MARKETPLACE_ORDERS_VIEW.value,
         Permission.CLIENT_MARKETPLACE_ORDERS_CREATE.value,
+        Permission.CLIENT_MARKETPLACE_ORDERS_PAY.value,
         Permission.CLIENT_MARKETPLACE_ORDERS_CANCEL.value,
     },
     "partner_user": {
@@ -104,6 +105,7 @@ ROLE_PERMISSIONS = {
         Permission.CLIENT_MARKETPLACE_ORDERS_LIST.value,
         Permission.CLIENT_MARKETPLACE_ORDERS_VIEW.value,
         Permission.CLIENT_MARKETPLACE_ORDERS_CREATE.value,
+        Permission.CLIENT_MARKETPLACE_ORDERS_PAY.value,
         Permission.CLIENT_MARKETPLACE_ORDERS_CANCEL.value,
     },
     "partner_admin": {

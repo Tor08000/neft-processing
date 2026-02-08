@@ -82,7 +82,7 @@ export function createMarketplaceOrder(
   payload: MarketplaceCreateOrderPayload,
 ) {
   return requestWithMeta<MarketplaceCreateOrderResponse>(
-    "/marketplace/orders",
+    "/v1/marketplace/client/orders",
     { method: "POST", body: JSON.stringify(payload) },
     withToken(user),
   );
@@ -103,7 +103,7 @@ export function fetchMarketplaceOrders(
   if (filters.limit) search.set("limit", filters.limit.toString());
   if (filters.offset) search.set("offset", filters.offset.toString());
   const query = search.toString();
-  const path = query ? `/marketplace/orders?${query}` : "/marketplace/orders";
+  const path = query ? `/v1/marketplace/client/orders?${query}` : "/v1/marketplace/client/orders";
   return request<MarketplaceOrdersResponse>(path, { method: "GET" }, withToken(user));
 }
 
@@ -111,14 +111,18 @@ export function fetchMarketplaceOrderDetails(
   user: AuthSession | null,
   orderId: string,
 ): Promise<MarketplaceOrderDetails> {
-  return request<MarketplaceOrderDetails>(`/marketplace/orders/${orderId}`, { method: "GET" }, withToken(user));
+  return request<MarketplaceOrderDetails>(`/v1/marketplace/client/orders/${orderId}`, { method: "GET" }, withToken(user));
 }
 
 export function fetchMarketplaceOrderEvents(
   user: AuthSession | null,
   orderId: string,
 ): Promise<MarketplaceOrderEvent[]> {
-  return request<MarketplaceOrderEvent[]>(`/marketplace/orders/${orderId}/events`, { method: "GET" }, withToken(user));
+  return request<MarketplaceOrderEvent[]>(
+    `/v1/marketplace/client/orders/${orderId}/events`,
+    { method: "GET" },
+    withToken(user),
+  );
 }
 
 export function fetchMarketplaceOrderDocuments(
@@ -126,7 +130,7 @@ export function fetchMarketplaceOrderDocuments(
   orderId: string,
 ): Promise<MarketplaceOrderDocumentsResponse> {
   return request<MarketplaceOrderDocumentsResponse>(
-    `/marketplace/orders/${orderId}/documents`,
+    `/v1/marketplace/client/orders/${orderId}/documents`,
     { method: "GET" },
     withToken(user),
   );
@@ -134,8 +138,16 @@ export function fetchMarketplaceOrderDocuments(
 
 export function cancelMarketplaceOrder(user: AuthSession | null, orderId: string) {
   return requestWithMeta<Record<string, never>>(
-    `/marketplace/orders/${orderId}/cancel`,
+    `/v1/marketplace/client/orders/${orderId}/cancel`,
     { method: "POST" },
+    withToken(user),
+  );
+}
+
+export function payMarketplaceOrder(user: AuthSession | null, orderId: string, paymentMethod: string) {
+  return requestWithMeta<Record<string, unknown>>(
+    `/v1/marketplace/client/orders/${orderId}:pay`,
+    { method: "POST", body: JSON.stringify({ payment_method: paymentMethod }) },
     withToken(user),
   );
 }
@@ -144,7 +156,11 @@ export function fetchMarketplaceOrderSla(
   user: AuthSession | null,
   orderId: string,
 ): Promise<MarketplaceOrderSlaResponse> {
-  return request<MarketplaceOrderSlaResponse>(`/marketplace/orders/${orderId}/sla`, { method: "GET" }, withToken(user));
+  return request<MarketplaceOrderSlaResponse>(
+    `/v1/marketplace/client/orders/${orderId}/sla`,
+    { method: "GET" },
+    withToken(user),
+  );
 }
 
 export function fetchMarketplaceOrderConsequences(
@@ -152,7 +168,7 @@ export function fetchMarketplaceOrderConsequences(
   orderId: string,
 ): Promise<MarketplaceOrderConsequencesResponse> {
   return request<MarketplaceOrderConsequencesResponse>(
-    `/marketplace/orders/${orderId}/consequences`,
+    `/v1/marketplace/client/orders/${orderId}/consequences`,
     { method: "GET" },
     withToken(user),
   );

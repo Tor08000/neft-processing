@@ -133,11 +133,16 @@
   "statuses": {
     "orders": {
       "CREATED": "Создан",
+      "PENDING_PAYMENT": "Ожидает оплаты",
       "PAID": "Оплачен",
+      "CONFIRMED_BY_PARTNER": "Подтверждён партнёром",
       "ACCEPTED": "Принят",
-      "IN_PROGRESS": "В работе",
       "COMPLETED": "Завершён",
+      "DECLINED_BY_PARTNER": "Отклонён партнёром",
+      "CANCELED_BY_CLIENT": "Отменён клиентом",
       "FAILED": "Завершён с ошибкой",
+      "PAYMENT_FAILED": "Платёж не прошёл",
+      "CLOSED": "Закрыт",
       "CANCELLED": "Отменён",
       "REFUNDED": "Возвращён"
     },
@@ -698,10 +703,9 @@
     "actions": {
       "support": "Связаться с поддержкой",
       "back": "Назад к списку",
-      "accept": "Принять",
-      "reject": "Отклонить",
-      "start": "Начать",
-      "progress": "Обновить прогресс",
+      "confirm": "Подтвердить",
+      "decline": "Отклонить",
+      "uploadProof": "Загрузить proof",
       "complete": "Завершить",
       "fail": "Не выполнено"
     },
@@ -744,10 +748,9 @@
       }
     },
     "notifications": {
-      "accepted": "Заказ принят.",
-      "rejected": "Заказ отклонён.",
-      "started": "Заказ в работе.",
-      "progressed": "Прогресс обновлён.",
+      "confirmed": "Заказ подтверждён.",
+      "declined": "Заказ отклонён.",
+      "proofUploaded": "Proof загружен.",
       "completed": "Заказ завершён.",
       "failed": "Заказ завершён с ошибкой."
     },
@@ -761,30 +764,41 @@
       "actionFailed": "Действие не выполнено"
     },
     "supportTitle": "Проблема с заказом {id}",
+    "proofs": {
+      "title": "Proof",
+      "empty": "Пруфы ещё не загружены."
+    },
     "modals": {
       "close": "Закрыть",
       "cancel": "Отмена",
       "confirm": "Подтвердить",
-      "accept": {
-        "title": "Принять заказ",
-        "description": "Подтвердите готовность принять заказ."
+      "confirm": {
+        "title": "Подтвердить заказ",
+        "description": "Подтвердите возможность выполнения заказа."
       },
-      "reject": {
+      "decline": {
         "title": "Отклонить заказ",
-        "description": "Укажите причину отказа.",
-        "reason": "Причина",
-        "placeholder": "Опишите причину"
+        "description": "Укажите причину и комментарий.",
+        "reason": "Причина отказа",
+        "reasonPlaceholder": "например, OUT_OF_STOCK",
+        "comment": "Комментарий",
+        "commentPlaceholder": "Поясните клиенту причину"
       },
-      "start": {
-        "title": "Начать выполнение",
-        "description": "Начните выполнение заказа."
-      },
-      "progress": {
-        "title": "Обновить прогресс",
-        "description": "Сообщите клиенту о статусе.",
-        "percent": "Прогресс, %",
-        "message": "Сообщение",
-        "placeholder": "Комментарий"
+      "proof": {
+        "title": "Загрузить proof",
+        "description": "Прикрепите фото или документ как доказательство.",
+        "kind": "Тип proof",
+        "attachment": "ID вложения (опционально)",
+        "attachmentPlaceholder": "Оставьте пустым для авто-ID",
+        "note": "Комментарий",
+        "notePlaceholder": "Опционально",
+        "kinds": {
+          "photo": "Фото",
+          "pdf": "PDF",
+          "act": "Акт",
+          "check": "Чек",
+          "other": "Другое"
+        }
       },
       "complete": {
         "title": "Завершить заказ",

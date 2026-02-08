@@ -323,20 +323,27 @@ export interface OfferInput {
 
 export type OrderStatus =
   | "CREATED"
+  | "PENDING_PAYMENT"
   | "PAID"
+  | "CONFIRMED_BY_PARTNER"
+  | "COMPLETED"
+  | "DECLINED_BY_PARTNER"
+  | "CANCELED_BY_CLIENT"
+  | "PAYMENT_FAILED"
+  | "CLOSED"
   | "AUTHORIZED"
   | "CONFIRMED"
-  | "CONFIRMED_BY_PARTNER"
   | "IN_PROGRESS"
-  | "COMPLETED"
   | "CANCELLED"
   | "REFUNDED"
   | "DISPUTED";
 
-export type PaymentStatus = "PAID" | "AUTH" | "AUTHORIZED" | "FAILED" | "REFUNDED" | "PENDING";
+export type PaymentStatus = "UNPAID" | "PAID" | "AUTH" | "AUTHORIZED" | "FAILED" | "REFUNDED" | "PENDING";
 
 export interface OrderItem {
   offerId: string;
+  subjectType?: string | null;
+  subjectId?: string | null;
   title?: string | null;
   qty: number;
   unitPrice: number;
@@ -365,7 +372,10 @@ export interface MarketplaceOrder {
   itemsCount?: number | null;
   status: OrderStatus;
   paymentStatus?: PaymentStatus | null;
+  paymentMethod?: string | null;
   paymentRef?: string | null;
+  subtotalAmount?: number | null;
+  discountAmount?: number | null;
   totalAmount?: number | null;
   vatAmount?: number | null;
   currency?: string | null;
@@ -375,6 +385,7 @@ export interface MarketplaceOrder {
   locationName?: string | null;
   documents?: OrderDocumentLink[] | null;
   documentsStatus?: string | null;
+  proofs?: MarketplaceOrderProof[] | null;
   correlationId?: string | null;
   slaResponseDueAt?: string | null;
   slaCompletionDueAt?: string | null;
@@ -431,6 +442,17 @@ export interface MarketplaceOrderEvent {
   status?: string | null;
   note?: string | null;
   actor?: string | null;
+  createdAt: string;
+  reasonCode?: string | null;
+  comment?: string | null;
+}
+
+export interface MarketplaceOrderProof {
+  id: string;
+  orderId: string;
+  kind: string;
+  attachmentId: string;
+  note?: string | null;
   createdAt: string;
 }
 

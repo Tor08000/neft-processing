@@ -23,6 +23,7 @@ class Permission(str, Enum):
     CLIENT_MARKETPLACE_ORDERS_LIST = "client:marketplace:orders:list"
     CLIENT_MARKETPLACE_ORDERS_VIEW = "client:marketplace:orders:view"
     CLIENT_MARKETPLACE_ORDERS_CREATE = "client:marketplace:orders:create"
+    CLIENT_MARKETPLACE_ORDERS_PAY = "client:marketplace:orders:pay"
     CLIENT_MARKETPLACE_ORDERS_CANCEL = "client:marketplace:orders:cancel"
     CLIENT_BOOKINGS_LIST = "client:bookings:list"
     CLIENT_BOOKINGS_VIEW = "client:bookings:view"
