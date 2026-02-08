@@ -324,15 +324,13 @@ def update_partner_resource(
 @router.delete(
     "/resources/{resource_id}",
     status_code=status.HTTP_204_NO_CONTENT,
-    response_class=Response,
-    response_model=None,
 )
 def delete_partner_resource(
     resource_id: str,
     request: Request,
     principal: Principal = Depends(require_permission("partner:bookings:*")),
     db: Session = Depends(get_db),
-) -> None:
+) -> Response:
     partner_id = _ensure_partner_context(principal)
     service = ServiceBookingService(
         db, request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(principal.raw_claims))
@@ -342,7 +340,7 @@ def delete_partner_resource(
     except ServiceBookingServiceError as exc:
         _handle_service_error(exc)
     db.commit()
-    return None
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.put("/services/{service_id}/availability", response_model=AvailabilityRuleOut)
