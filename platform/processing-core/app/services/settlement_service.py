@@ -139,7 +139,7 @@ def _settlement_case(
     existing = (
         db.query(Case)
         .filter(Case.kind == CaseKind.ORDER)
-        .filter(Case.entity_id == period_id)
+        .filter(Case.entity_id == str(period_id))
         .one_or_none()
     )
     if existing:
@@ -147,7 +147,7 @@ def _settlement_case(
     case = Case(
         tenant_id=tenant_id,
         kind=CaseKind.ORDER,
-        entity_id=period_id,
+        entity_id=str(period_id),
         kpi_key=None,
         window_days=None,
         title=f"Settlement period {period_id}",
