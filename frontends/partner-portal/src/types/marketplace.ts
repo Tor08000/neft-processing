@@ -1,4 +1,6 @@
-export type MarketplaceProductStatus = "DRAFT" | "PENDING_REVIEW" | "ACTIVE" | "SUSPENDED" | "ARCHIVED";
+import type { ProductStatus } from "../components/StatusBadge";
+
+export type MarketplaceProductStatus = ProductStatus;
 export type MarketplaceVerificationStatus = "PENDING" | "VERIFIED" | "REJECTED";
 
 export interface MarketplaceProductMedia {

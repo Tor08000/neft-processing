@@ -34,9 +34,40 @@ const defaultFormState = {
   variants: [{ name: "", sku: "", props: "" }],
 };
 
+type Primitive = string | number | boolean | null;
+
+export type ProductVariant = {
+  name: string;
+  sku: string;
+  props: Record<string, Primitive>;
+};
+
 type AttributeRow = { key: string; value: string };
 type VariantRow = { name: string; sku: string; props: string };
 type FormState = typeof defaultFormState;
+
+function normalizeVariant(input: any): ProductVariant {
+  let props: Record<string, Primitive> = {};
+
+  if (input?.props && typeof input.props === "object" && !Array.isArray(input.props)) {
+    props = input.props as Record<string, Primitive>;
+  } else if (typeof input?.props === "string") {
+    try {
+      const parsed = JSON.parse(input.props);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        props = parsed as Record<string, Primitive>;
+      }
+    } catch {
+      props = {};
+    }
+  }
+
+  return {
+    name: String(input?.name ?? ""),
+    sku: String(input?.sku ?? ""),
+    props,
+  };
+}
 
 const buildAttributes = (rows: AttributeRow[]) =>
   rows.reduce<Record<string, string | number | boolean | null>>((acc, row) => {
@@ -48,20 +79,25 @@ const buildAttributes = (rows: AttributeRow[]) =>
 
 const buildVariants = (
   rows: VariantRow[],
-): { variants: Array<Record<string, string | number | boolean | null>>; errors: Record<string, string> } => {
+): { variants: ProductVariant[]; errors: Record<string, string> } => {
   const errors: Record<string, string> = {};
   const variants = rows
     .filter((row) => row.name.trim() || row.sku.trim() || row.props.trim())
     .map((row, index) => {
-      if (!row.props.trim()) {
-        return { name: row.name.trim(), sku: row.sku.trim() };
+      const propsValue = row.props.trim();
+      if (!propsValue) {
+        return normalizeVariant({ name: row.name.trim(), sku: row.sku.trim(), props: {} });
       }
       try {
-        const props = JSON.parse(row.props) as Record<string, string | number | boolean | null>;
-        return { name: row.name.trim(), sku: row.sku.trim(), props };
-      } catch (error) {
+        const parsed = JSON.parse(propsValue);
+        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+          errors[`variant_props_${index}`] = "invalid";
+          return normalizeVariant({ name: row.name.trim(), sku: row.sku.trim(), props: {} });
+        }
+        return normalizeVariant({ name: row.name.trim(), sku: row.sku.trim(), props: parsed });
+      } catch {
         errors[`variant_props_${index}`] = "invalid";
-        return { name: row.name.trim(), sku: row.sku.trim(), props: row.props.trim() };
+        return normalizeVariant({ name: row.name.trim(), sku: row.sku.trim(), props: {} });
       }
     });
   return { variants, errors };
@@ -72,11 +108,14 @@ const mapProductToForm = (product: MarketplaceProduct): FormState => {
     key,
     value: String(value ?? ""),
   }));
-  const variants = (product.variants ?? []).map((variant) => ({
-    name: String((variant as { name?: string }).name ?? ""),
-    sku: String((variant as { sku?: string }).sku ?? ""),
-    props: JSON.stringify((variant as { props?: Record<string, unknown> }).props ?? {}, null, 2),
-  }));
+  const variants = (product.variants ?? []).map((variant) => {
+    const normalized = normalizeVariant(variant);
+    return {
+      name: normalized.name,
+      sku: normalized.sku,
+      props: JSON.stringify(normalized.props ?? {}, null, 2),
+    };
+  });
   return {
     title: product.title,
     description: product.description ?? "",
