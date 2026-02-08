@@ -21,12 +21,14 @@ def upgrade() -> None:
         "SERVICE",
         "OFFER",
         name="marketplace_moderation_entity_type",
+        create_type=False,
     )
     action_enum = sa.Enum(
         "APPROVE",
         "REJECT",
         "SUSPEND",
         name="marketplace_moderation_action",
+        create_type=False,
     )
     entity_type_enum.create(op.get_bind(), checkfirst=True)
     action_enum.create(op.get_bind(), checkfirst=True)
