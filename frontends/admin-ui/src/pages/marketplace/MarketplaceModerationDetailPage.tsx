@@ -34,6 +34,19 @@ const reasonOptions: Array<{ value: MarketplaceModerationReasonCode; label: stri
   { value: "OTHER", label: "Other" },
 ];
 
+const getEntityTitle = (
+  entityType: MarketplaceModerationEntityType,
+  detail: MarketplaceProductCardDetail | MarketplaceServiceDetail | MarketplaceOfferDetail | undefined,
+) => {
+  if (!detail) return "";
+  if (entityType === "OFFER") {
+    const offerDetail = detail as MarketplaceOfferDetail;
+    return offerDetail.title_override?.trim() || "Offer";
+  }
+  const titledDetail = detail as MarketplaceProductCardDetail | MarketplaceServiceDetail;
+  return titledDetail.title;
+};
+
 const AuditTimeline: React.FC<{ items: MarketplaceModerationAuditItem[] }> = ({ items }) => {
   if (!items.length) {
     return <div className="muted">Нет событий модерации.</div>;
@@ -291,15 +304,35 @@ export const MarketplaceModerationDetailPage: React.FC<ModerationDetailPageProps
   const { toast, showToast } = useToast();
   const [isRejectOpen, setRejectOpen] = useState(false);
 
-  const detailQuery = useQuery({
-    queryKey: ["marketplaceModerationDetail", entityType, id],
+  const isProduct = entityType === "PRODUCT";
+  const isService = entityType === "SERVICE";
+  const isOffer = entityType === "OFFER";
+
+  const productQuery = useQuery({
+    queryKey: ["mp", "moderation", "product", id],
     queryFn: () => {
       if (!id) throw new Error("Missing id");
-      if (entityType === "PRODUCT") return fetchProductCardDetail(id);
-      if (entityType === "SERVICE") return fetchServiceDetail(id);
+      return fetchProductCardDetail(id);
+    },
+    enabled: isProduct && Boolean(id),
+  });
+
+  const serviceQuery = useQuery({
+    queryKey: ["mp", "moderation", "service", id],
+    queryFn: () => {
+      if (!id) throw new Error("Missing id");
+      return fetchServiceDetail(id);
+    },
+    enabled: isService && Boolean(id),
+  });
+
+  const offerQuery = useQuery({
+    queryKey: ["mp", "moderation", "offer", id],
+    queryFn: () => {
+      if (!id) throw new Error("Missing id");
       return fetchOfferDetail(id);
     },
-    enabled: Boolean(id),
+    enabled: isOffer && Boolean(id),
   });
 
   const auditQuery = useQuery({
@@ -319,7 +352,15 @@ export const MarketplaceModerationDetailPage: React.FC<ModerationDetailPageProps
     onSuccess: () => {
       showToast("success", "Approved");
       queryClient.invalidateQueries({ queryKey: ["marketplaceModerationQueue"] });
-      queryClient.invalidateQueries({ queryKey: ["marketplaceModerationDetail", entityType, id] });
+      if (isProduct) {
+        queryClient.invalidateQueries({ queryKey: ["mp", "moderation", "product", id] });
+      }
+      if (isService) {
+        queryClient.invalidateQueries({ queryKey: ["mp", "moderation", "service", id] });
+      }
+      if (isOffer) {
+        queryClient.invalidateQueries({ queryKey: ["mp", "moderation", "offer", id] });
+      }
       queryClient.invalidateQueries({ queryKey: ["marketplaceModerationAudit", entityType, id] });
     },
     onError: (err) => showToast("error", err instanceof Error ? err.message : "Ошибка подтверждения"),
@@ -333,19 +374,24 @@ export const MarketplaceModerationDetailPage: React.FC<ModerationDetailPageProps
     onSuccess: () => {
       showToast("success", "Rejected");
       queryClient.invalidateQueries({ queryKey: ["marketplaceModerationQueue"] });
-      queryClient.invalidateQueries({ queryKey: ["marketplaceModerationDetail", entityType, id] });
+      if (isProduct) {
+        queryClient.invalidateQueries({ queryKey: ["mp", "moderation", "product", id] });
+      }
+      if (isService) {
+        queryClient.invalidateQueries({ queryKey: ["mp", "moderation", "service", id] });
+      }
+      if (isOffer) {
+        queryClient.invalidateQueries({ queryKey: ["mp", "moderation", "offer", id] });
+      }
       queryClient.invalidateQueries({ queryKey: ["marketplaceModerationAudit", entityType, id] });
     },
     onError: (err) => showToast("error", err instanceof Error ? err.message : "Ошибка отклонения"),
   });
 
-  const detail = detailQuery.data as MarketplaceProductCardDetail | MarketplaceServiceDetail | MarketplaceOfferDetail | undefined;
+  const detail = productQuery.data ?? serviceQuery.data ?? offerQuery.data;
+  const activeQuery = isProduct ? productQuery : isService ? serviceQuery : offerQuery;
 
-  const title = useMemo(() => {
-    if (!detail) return "";
-    if (entityType === "OFFER") return (detail as MarketplaceOfferDetail).title_override || "Offer";
-    return detail.title;
-  }, [detail, entityType]);
+  const title = useMemo(() => getEntityTitle(entityType, detail), [detail, entityType]);
 
   return (
     <div>
@@ -380,12 +426,12 @@ export const MarketplaceModerationDetailPage: React.FC<ModerationDetailPageProps
             Reject
           </button>
         </div>
-        {detailQuery.isFetching && <Loader label="Обновляем" />}
+        {activeQuery.isFetching && <Loader label="Обновляем" />}
       </div>
 
       <Toast toast={toast} />
 
-      {detailQuery.error && <div style={{ color: "#dc2626" }}>{detailQuery.error.message}</div>}
+      {activeQuery.error && <div style={{ color: "#dc2626" }}>{activeQuery.error.message}</div>}
 
       {detail && (
         <div style={{ display: "grid", gap: 16 }}>
