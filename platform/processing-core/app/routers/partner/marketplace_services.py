@@ -491,7 +491,6 @@ def preview_partner_service_availability(
     service_id: str,
     date_from: date | None = Query(None),
     date_to: date | None = Query(None),
-    request: Request | None = None,
     principal: Principal = Depends(require_permission("partner:catalog:*")),
     db: Session = Depends(get_db),
 ) -> ServiceAvailabilityResponse:
