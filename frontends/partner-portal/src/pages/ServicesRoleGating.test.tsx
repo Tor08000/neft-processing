@@ -14,26 +14,24 @@ const session: AuthSession = {
 };
 
 const mockFetch = (url: string) => {
-  if (url.includes("/partner/catalog")) {
+  if (url.includes("/partner/services")) {
     return new Response(
       JSON.stringify({
         items: [
           {
-            id: "catalog-1",
-            kind: "SERVICE",
+            id: "service-1",
             title: "Мойка",
             description: "Полный комплекс",
             category: "Автомойка",
-            baseUom: "услуга",
             status: "ACTIVE",
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-            activeOffersCount: 1,
+            duration_min: 60,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
           },
         ],
-        page: 1,
-        pageSize: 10,
         total: 1,
+        limit: 50,
+        offset: 0,
       }),
       { status: 200 },
     );
@@ -58,12 +56,9 @@ describe("Services role gating", () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByText(/Каталог услуг и товаров/)).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /Создать/ })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /Preview/ })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /Apply import/ })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /Activate/ })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /Disable/ })).not.toBeInTheDocument();
-    expect(screen.getByText(/Импорт недоступен/)).toBeInTheDocument();
+    expect(await screen.findByText(/Каталог услуг/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Создать услугу/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Submit/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Archive/ })).not.toBeInTheDocument();
   });
 });

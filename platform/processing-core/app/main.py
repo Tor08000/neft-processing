@@ -66,6 +66,7 @@ from app.routers.helpdesk_webhooks import router as helpdesk_webhooks_router
 from app.routers.portal import client_router as portal_client_router, partner_router as portal_partner_router
 from app.routers.partner.marketplace_analytics import router as partner_marketplace_analytics_router
 from app.routers.partner.marketplace_catalog import router as partner_marketplace_router
+from app.routers.partner.marketplace_services import router as partner_marketplace_services_router
 from app.routers.partner.marketplace_orders import router as partner_marketplace_orders_router
 from app.routers.partner.marketplace_promotions import router as partner_marketplace_promotions_router
 from app.routers.partner.marketplace_coupons import router as partner_marketplace_coupons_router
@@ -443,6 +444,8 @@ if INCLUDE_CUSTOM_CORE_PREFIX:
 if INCLUDE_CUSTOM_CORE_PREFIX:
     safe_include_router(app, partner_marketplace_router, prefix=API_PREFIX_CORE)
 if INCLUDE_CUSTOM_CORE_PREFIX:
+    safe_include_router(app, partner_marketplace_services_router, prefix=API_PREFIX_CORE)
+if INCLUDE_CUSTOM_CORE_PREFIX:
     safe_include_router(app, partner_marketplace_orders_router, prefix=API_PREFIX_CORE)
 safe_include_router(app, partner_marketplace_promotions_router, prefix=LEGACY_API_PREFIX)
 if INCLUDE_CUSTOM_CORE_PREFIX:
@@ -564,6 +567,7 @@ safe_include_router(core_prefixed_router, partner_finance_legacy_router)
 safe_include_router(core_prefixed_router, partner_finance_router)
 safe_include_router(core_prefixed_router, partner_legal_router)
 safe_include_router(core_prefixed_router, partner_marketplace_router)
+safe_include_router(core_prefixed_router, partner_marketplace_services_router)
 safe_include_router(core_prefixed_router, partner_marketplace_orders_router)
 safe_include_router(core_prefixed_router, partner_marketplace_promotions_router)
 safe_include_router(core_prefixed_router, partner_marketplace_coupons_router)

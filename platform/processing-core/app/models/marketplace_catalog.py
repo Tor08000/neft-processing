@@ -51,6 +51,14 @@ class MarketplaceProductCardStatus(str, Enum):
     ARCHIVED = "ARCHIVED"
 
 
+class MarketplaceServiceStatus(str, Enum):
+    DRAFT = "DRAFT"
+    PENDING_REVIEW = "PENDING_REVIEW"
+    ACTIVE = "ACTIVE"
+    SUSPENDED = "SUSPENDED"
+    ARCHIVED = "ARCHIVED"
+
+
 class MarketplaceCatalogImmutableError(ValueError):
     """Raised when WORM-protected marketplace records are mutated."""
 
@@ -139,6 +147,81 @@ class MarketplaceProductMedia(Base):
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
 
+class MarketplaceService(Base):
+    __tablename__ = "marketplace_services"
+
+    id = Column(GUID(), primary_key=True, default=new_uuid_str)
+    partner_id = Column(GUID(), nullable=False, index=True)
+    title = Column(Text, nullable=False)
+    description = Column(Text, nullable=True)
+    category = Column(Text, nullable=False)
+    status = Column(
+        ExistingEnum(MarketplaceServiceStatus, name="marketplace_service_status"),
+        nullable=False,
+        default=MarketplaceServiceStatus.DRAFT.value,
+    )
+    tags = Column(JSON_TYPE, nullable=False, default=list)
+    attributes = Column(JSON_TYPE, nullable=False, default=dict)
+    duration_min = Column(Integer, nullable=False)
+    requirements = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=True, onupdate=func.now())
+
+
+class MarketplaceServiceMedia(Base):
+    __tablename__ = "marketplace_service_media"
+
+    id = Column(GUID(), primary_key=True, default=new_uuid_str)
+    service_id = Column(GUID(), nullable=False, index=True)
+    attachment_id = Column(GUID(), nullable=False)
+    bucket = Column(Text, nullable=False)
+    path = Column(Text, nullable=False)
+    checksum = Column(Text, nullable=True)
+    size = Column(Integer, nullable=True)
+    mime = Column(Text, nullable=True)
+    sort_index = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class MarketplaceServiceLocation(Base):
+    __tablename__ = "marketplace_service_locations"
+
+    id = Column(GUID(), primary_key=True, default=new_uuid_str)
+    service_id = Column(GUID(), nullable=False, index=True)
+    location_id = Column(GUID(), nullable=False, index=True)
+    address = Column(Text, nullable=True)
+    latitude = Column(Numeric(10, 6), nullable=True)
+    longitude = Column(Numeric(10, 6), nullable=True)
+    is_active = Column(postgresql.BOOLEAN, nullable=False, default=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class MarketplaceServiceScheduleRule(Base):
+    __tablename__ = "marketplace_service_schedule_rules"
+
+    id = Column(GUID(), primary_key=True, default=new_uuid_str)
+    service_location_id = Column(GUID(), nullable=False, index=True)
+    weekday = Column(Integer, nullable=False)
+    time_from = Column(Text, nullable=False)
+    time_to = Column(Text, nullable=False)
+    slot_duration_min = Column(Integer, nullable=False)
+    capacity = Column(Integer, nullable=False)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class MarketplaceServiceScheduleException(Base):
+    __tablename__ = "marketplace_service_schedule_exceptions"
+
+    id = Column(GUID(), primary_key=True, default=new_uuid_str)
+    service_location_id = Column(GUID(), nullable=False, index=True)
+    date = Column(postgresql.DATE, nullable=False)
+    is_closed = Column(postgresql.BOOLEAN, nullable=False, default=False)
+    time_from = Column(Text, nullable=True)
+    time_to = Column(Text, nullable=True)
+    capacity_override = Column(Integer, nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
 @event.listens_for(PartnerProfile, "before_delete")
 @event.listens_for(MarketplaceProduct, "before_delete")
 def _block_marketplace_delete(mapper, connection, target) -> None:
@@ -155,6 +238,12 @@ __all__ = [
     "MarketplaceProductCard",
     "MarketplaceProductCardStatus",
     "MarketplaceProductMedia",
+    "MarketplaceService",
+    "MarketplaceServiceMedia",
+    "MarketplaceServiceLocation",
+    "MarketplaceServiceScheduleException",
+    "MarketplaceServiceScheduleRule",
+    "MarketplaceServiceStatus",
     "PartnerProfile",
     "PartnerVerificationStatus",
 ]
