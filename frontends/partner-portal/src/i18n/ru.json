@@ -26,6 +26,7 @@
     "marketplace": "Маркетплейс",
     "marketplaceProfile": "Мой профиль",
     "marketplaceProducts": "Мои товары",
+    "marketplaceOffers": "Офферы",
     "supportRequests": "Запросы",
     "settings": "Настройки"
   },
@@ -38,6 +39,7 @@
     "back": "Назад",
     "next": "Вперёд",
     "all": "Все",
+    "search": "Поиск",
     "from": "Период с",
     "to": "Период по"
   },
@@ -59,6 +61,9 @@
     "close": "Закрыть",
     "cancel": "Отменить",
     "save": "Сохранить",
+    "saveDraft": "Сохранить черновик",
+    "submit": "Отправить на модерацию",
+    "archive": "Архивировать",
     "apply": "Применить",
     "download": "Скачать",
     "add": "Добавить",
@@ -244,6 +249,48 @@
         "required": "Поле обязательно",
         "invalidJson": "Некорректный JSON"
       }
+    },
+    "offers": {
+      "title": "Офферы",
+      "subtitle": "Создавайте предложения и отправляйте их на модерацию.",
+      "filters": {
+        "subject": "Предмет"
+      },
+      "table": {
+        "subject": "Предмет",
+        "price": "Цена",
+        "geo": "География",
+        "entitlements": "Доступность",
+        "validity": "Окно действия"
+      },
+      "emptyTitle": "Офферов пока нет",
+      "emptyDescription": "Создайте черновик и отправьте на модерацию.",
+      "form": {
+        "createTitle": "Создание оффера",
+        "editTitle": "Редактирование оффера",
+        "subtitle": "Заполните базовые параметры предложения.",
+        "subjectType": "Тип предмета",
+        "subjectId": "ID предмета",
+        "titleOverride": "Заголовок",
+        "currency": "Валюта",
+        "priceModel": "Модель цены",
+        "priceRange": "Диапазон цен",
+        "priceMin": "От",
+        "priceMax": "До",
+        "priceAmount": "Цена",
+        "geoScope": "География",
+        "locationIds": "Локации (ID)",
+        "regionCode": "Регион",
+        "entitlementScope": "Доступность",
+        "subscriptionCodes": "Коды подписок",
+        "clientIds": "ID клиентов",
+        "commaSeparated": "Через запятую",
+        "validFrom": "Начало действия",
+        "validTo": "Окончание действия"
+      },
+      "validation": "Проверьте обязательные поля.",
+      "confirmSubmit": "Отправить оффер на модерацию?",
+      "confirmArchive": "Архивировать оффер?"
     }
   },
   "pricesPage": {

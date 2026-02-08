@@ -26,6 +26,7 @@
     "marketplace": "Marketplace",
     "marketplaceProfile": "My profile",
     "marketplaceProducts": "My products",
+    "marketplaceOffers": "Offers",
     "supportRequests": "Requests",
     "settings": "Settings"
   },
@@ -38,6 +39,7 @@
     "back": "Back",
     "next": "Next",
     "all": "All",
+    "search": "Search",
     "from": "From",
     "to": "To"
   },
@@ -59,6 +61,9 @@
     "close": "Close",
     "cancel": "Cancel",
     "save": "Save",
+    "saveDraft": "Save draft",
+    "submit": "Submit for review",
+    "archive": "Archive",
     "apply": "Apply",
     "download": "Download",
     "add": "Add",
@@ -246,6 +251,48 @@
       "validation": {
         "amount": "Enter a valid amount"
       }
+    },
+    "offers": {
+      "title": "Offers",
+      "subtitle": "Create offers and send them for moderation.",
+      "filters": {
+        "subject": "Subject"
+      },
+      "table": {
+        "subject": "Subject",
+        "price": "Price",
+        "geo": "Geo",
+        "entitlements": "Availability",
+        "validity": "Validity window"
+      },
+      "emptyTitle": "No offers yet",
+      "emptyDescription": "Create a draft and submit it for moderation.",
+      "form": {
+        "createTitle": "Create offer",
+        "editTitle": "Edit offer",
+        "subtitle": "Fill in the core offer details.",
+        "subjectType": "Subject type",
+        "subjectId": "Subject ID",
+        "titleOverride": "Title override",
+        "currency": "Currency",
+        "priceModel": "Price model",
+        "priceRange": "Price range",
+        "priceMin": "From",
+        "priceMax": "To",
+        "priceAmount": "Price",
+        "geoScope": "Geo scope",
+        "locationIds": "Location IDs",
+        "regionCode": "Region",
+        "entitlementScope": "Entitlement scope",
+        "subscriptionCodes": "Subscription codes",
+        "clientIds": "Client IDs",
+        "commaSeparated": "Comma-separated",
+        "validFrom": "Valid from",
+        "validTo": "Valid to"
+      },
+      "validation": "Check required fields.",
+      "confirmSubmit": "Submit offer for moderation?",
+      "confirmArchive": "Archive offer?"
     }
   },
   "pricesPage": {

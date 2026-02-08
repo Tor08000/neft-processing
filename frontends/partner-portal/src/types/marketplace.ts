@@ -199,6 +199,86 @@ export interface CatalogItem {
   activeOffersCount?: number | null;
 }
 
+export type MarketplaceOfferStatus = "DRAFT" | "PENDING_REVIEW" | "ACTIVE" | "SUSPENDED" | "ARCHIVED";
+export type MarketplaceOfferSubjectType = "PRODUCT" | "SERVICE";
+export type MarketplaceOfferPriceModel = "FIXED" | "RANGE" | "PER_UNIT" | "PER_SERVICE";
+export type MarketplaceOfferGeoScope = "ALL_PARTNER_LOCATIONS" | "SELECTED_LOCATIONS" | "REGION";
+export type MarketplaceOfferEntitlementScope = "ALL_CLIENTS" | "SUBSCRIPTION_ONLY" | "SEGMENT_ONLY";
+
+export interface MarketplaceOffer {
+  id: string;
+  partner_id: string;
+  subject_type: MarketplaceOfferSubjectType;
+  subject_id: string;
+  title_override?: string | null;
+  description_override?: string | null;
+  status: MarketplaceOfferStatus;
+  moderation_comment?: string | null;
+  currency: string;
+  price_model: MarketplaceOfferPriceModel;
+  price_amount?: number | null;
+  price_min?: number | null;
+  price_max?: number | null;
+  vat_rate?: number | null;
+  terms: Record<string, unknown>;
+  geo_scope: MarketplaceOfferGeoScope;
+  location_ids: string[];
+  region_code?: string | null;
+  entitlement_scope: MarketplaceOfferEntitlementScope;
+  allowed_subscription_codes: string[];
+  allowed_client_ids: string[];
+  valid_from?: string | null;
+  valid_to?: string | null;
+  created_at: string;
+  updated_at?: string | null;
+}
+
+export interface MarketplaceOfferSummary {
+  id: string;
+  partner_id: string;
+  subject_type: MarketplaceOfferSubjectType;
+  subject_id: string;
+  title_override?: string | null;
+  status: MarketplaceOfferStatus;
+  price_model: MarketplaceOfferPriceModel;
+  currency: string;
+  geo_scope: MarketplaceOfferGeoScope;
+  entitlement_scope: MarketplaceOfferEntitlementScope;
+  valid_from?: string | null;
+  valid_to?: string | null;
+}
+
+export interface MarketplaceOfferInput {
+  subject_type: MarketplaceOfferSubjectType;
+  subject_id: string;
+  title_override?: string | null;
+  description_override?: string | null;
+  currency: string;
+  price_model: MarketplaceOfferPriceModel;
+  price_amount?: number | null;
+  price_min?: number | null;
+  price_max?: number | null;
+  vat_rate?: number | null;
+  terms: Record<string, unknown>;
+  geo_scope: MarketplaceOfferGeoScope;
+  location_ids?: string[];
+  region_code?: string | null;
+  entitlement_scope: MarketplaceOfferEntitlementScope;
+  allowed_subscription_codes?: string[];
+  allowed_client_ids?: string[];
+  valid_from?: string | null;
+  valid_to?: string | null;
+}
+
+export interface MarketplaceOfferUpdate extends Partial<MarketplaceOfferInput> {}
+
+export interface MarketplaceOfferListResponse {
+  items: MarketplaceOfferSummary[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
 export interface CatalogItemInput {
   kind: CatalogItemKind;
   title: string;

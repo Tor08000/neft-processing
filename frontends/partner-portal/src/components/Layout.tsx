@@ -58,6 +58,7 @@ export function Layout() {
 
   const NAV_ITEMS: NavItem[] = [
     { to: "/products", label: t("nav.products"), icon: <Package size={18} />, capability: "PARTNER_PRICING" },
+    { to: "/marketplace/offers", label: t("nav.marketplaceOffers"), icon: <Package size={18} />, capability: "PARTNER_PRICING" },
     { to: "/orders", label: t("nav.orders"), icon: <ShoppingBag size={18} />, capability: "PARTNER_CORE" },
     { to: "/bookings", label: t("nav.bookings"), icon: <Briefcase size={18} />, capability: "PARTNER_CORE" },
     { to: "/promotions", label: t("nav.promotions"), icon: <Percent size={18} />, capability: "PARTNER_PRICING" },
