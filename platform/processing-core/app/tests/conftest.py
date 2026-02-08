@@ -81,6 +81,17 @@ EXPECTED_ISSUER = os.getenv("NEFT_AUTH_ISSUER", "neft-auth")
 EXPECTED_AUDIENCE = os.getenv("NEFT_AUTH_AUDIENCE", "neft-admin")
 
 
+def _ensure_psycopg_driver(database_url: str) -> str:
+    try:
+        parsed = make_url(database_url)
+    except Exception:
+        return database_url
+    drivername = parsed.drivername
+    if drivername in {"postgres", "postgresql"} or drivername.endswith("+psycopg2"):
+        parsed = parsed.set(drivername="postgresql+psycopg")
+    return parsed.render_as_string(hide_password=False)
+
+
 def _log_database_url() -> None:
     raw_url = os.getenv("TEST_DATABASE_DSN") or os.getenv("DATABASE_URL_TEST") or os.getenv("DATABASE_URL") or ""
     try:
@@ -142,7 +153,7 @@ def _uses_postgres(database_url: str) -> bool:
 
 @pytest.fixture(scope="session")
 def test_db_engine() -> Engine:
-    database_url = get_test_dsn_or_fail()
+    database_url = _ensure_psycopg_driver(get_test_dsn_or_fail())
     os.environ["DATABASE_URL"] = database_url
     engine = create_engine(
         database_url,
@@ -376,7 +387,7 @@ def ensure_db_ready(request: pytest.FixtureRequest) -> None:
         return
 
     try:
-        database_url = get_test_dsn_or_fail()
+        database_url = _ensure_psycopg_driver(get_test_dsn_or_fail())
     except RuntimeError as exc:
         pytest.fail(str(exc))
     os.environ["DATABASE_URL"] = database_url

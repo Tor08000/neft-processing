@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from uuid import uuid4
 
 import pytest
 import sqlalchemy as sa
@@ -9,6 +10,8 @@ from alembic.config import Config
 
 from app.db import DB_SCHEMA
 from app.tests.utils import ensure_connectable, get_database_url
+from app.tests import conftest as test_conftest
+from app.tests._db_test_harness import get_test_dsn_or_fail
 
 REQUIRED_RELATIONS = (
     "alembic_version_core",
@@ -54,3 +57,14 @@ def test_postgres_upgrade_creates_core_relations() -> None:
         "required relations missing after alembic upgrade: "
         f"{missing}. search_path={search_path}"
     )
+
+
+@pytest.mark.integration
+def test_ensure_db_ready_bootstraps_empty_schema(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> None:
+    schema = f"processing_core_bootstrap_{uuid4().hex[:8]}"
+    monkeypatch.setenv("NEFT_DB_SCHEMA", schema)
+
+    test_conftest.ensure_db_ready(request)
+
+    database_url = test_conftest._ensure_psycopg_driver(get_test_dsn_or_fail())
+    test_conftest._check_required_tables(database_url, schema)
