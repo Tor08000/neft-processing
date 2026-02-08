@@ -251,4 +251,5 @@ class OfferListResponse(BaseModel):
 
 
 class OfferModerationRejectRequest(BaseModel):
-    comment: str
+    reason_code: str
+    comment: str = Field(min_length=10, max_length=2000)

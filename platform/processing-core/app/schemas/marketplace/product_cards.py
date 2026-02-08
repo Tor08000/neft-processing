@@ -18,6 +18,7 @@ ALLOWED_TRANSITIONS: dict[MarketplaceProductCardStatus, dict[MarketplaceProductC
     },
     MarketplaceProductCardStatus.PENDING_REVIEW: {
         MarketplaceProductCardStatus.ACTIVE: {ROLE_ADMIN},
+        MarketplaceProductCardStatus.DRAFT: {ROLE_ADMIN},
         MarketplaceProductCardStatus.ARCHIVED: {ROLE_PARTNER, ROLE_ADMIN},
     },
     MarketplaceProductCardStatus.ACTIVE: {

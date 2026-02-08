@@ -145,6 +145,20 @@ class MarketplaceServicesService:
         self.db.flush()
         return service
 
+    def approve_service(self, *, service: MarketplaceService) -> MarketplaceService:
+        assert_transition(service.status, MarketplaceServiceStatus.ACTIVE, actor_role="admin")
+        service.status = MarketplaceServiceStatus.ACTIVE
+        service.updated_at = datetime.now(timezone.utc)
+        self.db.flush()
+        return service
+
+    def reject_service(self, *, service: MarketplaceService) -> MarketplaceService:
+        assert_transition(service.status, MarketplaceServiceStatus.DRAFT, actor_role="admin")
+        service.status = MarketplaceServiceStatus.DRAFT
+        service.updated_at = datetime.now(timezone.utc)
+        self.db.flush()
+        return service
+
     def list_service_media(self, *, service_id: str) -> list[MarketplaceServiceMedia]:
         return (
             self.db.query(MarketplaceServiceMedia)

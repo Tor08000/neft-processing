@@ -27,6 +27,12 @@ import PayoutQueuePage from "./pages/finance/PayoutQueuePage";
 import PayoutDetailsPage from "./pages/finance/PayoutDetailsPage";
 import LegalPartnersPage from "./pages/legal/LegalPartnersPage";
 import AuditPage from "./pages/admin/AuditPage";
+import MarketplaceModerationPage from "./pages/marketplace/MarketplaceModerationPage";
+import {
+  MarketplaceModerationOfferDetailPage,
+  MarketplaceModerationProductDetailPage,
+  MarketplaceModerationServiceDetailPage,
+} from "./pages/marketplace/MarketplaceModerationDetailPage";
 
 export function App() {
   return (
@@ -196,6 +202,46 @@ export function App() {
                     element={
                       <AdminRBACGate permission="superadmin">
                         <AuditPage />
+                      </AdminRBACGate>
+                    }
+                  />
+                  <Route
+                    path="/marketplace"
+                    element={
+                      <AdminRBACGate permission="ops">
+                        <Navigate to="/marketplace/moderation" replace />
+                      </AdminRBACGate>
+                    }
+                  />
+                  <Route
+                    path="/marketplace/moderation"
+                    element={
+                      <AdminRBACGate permission="ops">
+                        <MarketplaceModerationPage />
+                      </AdminRBACGate>
+                    }
+                  />
+                  <Route
+                    path="/marketplace/moderation/product/:id"
+                    element={
+                      <AdminRBACGate permission="ops">
+                        <MarketplaceModerationProductDetailPage />
+                      </AdminRBACGate>
+                    }
+                  />
+                  <Route
+                    path="/marketplace/moderation/service/:id"
+                    element={
+                      <AdminRBACGate permission="ops">
+                        <MarketplaceModerationServiceDetailPage />
+                      </AdminRBACGate>
+                    }
+                  />
+                  <Route
+                    path="/marketplace/moderation/offer/:id"
+                    element={
+                      <AdminRBACGate permission="ops">
+                        <MarketplaceModerationOfferDetailPage />
                       </AdminRBACGate>
                     }
                   />
