@@ -4,6 +4,7 @@ import type {
   MarketplaceProduct,
   MarketplaceProductInput,
   MarketplaceProductListResponse,
+  MarketplaceProductMedia,
   MarketplaceProductUpdate,
 } from "../types/marketplace";
 
@@ -11,7 +12,6 @@ const withToken = (token: string | null | undefined) => ({ token: token ?? undef
 
 export interface MarketplaceProductFilters {
   status?: string;
-  type?: string;
   q?: string;
   category?: string;
   limit?: string;
@@ -55,8 +55,22 @@ export const updateMarketplaceProduct = (token: string | null | undefined, id: s
     withToken(token),
   );
 
-export const publishMarketplaceProduct = (token: string | null | undefined, id: string) =>
-  request<MarketplaceProduct>(`/partner/products/${id}/publish`, { method: "POST" }, withToken(token));
+export const submitMarketplaceProduct = (token: string | null | undefined, id: string) =>
+  request<MarketplaceProduct>(`/partner/products/${id}/submit`, { method: "POST" }, withToken(token));
 
 export const archiveMarketplaceProduct = (token: string | null | undefined, id: string) =>
   request<MarketplaceProduct>(`/partner/products/${id}/archive`, { method: "POST" }, withToken(token));
+
+export const addMarketplaceProductMedia = (
+  token: string | null | undefined,
+  productId: string,
+  payload: MarketplaceProductMedia,
+) =>
+  request<MarketplaceProductMedia>(
+    `/partner/products/${productId}/media`,
+    { method: "POST", body: JSON.stringify(payload) },
+    withToken(token),
+  );
+
+export const removeMarketplaceProductMedia = (token: string | null | undefined, productId: string, attachmentId: string) =>
+  request<void>(`/partner/products/${productId}/media/${attachmentId}`, { method: "DELETE" }, withToken(token));

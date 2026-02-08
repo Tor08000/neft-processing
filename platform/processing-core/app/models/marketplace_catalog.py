@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from enum import Enum
 
-from sqlalchemy import Column, DateTime, Numeric, Text, event, func
+from sqlalchemy import Column, DateTime, Integer, Numeric, Text, event, func
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.types import JSON
 
@@ -41,6 +41,14 @@ class MarketplaceProductModerationStatus(str, Enum):
     PENDING_REVIEW = "PENDING_REVIEW"
     APPROVED = "APPROVED"
     REJECTED = "REJECTED"
+
+
+class MarketplaceProductCardStatus(str, Enum):
+    DRAFT = "DRAFT"
+    PENDING_REVIEW = "PENDING_REVIEW"
+    ACTIVE = "ACTIVE"
+    SUSPENDED = "SUSPENDED"
+    ARCHIVED = "ARCHIVED"
 
 
 class MarketplaceCatalogImmutableError(ValueError):
@@ -96,6 +104,41 @@ class MarketplaceProduct(Base):
     audit_event_id = Column(GUID(), nullable=True)
 
 
+class MarketplaceProductCard(Base):
+    __tablename__ = "marketplace_product_cards"
+
+    id = Column(GUID(), primary_key=True, default=new_uuid_str)
+    partner_id = Column(GUID(), nullable=False, index=True)
+    title = Column(Text, nullable=False)
+    description = Column(Text, nullable=False)
+    category = Column(Text, nullable=False)
+    status = Column(
+        ExistingEnum(MarketplaceProductCardStatus, name="marketplace_product_card_status"),
+        nullable=False,
+        default=MarketplaceProductCardStatus.DRAFT.value,
+    )
+    tags = Column(JSON_TYPE, nullable=False, default=list)
+    attributes = Column(JSON_TYPE, nullable=False, default=dict)
+    variants = Column(JSON_TYPE, nullable=False, default=list)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=True, onupdate=func.now())
+
+
+class MarketplaceProductMedia(Base):
+    __tablename__ = "marketplace_product_media"
+
+    id = Column(GUID(), primary_key=True, default=new_uuid_str)
+    product_id = Column(GUID(), nullable=False, index=True)
+    attachment_id = Column(GUID(), nullable=False)
+    bucket = Column(Text, nullable=False)
+    path = Column(Text, nullable=False)
+    checksum = Column(Text, nullable=True)
+    size = Column(Integer, nullable=True)
+    mime = Column(Text, nullable=True)
+    sort_index = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
 @event.listens_for(PartnerProfile, "before_delete")
 @event.listens_for(MarketplaceProduct, "before_delete")
 def _block_marketplace_delete(mapper, connection, target) -> None:
@@ -109,6 +152,9 @@ __all__ = [
     "MarketplaceProductModerationStatus",
     "MarketplaceProductStatus",
     "MarketplaceProductType",
+    "MarketplaceProductCard",
+    "MarketplaceProductCardStatus",
+    "MarketplaceProductMedia",
     "PartnerProfile",
     "PartnerVerificationStatus",
 ]

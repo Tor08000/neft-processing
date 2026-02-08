@@ -9,6 +9,9 @@ from sqlalchemy.orm import Session
 from app.db.types import new_uuid_str
 from app.models.marketplace_catalog import (
     MarketplaceProduct,
+    MarketplaceProductCard,
+    MarketplaceProductCardStatus,
+    MarketplaceProductMedia,
     MarketplaceProductModerationStatus,
     MarketplaceProductStatus,
     MarketplaceProductType,
@@ -16,6 +19,12 @@ from app.models.marketplace_catalog import (
     PartnerVerificationStatus,
 )
 from app.schemas.marketplace.catalog import validate_price_config
+from app.schemas.marketplace.product_cards import (
+    ROLE_ADMIN,
+    ROLE_PARTNER,
+    assert_editable,
+    assert_transition,
+)
 from app.services.audit_service import AuditService, RequestContext
 from app.services.decision_memory.records import record_decision_memory
 
@@ -207,6 +216,321 @@ class MarketplaceCatalogService:
             .all()
         )
         return items, total
+
+    def list_partner_product_cards(
+        self,
+        *,
+        partner_id: str,
+        status: MarketplaceProductCardStatus | None = None,
+        category: str | None = None,
+        query_text: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> tuple[list[MarketplaceProductCard], int]:
+        query = self.db.query(MarketplaceProductCard).filter(MarketplaceProductCard.partner_id == partner_id)
+        if status:
+            query = query.filter(MarketplaceProductCard.status == status)
+        if category:
+            query = query.filter(MarketplaceProductCard.category == category)
+        if query_text:
+            like = f"%{query_text}%"
+            query = query.filter(
+                or_(
+                    MarketplaceProductCard.title.ilike(like),
+                    MarketplaceProductCard.description.ilike(like),
+                )
+            )
+        total = query.count()
+        items = (
+            query.order_by(MarketplaceProductCard.updated_at.desc().nullslast(), MarketplaceProductCard.created_at.desc())
+            .offset(offset)
+            .limit(limit)
+            .all()
+        )
+        return items, total
+
+    def list_product_cards(
+        self,
+        *,
+        status: MarketplaceProductCardStatus | None = None,
+        category: str | None = None,
+        query_text: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+        public: bool = False,
+    ) -> tuple[list[MarketplaceProductCard], int]:
+        query = self.db.query(MarketplaceProductCard)
+        if public:
+            status = MarketplaceProductCardStatus.ACTIVE
+        if status:
+            query = query.filter(MarketplaceProductCard.status == status)
+        if category:
+            query = query.filter(MarketplaceProductCard.category == category)
+        if query_text:
+            like = f"%{query_text}%"
+            query = query.filter(
+                or_(
+                    MarketplaceProductCard.title.ilike(like),
+                    MarketplaceProductCard.description.ilike(like),
+                )
+            )
+        total = query.count()
+        items = (
+            query.order_by(MarketplaceProductCard.updated_at.desc().nullslast(), MarketplaceProductCard.created_at.desc())
+            .offset(offset)
+            .limit(limit)
+            .all()
+        )
+        return items, total
+
+    def create_product_card(
+        self,
+        *,
+        partner_id: str,
+        payload: dict,
+    ) -> MarketplaceProductCard:
+        product_id = new_uuid_str()
+        now = datetime.now(timezone.utc)
+        audit = self._audit(
+            event_type="PRODUCT_CARD_CREATED",
+            entity_type="marketplace_product_card",
+            entity_id=product_id,
+            action="PRODUCT_CARD_CREATED",
+            after={
+                "partner_id": partner_id,
+                "title": payload["title"],
+                "category": payload["category"],
+                "status": MarketplaceProductCardStatus.DRAFT.value,
+            },
+        )
+        product = MarketplaceProductCard(
+            id=product_id,
+            partner_id=partner_id,
+            title=payload["title"],
+            description=payload.get("description") or "",
+            category=payload["category"],
+            status=MarketplaceProductCardStatus.DRAFT.value,
+            tags=payload.get("tags") or [],
+            attributes=payload.get("attributes") or {},
+            variants=payload.get("variants") or [],
+            created_at=now,
+            updated_at=now,
+        )
+        self.db.add(product)
+        self.db.flush()
+        return product
+
+    def update_product_card(
+        self,
+        *,
+        product: MarketplaceProductCard,
+        payload: dict,
+    ) -> MarketplaceProductCard:
+        assert_editable(product.status)
+        before = {
+            "title": product.title,
+            "description": product.description,
+            "category": product.category,
+            "tags": product.tags,
+            "attributes": product.attributes,
+            "variants": product.variants,
+        }
+        for key in ("title", "description", "category", "tags", "attributes", "variants"):
+            if key in payload and payload[key] is not None:
+                setattr(product, key, payload[key])
+        product.updated_at = datetime.now(timezone.utc)
+        after = {
+            "title": product.title,
+            "description": product.description,
+            "category": product.category,
+            "tags": product.tags,
+            "attributes": product.attributes,
+            "variants": product.variants,
+        }
+        audit = self._audit(
+            event_type="PRODUCT_CARD_UPDATED",
+            entity_type="marketplace_product_card",
+            entity_id=str(product.id),
+            action="PRODUCT_CARD_UPDATED",
+            before=before,
+            after=after,
+        )
+        self.db.flush()
+        return product
+
+    def submit_product_card(self, *, product: MarketplaceProductCard) -> MarketplaceProductCard:
+        assert_transition(product.status, MarketplaceProductCardStatus.PENDING_REVIEW, actor_role=ROLE_PARTNER)
+        before = {"status": product.status.value if hasattr(product.status, "value") else product.status}
+        product.status = MarketplaceProductCardStatus.PENDING_REVIEW
+        product.updated_at = datetime.now(timezone.utc)
+        after = {"status": product.status.value if hasattr(product.status, "value") else product.status}
+        audit = self._audit(
+            event_type="PRODUCT_CARD_SUBMITTED",
+            entity_type="marketplace_product_card",
+            entity_id=str(product.id),
+            action="PRODUCT_CARD_SUBMITTED",
+            before=before,
+            after=after,
+        )
+        self.db.flush()
+        return product
+
+    def archive_product_card(self, *, product: MarketplaceProductCard) -> MarketplaceProductCard:
+        assert_transition(product.status, MarketplaceProductCardStatus.ARCHIVED, actor_role=ROLE_PARTNER)
+        before = {"status": product.status.value if hasattr(product.status, "value") else product.status}
+        product.status = MarketplaceProductCardStatus.ARCHIVED
+        product.updated_at = datetime.now(timezone.utc)
+        after = {"status": product.status.value if hasattr(product.status, "value") else product.status}
+        audit = self._audit(
+            event_type="PRODUCT_CARD_ARCHIVED",
+            entity_type="marketplace_product_card",
+            entity_id=str(product.id),
+            action="PRODUCT_CARD_ARCHIVED",
+            before=before,
+            after=after,
+        )
+        self.db.flush()
+        return product
+
+    def list_active_product_cards(
+        self,
+        *,
+        category: str | None = None,
+        query_text: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> tuple[list[MarketplaceProductCard], int]:
+        return self.list_product_cards(
+            status=MarketplaceProductCardStatus.ACTIVE,
+            category=category,
+            query_text=query_text,
+            limit=limit,
+            offset=offset,
+            public=True,
+        )
+
+    def get_active_product_card(self, *, product_id: str) -> MarketplaceProductCard | None:
+        return (
+            self.db.query(MarketplaceProductCard)
+            .filter(
+                MarketplaceProductCard.id == product_id,
+                MarketplaceProductCard.status == MarketplaceProductCardStatus.ACTIVE,
+            )
+            .one_or_none()
+        )
+
+    def get_product_card(self, *, product_id: str) -> MarketplaceProductCard | None:
+        return self.db.query(MarketplaceProductCard).filter(MarketplaceProductCard.id == product_id).one_or_none()
+
+    def approve_product_card(self, *, product: MarketplaceProductCard, actor_role: str = ROLE_ADMIN) -> MarketplaceProductCard:
+        assert_transition(product.status, MarketplaceProductCardStatus.ACTIVE, actor_role=actor_role)
+        before = {"status": product.status.value if hasattr(product.status, "value") else product.status}
+        product.status = MarketplaceProductCardStatus.ACTIVE
+        product.updated_at = datetime.now(timezone.utc)
+        after = {"status": product.status.value if hasattr(product.status, "value") else product.status}
+        self._audit(
+            event_type="PRODUCT_CARD_APPROVED",
+            entity_type="marketplace_product_card",
+            entity_id=str(product.id),
+            action="PRODUCT_CARD_APPROVED",
+            before=before,
+            after=after,
+        )
+        self.db.flush()
+        return product
+
+    def suspend_product_card(self, *, product: MarketplaceProductCard, actor_role: str = ROLE_ADMIN) -> MarketplaceProductCard:
+        assert_transition(product.status, MarketplaceProductCardStatus.SUSPENDED, actor_role=actor_role)
+        before = {"status": product.status.value if hasattr(product.status, "value") else product.status}
+        product.status = MarketplaceProductCardStatus.SUSPENDED
+        product.updated_at = datetime.now(timezone.utc)
+        after = {"status": product.status.value if hasattr(product.status, "value") else product.status}
+        self._audit(
+            event_type="PRODUCT_CARD_SUSPENDED",
+            entity_type="marketplace_product_card",
+            entity_id=str(product.id),
+            action="PRODUCT_CARD_SUSPENDED",
+            before=before,
+            after=after,
+        )
+        self.db.flush()
+        return product
+
+    def resume_product_card(self, *, product: MarketplaceProductCard, actor_role: str = ROLE_ADMIN) -> MarketplaceProductCard:
+        assert_transition(product.status, MarketplaceProductCardStatus.ACTIVE, actor_role=actor_role)
+        before = {"status": product.status.value if hasattr(product.status, "value") else product.status}
+        product.status = MarketplaceProductCardStatus.ACTIVE
+        product.updated_at = datetime.now(timezone.utc)
+        after = {"status": product.status.value if hasattr(product.status, "value") else product.status}
+        self._audit(
+            event_type="PRODUCT_CARD_RESUMED",
+            entity_type="marketplace_product_card",
+            entity_id=str(product.id),
+            action="PRODUCT_CARD_RESUMED",
+            before=before,
+            after=after,
+        )
+        self.db.flush()
+        return product
+
+    def list_product_media(self, *, product_id: str) -> list[MarketplaceProductMedia]:
+        return (
+            self.db.query(MarketplaceProductMedia)
+            .filter(MarketplaceProductMedia.product_id == product_id)
+            .order_by(MarketplaceProductMedia.sort_index.asc(), MarketplaceProductMedia.created_at.asc())
+            .all()
+        )
+
+    def upsert_product_media(
+        self,
+        *,
+        product_id: str,
+        payload: dict,
+    ) -> MarketplaceProductMedia:
+        attachment_id = payload["attachment_id"]
+        media = (
+            self.db.query(MarketplaceProductMedia)
+            .filter(
+                MarketplaceProductMedia.product_id == product_id,
+                MarketplaceProductMedia.attachment_id == attachment_id,
+            )
+            .one_or_none()
+        )
+        if media:
+            for key in ("bucket", "path", "checksum", "size", "mime", "sort_index"):
+                if key in payload and payload[key] is not None:
+                    setattr(media, key, payload[key])
+            self.db.flush()
+            return media
+        media = MarketplaceProductMedia(
+            id=new_uuid_str(),
+            product_id=product_id,
+            attachment_id=attachment_id,
+            bucket=payload["bucket"],
+            path=payload["path"],
+            checksum=payload.get("checksum"),
+            size=payload.get("size"),
+            mime=payload.get("mime"),
+            sort_index=payload.get("sort_index") or 0,
+        )
+        self.db.add(media)
+        self.db.flush()
+        return media
+
+    def delete_product_media(self, *, product_id: str, attachment_id: str) -> bool:
+        media = (
+            self.db.query(MarketplaceProductMedia)
+            .filter(
+                MarketplaceProductMedia.product_id == product_id,
+                MarketplaceProductMedia.attachment_id == attachment_id,
+            )
+            .one_or_none()
+        )
+        if not media:
+            return False
+        self.db.delete(media)
+        self.db.flush()
+        return True
 
     def create_product(
         self,

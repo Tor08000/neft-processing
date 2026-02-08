@@ -1,128 +1,97 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  addMarketplaceProductMedia,
   archiveMarketplaceProduct,
   createMarketplaceProduct,
   fetchMarketplaceProduct,
   fetchMarketplaceProducts,
-  publishMarketplaceProduct,
+  removeMarketplaceProductMedia,
+  submitMarketplaceProduct,
   updateMarketplaceProduct,
 } from "../api/marketplaceCatalog";
 import { ApiError } from "../api/http";
 import { useAuth } from "../auth/AuthContext";
 import { StatusBadge } from "../components/StatusBadge";
-import { formatDateTime, formatNumber } from "../utils/format";
+import { formatDateTime } from "../utils/format";
 import { useTranslation } from "react-i18next";
 import { EmptyState } from "@shared/ui/EmptyState";
 import { PartnerErrorState } from "../components/PartnerErrorState";
 import { demoMarketplaceProducts } from "../demo/partnerDemoData";
 import { isDemoPartner } from "@shared/demo/demo";
 import type {
-  MarketplacePriceConfig,
-  MarketplacePriceModel,
   MarketplaceProduct,
+  MarketplaceProductMedia,
   MarketplaceProductStatus,
   MarketplaceProductSummary,
-  MarketplaceProductType,
 } from "../types/marketplace";
 
 const defaultFormState = {
-  type: "SERVICE" as MarketplaceProductType,
   title: "",
   description: "",
   category: "",
-  priceModel: "FIXED" as MarketplacePriceModel,
-  fixedAmount: "",
-  unit: "item" as "liter" | "item" | "hour",
-  amountPerUnit: "",
-  tiers: [{ from: "", to: "", amount: "" }],
+  tags: [] as string[],
+  attributes: [{ key: "", value: "" }],
+  variants: [{ name: "", sku: "", props: "" }],
 };
 
-type TierRow = { from: string; to: string; amount: string };
-
+type AttributeRow = { key: string; value: string };
+type VariantRow = { name: string; sku: string; props: string };
 type FormState = typeof defaultFormState;
 
-const buildPriceSummary = (product: MarketplaceProductSummary) => {
-  if (product.price_model === "FIXED") {
-    const amount = (product.price_config as { amount: number }).amount;
-    return `${formatNumber(amount)} ₽`;
-  }
-  if (product.price_model === "PER_UNIT") {
-    const config = product.price_config as { amount_per_unit: number; unit: string };
-    return `${formatNumber(config.amount_per_unit)} ₽ / ${config.unit}`;
-  }
-  const tiers = (product.price_config as { tiers: Array<{ from: number; to?: number | null; amount: number }> }).tiers;
-  const first = tiers?.[0];
-  if (!first) return "—";
-  return `${formatNumber(first.amount)} ₽`;
+const buildAttributes = (rows: AttributeRow[]) =>
+  rows.reduce<Record<string, string | number | boolean | null>>((acc, row) => {
+    if (row.key.trim()) {
+      acc[row.key.trim()] = row.value.trim();
+    }
+    return acc;
+  }, {});
+
+const buildVariants = (
+  rows: VariantRow[],
+): { variants: Array<Record<string, string | number | boolean | null>>; errors: Record<string, string> } => {
+  const errors: Record<string, string> = {};
+  const variants = rows
+    .filter((row) => row.name.trim() || row.sku.trim() || row.props.trim())
+    .map((row, index) => {
+      if (!row.props.trim()) {
+        return { name: row.name.trim(), sku: row.sku.trim() };
+      }
+      try {
+        const props = JSON.parse(row.props) as Record<string, string | number | boolean | null>;
+        return { name: row.name.trim(), sku: row.sku.trim(), props };
+      } catch (error) {
+        errors[`variant_props_${index}`] = "invalid";
+        return { name: row.name.trim(), sku: row.sku.trim(), props: row.props.trim() };
+      }
+    });
+  return { variants, errors };
 };
 
 const mapProductToForm = (product: MarketplaceProduct): FormState => {
-  const next = { ...defaultFormState };
-  next.type = product.type;
-  next.title = product.title;
-  next.description = product.description;
-  next.category = product.category;
-  next.priceModel = product.price_model;
-  if (product.price_model === "FIXED") {
-    next.fixedAmount = String((product.price_config as { amount: number }).amount ?? "");
-  }
-  if (product.price_model === "PER_UNIT") {
-    const config = product.price_config as { amount_per_unit: number; unit: "liter" | "item" | "hour" };
-    next.unit = config.unit;
-    next.amountPerUnit = String(config.amount_per_unit ?? "");
-  }
-  if (product.price_model === "TIERED") {
-    const config = product.price_config as { tiers: Array<{ from: number; to?: number | null; amount: number }> };
-    next.tiers = config.tiers.map((tier) => ({
-      from: tier.from?.toString() ?? "",
-      to: tier.to?.toString() ?? "",
-      amount: tier.amount?.toString() ?? "",
-    }));
-  }
-  return next;
+  const attributes = Object.entries(product.attributes ?? {}).map(([key, value]) => ({
+    key,
+    value: String(value ?? ""),
+  }));
+  const variants = (product.variants ?? []).map((variant) => ({
+    name: String((variant as { name?: string }).name ?? ""),
+    sku: String((variant as { sku?: string }).sku ?? ""),
+    props: JSON.stringify((variant as { props?: Record<string, unknown> }).props ?? {}, null, 2),
+  }));
+  return {
+    title: product.title,
+    description: product.description ?? "",
+    category: product.category,
+    tags: product.tags ?? [],
+    attributes: attributes.length ? attributes : [{ key: "", value: "" }],
+    variants: variants.length ? variants : [{ name: "", sku: "", props: "" }],
+  };
 };
 
-const buildPriceConfig = (form: FormState): { config?: MarketplacePriceConfig; errors: Record<string, string> } => {
-  const errors: Record<string, string> = {};
-  if (form.priceModel === "FIXED") {
-    if (!form.fixedAmount) {
-      errors.fixedAmount = "required";
-    }
-    const amount = Number(form.fixedAmount);
-    if (Number.isNaN(amount) || amount <= 0) {
-      errors.fixedAmount = "invalid";
-    }
-    return { config: { amount, currency: "RUB" }, errors };
+const createAttachmentId = () => {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return crypto.randomUUID();
   }
-  if (form.priceModel === "PER_UNIT") {
-    if (!form.amountPerUnit) {
-      errors.amountPerUnit = "required";
-    }
-    const amount = Number(form.amountPerUnit);
-    if (Number.isNaN(amount) || amount <= 0) {
-      errors.amountPerUnit = "invalid";
-    }
-    return { config: { unit: form.unit, amount_per_unit: amount, currency: "RUB" }, errors };
-  }
-  const tiers = form.tiers.map((tier, index) => {
-    const from = Number(tier.from);
-    const amount = Number(tier.amount);
-    const to = tier.to ? Number(tier.to) : null;
-    if (!tier.from || Number.isNaN(from)) {
-      errors[`tier_from_${index}`] = "invalid";
-    }
-    if (!tier.amount || Number.isNaN(amount)) {
-      errors[`tier_amount_${index}`] = "invalid";
-    }
-    if (tier.to && Number.isNaN(to)) {
-      errors[`tier_to_${index}`] = "invalid";
-    }
-    return { from, to, amount };
-  });
-  if (!tiers.length) {
-    errors.tiers = "required";
-  }
-  return { config: { currency: "RUB", tiers }, errors };
+  return `attachment-${Math.random().toString(16).slice(2)}`;
 };
 
 export function MarketplaceProductsPage() {
@@ -133,9 +102,14 @@ export function MarketplaceProductsPage() {
   const [error, setError] = useState<unknown>(null);
   const [isDemoFallback, setIsDemoFallback] = useState(false);
   const [statusFilter, setStatusFilter] = useState<MarketplaceProductStatus | "">("");
-  const [typeFilter, setTypeFilter] = useState<MarketplaceProductType | "">("");
+  const [categoryFilter, setCategoryFilter] = useState("");
   const [query, setQuery] = useState("");
   const [form, setForm] = useState<FormState>(defaultFormState);
+  const [tagInput, setTagInput] = useState("");
+  const [mediaItems, setMediaItems] = useState<MarketplaceProductMedia[]>([]);
+  const [mediaUrl, setMediaUrl] = useState("");
+  const [mediaMime, setMediaMime] = useState("image/jpeg");
+  const [mediaSort, setMediaSort] = useState("0");
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [editing, setEditing] = useState<MarketplaceProduct | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -145,10 +119,10 @@ export function MarketplaceProductsPage() {
   const filters = useMemo(
     () => ({
       status: statusFilter || undefined,
-      type: typeFilter || undefined,
+      category: categoryFilter || undefined,
       q: query || undefined,
     }),
-    [statusFilter, typeFilter, query],
+    [statusFilter, categoryFilter, query],
   );
 
   const loadProducts = () => {
@@ -175,43 +149,46 @@ export function MarketplaceProductsPage() {
   useEffect(() => {
     loadProducts();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, filters.status, filters.type, filters.q]);
+  }, [user, filters.status, filters.category, filters.q]);
 
   const resetForm = () => {
     setEditing(null);
     setForm(defaultFormState);
+    setTagInput("");
+    setMediaItems([]);
+    setMediaUrl("");
+    setMediaMime("image/jpeg");
+    setMediaSort("0");
     setFormErrors({});
   };
 
   const submitForm = async () => {
     if (!user) return;
     setActionError(null);
-    const validation = buildPriceConfig(form);
-    setFormErrors(validation.errors);
-    if (Object.keys(validation.errors).length) {
+    const errors: Record<string, string> = {};
+    if (!form.title.trim()) errors.title = "required";
+    if (!form.category.trim()) errors.category = "required";
+    const { variants, errors: variantErrors } = buildVariants(form.variants);
+    Object.assign(errors, variantErrors);
+    setFormErrors(errors);
+    if (Object.keys(errors).length) {
       setActionError(t("marketplace.products.validationError"));
       return;
     }
     setIsSaving(true);
     try {
+      const payload = {
+        title: form.title.trim(),
+        description: form.description.trim(),
+        category: form.category.trim(),
+        tags: form.tags,
+        attributes: buildAttributes(form.attributes),
+        variants,
+      };
       if (editing) {
-        await updateMarketplaceProduct(user.token, editing.id, {
-          type: form.type,
-          title: form.title.trim(),
-          description: form.description.trim(),
-          category: form.category.trim(),
-          price_model: form.priceModel,
-          price_config: validation.config!,
-        });
+        await updateMarketplaceProduct(user.token, editing.id, payload);
       } else {
-        await createMarketplaceProduct(user.token, {
-          type: form.type,
-          title: form.title.trim(),
-          description: form.description.trim(),
-          category: form.category.trim(),
-          price_model: form.priceModel,
-          price_config: validation.config!,
-        });
+        await createMarketplaceProduct(user.token, payload);
       }
       resetForm();
       loadProducts();
@@ -231,21 +208,24 @@ export function MarketplaceProductsPage() {
       .then((detailed) => {
         setEditing(detailed);
         setForm(mapProductToForm(detailed));
+        const media = detailed.media ?? [];
+        setMediaItems(media);
+        setMediaSort(String(media.length));
       })
       .catch(() => setActionError(t("marketplace.products.loadError")))
       .finally(() => setIsSaving(false));
   };
 
-  const handlePublish = async (product: MarketplaceProductSummary) => {
+  const handleSubmit = async (product: MarketplaceProductSummary) => {
     if (!user) return;
-    if (!window.confirm(t("marketplace.products.confirmPublish"))) return;
+    if (!window.confirm(t("marketplace.products.confirmSubmit"))) return;
     setActionError(null);
     try {
-      await publishMarketplaceProduct(user.token, product.id);
+      await submitMarketplaceProduct(user.token, product.id);
       loadProducts();
     } catch (err) {
       console.error(err);
-      setActionError(t("marketplace.products.publishError"));
+      setActionError(t("marketplace.products.submitError"));
     }
   };
 
@@ -259,6 +239,97 @@ export function MarketplaceProductsPage() {
     } catch (err) {
       console.error(err);
       setActionError(t("marketplace.products.archiveError"));
+    }
+  };
+
+  const handleAddTag = () => {
+    const nextTag = tagInput.trim();
+    if (!nextTag) return;
+    if (!form.tags.includes(nextTag)) {
+      setForm({ ...form, tags: [...form.tags, nextTag] });
+    }
+    setTagInput("");
+  };
+
+  const handleRemoveTag = (tag: string) => {
+    setForm({ ...form, tags: form.tags.filter((item) => item !== tag) });
+  };
+
+  const handleAddMedia = async () => {
+    if (!user || !editing) return;
+    if (!mediaUrl.trim()) {
+      setActionError(t("marketplace.products.validationError"));
+      return;
+    }
+    setActionError(null);
+    setIsSaving(true);
+    try {
+      const attachment_id = createAttachmentId();
+      const payload: MarketplaceProductMedia = {
+        attachment_id,
+        bucket: "external",
+        path: mediaUrl.trim(),
+        mime: mediaMime.trim() || "image/jpeg",
+        sort_index: Number(mediaSort) || mediaItems.length,
+      };
+      const response = await addMarketplaceProductMedia(user.token, editing.id, payload);
+      setMediaItems((prev) => [...prev, response].sort((a, b) => (a.sort_index ?? 0) - (b.sort_index ?? 0)));
+      setMediaUrl("");
+      setMediaSort(String(mediaItems.length + 1));
+    } catch (err) {
+      console.error(err);
+      setActionError(t("marketplace.products.saveError"));
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleRemoveMedia = async (media: MarketplaceProductMedia) => {
+    if (!user || !editing) return;
+    setActionError(null);
+    setIsSaving(true);
+    try {
+      await removeMarketplaceProductMedia(user.token, editing.id, media.attachment_id);
+      setMediaItems((prev) => prev.filter((item) => item.attachment_id !== media.attachment_id));
+    } catch (err) {
+      console.error(err);
+      setActionError(t("marketplace.products.archiveError"));
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleMoveMedia = async (media: MarketplaceProductMedia, direction: -1 | 1) => {
+    if (!user || !editing) return;
+    const index = mediaItems.findIndex((item) => item.attachment_id === media.attachment_id);
+    const swapIndex = index + direction;
+    if (index < 0 || swapIndex < 0 || swapIndex >= mediaItems.length) return;
+    const nextItems = [...mediaItems];
+    const temp = nextItems[index];
+    nextItems[index] = nextItems[swapIndex];
+    nextItems[swapIndex] = temp;
+    const reordered = nextItems.map((item, idx) => ({ ...item, sort_index: idx }));
+    setMediaItems(reordered);
+    setIsSaving(true);
+    try {
+      await Promise.all(
+        [reordered[index], reordered[swapIndex]].map((item) =>
+          addMarketplaceProductMedia(user.token, editing.id, {
+            attachment_id: item.attachment_id,
+            bucket: item.bucket,
+            path: item.path,
+            checksum: item.checksum ?? undefined,
+            size: item.size ?? undefined,
+            mime: item.mime ?? undefined,
+            sort_index: item.sort_index ?? 0,
+          }),
+        ),
+      );
+    } catch (err) {
+      console.error(err);
+      setActionError(t("marketplace.products.saveError"));
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -282,17 +353,15 @@ export function MarketplaceProductsPage() {
             <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as MarketplaceProductStatus | "")}>
               <option value="">{t("common.all")}</option>
               <option value="DRAFT">{t("marketplace.products.statuses.DRAFT")}</option>
-              <option value="PUBLISHED">{t("marketplace.products.statuses.PUBLISHED")}</option>
+              <option value="PENDING_REVIEW">{t("marketplace.products.statuses.PENDING_REVIEW")}</option>
+              <option value="ACTIVE">{t("marketplace.products.statuses.ACTIVE")}</option>
+              <option value="SUSPENDED">{t("marketplace.products.statuses.SUSPENDED")}</option>
               <option value="ARCHIVED">{t("marketplace.products.statuses.ARCHIVED")}</option>
             </select>
           </label>
           <label className="filter neft-filter">
-            <span className="label">{t("marketplace.products.filters.type")}</span>
-            <select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value as MarketplaceProductType | "")}>
-              <option value="">{t("common.all")}</option>
-              <option value="SERVICE">{t("marketplace.products.types.SERVICE")}</option>
-              <option value="PRODUCT">{t("marketplace.products.types.PRODUCT")}</option>
-            </select>
+            <span className="label">{t("marketplace.products.filters.category")}</span>
+            <input value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)} />
           </label>
           <label className="filter neft-filter">
             <span className="label">{t("marketplace.products.filters.search")}</span>
@@ -316,10 +385,8 @@ export function MarketplaceProductsPage() {
             <thead>
               <tr>
                 <th>{t("marketplace.products.table.title")}</th>
-                <th>{t("marketplace.products.table.type")}</th>
                 <th>{t("marketplace.products.table.category")}</th>
-                <th>{t("common.status")}</th>
-                <th>{t("marketplace.products.table.price")}</th>
+                <th>{t("marketplace.products.table.status")}</th>
                 <th>{t("marketplace.products.table.updated")}</th>
                 <th>{t("common.actions")}</th>
               </tr>
@@ -328,11 +395,9 @@ export function MarketplaceProductsPage() {
               {items.map((product) => (
                 <tr key={product.id}>
                   <td>{product.title}</td>
-                  <td>{t(`marketplace.products.types.${product.type}`)}</td>
                   <td>{product.category}</td>
                   <td><StatusBadge status={product.status} /></td>
-                  <td>{buildPriceSummary(product)}</td>
-                  <td>{formatDateTime(product.updated_at ?? product.published_at ?? null)}</td>
+                  <td>{formatDateTime(product.updated_at ?? product.created_at ?? null)}</td>
                   <td>
                     <div className="table-actions">
                       <button className="link-button" type="button" onClick={() => handleEdit(product)}>
@@ -341,10 +406,10 @@ export function MarketplaceProductsPage() {
                       <button
                         className="link-button"
                         type="button"
-                        onClick={() => handlePublish(product)}
+                        onClick={() => handleSubmit(product)}
                         disabled={product.status !== "DRAFT"}
                       >
-                        {t("actions.publish")}
+                        {t("marketplace.products.actions.submit")}
                       </button>
                       <button
                         className="link-button danger"
@@ -385,140 +450,236 @@ export function MarketplaceProductsPage() {
         </div>
         <div className="form-grid">
           <label className="form-field">
-            <span className="label">{t("marketplace.products.fields.type")}</span>
-            <select value={form.type} onChange={(event) => setForm({ ...form, type: event.target.value as MarketplaceProductType })}>
-              <option value="SERVICE">{t("marketplace.products.types.SERVICE")}</option>
-              <option value="PRODUCT">{t("marketplace.products.types.PRODUCT")}</option>
-            </select>
-          </label>
-          <label className="form-field">
             <span className="label">{t("marketplace.products.fields.title")}</span>
             <input value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} />
+            {formErrors.title ? <span className="error-text">{t("marketplace.products.validation.required")}</span> : null}
           </label>
           <label className="form-field">
             <span className="label">{t("marketplace.products.fields.category")}</span>
             <input value={form.category} onChange={(event) => setForm({ ...form, category: event.target.value })} />
+            {formErrors.category ? <span className="error-text">{t("marketplace.products.validation.required")}</span> : null}
           </label>
           <label className="form-field form-grid__full">
             <span className="label">{t("marketplace.products.fields.description")}</span>
             <textarea rows={3} value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} />
           </label>
         </div>
-        <div className="form-grid">
-          <label className="form-field">
-            <span className="label">{t("marketplace.products.fields.priceModel")}</span>
-            <select value={form.priceModel} onChange={(event) => setForm({ ...defaultFormState, ...form, priceModel: event.target.value as MarketplacePriceModel })}>
-              <option value="FIXED">{t("marketplace.products.priceModels.FIXED")}</option>
-              <option value="PER_UNIT">{t("marketplace.products.priceModels.PER_UNIT")}</option>
-              <option value="TIERED">{t("marketplace.products.priceModels.TIERED")}</option>
-            </select>
-          </label>
-          {form.priceModel === "FIXED" ? (
-            <label className="form-field">
-              <span className="label">{t("marketplace.products.fields.amount")}</span>
-              <input
-                type="number"
-                value={form.fixedAmount}
-                onChange={(event) => setForm({ ...form, fixedAmount: event.target.value })}
-              />
-              {formErrors.fixedAmount ? <span className="error-text">{t("marketplace.products.validation.amount")}</span> : null}
-            </label>
-          ) : null}
-          {form.priceModel === "PER_UNIT" ? (
-            <>
-              <label className="form-field">
-                <span className="label">{t("marketplace.products.fields.unit")}</span>
-                <select value={form.unit} onChange={(event) => setForm({ ...form, unit: event.target.value as "liter" | "item" | "hour" })}>
-                  <option value="item">{t("marketplace.products.units.item")}</option>
-                  <option value="liter">{t("marketplace.products.units.liter")}</option>
-                  <option value="hour">{t("marketplace.products.units.hour")}</option>
-                </select>
-              </label>
-              <label className="form-field">
-                <span className="label">{t("marketplace.products.fields.amountPerUnit")}</span>
-                <input
-                  type="number"
-                  value={form.amountPerUnit}
-                  onChange={(event) => setForm({ ...form, amountPerUnit: event.target.value })}
-                />
-                {formErrors.amountPerUnit ? <span className="error-text">{t("marketplace.products.validation.amount")}</span> : null}
-              </label>
-            </>
+        <div className="stack">
+          <div className="section-title">
+            <h4>{t("marketplace.products.fields.tags")}</h4>
+          </div>
+          <div className="tag-input">
+            <input
+              value={tagInput}
+              onChange={(event) => setTagInput(event.target.value)}
+              placeholder={t("marketplace.products.fields.tags")}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  handleAddTag();
+                }
+              }}
+            />
+            <button className="ghost" type="button" onClick={handleAddTag}>
+              {t("marketplace.products.actions.addTag")}
+            </button>
+          </div>
+          {form.tags.length ? (
+            <div className="tag-list">
+              {form.tags.map((tag) => (
+                <button className="tag" type="button" key={tag} onClick={() => handleRemoveTag(tag)}>
+                  {tag} ×
+                </button>
+              ))}
+            </div>
           ) : null}
         </div>
-        {form.priceModel === "TIERED" ? (
-          <div className="stack">
-            <div className="section-title">
-              <h4>{t("marketplace.products.fields.tiers")}</h4>
-              <button
-                className="ghost"
-                type="button"
-                onClick={() => setForm({ ...form, tiers: [...form.tiers, { from: "", to: "", amount: "" }] })}
-              >
-                {t("marketplace.products.actions.addTier")}
-              </button>
+        <div className="stack">
+          <div className="section-title">
+            <h4>{t("marketplace.products.fields.attributes")}</h4>
+            <button
+              className="ghost"
+              type="button"
+              onClick={() => setForm({ ...form, attributes: [...form.attributes, { key: "", value: "" }] })}
+            >
+              {t("marketplace.products.actions.addAttribute")}
+            </button>
+          </div>
+          {form.attributes.map((attribute, index) => (
+            <div className="form-grid" key={`attribute-${index}`}>
+              <label className="form-field">
+                <span className="label">{t("marketplace.products.fields.attributeKey")}</span>
+                <input
+                  value={attribute.key}
+                  onChange={(event) => {
+                    const next = [...form.attributes];
+                    next[index] = { ...next[index], key: event.target.value };
+                    setForm({ ...form, attributes: next });
+                  }}
+                />
+              </label>
+              <label className="form-field">
+                <span className="label">{t("marketplace.products.fields.attributeValue")}</span>
+                <input
+                  value={attribute.value}
+                  onChange={(event) => {
+                    const next = [...form.attributes];
+                    next[index] = { ...next[index], value: event.target.value };
+                    setForm({ ...form, attributes: next });
+                  }}
+                />
+              </label>
+              <div className="form-grid__actions">
+                <button
+                  className="ghost"
+                  type="button"
+                  onClick={() => {
+                    const next = form.attributes.filter((_, idx) => idx !== index);
+                    setForm({ ...form, attributes: next.length ? next : [{ key: "", value: "" }] });
+                  }}
+                >
+                  {t("actions.delete")}
+                </button>
+              </div>
             </div>
-            {form.tiers.map((tier: TierRow, index: number) => (
-              <div className="form-grid" key={`tier-${index}`}>
-                <label className="form-field">
-                  <span className="label">{t("marketplace.products.fields.tierFrom")}</span>
-                  <input
-                    type="number"
-                    value={tier.from}
-                    onChange={(event) => {
-                      const next = [...form.tiers];
-                      next[index] = { ...next[index], from: event.target.value };
-                      setForm({ ...form, tiers: next });
-                    }}
-                  />
+          ))}
+        </div>
+        <div className="stack">
+          <div className="section-title">
+            <h4>{t("marketplace.products.fields.variants")}</h4>
+            <button
+              className="ghost"
+              type="button"
+              onClick={() => setForm({ ...form, variants: [...form.variants, { name: "", sku: "", props: "" }] })}
+            >
+              {t("marketplace.products.actions.addVariant")}
+            </button>
+          </div>
+          {form.variants.map((variant, index) => (
+            <div className="form-grid" key={`variant-${index}`}>
+              <label className="form-field">
+                <span className="label">{t("marketplace.products.fields.variantName")}</span>
+                <input
+                  value={variant.name}
+                  onChange={(event) => {
+                    const next = [...form.variants];
+                    next[index] = { ...next[index], name: event.target.value };
+                    setForm({ ...form, variants: next });
+                  }}
+                />
+              </label>
+              <label className="form-field">
+                <span className="label">{t("marketplace.products.fields.variantSku")}</span>
+                <input
+                  value={variant.sku}
+                  onChange={(event) => {
+                    const next = [...form.variants];
+                    next[index] = { ...next[index], sku: event.target.value };
+                    setForm({ ...form, variants: next });
+                  }}
+                />
+              </label>
+              <label className="form-field form-grid__full">
+                <span className="label">{t("marketplace.products.fields.variantProps")}</span>
+                <textarea
+                  rows={2}
+                  value={variant.props}
+                  onChange={(event) => {
+                    const next = [...form.variants];
+                    next[index] = { ...next[index], props: event.target.value };
+                    setForm({ ...form, variants: next });
+                  }}
+                />
+                {formErrors[`variant_props_${index}`] ? (
+                  <span className="error-text">{t("marketplace.products.validation.invalidJson")}</span>
+                ) : null}
+              </label>
+              <div className="form-grid__actions">
+                <button
+                  className="ghost"
+                  type="button"
+                  onClick={() => {
+                    const next = form.variants.filter((_, idx) => idx !== index);
+                    setForm({ ...form, variants: next.length ? next : [{ name: "", sku: "", props: "" }] });
+                  }}
+                >
+                  {t("actions.delete")}
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="stack">
+          <div className="section-title">
+            <h4>{t("marketplace.products.fields.media")}</h4>
+          </div>
+          {editing ? (
+            <>
+              <div className="form-grid">
+                <label className="form-field form-grid__full">
+                  <span className="label">{t("marketplace.products.fields.mediaUrl")}</span>
+                  <input value={mediaUrl} onChange={(event) => setMediaUrl(event.target.value)} />
                 </label>
                 <label className="form-field">
-                  <span className="label">{t("marketplace.products.fields.tierTo")}</span>
-                  <input
-                    type="number"
-                    value={tier.to}
-                    onChange={(event) => {
-                      const next = [...form.tiers];
-                      next[index] = { ...next[index], to: event.target.value };
-                      setForm({ ...form, tiers: next });
-                    }}
-                  />
+                  <span className="label">{t("marketplace.products.fields.mediaMime")}</span>
+                  <input value={mediaMime} onChange={(event) => setMediaMime(event.target.value)} />
                 </label>
                 <label className="form-field">
-                  <span className="label">{t("marketplace.products.fields.tierAmount")}</span>
-                  <input
-                    type="number"
-                    value={tier.amount}
-                    onChange={(event) => {
-                      const next = [...form.tiers];
-                      next[index] = { ...next[index], amount: event.target.value };
-                      setForm({ ...form, tiers: next });
-                    }}
-                  />
+                  <span className="label">{t("marketplace.products.fields.mediaSort")}</span>
+                  <input value={mediaSort} onChange={(event) => setMediaSort(event.target.value)} />
                 </label>
                 <div className="form-grid__actions">
-                  <button
-                    className="ghost"
-                    type="button"
-                    onClick={() => {
-                      const next = form.tiers.filter((_, idx) => idx !== index);
-                      setForm({ ...form, tiers: next.length ? next : [{ from: "", to: "", amount: "" }] });
-                    }}
-                  >
-                    {t("actions.delete")}
+                  <button className="ghost" type="button" onClick={handleAddMedia} disabled={isSaving}>
+                    {t("marketplace.products.actions.addMedia")}
                   </button>
                 </div>
               </div>
-            ))}
-          </div>
-        ) : null}
+              {mediaItems.length ? (
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>{t("marketplace.products.fields.mediaUrl")}</th>
+                      <th>{t("marketplace.products.fields.mediaMime")}</th>
+                      <th>{t("marketplace.products.fields.mediaSort")}</th>
+                      <th>{t("common.actions")}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {mediaItems.map((media, index) => (
+                      <tr key={media.attachment_id}>
+                        <td>{media.path}</td>
+                        <td>{media.mime}</td>
+                        <td>{media.sort_index ?? index}</td>
+                        <td>
+                          <div className="table-actions">
+                            <button className="link-button" type="button" onClick={() => handleMoveMedia(media, -1)}>
+                              ↑
+                            </button>
+                            <button className="link-button" type="button" onClick={() => handleMoveMedia(media, 1)}>
+                              ↓
+                            </button>
+                            <button className="link-button danger" type="button" onClick={() => handleRemoveMedia(media)}>
+                              {t("actions.delete")}
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : null}
+            </>
+          ) : (
+            <div className="muted">Сохраните карточку, чтобы добавить медиа.</div>
+          )}
+        </div>
         {actionError ? <div className="error" role="alert">{actionError}</div> : null}
         <div className="actions">
           <button
             className="primary"
             type="button"
             onClick={submitForm}
-            disabled={isSaving || !form.title.trim() || !form.category.trim()}
+            disabled={isSaving || !form.title.trim() || !form.category.trim() || editing?.status === "ARCHIVED"}
           >
             {editing ? t("marketplace.products.actions.saveChanges") : t("marketplace.products.actions.createDraft")}
           </button>

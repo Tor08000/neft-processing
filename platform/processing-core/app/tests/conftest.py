@@ -3,15 +3,18 @@ import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from sqlalchemy.engine import Engine
 from sqlalchemy.engine.url import make_url
 
 from alembic import command
 from alembic.config import Config
 from sqlalchemy import create_engine, inspect, text
+from sqlalchemy.orm import sessionmaker
 from sqlalchemy.exc import OperationalError
 
 import pytest
 from jose import jwt
+from ._db_test_harness import get_test_dsn_or_fail
 from .fixtures.rsa_keys import rsa_keys  # noqa: F401
 
 ROOT_DIR = Path(__file__).resolve()
@@ -50,13 +53,6 @@ for path in (SHARED_PATH, PROCESSING_APP_ROOT, SERVICE_ROOT):
 
 def _running_in_container() -> bool:
     return Path("/.dockerenv").exists() or os.getenv("IN_DOCKER") == "1"
-
-
-if os.getenv("DATABASE_URL_TEST"):
-    os.environ["DATABASE_URL"] = os.environ["DATABASE_URL_TEST"]
-default_container_url = "postgresql+psycopg://neft:neft@postgres:5432/neft"
-if "DATABASE_URL" not in os.environ:
-    os.environ["DATABASE_URL"] = default_container_url
 os.environ.setdefault("NEFT_DB_SCHEMA", "processing_core")
 os.environ.setdefault("NEFT_AUTH_ISSUER", "neft-auth")
 os.environ.setdefault("NEFT_AUTH_AUDIENCE", "neft-admin")
@@ -86,7 +82,7 @@ EXPECTED_AUDIENCE = os.getenv("NEFT_AUTH_AUDIENCE", "neft-admin")
 
 
 def _log_database_url() -> None:
-    raw_url = os.getenv("DATABASE_URL") or ""
+    raw_url = os.getenv("TEST_DATABASE_DSN") or os.getenv("DATABASE_URL_TEST") or os.getenv("DATABASE_URL") or ""
     try:
         parsed = make_url(raw_url)
         safe_url = parsed._replace(password="***").render_as_string(hide_password=False)
@@ -142,6 +138,43 @@ def _uses_postgres(database_url: str) -> bool:
         return make_url(database_url).drivername.startswith("postgresql")
     except Exception:
         return False
+
+
+@pytest.fixture(scope="session")
+def test_db_engine() -> Engine:
+    database_url = get_test_dsn_or_fail()
+    os.environ["DATABASE_URL"] = database_url
+    engine = create_engine(
+        database_url,
+        future=True,
+        connect_args={
+            "options": f"-c search_path={os.getenv('NEFT_DB_SCHEMA', 'processing_core')}",
+            "prepare_threshold": 0,
+        },
+    )
+    parsed = make_url(database_url)
+    if engine.url.render_as_string(hide_password=False) != parsed.render_as_string(hide_password=False):
+        raise RuntimeError("test_db_engine_dsn_mismatch")
+    return engine
+
+
+@pytest.fixture(scope="session")
+def test_db_sessionmaker(test_db_engine: Engine):
+    return sessionmaker(
+        autocommit=False,
+        autoflush=False,
+        expire_on_commit=False,
+        bind=test_db_engine,
+    )
+
+
+@pytest.fixture()
+def test_db_session(test_db_sessionmaker):
+    session = test_db_sessionmaker()
+    try:
+        yield session
+    finally:
+        session.close()
 
 
 def _markexpr_includes(markexpr: str, marker: str) -> bool:
@@ -342,7 +375,11 @@ def ensure_db_ready(request: pytest.FixtureRequest) -> None:
     if _should_skip_db_bootstrap(request.config):
         return
 
-    database_url = os.getenv("DATABASE_URL", "")
+    try:
+        database_url = get_test_dsn_or_fail()
+    except RuntimeError as exc:
+        pytest.fail(str(exc))
+    os.environ["DATABASE_URL"] = database_url
     if not _running_in_container() and "@postgres:" in database_url:
         pytest.fail("processing-core tests require docker compose stack. Run scripts\\test_core_stack.cmd")
     if not _uses_postgres(database_url):

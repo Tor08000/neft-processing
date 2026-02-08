@@ -1,12 +1,16 @@
-export type MarketplaceProductType = "SERVICE" | "PRODUCT";
-export type MarketplacePriceModel = "FIXED" | "PER_UNIT" | "TIERED";
-export type MarketplaceProductStatus = "DRAFT" | "PUBLISHED" | "ARCHIVED";
+export type MarketplaceProductStatus = "DRAFT" | "PENDING_REVIEW" | "ACTIVE" | "SUSPENDED" | "ARCHIVED";
 export type MarketplaceVerificationStatus = "PENDING" | "VERIFIED" | "REJECTED";
 
-export type MarketplacePriceConfig =
-  | { amount: number; currency: "RUB" }
-  | { unit: "liter" | "item" | "hour"; amount_per_unit: number; currency: "RUB" }
-  | { currency: "RUB"; tiers: Array<{ from: number; to?: number | null; amount: number }> };
+export interface MarketplaceProductMedia {
+  attachment_id: string;
+  bucket: string;
+  path: string;
+  checksum?: string | null;
+  size?: number | null;
+  mime?: string | null;
+  sort_index?: number | null;
+  created_at?: string | null;
+}
 
 export interface MarketplacePartnerProfile {
   id: string;
@@ -22,38 +26,37 @@ export interface MarketplacePartnerProfile {
 export interface MarketplaceProductSummary {
   id: string;
   partner_id: string;
-  type: MarketplaceProductType;
   title: string;
   category: string;
-  price_model: MarketplacePriceModel;
-  price_config: MarketplacePriceConfig;
   status: MarketplaceProductStatus;
   updated_at?: string | null;
-  published_at?: string | null;
+  created_at?: string | null;
 }
 
 export interface MarketplaceProduct extends MarketplaceProductSummary {
   description: string;
-  created_at: string;
-  archived_at?: string | null;
+  tags: string[];
+  attributes: Record<string, string | number | boolean | null>;
+  variants: Array<Record<string, unknown>>;
+  media: MarketplaceProductMedia[];
 }
 
 export interface MarketplaceProductInput {
-  type: MarketplaceProductType;
   title: string;
   description: string;
   category: string;
-  price_model: MarketplacePriceModel;
-  price_config: MarketplacePriceConfig;
+  tags: string[];
+  attributes: Record<string, string | number | boolean | null>;
+  variants: Array<Record<string, unknown>>;
 }
 
 export interface MarketplaceProductUpdate {
-  type?: MarketplaceProductType;
   title?: string;
   description?: string;
   category?: string;
-  price_model?: MarketplacePriceModel;
-  price_config?: MarketplacePriceConfig;
+  tags?: string[];
+  attributes?: Record<string, string | number | boolean | null>;
+  variants?: Array<Record<string, unknown>>;
 }
 
 export interface MarketplaceProductListResponse {
