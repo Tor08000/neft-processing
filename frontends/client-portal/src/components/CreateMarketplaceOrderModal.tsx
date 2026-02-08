@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { createMarketplaceOrder } from "../api/marketplace";
+import { useLocation, useNavigate } from "react-router-dom";
+import { createMarketplaceOrder, sendMarketplaceClientEvents } from "../api/marketplace";
 import { useAuth } from "../auth/AuthContext";
 import type { MarketplaceOffer } from "../types/marketplace";
 import { ApiError } from "../api/http";
@@ -23,6 +23,7 @@ export function CreateMarketplaceOrderModal({
 }: CreateMarketplaceOrderModalProps) {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [selectedOfferId, setSelectedOfferId] = useState("");
   const [qty, setQty] = useState("1");
   const [comment, setComment] = useState("");
@@ -67,6 +68,22 @@ export function CreateMarketplaceOrderModal({
         payment_method: "NEFT_INTERNAL",
       });
       const newOrderId = response.data.id ?? null;
+      if (newOrderId) {
+        void sendMarketplaceClientEvents(user, [
+          {
+            event_type: "marketplace.order_created",
+            entity_type: "ORDER",
+            entity_id: newOrderId,
+            source: "client_portal",
+            page: location.pathname,
+            payload: {
+              service_id: serviceId,
+              offer_id: selectedOfferId,
+              qty: qtyValue,
+            },
+          },
+        ]).catch(() => undefined);
+      }
       setOrderId(newOrderId);
       setCorrelationId(response.correlationId);
       setStatus("success");

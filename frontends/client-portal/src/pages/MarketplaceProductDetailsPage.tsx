@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
-import { getMarketplaceProduct } from "../api/marketplace";
+import { Link, useLocation, useParams } from "react-router-dom";
+import { getMarketplaceProduct, sendMarketplaceClientEvents } from "../api/marketplace";
 import { ApiError } from "../api/http";
 import { useAuth } from "../auth/AuthContext";
 import { AppEmptyState, AppErrorState, AppForbiddenState } from "../components/states";
@@ -21,6 +21,7 @@ const ORDERING_ENABLED = import.meta.env.VITE_MARKETPLACE_ORDERING === "1";
 export function MarketplaceProductDetailsPage() {
   const { productId } = useParams<{ productId: string }>();
   const { user } = useAuth();
+  const location = useLocation();
   const { t } = useI18n();
   const { toast, showToast } = useToast();
   const [product, setProduct] = useState<MarketplaceProductDetails | null>(null);
@@ -52,6 +53,37 @@ export function MarketplaceProductDetailsPage() {
   useEffect(() => {
     loadProduct();
   }, [user, productId]);
+
+  useEffect(() => {
+    if (!user || !product) return;
+    if (!product.id) return;
+    try {
+      const key = `marketplace.offer_viewed:${product.id}`;
+      const now = Date.now();
+      const lastSeenRaw = sessionStorage.getItem(key);
+      const lastSeen = lastSeenRaw ? Number(lastSeenRaw) : 0;
+      if (lastSeen && now - lastSeen < 10_000) {
+        return;
+      }
+      sessionStorage.setItem(key, String(now));
+    } catch {
+      // Ignore session storage errors
+    }
+    void sendMarketplaceClientEvents(user, [
+      {
+        event_type: "marketplace.offer_viewed",
+        entity_type: product.type === "SERVICE" ? "SERVICE" : "PRODUCT",
+        entity_id: product.id,
+        source: "client_portal",
+        page: location.pathname,
+        payload: {
+          category: product.category ?? null,
+          partner_id: product.partner?.id ?? null,
+          type: product.type,
+        },
+      },
+    ]).catch(() => undefined);
+  }, [location.pathname, product, user]);
 
   const handleOrderClick = () => {
     if (!ORDERING_ENABLED) {
