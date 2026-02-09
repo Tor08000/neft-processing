@@ -1163,6 +1163,53 @@
       "toast": "Инцидент закрыт."
     }
   },
+  "logisticsFleet": {
+    "title": "Автопарк",
+    "tabs": {
+      "vehicles": "ТС",
+      "drivers": "Водители"
+    },
+    "filters": {
+      "status": "Статус",
+      "search": "Поиск"
+    },
+    "statusAll": "Все",
+    "statusActive": "Активен",
+    "statusInactive": "Неактивен",
+    "pagination": "Страница {page} из {total}",
+    "metaTitle": "Meta JSON",
+    "errors": {
+      "loadFailed": "Не удалось загрузить данные логистики",
+      "noPermission": "Недостаточно прав",
+      "moduleDisabled": "Модуль логистики недоступен"
+    },
+    "vehicles": {
+      "searchPlaceholder": "Госномер, VIN, марка, модель",
+      "emptyTitle": "Нет ТС",
+      "emptyDescription": "ТС появятся после добавления.",
+      "detailTitle": "Детали ТС",
+      "columns": {
+        "plate": "Госномер",
+        "fuelType": "Топливо",
+        "status": "Статус",
+        "makeModel": "Марка/Модель",
+        "vin": "VIN",
+        "actions": "Действия"
+      }
+    },
+    "drivers": {
+      "searchPlaceholder": "Имя или телефон",
+      "emptyTitle": "Нет водителей",
+      "emptyDescription": "Водители появятся после добавления.",
+      "detailTitle": "Детали водителя",
+      "columns": {
+        "name": "Имя",
+        "phone": "Телефон",
+        "status": "Статус",
+        "actions": "Действия"
+      }
+    }
+  },
   "fleet": {
     "roles": {
       "viewer": "viewer",

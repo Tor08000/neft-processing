@@ -1163,6 +1163,53 @@
       "toast": "Incident closed."
     }
   },
+  "logisticsFleet": {
+    "title": "Fleet",
+    "tabs": {
+      "vehicles": "Vehicles",
+      "drivers": "Drivers"
+    },
+    "filters": {
+      "status": "Status",
+      "search": "Search"
+    },
+    "statusAll": "All",
+    "statusActive": "Active",
+    "statusInactive": "Inactive",
+    "pagination": "Page {page} of {total}",
+    "metaTitle": "Meta JSON",
+    "errors": {
+      "loadFailed": "Unable to load logistics data",
+      "noPermission": "Insufficient permissions",
+      "moduleDisabled": "Logistics module is unavailable"
+    },
+    "vehicles": {
+      "searchPlaceholder": "Plate, VIN, make, model",
+      "emptyTitle": "No vehicles",
+      "emptyDescription": "Vehicles will appear after they are added.",
+      "detailTitle": "Vehicle details",
+      "columns": {
+        "plate": "Plate",
+        "fuelType": "Fuel type",
+        "status": "Status",
+        "makeModel": "Make/Model",
+        "vin": "VIN",
+        "actions": "Actions"
+      }
+    },
+    "drivers": {
+      "searchPlaceholder": "Name or phone",
+      "emptyTitle": "No drivers",
+      "emptyDescription": "Drivers will appear after they are added.",
+      "detailTitle": "Driver details",
+      "columns": {
+        "name": "Name",
+        "phone": "Phone",
+        "status": "Status",
+        "actions": "Actions"
+      }
+    }
+  },
   "fleet": {
     "roles": {
       "viewer": "viewer",
