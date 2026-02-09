@@ -108,6 +108,13 @@ const navItems: ClientNavItem[] = [
     audience: "fleet",
   },
   {
+    to: "/logistics/fleet",
+    label: "Логистика · Автопарк",
+    shortLabel: "Логистика",
+    icon: <Package size={18} />,
+    audience: "fleet",
+  },
+  {
     to: "/fleet/employees",
     label: "Пользователи",
     shortLabel: "Люди",
