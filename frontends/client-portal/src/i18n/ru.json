@@ -1210,6 +1210,63 @@
       }
     }
   },
+  "logisticsTrips": {
+    "title": "Рейсы",
+    "detailTitle": "Детали рейса",
+    "filters": {
+      "status": "Статус",
+      "period": "Период",
+      "search": "Поиск"
+    },
+    "columns": {
+      "status": "Статус",
+      "vehicle": "ТС",
+      "driver": "Водитель",
+      "route": "Маршрут",
+      "planned": "План",
+      "actual": "Факт",
+      "actions": "Действия"
+    },
+    "routeSummary": "Маршрут",
+    "plannedLabel": "Плановые даты",
+    "actualLabel": "Фактические даты",
+    "timelineTitle": "Статусная лента",
+    "routeTitle": "Маршрут",
+    "distanceLabel": "Дистанция: {value} км",
+    "etaLabel": "ETA: {value} мин",
+    "currentStatus": "Текущий статус",
+    "statusAll": "Все",
+    "statusCreated": "Создан",
+    "statusInProgress": "В пути",
+    "statusCompleted": "Завершён",
+    "searchPlaceholder": "Номер, водитель, ТС, локация",
+    "pagination": "Страница {page} из {total}",
+    "metaTitle": "Meta JSON",
+    "loading": "Загрузка рейса",
+    "emptyTitle": "Рейсов нет",
+    "emptyDescription": "Рейсы появятся после создания.",
+    "errors": {
+      "loadFailed": "Ошибка загрузки рейсов",
+      "noPermission": "Недостаточно прав",
+      "moduleDisabled": "Модуль логистики недоступен"
+    },
+    "stops": {
+      "emptyTitle": "Нет точек маршрута",
+      "emptyDescription": "Точки появятся, когда маршрут будет доступен.",
+      "columns": {
+        "seq": "№",
+        "type": "Тип",
+        "label": "Локация",
+        "planned": "План",
+        "actual": "Факт"
+      },
+      "types": {
+        "start": "Старт",
+        "stop": "Стоп",
+        "end": "Финиш"
+      }
+    }
+  },
   "fleet": {
     "roles": {
       "viewer": "viewer",

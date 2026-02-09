@@ -77,6 +77,8 @@ import { FleetPolicyCenterOverviewPage } from "./pages/FleetPolicyCenterOverview
 import { FleetIncidentsPage } from "./pages/FleetIncidentsPage";
 import { FleetIncidentDetailsPage } from "./pages/FleetIncidentDetailsPage";
 import { FleetPage } from "./pages/logistics/FleetPage";
+import { TripDetailsPage } from "./pages/logistics/TripDetailsPage";
+import { TripsPage } from "./pages/logistics/TripsPage";
 import { AuditPage } from "./pages/AuditPage";
 import { isPwaMode } from "./pwa/mode";
 import { LegalPage } from "./pages/LegalPage";
@@ -571,6 +573,22 @@ export function App({ initialSession = null }: AppProps) {
                   element={
                     <ModuleGate module="LOGISTICS" capability="LOGISTICS" title="Логистика">
                       <FleetPage />
+                    </ModuleGate>
+                  }
+                />
+                <Route
+                  path="/logistics/trips"
+                  element={
+                    <ModuleGate module="LOGISTICS" capability="LOGISTICS" title="Логистика">
+                      <TripsPage />
+                    </ModuleGate>
+                  }
+                />
+                <Route
+                  path="/logistics/trips/:tripId"
+                  element={
+                    <ModuleGate module="LOGISTICS" capability="LOGISTICS" title="Логистика">
+                      <TripDetailsPage />
                     </ModuleGate>
                   }
                 />
