@@ -1210,6 +1210,63 @@
       }
     }
   },
+  "logisticsTrips": {
+    "title": "Trips",
+    "detailTitle": "Trip details",
+    "filters": {
+      "status": "Status",
+      "period": "Period",
+      "search": "Search"
+    },
+    "columns": {
+      "status": "Status",
+      "vehicle": "Vehicle",
+      "driver": "Driver",
+      "route": "Route",
+      "planned": "Planned",
+      "actual": "Actual",
+      "actions": "Actions"
+    },
+    "routeSummary": "Route summary",
+    "plannedLabel": "Planned window",
+    "actualLabel": "Actual window",
+    "timelineTitle": "Status timeline",
+    "routeTitle": "Route",
+    "distanceLabel": "Distance: {value} km",
+    "etaLabel": "ETA: {value} min",
+    "currentStatus": "Current status",
+    "statusAll": "All",
+    "statusCreated": "Created",
+    "statusInProgress": "In progress",
+    "statusCompleted": "Completed",
+    "searchPlaceholder": "Trip number, driver, vehicle, location",
+    "pagination": "Page {page} of {total}",
+    "metaTitle": "Meta JSON",
+    "loading": "Loading trip",
+    "emptyTitle": "No trips",
+    "emptyDescription": "Trips will appear once they are created.",
+    "errors": {
+      "loadFailed": "Unable to load trips",
+      "noPermission": "Insufficient permissions",
+      "moduleDisabled": "Logistics module is unavailable"
+    },
+    "stops": {
+      "emptyTitle": "No route stops",
+      "emptyDescription": "Stops will appear when the route is available.",
+      "columns": {
+        "seq": "#",
+        "type": "Type",
+        "label": "Location",
+        "planned": "Planned",
+        "actual": "Actual"
+      },
+      "types": {
+        "start": "Start",
+        "stop": "Stop",
+        "end": "End"
+      }
+    }
+  },
   "fleet": {
     "roles": {
       "viewer": "viewer",
