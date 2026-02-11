@@ -68,6 +68,32 @@ export type TripDetail = TripListItem & {
   meta?: Record<string, unknown> | null;
 };
 
+
+export type TripTrackingPoint = {
+  ts: string;
+  lat: number;
+  lon: number;
+  speed_kmh?: number | null;
+  heading?: number | null;
+  source?: "gps" | "manual" | null;
+  accuracy_m?: number | null;
+};
+
+export type TripTrackingResponse = {
+  trip_id: string;
+  items: TripTrackingPoint[];
+  last?: TripTrackingPoint | null;
+};
+
+export type TripEta = {
+  trip_id: string;
+  eta_at?: string | null;
+  eta_minutes?: number | null;
+  updated_at?: string | null;
+  method?: "simple" | "provider" | string | null;
+  confidence?: number | null;
+};
+
 export type BindingDTO = {
   id: string;
   vehicle_id: string;
