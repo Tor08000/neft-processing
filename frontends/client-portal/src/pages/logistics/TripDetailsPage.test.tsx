@@ -4,7 +4,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthProvider } from "../../auth/AuthContext";
 import { TripDetailsPage } from "./TripDetailsPage";
 import type { AuthSession } from "../../api/types";
-import { fetchTripById, fetchTripEta, fetchTripPosition, fetchTripRoute, fetchTripTracking } from "../../api/logistics";
+import {
+  fetchTripById,
+  fetchTripDeviations,
+  fetchTripEta,
+  fetchTripPosition,
+  fetchTripRoute,
+  fetchTripSlaImpact,
+  fetchTripTracking,
+} from "../../api/logistics";
 
 vi.mock("../../api/logistics", () => ({
   fetchTripById: vi.fn(),
@@ -12,6 +20,8 @@ vi.mock("../../api/logistics", () => ({
   fetchTripTracking: vi.fn(),
   fetchTripEta: vi.fn(),
   fetchTripPosition: vi.fn(),
+  fetchTripDeviations: vi.fn(),
+  fetchTripSlaImpact: vi.fn(),
 }));
 
 const session: AuthSession = {
@@ -74,6 +84,29 @@ describe("TripDetailsPage", () => {
       confidence: 0.7,
     });
     vi.mocked(fetchTripPosition).mockResolvedValue({ ts: "2026-02-08T10:15:00Z", lat: 55.7558, lon: 37.6173 });
+    vi.mocked(fetchTripDeviations).mockResolvedValue({
+      trip_id: "trip-1",
+      items: [
+        {
+          id: "dev-1",
+          ts: "2026-02-08T11:05:00Z",
+          type: "LATE_START",
+          severity: "WARN",
+          title: "Late departure",
+          details: "Driver started later than planned",
+          evidence: { delta_minutes: 18 },
+          sla_impact: { impact_level: "LOW", first_response_due_at: "2026-02-08T11:30:00Z", resolve_due_at: "2026-02-08T13:00:00Z" },
+        },
+      ],
+    });
+    vi.mocked(fetchTripSlaImpact).mockResolvedValue({
+      trip_id: "trip-1",
+      impact_level: "LOW",
+      first_response_due_at: "2026-02-08T11:30:00Z",
+      resolve_due_at: "2026-02-08T13:00:00Z",
+      updated_at: "2026-02-08T11:10:00Z",
+      signals: [{ type: "LATE_START", severity: "WARN", delta_minutes: 18 }],
+    });
   });
 
   afterEach(() => {
@@ -151,4 +184,55 @@ describe("TripDetailsPage", () => {
     expect(lastCall?.[2]).toMatchObject({ limit: 200 });
     expect(typeof lastCall?.[2]?.since).toBe("string");
   });
+
+  it("renders deviations tab and list", async () => {
+    renderPage();
+    await screen.findByText(/Статусная лента|Status timeline/);
+    fireEvent.click(screen.getByRole("button", { name: /Отклонения|Deviations/ }));
+    expect(await screen.findByText(/Влияние на SLA|SLA impact/)).toBeInTheDocument();
+    expect(screen.getByText("Late departure")).toBeInTheDocument();
+  });
+
+  it("changes deviation type filter and refetches", async () => {
+    renderPage();
+    await screen.findByText(/Статусная лента|Status timeline/);
+    fireEvent.click(screen.getByRole("button", { name: /Отклонения|Deviations/ }));
+    await screen.findByText("Late departure");
+
+    const before = vi.mocked(fetchTripDeviations).mock.calls.length;
+    fireEvent.change(screen.getByRole("combobox", { name: /Тип отклонения|Deviation type/ }), { target: { value: "ROUTE_DEVIATION" } });
+    await waitFor(() => expect(vi.mocked(fetchTripDeviations).mock.calls.length).toBeGreaterThan(before));
+    const lastCall = vi.mocked(fetchTripDeviations).mock.calls.at(-1);
+    expect(lastCall?.[2]).toMatchObject({ type: "ROUTE_DEVIATION" });
+  });
+
+  it("enables deviations polling only for IN_PROGRESS on deviations tab", async () => {
+    const setIntervalSpy = vi.spyOn(window, "setInterval");
+    renderPage();
+    await screen.findByText(/Статусная лента|Status timeline/);
+
+    const before = setIntervalSpy.mock.calls.filter((call) => call[1] === 30000).length;
+    fireEvent.click(screen.getByRole("button", { name: /Отклонения|Deviations/ }));
+    await screen.findByText(/Влияние на SLA|SLA impact/);
+
+    const after = setIntervalSpy.mock.calls.filter((call) => call[1] === 30000).length;
+    expect(after).toBeGreaterThan(before);
+  });
+
+  it("shows deviations error and retry", async () => {
+    vi.mocked(fetchTripDeviations)
+      .mockRejectedValueOnce(new Error("deviations boom"))
+      .mockRejectedValueOnce(new Error("deviations boom"))
+      .mockResolvedValueOnce({ trip_id: "trip-1", items: [] });
+
+    renderPage();
+    await screen.findByText(/Статусная лента|Status timeline/);
+    fireEvent.click(screen.getByRole("button", { name: /Отклонения|Deviations/ }));
+    expect(await screen.findByText(/Ошибка загрузки отклонений|Unable to load deviations/)).toBeInTheDocument();
+
+    const beforeRetry = vi.mocked(fetchTripDeviations).mock.calls.length;
+    fireEvent.click(screen.getByRole("button", { name: /Повторить|Retry/ }));
+    await waitFor(() => expect(vi.mocked(fetchTripDeviations).mock.calls.length).toBeGreaterThan(beforeRetry));
+  });
+
 });

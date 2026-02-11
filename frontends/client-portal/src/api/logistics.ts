@@ -4,8 +4,11 @@ import type {
   PaginatedResponse,
   RouteDetail,
   TripDetail,
+  TripDeviationsResponse,
+  TripDeviationType,
   TripEta,
   TripListItem,
+  TripSlaImpact,
   TripTrackingResponse,
   VehicleDTO,
 } from "../types/logistics";
@@ -105,4 +108,30 @@ export async function fetchTripPosition(token: string, tripId: string): Promise<
 
 export async function fetchTripEta(token: string, tripId: string): Promise<TripEta> {
   return request<TripEta>(`/v1/logistics/trips/${tripId}/eta`, { method: "GET" }, { token });
+}
+
+
+export type TripDeviationsParams = {
+  since?: string;
+  until?: string;
+  limit?: number;
+  type?: TripDeviationType | "ALL";
+};
+
+export async function fetchTripDeviations(
+  token: string,
+  tripId: string,
+  params?: TripDeviationsParams,
+): Promise<TripDeviationsResponse> {
+  const query = new URLSearchParams();
+  if (params?.since) query.set("since", params.since);
+  if (params?.until) query.set("until", params.until);
+  if (typeof params?.limit === "number") query.set("limit", String(params.limit));
+  if (params?.type && params.type !== "ALL") query.set("type", params.type);
+  const suffix = query.toString();
+  return request<TripDeviationsResponse>(`/v1/logistics/trips/${tripId}/deviations${suffix ? `?${suffix}` : ""}`, { method: "GET" }, { token });
+}
+
+export async function fetchTripSlaImpact(token: string, tripId: string): Promise<TripSlaImpact> {
+  return request<TripSlaImpact>(`/v1/logistics/trips/${tripId}/sla-impact`, { method: "GET" }, { token });
 }

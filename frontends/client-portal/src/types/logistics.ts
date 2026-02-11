@@ -94,6 +94,52 @@ export type TripEta = {
   confidence?: number | null;
 };
 
+export type TripDeviationType = "LATE_START" | "ROUTE_DEVIATION" | "UNEXPECTED_STOP";
+
+export type TripDeviationSeverity = "INFO" | "WARN" | "CRITICAL";
+
+export type TripSlaImpactLevel = "NONE" | "LOW" | "MEDIUM" | "HIGH";
+
+export type TripDeviationEvidence = {
+  planned_at?: string | null;
+  actual_at?: string | null;
+  delta_minutes?: number | null;
+  lat?: number | null;
+  lon?: number | null;
+  distance_off_route_km?: number | null;
+  stop_minutes?: number | null;
+};
+
+export type TripSlaImpact = {
+  trip_id?: string;
+  impact_level: TripSlaImpactLevel;
+  signals?: Array<{
+    type: TripDeviationType;
+    severity?: TripDeviationSeverity;
+    delta_minutes?: number | null;
+  }>;
+  first_response_due_at?: string | null;
+  resolve_due_at?: string | null;
+  updated_at?: string | null;
+  consequence?: string | null;
+};
+
+export type TripDeviationEvent = {
+  id: string;
+  ts: string;
+  type: TripDeviationType;
+  severity: TripDeviationSeverity;
+  title: string;
+  details?: string | null;
+  evidence?: TripDeviationEvidence | null;
+  sla_impact?: TripSlaImpact | null;
+};
+
+export type TripDeviationsResponse = {
+  trip_id: string;
+  items: TripDeviationEvent[];
+};
+
 export type BindingDTO = {
   id: string;
   vehicle_id: string;

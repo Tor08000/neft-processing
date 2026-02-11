@@ -1269,7 +1269,8 @@
     "tabs": {
       "route": "Маршрут",
       "tracking": "Трекинг",
-      "meta": "Meta"
+      "meta": "Meta",
+      "deviations": "Отклонения"
     },
     "tracking": {
       "lastKnownPosition": "Последняя позиция",
@@ -1304,6 +1305,43 @@
       "errors": {
         "loadFailed": "Ошибка загрузки трекинга",
         "etaFailed": "Ошибка загрузки ETA"
+      }
+    },
+    "deviations": {
+      "title": "События отклонений",
+      "open": "Открыть",
+      "emptyTitle": "Отклонений не найдено",
+      "emptyDescription": "По выбранному фильтру отклонений нет.",
+      "filters": {
+        "type": "Тип отклонения",
+        "all": "Все типы"
+      },
+      "columns": {
+        "time": "Время",
+        "type": "Тип",
+        "severity": "Тяжесть",
+        "title": "Заголовок",
+        "summary": "Кратко",
+        "actions": "Действия"
+      },
+      "types": {
+        "lateStart": "Опоздание старта",
+        "routeDeviation": "Сход с маршрута",
+        "unexpectedStop": "Неожиданная остановка"
+      },
+      "evidence": {
+        "delta": "Опоздание: {value} мин",
+        "offRoute": "Вне маршрута: {value} км",
+        "stop": "Остановка: {value} мин"
+      },
+      "sla": {
+        "title": "Влияние на SLA",
+        "firstResponseDueAt": "Дедлайн первого ответа",
+        "resolveDueAt": "Дедлайн решения",
+        "counts": "События (late / route / stop)"
+      },
+      "errors": {
+        "loadFailed": "Ошибка загрузки отклонений"
       }
     }
   },

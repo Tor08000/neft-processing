@@ -1269,7 +1269,8 @@
     "tabs": {
       "route": "Route",
       "tracking": "Tracking",
-      "meta": "Meta"
+      "meta": "Meta",
+      "deviations": "Deviations"
     },
     "tracking": {
       "lastKnownPosition": "Last known position",
@@ -1304,6 +1305,43 @@
       "errors": {
         "loadFailed": "Unable to load tracking data",
         "etaFailed": "Unable to load ETA"
+      }
+    },
+    "deviations": {
+      "title": "Deviation events",
+      "open": "Open",
+      "emptyTitle": "No deviations found",
+      "emptyDescription": "Trip has no recorded deviations for selected filter.",
+      "filters": {
+        "type": "Deviation type",
+        "all": "All types"
+      },
+      "columns": {
+        "time": "Time",
+        "type": "Type",
+        "severity": "Severity",
+        "title": "Title",
+        "summary": "Summary",
+        "actions": "Actions"
+      },
+      "types": {
+        "lateStart": "Late start",
+        "routeDeviation": "Route deviation",
+        "unexpectedStop": "Unexpected stop"
+      },
+      "evidence": {
+        "delta": "Delay: {value} min",
+        "offRoute": "Off route: {value} km",
+        "stop": "Stop: {value} min"
+      },
+      "sla": {
+        "title": "SLA impact",
+        "firstResponseDueAt": "First response due",
+        "resolveDueAt": "Resolve due",
+        "counts": "Events (late / route / stop)"
+      },
+      "errors": {
+        "loadFailed": "Unable to load deviations"
       }
     }
   },
