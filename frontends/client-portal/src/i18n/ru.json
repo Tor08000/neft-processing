@@ -1265,6 +1265,46 @@
         "stop": "Стоп",
         "end": "Финиш"
       }
+    },
+    "tabs": {
+      "route": "Маршрут",
+      "tracking": "Трекинг",
+      "meta": "Meta"
+    },
+    "tracking": {
+      "lastKnownPosition": "Последняя позиция",
+      "positionTime": "Время",
+      "positionCoords": "Координаты",
+      "positionSpeed": "Скорость",
+      "positionAccuracy": "Точность",
+      "copyCoords": "Копировать координаты",
+      "copied": "Скопировано",
+      "breadcrumbs": {
+        "title": "Трек",
+        "windowLabel": "Окно трекинга",
+        "window30m": "Последние 30 минут",
+        "window2h": "Последние 2 часа",
+        "window24h": "Последние 24 часа",
+        "emptyTitle": "Нет точек трека",
+        "emptyDescription": "Точки появятся после начала движения.",
+        "columns": {
+          "time": "Время",
+          "coords": "Широта/Долгота",
+          "speed": "Скорость, км/ч"
+        }
+      },
+      "eta": {
+        "title": "Обновления ETA",
+        "etaAt": "ETA на",
+        "etaMinutes": "ETA, минут",
+        "updatedAt": "Обновлено",
+        "method": "Метод",
+        "confidence": "Уверенность"
+      },
+      "errors": {
+        "loadFailed": "Ошибка загрузки трекинга",
+        "etaFailed": "Ошибка загрузки ETA"
+      }
     }
   },
   "fleet": {

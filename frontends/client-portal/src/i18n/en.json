@@ -1265,6 +1265,46 @@
         "stop": "Stop",
         "end": "End"
       }
+    },
+    "tabs": {
+      "route": "Route",
+      "tracking": "Tracking",
+      "meta": "Meta"
+    },
+    "tracking": {
+      "lastKnownPosition": "Last known position",
+      "positionTime": "Time",
+      "positionCoords": "Coordinates",
+      "positionSpeed": "Speed",
+      "positionAccuracy": "Accuracy",
+      "copyCoords": "Copy coordinates",
+      "copied": "Copied",
+      "breadcrumbs": {
+        "title": "Breadcrumbs",
+        "windowLabel": "Tracking window",
+        "window30m": "Last 30 minutes",
+        "window2h": "Last 2 hours",
+        "window24h": "Last 24 hours",
+        "emptyTitle": "No tracking points",
+        "emptyDescription": "Tracking points will appear when movement starts.",
+        "columns": {
+          "time": "Time",
+          "coords": "Lat/Lon",
+          "speed": "Speed, km/h"
+        }
+      },
+      "eta": {
+        "title": "ETA updates",
+        "etaAt": "ETA at",
+        "etaMinutes": "ETA minutes",
+        "updatedAt": "Updated at",
+        "method": "Method",
+        "confidence": "Confidence"
+      },
+      "errors": {
+        "loadFailed": "Unable to load tracking data",
+        "etaFailed": "Unable to load ETA"
+      }
     }
   },
   "fleet": {

@@ -1,5 +1,14 @@
 import { request } from "./http";
-import type { DriverDTO, PaginatedResponse, RouteDetail, TripDetail, TripListItem, VehicleDTO } from "../types/logistics";
+import type {
+  DriverDTO,
+  PaginatedResponse,
+  RouteDetail,
+  TripDetail,
+  TripEta,
+  TripListItem,
+  TripTrackingResponse,
+  VehicleDTO,
+} from "../types/logistics";
 
 export type LogisticsListParams = {
   status?: string;
@@ -13,6 +22,11 @@ export type TripListParams = LogisticsListParams & {
   date_to?: string;
   vehicle_id?: string;
   driver_id?: string;
+};
+
+export type TripTrackingParams = {
+  since?: string;
+  limit?: number;
 };
 
 const buildQuery = (params?: LogisticsListParams): string => {
@@ -71,4 +85,24 @@ export async function fetchTripById(token: string, tripId: string): Promise<Trip
 
 export async function fetchTripRoute(token: string, tripId: string): Promise<RouteDetail> {
   return request<RouteDetail>(`/v1/logistics/trips/${tripId}/route`, { method: "GET" }, { token });
+}
+
+export async function fetchTripTracking(
+  token: string,
+  tripId: string,
+  params?: TripTrackingParams,
+): Promise<TripTrackingResponse> {
+  const query = new URLSearchParams();
+  if (params?.since) query.set("since", params.since);
+  if (typeof params?.limit === "number") query.set("limit", String(params.limit));
+  const suffix = query.toString();
+  return request<TripTrackingResponse>(`/v1/logistics/trips/${tripId}/tracking${suffix ? `?${suffix}` : ""}`, { method: "GET" }, { token });
+}
+
+export async function fetchTripPosition(token: string, tripId: string): Promise<TripTrackingResponse["last"]> {
+  return request<TripTrackingResponse["last"]>(`/v1/logistics/trips/${tripId}/position`, { method: "GET" }, { token });
+}
+
+export async function fetchTripEta(token: string, tripId: string): Promise<TripEta> {
+  return request<TripEta>(`/v1/logistics/trips/${tripId}/eta`, { method: "GET" }, { token });
 }
