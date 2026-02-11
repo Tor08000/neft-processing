@@ -79,6 +79,7 @@ import { FleetIncidentDetailsPage } from "./pages/FleetIncidentDetailsPage";
 import { FleetPage } from "./pages/logistics/FleetPage";
 import { TripDetailsPage } from "./pages/logistics/TripDetailsPage";
 import { TripsPage } from "./pages/logistics/TripsPage";
+import { FuelControlPage } from "./pages/logistics/FuelControlPage";
 import { AuditPage } from "./pages/AuditPage";
 import { isPwaMode } from "./pwa/mode";
 import { LegalPage } from "./pages/LegalPage";
@@ -589,6 +590,14 @@ export function App({ initialSession = null }: AppProps) {
                   element={
                     <ModuleGate module="LOGISTICS" capability="LOGISTICS" title="Логистика">
                       <TripDetailsPage />
+                    </ModuleGate>
+                  }
+                />
+                <Route
+                  path="/logistics/fuel-control"
+                  element={
+                    <ModuleGate module="LOGISTICS" capability="LOGISTICS" title="Логистика">
+                      <FuelControlPage />
                     </ModuleGate>
                   }
                 />

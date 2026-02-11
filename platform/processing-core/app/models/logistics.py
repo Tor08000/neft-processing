@@ -90,6 +90,36 @@ class LogisticsRiskSignalType(str, Enum):
     VELOCITY_ANOMALY = "VELOCITY_ANOMALY"
 
 
+class LogisticsFuelLinkReason(str, Enum):
+    TIME_WINDOW_MATCH = "TIME_WINDOW_MATCH"
+    ROUTE_PROXIMITY_MATCH = "ROUTE_PROXIMITY_MATCH"
+    STATION_ON_ROUTE = "STATION_ON_ROUTE"
+    MANUAL_LINK = "MANUAL_LINK"
+
+
+class LogisticsFuelLinkedBy(str, Enum):
+    SYSTEM = "SYSTEM"
+    USER = "USER"
+
+
+class LogisticsFuelAlertType(str, Enum):
+    OUT_OF_TIME_WINDOW = "OUT_OF_TIME_WINDOW"
+    OUT_OF_ROUTE = "OUT_OF_ROUTE"
+    HIGH_CONSUMPTION = "HIGH_CONSUMPTION"
+
+
+class LogisticsFuelAlertSeverity(str, Enum):
+    INFO = "INFO"
+    WARN = "WARN"
+    CRITICAL = "CRITICAL"
+
+
+class LogisticsFuelAlertStatus(str, Enum):
+    OPEN = "OPEN"
+    ACKED = "ACKED"
+    CLOSED = "CLOSED"
+
+
 class LogisticsOrder(Base):
     __tablename__ = "logistics_orders"
     __table_args__ = (
@@ -325,6 +355,44 @@ class LogisticsRiskSignal(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 
+class LogisticsFuelLink(Base):
+    __tablename__ = "logistics_fuel_links"
+    __table_args__ = (
+        UniqueConstraint("fuel_tx_id", name="uq_logistics_fuel_links_fuel_tx_id"),
+        Index("ix_logistics_fuel_links_trip_id", "trip_id"),
+        Index("ix_logistics_fuel_links_client_created", "client_id", "created_at"),
+    )
+
+    id = Column(GUID(), primary_key=True, default=new_uuid_str)
+    client_id = Column(String(64), nullable=False, index=True)
+    trip_id = Column(GUID(), ForeignKey("logistics_orders.id"), nullable=False)
+    fuel_tx_id = Column(GUID(), ForeignKey("fuel_transactions.id"), nullable=False)
+    score = Column(Integer, nullable=False)
+    reason = Column(ExistingEnum(LogisticsFuelLinkReason, name="logistics_fuel_link_reason"), nullable=False)
+    linked_by = Column(ExistingEnum(LogisticsFuelLinkedBy, name="logistics_fuel_linked_by"), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class LogisticsFuelAlert(Base):
+    __tablename__ = "logistics_fuel_alerts"
+    __table_args__ = (
+        Index("ix_logistics_fuel_alerts_client_created", "client_id", "created_at"),
+        Index("ix_logistics_fuel_alerts_trip_id", "trip_id"),
+    )
+
+    id = Column(GUID(), primary_key=True, default=new_uuid_str)
+    client_id = Column(String(64), nullable=False, index=True)
+    trip_id = Column(GUID(), ForeignKey("logistics_orders.id"), nullable=True)
+    fuel_tx_id = Column(GUID(), ForeignKey("fuel_transactions.id"), nullable=False, index=True)
+    type = Column(ExistingEnum(LogisticsFuelAlertType, name="logistics_fuel_alert_type"), nullable=False)
+    severity = Column(ExistingEnum(LogisticsFuelAlertSeverity, name="logistics_fuel_alert_severity"), nullable=False)
+    title = Column(String(256), nullable=False)
+    details = Column(String(1024), nullable=True)
+    evidence = Column(JSON, nullable=True)
+    status = Column(ExistingEnum(LogisticsFuelAlertStatus, name="logistics_fuel_alert_status"), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
 __all__ = [
     "LogisticsOrder",
     "LogisticsOrderType",
@@ -350,4 +418,11 @@ __all__ = [
     "LogisticsRiskSignal",
     "LogisticsRiskSignalType",
     "LogisticsRouteSnapshot",
+    "LogisticsFuelLink",
+    "LogisticsFuelLinkReason",
+    "LogisticsFuelLinkedBy",
+    "LogisticsFuelAlert",
+    "LogisticsFuelAlertType",
+    "LogisticsFuelAlertSeverity",
+    "LogisticsFuelAlertStatus",
 ]

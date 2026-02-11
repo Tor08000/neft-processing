@@ -1502,5 +1502,8 @@
       "merchantPlaceholder": "Поиск мерчанта",
       "noSummary": "Нет сводки расходов"
     }
+  },
+  "menu": {
+    "logisticsFuelControl": "Контроль топлива"
   }
 }

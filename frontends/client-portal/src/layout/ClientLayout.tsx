@@ -122,6 +122,13 @@ const navItems: ClientNavItem[] = [
     audience: "fleet",
   },
   {
+    to: "/logistics/fuel-control",
+    label: "Логистика · Топливо",
+    shortLabel: "Топливо",
+    icon: <Package size={18} />,
+    audience: "fleet",
+  },
+  {
     to: "/fleet/employees",
     label: "Пользователи",
     shortLabel: "Люди",
