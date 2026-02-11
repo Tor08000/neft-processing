@@ -2,11 +2,24 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext";
 import { useI18n } from "../../i18n";
-import { fetchTripById, fetchTripEta, fetchTripPosition, fetchTripRoute, fetchTripTracking } from "../../api/logistics";
+import {
+  fetchTripById,
+  fetchTripDeviations,
+  fetchTripEta,
+  fetchTripPosition,
+  fetchTripRoute,
+  fetchTripSlaImpact,
+  fetchTripTracking,
+} from "../../api/logistics";
 import type {
   RouteDetail,
   TripDetail,
+  TripDeviationEvent,
+  TripDeviationSeverity,
+  TripDeviationType,
+  TripDeviationsResponse,
   TripEta,
+  TripSlaImpact,
   TripStatus,
   TripStop,
   TripTrackingPoint,
@@ -22,6 +35,8 @@ import { formatDateTime } from "../../utils/format";
 
 const statusSteps: TripStatus[] = ["CREATED", "IN_PROGRESS", "COMPLETED"];
 const TRACKING_LIMIT = 200;
+const DEVIATIONS_LIMIT = 200;
+const DEVIATIONS_POLL_INTERVAL_MS = 30000;
 
 const isModuleDisabledError = (error: ApiError) => {
   const code = error.errorCode ?? "";
@@ -83,6 +98,65 @@ const formatCoords = (point: TripTrackingPoint | null, fallback: string) => {
 
 const createSinceFromWindow = (windowKey: TrackingWindow) => new Date(Date.now() - windowToMs[windowKey]).toISOString();
 
+const deviationTypeLabels: Record<TripDeviationType, string> = {
+  LATE_START: "lateStart",
+  ROUTE_DEVIATION: "routeDeviation",
+  UNEXPECTED_STOP: "unexpectedStop",
+};
+
+const deviationTypeValues: Array<"ALL" | TripDeviationType> = ["ALL", "LATE_START", "ROUTE_DEVIATION", "UNEXPECTED_STOP"];
+
+const severityClass = (severity?: TripDeviationSeverity | null) => {
+  if (severity === "CRITICAL") return "neft-chip neft-chip-danger";
+  if (severity === "WARN") return "neft-chip neft-chip-warn";
+  return "neft-chip neft-chip-muted";
+};
+
+const impactClass = (impact?: TripSlaImpact["impact_level"] | null) => {
+  if (impact === "HIGH") return "neft-chip neft-chip-danger";
+  if (impact === "MEDIUM") return "neft-chip neft-chip-warn";
+  if (impact === "LOW") return "neft-chip neft-chip-ok";
+  return "neft-chip neft-chip-muted";
+};
+
+const asDeviationType = (value: unknown): TripDeviationType | null => {
+  if (value === "LATE_START" || value === "ROUTE_DEVIATION" || value === "UNEXPECTED_STOP") return value;
+  return null;
+};
+
+const asDeviationSeverity = (value: unknown): TripDeviationSeverity => {
+  if (value === "WARN" || value === "CRITICAL" || value === "INFO") return value;
+  return "INFO";
+};
+
+const normalizeTripDeviationsResponse = (tripId: string, value: unknown): TripDeviationsResponse => {
+  const payload = value as Partial<TripDeviationsResponse> | null;
+  const itemsRaw = Array.isArray(payload?.items) ? payload.items : [];
+  const items = itemsRaw
+    .map((entry) => {
+      if (!entry || typeof entry !== "object") return null;
+      const raw = entry as Record<string, unknown>;
+      const type = asDeviationType(raw.type);
+      if (!type || typeof raw.id !== "string" || typeof raw.ts !== "string") return null;
+      return {
+        id: raw.id,
+        ts: raw.ts,
+        type,
+        severity: asDeviationSeverity(raw.severity),
+        title: typeof raw.title === "string" ? raw.title : type,
+        details: typeof raw.details === "string" ? raw.details : null,
+        evidence: (raw.evidence && typeof raw.evidence === "object" ? raw.evidence : null) as TripDeviationEvent["evidence"],
+        sla_impact: (raw.sla_impact && typeof raw.sla_impact === "object" ? raw.sla_impact : null) as TripDeviationEvent["sla_impact"],
+      } satisfies TripDeviationEvent;
+    })
+    .filter((item): item is TripDeviationEvent => Boolean(item));
+
+  return {
+    trip_id: typeof payload?.trip_id === "string" ? payload.trip_id : tripId,
+    items,
+  };
+};
+
 export function TripDetailsPage() {
   const { user } = useAuth();
   const { t } = useI18n();
@@ -94,7 +168,7 @@ export function TripDetailsPage() {
   const [error, setError] = useState<string | null>(null);
   const [trip, setTrip] = useState<TripDetail | null>(null);
   const [route, setRoute] = useState<RouteDetail | null>(null);
-  const [activeTab, setActiveTab] = useState<"route" | "tracking" | "meta">("route");
+  const [activeTab, setActiveTab] = useState<"route" | "tracking" | "deviations" | "meta">("route");
 
   const [trackingWindow, setTrackingWindow] = useState<TrackingWindow>("30m");
   const [tracking, setTracking] = useState<TripTrackingResponse | null>(null);
@@ -104,7 +178,14 @@ export function TripDetailsPage() {
   const [etaError, setEtaError] = useState<string | null>(null);
   const [lastPosition, setLastPosition] = useState<TripTrackingPoint | null>(null);
   const [copied, setCopied] = useState(false);
+  const [deviationTypeFilter, setDeviationTypeFilter] = useState<"ALL" | TripDeviationType>("ALL");
+  const [deviations, setDeviations] = useState<TripDeviationEvent[]>([]);
+  const [deviationsLoading, setDeviationsLoading] = useState(false);
+  const [deviationsError, setDeviationsError] = useState<string | null>(null);
+  const [slaImpact, setSlaImpact] = useState<TripSlaImpact | null>(null);
+  const [selectedDeviation, setSelectedDeviation] = useState<TripDeviationEvent | null>(null);
   const lastTsRef = useRef<string | null>(null);
+  const lastDeviationRef = useRef<string | null>(null);
 
   const loadTrip = useCallback(async () => {
     if (!user?.token || !tripId) {
@@ -202,14 +283,74 @@ export function TripDetailsPage() {
     }
   }, [t, tripId, user?.token]);
 
+  const loadDeviations = useCallback(
+    async (force = false) => {
+      if (!user?.token || !tripId) return;
+      if (!force) setDeviationsLoading(true);
+      setDeviationsError(null);
+      try {
+        const response = normalizeTripDeviationsResponse(
+          tripId,
+          await fetchTripDeviations(user.token, tripId, { limit: DEVIATIONS_LIMIT, type: deviationTypeFilter }),
+        );
+        const lastItem = response.items[0];
+        const dedupKey = lastItem ? `${lastItem.id}:${lastItem.ts}` : "empty";
+        if (!force && dedupKey === lastDeviationRef.current) {
+          setDeviationsLoading(false);
+          return;
+        }
+        lastDeviationRef.current = dedupKey;
+        setDeviations(response.items);
+        if (!slaImpact && response.items[0]?.sla_impact) {
+          setSlaImpact(response.items[0].sla_impact);
+        }
+      } catch (errorValue) {
+        setDeviationsError(errorValue instanceof Error ? errorValue.message : t("logisticsTrips.deviations.errors.loadFailed"));
+      } finally {
+        setDeviationsLoading(false);
+      }
+    },
+    [deviationTypeFilter, slaImpact, t, tripId, user?.token],
+  );
+
+  const loadSlaImpact = useCallback(async () => {
+    if (!user?.token || !tripId) return;
+    try {
+      const response = await fetchTripSlaImpact(user.token, tripId);
+      setSlaImpact(response);
+    } catch {
+      // optional endpoint may not be available; fallback to event payload
+    }
+  }, [tripId, user?.token]);
+
   const inProgress = trip?.status === "IN_PROGRESS";
   const trackingTabActive = activeTab === "tracking";
+  const deviationsTabActive = activeTab === "deviations";
 
   useEffect(() => {
     if (!trackingTabActive) return;
     void loadTracking(true);
     void loadEta();
   }, [loadEta, loadTracking, trackingTabActive]);
+
+
+  useEffect(() => {
+    if (!deviationsTabActive) return;
+    void loadDeviations(true);
+    void loadSlaImpact();
+  }, [deviationsTabActive, loadDeviations, loadSlaImpact]);
+
+  useEffect(() => {
+    if (!deviationsTabActive || !inProgress) return;
+    const timer = window.setInterval(() => {
+      void loadDeviations();
+      void loadSlaImpact();
+    }, DEVIATIONS_POLL_INTERVAL_MS);
+
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [deviationsTabActive, inProgress, loadDeviations, loadSlaImpact]);
 
   useEffect(() => {
     if (!trackingTabActive || !inProgress) return;
@@ -285,6 +426,43 @@ export function TripDetailsPage() {
         key: "speed",
         title: t("logisticsTrips.tracking.breadcrumbs.columns.speed"),
         render: (row) => (typeof row.speed_kmh === "number" ? row.speed_kmh.toFixed(1) : t("common.notAvailable")),
+      },
+    ],
+    [t],
+  );
+
+  const deviationColumns: Column<TripDeviationEvent>[] = useMemo(
+    () => [
+      { key: "ts", title: t("logisticsTrips.deviations.columns.time"), render: (row) => formatDateValue(row.ts, t("common.notAvailable")) },
+      {
+        key: "type",
+        title: t("logisticsTrips.deviations.columns.type"),
+        render: (row) => <span className="neft-chip neft-chip-muted">{t(`logisticsTrips.deviations.types.${deviationTypeLabels[row.type]}`)}</span>,
+      },
+      {
+        key: "severity",
+        title: t("logisticsTrips.deviations.columns.severity"),
+        render: (row) => <span className={severityClass(row.severity)}>{row.severity}</span>,
+      },
+      { key: "title", title: t("logisticsTrips.deviations.columns.title"), render: (row) => row.title },
+      {
+        key: "summary",
+        title: t("logisticsTrips.deviations.columns.summary"),
+        render: (row) => {
+          if (typeof row.evidence?.delta_minutes === "number") return t("logisticsTrips.deviations.evidence.delta", { value: row.evidence.delta_minutes });
+          if (typeof row.evidence?.distance_off_route_km === "number") return t("logisticsTrips.deviations.evidence.offRoute", { value: row.evidence.distance_off_route_km });
+          if (typeof row.evidence?.stop_minutes === "number") return t("logisticsTrips.deviations.evidence.stop", { value: row.evidence.stop_minutes });
+          return row.details ?? t("common.notAvailable");
+        },
+      },
+      {
+        key: "open",
+        title: t("logisticsTrips.deviations.columns.actions"),
+        render: (row) => (
+          <button type="button" className="ghost" onClick={(event) => { event.stopPropagation(); setSelectedDeviation(row); }}>
+            {t("logisticsTrips.deviations.open")}
+          </button>
+        ),
       },
     ],
     [t],
@@ -391,6 +569,9 @@ export function TripDetailsPage() {
         </button>
         <button type="button" className={activeTab === "tracking" ? "secondary" : "ghost"} onClick={() => setActiveTab("tracking")}>
           {t("logisticsTrips.tabs.tracking")}
+        </button>
+        <button type="button" className={activeTab === "deviations" ? "secondary" : "ghost"} onClick={() => setActiveTab("deviations")}>
+          {t("logisticsTrips.tabs.deviations")}
         </button>
         <button type="button" className={activeTab === "meta" ? "secondary" : "ghost"} onClick={() => setActiveTab("meta")}>
           {t("logisticsTrips.tabs.meta")}
@@ -507,6 +688,77 @@ export function TripDetailsPage() {
               </div>
             )}
           </div>
+        </>
+      ) : null}
+
+      {activeTab === "deviations" ? (
+        <>
+          <div className="card stack">
+            <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+              <h2>{t("logisticsTrips.deviations.sla.title")}</h2>
+              <span className={impactClass(slaImpact?.impact_level ?? "NONE")}>{slaImpact?.impact_level ?? "NONE"}</span>
+            </div>
+            <div className="grid two">
+              <div>
+                <div className="muted small">{t("logisticsTrips.deviations.sla.firstResponseDueAt")}</div>
+                <div>{formatDateValue(slaImpact?.first_response_due_at, t("common.notAvailable"))}</div>
+              </div>
+              <div>
+                <div className="muted small">{t("logisticsTrips.deviations.sla.resolveDueAt")}</div>
+                <div>{formatDateValue(slaImpact?.resolve_due_at, t("common.notAvailable"))}</div>
+              </div>
+              <div>
+                <div className="muted small">{t("logisticsTrips.deviations.sla.counts")}</div>
+                <div>
+                  {deviations.filter((item) => item.type === "LATE_START").length} / {deviations.filter((item) => item.type === "ROUTE_DEVIATION").length} / {deviations.filter((item) => item.type === "UNEXPECTED_STOP").length}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="card stack">
+            <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+              <h2>{t("logisticsTrips.deviations.title")}</h2>
+              <select aria-label={t("logisticsTrips.deviations.filters.type")} value={deviationTypeFilter} onChange={(event) => setDeviationTypeFilter(event.target.value as "ALL" | TripDeviationType)}>
+                {deviationTypeValues.map((value) => (
+                  <option key={value} value={value}>
+                    {value === "ALL" ? t("logisticsTrips.deviations.filters.all") : t(`logisticsTrips.deviations.types.${deviationTypeLabels[value]}`)}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <Table
+              columns={deviationColumns}
+              data={deviations}
+              loading={deviationsLoading}
+              errorState={
+                deviationsError
+                  ? {
+                      title: t("logisticsTrips.deviations.errors.loadFailed"),
+                      description: deviationsError,
+                      actionLabel: t("errors.retry"),
+                      actionOnClick: () => void loadDeviations(true),
+                    }
+                  : undefined
+              }
+              emptyState={{ title: t("logisticsTrips.deviations.emptyTitle"), description: t("logisticsTrips.deviations.emptyDescription") }}
+            />
+          </div>
+
+          {selectedDeviation ? (
+            <div className="modal-backdrop" role="dialog" aria-modal="true">
+              <div className="modal-card stack">
+                <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+                  <h3>{selectedDeviation.title}</h3>
+                  <button type="button" className="ghost" onClick={() => setSelectedDeviation(null)}>
+                    {t("common.close")}
+                  </button>
+                </div>
+                <div>{selectedDeviation.details ?? t("common.notAvailable")}</div>
+                <pre className="mono">{formatMeta(selectedDeviation.evidence as Record<string, unknown> | null)}</pre>
+              </div>
+            </div>
+          ) : null}
         </>
       ) : null}
 
