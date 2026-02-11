@@ -1,11 +1,24 @@
 from __future__ import annotations
 
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.models.logistics import LogisticsOrderStatus
+from app.models.logistics import (
+    LogisticsFuelAlertSeverity,
+    LogisticsFuelAlertStatus,
+    LogisticsFuelAlertType,
+    LogisticsOrderStatus,
+)
 from app.schemas.logistics import (
+    LogisticsFuelAlertOut,
+    LogisticsFuelLinkerRunOut,
+    LogisticsFuelReportItemOut,
+    LogisticsFuelUnlinkedItemOut,
+    LogisticsManualFuelLinkIn,
+    LogisticsTripFuelOut,
     LogisticsETASnapshotOut,
     LogisticsOrderCreate,
     LogisticsOrderOut,
@@ -19,6 +32,7 @@ from app.schemas.logistics import (
 )
 from app.services.audit_service import request_context_from_request
 from app.services.logistics import eta, orders, repository, routes, tracking
+from app.services.logistics import fuel_linker_service
 from app.services.logistics.orders import LogisticsOrderError
 from app.services.logistics.routes import LogisticsRouteError
 from app.services.logistics.tracking import LogisticsTrackingError
@@ -215,3 +229,120 @@ def get_eta_endpoint(
     if not snapshot:
         raise HTTPException(status_code=404, detail="eta_not_available")
     return LogisticsETASnapshotOut.model_validate(snapshot)
+
+
+@router.post("/fuel/linker:run", response_model=LogisticsFuelLinkerRunOut)
+def run_fuel_linker_endpoint(
+    date_from: datetime = Query(...),
+    date_to: datetime = Query(...),
+    db: Session = Depends(get_db),
+) -> LogisticsFuelLinkerRunOut:
+    result = fuel_linker_service.run_linker(db, date_from=date_from, date_to=date_to)
+    return LogisticsFuelLinkerRunOut(
+        processed=result.processed,
+        linked=result.linked,
+        unlinked=result.unlinked,
+        alerts_created=result.alerts_created,
+    )
+
+
+@router.get("/fuel/unlinked", response_model=list[LogisticsFuelUnlinkedItemOut])
+def list_unlinked_fuel_endpoint(
+    date_from: datetime = Query(...),
+    date_to: datetime = Query(...),
+    limit: int = Query(default=50, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+) -> list[LogisticsFuelUnlinkedItemOut]:
+    items = fuel_linker_service.list_unlinked(db, date_from=date_from, date_to=date_to, limit=limit, offset=offset)
+    return [LogisticsFuelUnlinkedItemOut(**item) for item in items]
+
+
+@router.get("/trips/{trip_id}/fuel", response_model=LogisticsTripFuelOut)
+def trip_fuel_endpoint(trip_id: str, db: Session = Depends(get_db)) -> LogisticsTripFuelOut:
+    payload = fuel_linker_service.trip_fuel(db, trip_id=trip_id)
+    return LogisticsTripFuelOut(
+        trip_id=payload["trip_id"],
+        items=payload["items"],
+        totals=payload["totals"],
+        alerts=[
+            LogisticsFuelAlertOut(
+                id=str(item.id),
+                client_id=item.client_id,
+                trip_id=str(item.trip_id) if item.trip_id else None,
+                fuel_tx_id=str(item.fuel_tx_id),
+                type=item.type.value,
+                severity=item.severity.value,
+                title=item.title,
+                details=item.details,
+                evidence=item.evidence,
+                status=item.status.value,
+                created_at=item.created_at,
+            )
+            for item in payload["alerts"]
+        ],
+    )
+
+
+@router.get("/reports/fuel", response_model=list[LogisticsFuelReportItemOut])
+def fuel_report_endpoint(
+    date_from: datetime = Query(...),
+    date_to: datetime = Query(...),
+    group_by: str = Query(default="trip", pattern="^(trip|vehicle|driver)$"),
+    period: str = Query(default="day"),
+    db: Session = Depends(get_db),
+) -> list[LogisticsFuelReportItemOut]:
+    _ = period
+    rows = fuel_linker_service.fuel_report(db, date_from=date_from, date_to=date_to, group_by=group_by)
+    return [LogisticsFuelReportItemOut(**row) for row in rows]
+
+
+@router.get("/fuel/alerts", response_model=list[LogisticsFuelAlertOut])
+def fuel_alerts_endpoint(
+    date_from: datetime = Query(...),
+    date_to: datetime = Query(...),
+    type: LogisticsFuelAlertType | None = Query(default=None),
+    severity: LogisticsFuelAlertSeverity | None = Query(default=None),
+    status: LogisticsFuelAlertStatus | None = Query(default=LogisticsFuelAlertStatus.OPEN),
+    limit: int = Query(default=50, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+) -> list[LogisticsFuelAlertOut]:
+    items, _total = fuel_linker_service.fuel_alerts(
+        db,
+        date_from=date_from,
+        date_to=date_to,
+        type_=type,
+        severity=severity,
+        status=status,
+        limit=limit,
+        offset=offset,
+    )
+    return [
+        LogisticsFuelAlertOut(
+            id=str(item.id),
+            client_id=item.client_id,
+            trip_id=str(item.trip_id) if item.trip_id else None,
+            fuel_tx_id=str(item.fuel_tx_id),
+            type=item.type.value,
+            severity=item.severity.value,
+            title=item.title,
+            details=item.details,
+            evidence=item.evidence,
+            status=item.status.value,
+            created_at=item.created_at,
+        )
+        for item in items
+    ]
+
+
+@router.post("/fuel/links")
+def manual_link_fuel_endpoint(payload: LogisticsManualFuelLinkIn, db: Session = Depends(get_db)) -> dict:
+    link = fuel_linker_service.link_manually(db, trip_id=payload.trip_id, fuel_tx_id=payload.fuel_tx_id)
+    return {"id": str(link.id), "trip_id": str(link.trip_id), "fuel_tx_id": str(link.fuel_tx_id), "linked_by": link.linked_by.value}
+
+
+@router.delete("/fuel/links/{fuel_tx_id}")
+def manual_unlink_fuel_endpoint(fuel_tx_id: str, db: Session = Depends(get_db)) -> dict:
+    fuel_linker_service.unlink(db, fuel_tx_id=fuel_tx_id)
+    return {"status": "ok"}

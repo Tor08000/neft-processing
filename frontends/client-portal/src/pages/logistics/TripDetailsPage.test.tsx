@@ -12,6 +12,7 @@ import {
   fetchTripRoute,
   fetchTripSlaImpact,
   fetchTripTracking,
+  fetchTripFuel,
 } from "../../api/logistics";
 
 vi.mock("../../api/logistics", () => ({
@@ -22,6 +23,7 @@ vi.mock("../../api/logistics", () => ({
   fetchTripPosition: vi.fn(),
   fetchTripDeviations: vi.fn(),
   fetchTripSlaImpact: vi.fn(),
+  fetchTripFuel: vi.fn(),
 }));
 
 const session: AuthSession = {
@@ -106,6 +108,12 @@ describe("TripDetailsPage", () => {
       resolve_due_at: "2026-02-08T13:00:00Z",
       updated_at: "2026-02-08T11:10:00Z",
       signals: [{ type: "LATE_START", severity: "WARN", delta_minutes: 18 }],
+    });
+    vi.mocked(fetchTripFuel).mockResolvedValue({
+      trip_id: "trip-1",
+      items: [{ fuel_tx_id: "ftx-1", ts: "2026-02-08T11:00:00Z", liters: 40, amount: 3200, station: "AZS-1", score: 80, reason: "TIME_WINDOW_MATCH" }],
+      totals: { liters: 40, amount: 3200 },
+      alerts: [],
     });
   });
 
@@ -233,6 +241,14 @@ describe("TripDetailsPage", () => {
     const beforeRetry = vi.mocked(fetchTripDeviations).mock.calls.length;
     fireEvent.click(screen.getByRole("button", { name: /Повторить|Retry/ }));
     await waitFor(() => expect(vi.mocked(fetchTripDeviations).mock.calls.length).toBeGreaterThan(beforeRetry));
+  });
+
+  it("renders fuel tab", async () => {
+    renderPage();
+    await screen.findByText(/Статусная лента|Status timeline/);
+    fireEvent.click(screen.getByRole("button", { name: /Fuel/ }));
+    expect(await screen.findByText("AZS-1")).toBeInTheDocument();
+    expect(screen.getAllByText("40").length).toBeGreaterThan(0);
   });
 
 });

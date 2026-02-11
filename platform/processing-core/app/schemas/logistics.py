@@ -198,3 +198,80 @@ class LogisticsNavigatorExplainOut(BaseModel):
     type: LogisticsNavigatorExplainType
     payload: dict[str, Any]
     created_at: datetime
+
+
+class LogisticsFuelLinkerRunOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    processed: int
+    linked: int
+    unlinked: int
+    alerts_created: int
+
+
+class LogisticsFuelUnlinkedItemOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    fuel_tx_id: str
+    ts: datetime
+    liters: float
+    amount: float
+    station: str | None = None
+    best_match_trip: str | None = None
+    best_score: int
+    reason: str
+
+
+class LogisticsFuelAlertOut(BaseModel):
+    model_config = ConfigDict(extra="forbid", from_attributes=True)
+
+    id: str
+    client_id: str
+    trip_id: str | None = None
+    fuel_tx_id: str
+    type: str
+    severity: str
+    title: str
+    details: str | None = None
+    evidence: dict[str, Any] | None = None
+    status: str
+    created_at: datetime
+
+
+class LogisticsTripFuelItemOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    fuel_tx_id: str
+    ts: datetime
+    liters: float
+    amount: float
+    station: str | None = None
+    score: int
+    reason: str
+
+
+class LogisticsTripFuelOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    trip_id: str
+    items: list[LogisticsTripFuelItemOut]
+    totals: dict[str, float]
+    alerts: list[LogisticsFuelAlertOut]
+
+
+class LogisticsFuelReportItemOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    group: str
+    liters: float
+    amount: float
+    tx_count: int
+    alerts_count: int
+
+
+class LogisticsManualFuelLinkIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    trip_id: str
+    fuel_tx_id: str
+    note: str | None = None

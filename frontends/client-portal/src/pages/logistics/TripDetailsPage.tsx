@@ -10,6 +10,7 @@ import {
   fetchTripRoute,
   fetchTripSlaImpact,
   fetchTripTracking,
+  fetchTripFuel,
 } from "../../api/logistics";
 import type {
   RouteDetail,
@@ -24,6 +25,7 @@ import type {
   TripStop,
   TripTrackingPoint,
   TripTrackingResponse,
+  TripFuelResponse,
 } from "../../types/logistics";
 import { StatusBadge } from "../../components/StatusBadge";
 import type { Column } from "../../components/common/Table";
@@ -37,6 +39,7 @@ const statusSteps: TripStatus[] = ["CREATED", "IN_PROGRESS", "COMPLETED"];
 const TRACKING_LIMIT = 200;
 const DEVIATIONS_LIMIT = 200;
 const DEVIATIONS_POLL_INTERVAL_MS = 30000;
+const FUEL_POLL_INTERVAL_MS = 60000;
 
 const isModuleDisabledError = (error: ApiError) => {
   const code = error.errorCode ?? "";
@@ -168,7 +171,7 @@ export function TripDetailsPage() {
   const [error, setError] = useState<string | null>(null);
   const [trip, setTrip] = useState<TripDetail | null>(null);
   const [route, setRoute] = useState<RouteDetail | null>(null);
-  const [activeTab, setActiveTab] = useState<"route" | "tracking" | "deviations" | "meta">("route");
+  const [activeTab, setActiveTab] = useState<"route" | "tracking" | "deviations" | "fuel" | "meta">("route");
 
   const [trackingWindow, setTrackingWindow] = useState<TrackingWindow>("30m");
   const [tracking, setTracking] = useState<TripTrackingResponse | null>(null);
@@ -184,6 +187,7 @@ export function TripDetailsPage() {
   const [deviationsError, setDeviationsError] = useState<string | null>(null);
   const [slaImpact, setSlaImpact] = useState<TripSlaImpact | null>(null);
   const [selectedDeviation, setSelectedDeviation] = useState<TripDeviationEvent | null>(null);
+  const [fuel, setFuel] = useState<TripFuelResponse | null>(null);
   const lastTsRef = useRef<string | null>(null);
   const lastDeviationRef = useRef<string | null>(null);
 
@@ -313,6 +317,17 @@ export function TripDetailsPage() {
     [deviationTypeFilter, slaImpact, t, tripId, user?.token],
   );
 
+
+  const loadFuel = useCallback(async () => {
+    if (!user?.token || !tripId) return;
+    try {
+      const response = await fetchTripFuel(user.token, tripId);
+      setFuel(response);
+    } catch {
+      setFuel({ trip_id: tripId, items: [], totals: { liters: 0, amount: 0 }, alerts: [] });
+    }
+  }, [tripId, user?.token]);
+
   const loadSlaImpact = useCallback(async () => {
     if (!user?.token || !tripId) return;
     try {
@@ -326,6 +341,7 @@ export function TripDetailsPage() {
   const inProgress = trip?.status === "IN_PROGRESS";
   const trackingTabActive = activeTab === "tracking";
   const deviationsTabActive = activeTab === "deviations";
+  const fuelTabActive = activeTab === "fuel";
 
   useEffect(() => {
     if (!trackingTabActive) return;
@@ -339,6 +355,19 @@ export function TripDetailsPage() {
     void loadDeviations(true);
     void loadSlaImpact();
   }, [deviationsTabActive, loadDeviations, loadSlaImpact]);
+
+  useEffect(() => {
+    if (!fuelTabActive) return;
+    void loadFuel();
+  }, [fuelTabActive, loadFuel]);
+
+  useEffect(() => {
+    if (!fuelTabActive || !inProgress) return;
+    const timer = window.setInterval(() => {
+      void loadFuel();
+    }, FUEL_POLL_INTERVAL_MS);
+    return () => window.clearInterval(timer);
+  }, [fuelTabActive, inProgress, loadFuel]);
 
   useEffect(() => {
     if (!deviationsTabActive || !inProgress) return;
@@ -573,6 +602,9 @@ export function TripDetailsPage() {
         <button type="button" className={activeTab === "deviations" ? "secondary" : "ghost"} onClick={() => setActiveTab("deviations")}>
           {t("logisticsTrips.tabs.deviations")}
         </button>
+        <button type="button" className={activeTab === "fuel" ? "secondary" : "ghost"} onClick={() => setActiveTab("fuel")}>
+          Fuel
+        </button>
         <button type="button" className={activeTab === "meta" ? "secondary" : "ghost"} onClick={() => setActiveTab("meta")}>
           {t("logisticsTrips.tabs.meta")}
         </button>
@@ -760,6 +792,28 @@ export function TripDetailsPage() {
             </div>
           ) : null}
         </>
+      ) : null}
+
+      {activeTab === "fuel" ? (
+        <div className="stack gap-12">
+          <div className="grid grid-3">
+            <article className="card"><h3>Total liters</h3><div>{fuel?.totals?.liters ?? 0}</div></article>
+            <article className="card"><h3>Total amount</h3><div>{fuel?.totals?.amount ?? 0}</div></article>
+            <article className="card"><h3>Alerts</h3><div>{fuel?.alerts?.length ?? 0}</div></article>
+          </div>
+          <Table
+            columns={[
+              { key: "ts", title: "Time", render: (row) => formatDateValue(row.ts, "-") },
+              { key: "station", title: "Station", render: (row) => row.station ?? "-" },
+              { key: "liters", title: "Liters", render: (row) => String(row.liters ?? 0) },
+              { key: "amount", title: "Amount", render: (row) => String(row.amount ?? 0) },
+              { key: "score", title: "Score", render: (row) => String(row.score ?? 0) },
+            ]}
+            data={fuel?.items ?? []}
+            getRowId={(row) => row.fuel_tx_id}
+            emptyState={{ title: "No fuel transactions", description: "No linked fuel operations for this trip" }}
+          />
+        </div>
       ) : null}
 
       {activeTab === "meta" ? (

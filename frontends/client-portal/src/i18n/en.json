@@ -1502,5 +1502,8 @@
       "merchantPlaceholder": "Search merchant",
       "noSummary": "No spend summary"
     }
+  },
+  "menu": {
+    "logisticsFuelControl": "Fuel control"
   }
 }

@@ -135,3 +135,47 @@ export async function fetchTripDeviations(
 export async function fetchTripSlaImpact(token: string, tripId: string): Promise<TripSlaImpact> {
   return request<TripSlaImpact>(`/v1/logistics/trips/${tripId}/sla-impact`, { method: "GET" }, { token });
 }
+
+export async function runFuelLinker(
+  token: string,
+  params: { date_from: string; date_to: string },
+): Promise<{ processed: number; linked: number; unlinked: number; alerts_created: number }> {
+  const query = new URLSearchParams(params);
+  return request(`/v1/logistics/fuel/linker:run?${query.toString()}`, { method: "POST" }, { token });
+}
+
+export async function fetchUnlinkedFuel(
+  token: string,
+  params: { date_from: string; date_to: string; limit?: number; offset?: number },
+): Promise<import("../types/logistics").FuelUnlinkedItem[]> {
+  const query = new URLSearchParams({ date_from: params.date_from, date_to: params.date_to });
+  if (typeof params.limit === "number") query.set("limit", String(params.limit));
+  if (typeof params.offset === "number") query.set("offset", String(params.offset));
+  return request(`/v1/logistics/fuel/unlinked?${query.toString()}`, { method: "GET" }, { token });
+}
+
+export async function fetchFuelAlerts(
+  token: string,
+  params: { date_from: string; date_to: string; type?: string; severity?: string; status?: string; limit?: number; offset?: number },
+): Promise<import("../types/logistics").FuelAlertItem[]> {
+  const query = new URLSearchParams({ date_from: params.date_from, date_to: params.date_to });
+  if (params.type) query.set("type", params.type);
+  if (params.severity) query.set("severity", params.severity);
+  if (params.status) query.set("status", params.status);
+  if (typeof params.limit === "number") query.set("limit", String(params.limit));
+  if (typeof params.offset === "number") query.set("offset", String(params.offset));
+  return request(`/v1/logistics/fuel/alerts?${query.toString()}`, { method: "GET" }, { token });
+}
+
+export async function fetchFuelReport(
+  token: string,
+  params: { date_from: string; date_to: string; group_by: "trip" | "vehicle" | "driver"; period?: "day" | "week" | "month" },
+): Promise<import("../types/logistics").FuelReportItem[]> {
+  const query = new URLSearchParams({ date_from: params.date_from, date_to: params.date_to, group_by: params.group_by });
+  if (params.period) query.set("period", params.period);
+  return request(`/v1/logistics/reports/fuel?${query.toString()}`, { method: "GET" }, { token });
+}
+
+export async function fetchTripFuel(token: string, tripId: string): Promise<import("../types/logistics").TripFuelResponse> {
+  return request(`/v1/logistics/trips/${tripId}/fuel`, { method: "GET" }, { token });
+}

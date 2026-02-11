@@ -154,3 +154,57 @@ export type PaginatedResponse<T> = {
   limit: number;
   offset: number;
 };
+
+export type FuelLinkReason = "TIME_WINDOW_MATCH" | "ROUTE_PROXIMITY_MATCH" | "STATION_ON_ROUTE" | "MANUAL_LINK";
+export type FuelAlertType = "OUT_OF_TIME_WINDOW" | "OUT_OF_ROUTE" | "HIGH_CONSUMPTION";
+export type FuelAlertSeverity = "INFO" | "WARN" | "CRITICAL";
+
+export type FuelUnlinkedItem = {
+  fuel_tx_id: string;
+  ts: string;
+  liters: number;
+  amount: number;
+  station?: string | null;
+  best_match_trip?: string | null;
+  best_score: number;
+  reason: string;
+};
+
+export type TripFuelItem = {
+  fuel_tx_id: string;
+  ts: string;
+  liters: number;
+  amount: number;
+  station?: string | null;
+  score: number;
+  reason: FuelLinkReason;
+};
+
+export type FuelAlertItem = {
+  id: string;
+  client_id: string;
+  trip_id?: string | null;
+  fuel_tx_id: string;
+  type: FuelAlertType;
+  severity: FuelAlertSeverity;
+  title: string;
+  details?: string | null;
+  evidence?: Record<string, unknown> | null;
+  status: string;
+  created_at: string;
+};
+
+export type TripFuelResponse = {
+  trip_id: string;
+  items: TripFuelItem[];
+  totals: { liters: number; amount: number };
+  alerts: FuelAlertItem[];
+};
+
+export type FuelReportItem = {
+  group: string;
+  liters: number;
+  amount: number;
+  tx_count: number;
+  alerts_count: number;
+};
