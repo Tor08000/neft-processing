@@ -365,7 +365,7 @@ class LogisticsFuelLink(Base):
 
     id = Column(GUID(), primary_key=True, default=new_uuid_str)
     client_id = Column(String(64), nullable=False, index=True)
-    trip_id = Column(GUID(), ForeignKey("logistics_orders.id"), nullable=False)
+    trip_id = Column(String(64), ForeignKey("logistics_orders.id"), nullable=False)
     fuel_tx_id = Column(String(64), ForeignKey("fuel_transactions.id"), nullable=False)
     score = Column(Integer, nullable=False)
     reason = Column(ExistingEnum(LogisticsFuelLinkReason, name="logistics_fuel_link_reason"), nullable=False)
@@ -382,7 +382,7 @@ class LogisticsFuelAlert(Base):
 
     id = Column(GUID(), primary_key=True, default=new_uuid_str)
     client_id = Column(String(64), nullable=False, index=True)
-    trip_id = Column(GUID(), ForeignKey("logistics_orders.id"), nullable=True)
+    trip_id = Column(String(64), ForeignKey("logistics_orders.id"), nullable=True)
     fuel_tx_id = Column(String(64), ForeignKey("fuel_transactions.id"), nullable=False, index=True)
     type = Column(ExistingEnum(LogisticsFuelAlertType, name="logistics_fuel_alert_type"), nullable=False)
     severity = Column(ExistingEnum(LogisticsFuelAlertSeverity, name="logistics_fuel_alert_severity"), nullable=False)
