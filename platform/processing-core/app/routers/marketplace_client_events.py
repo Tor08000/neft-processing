@@ -18,7 +18,7 @@ from app.security.client_auth import require_client_user
 from app.services.marketplace_client_events_service import ingest_client_events, list_client_events
 
 
-router = APIRouter(prefix="/v1/marketplace/client/events", tags=["client-portal-v1"])
+router = APIRouter(prefix="/marketplace/client/events", tags=["client-portal-v1"])
 
 
 def _event_out(event) -> MarketplaceClientEventOut:
