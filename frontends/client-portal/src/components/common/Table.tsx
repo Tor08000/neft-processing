@@ -14,7 +14,7 @@ export interface Column<T> {
   className?: string;
 }
 
-interface TableProps<T> {
+export interface TableProps<T> {
   columns: Column<T>[];
   data: T[];
   loading?: boolean;
@@ -42,6 +42,7 @@ interface TableProps<T> {
   };
   emptyMessage?: string;
   onRowClick?: (record: T) => void;
+  rowKey?: (row: T) => string;
 }
 
 const renderNumber = (value: number) => {
@@ -54,7 +55,7 @@ const renderNumber = (value: number) => {
   );
 };
 
-export function Table<T>({ columns, data, loading, errorState, emptyState, emptyMessage, onRowClick }: TableProps<T>) {
+export function Table<T>({ columns, data, loading, errorState, emptyState, emptyMessage, onRowClick, rowKey }: TableProps<T>) {
   const { density, setDensity } = useTableDensity();
 
   if (loading) {
@@ -134,7 +135,7 @@ export function Table<T>({ columns, data, loading, errorState, emptyState, empty
             <tbody>
               {data.map((row, idx) => (
                 <tr
-                  key={idx}
+                  key={rowKey ? rowKey(row) : String(idx)}
                   onClick={() => onRowClick?.(row)}
                   style={{ cursor: onRowClick ? "pointer" : "default" }}
                 >

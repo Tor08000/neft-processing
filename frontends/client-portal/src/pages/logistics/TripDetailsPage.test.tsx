@@ -68,6 +68,8 @@ function renderPage() {
   );
 }
 
+type MockCall = [unknown, ...unknown[]];
+
 describe("TripDetailsPage", () => {
   beforeEach(() => {
     vi.mocked(fetchTripById).mockResolvedValue(inProgressTrip);
@@ -111,7 +113,7 @@ describe("TripDetailsPage", () => {
     });
     vi.mocked(fetchTripFuel).mockResolvedValue({
       trip_id: "trip-1",
-      items: [{ fuel_tx_id: "ftx-1", ts: "2026-02-08T11:00:00Z", liters: 40, amount: 3200, station: "AZS-1", score: 80, reason: "TIME_WINDOW_MATCH" }],
+      items: [{ id: "ftx-1", ts: "2026-02-08T11:00:00Z", vehicle_id: "veh-1", driver_id: "drv-1", liters: 40, amount: 3200, station_name: "AZS-1" }],
       totals: { liters: 40, amount: 3200 },
       alerts: [],
     });
@@ -136,13 +138,14 @@ describe("TripDetailsPage", () => {
 
     renderPage();
     await screen.findByText(/Статусная лента|Status timeline/);
-    const appIntervalsBefore = setIntervalSpy.mock.calls.filter((call) => call[1] === 10000 || call[1] === 30000);
+    const intervalCalls = setIntervalSpy.mock.calls as MockCall[];
+    const appIntervalsBefore = intervalCalls.filter((call) => call[1] === 10000 || call[1] === 30000);
     expect(appIntervalsBefore).toHaveLength(0);
 
     fireEvent.click(screen.getByRole("button", { name: /Трекинг|Tracking/ }));
     await screen.findByText(/Последняя позиция|Last known position/);
 
-    const appIntervals = setIntervalSpy.mock.calls.filter((call) => call[1] === 10000 || call[1] === 30000);
+    const appIntervals = intervalCalls.filter((call) => call[1] === 10000 || call[1] === 30000);
     expect(appIntervals).toHaveLength(2);
     expect(appIntervals[0]?.[1]).toBe(10000);
     expect(appIntervals[1]?.[1]).toBe(30000);
@@ -160,7 +163,8 @@ describe("TripDetailsPage", () => {
     fireEvent.click(screen.getByRole("button", { name: /Трекинг|Tracking/ }));
     await screen.findByText(/Последняя позиция|Last known position/);
 
-    const appIntervals = setIntervalSpy.mock.calls.filter((call) => call[1] === 10000 || call[1] === 30000);
+    const intervalCalls = setIntervalSpy.mock.calls as MockCall[];
+    const appIntervals = intervalCalls.filter((call) => call[1] === 10000 || call[1] === 30000);
     expect(appIntervals).toHaveLength(0);
   });
 
@@ -219,11 +223,12 @@ describe("TripDetailsPage", () => {
     renderPage();
     await screen.findByText(/Статусная лента|Status timeline/);
 
-    const before = setIntervalSpy.mock.calls.filter((call) => call[1] === 30000).length;
+    const intervalCalls = setIntervalSpy.mock.calls as MockCall[];
+    const before = intervalCalls.filter((call) => call[1] === 30000).length;
     fireEvent.click(screen.getByRole("button", { name: /Отклонения|Deviations/ }));
     await screen.findByText(/Влияние на SLA|SLA impact/);
 
-    const after = setIntervalSpy.mock.calls.filter((call) => call[1] === 30000).length;
+    const after = intervalCalls.filter((call) => call[1] === 30000).length;
     expect(after).toBeGreaterThan(before);
   });
 

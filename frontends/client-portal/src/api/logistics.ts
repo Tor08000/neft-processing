@@ -32,6 +32,27 @@ export type TripTrackingParams = {
   limit?: number;
 };
 
+type RawTripFuelItem = {
+  id?: string;
+  fuel_tx_id?: string;
+  ts?: string;
+  vehicle_id?: string;
+  driver_id?: string;
+  liters?: number;
+  amount?: number;
+  station_name?: string;
+  station?: string | null;
+  lat?: number;
+  lon?: number;
+};
+
+type RawTripFuelResponse = {
+  trip_id?: string;
+  items?: RawTripFuelItem[];
+  totals?: { liters?: number; amount?: number };
+  alerts?: import("../types/logistics").FuelAlertItem[];
+};
+
 const buildQuery = (params?: LogisticsListParams): string => {
   if (!params) return "";
   const query = new URLSearchParams();
@@ -177,5 +198,41 @@ export async function fetchFuelReport(
 }
 
 export async function fetchTripFuel(token: string, tripId: string): Promise<import("../types/logistics").TripFuelResponse> {
-  return request(`/v1/logistics/trips/${tripId}/fuel`, { method: "GET" }, { token });
+  const response = await request<RawTripFuelResponse>(`/v1/logistics/trips/${tripId}/fuel`, { method: "GET" }, { token });
+
+  return {
+    trip_id: response.trip_id ?? tripId,
+    items: (response.items ?? []).reduce<import("../types/logistics").TripFuelItem[]>((acc, item) => {
+      const fallbackId = item.id ?? item.fuel_tx_id;
+      if (!fallbackId || !item.ts || typeof item.liters !== "number" || typeof item.amount !== "number") {
+        return acc;
+      }
+
+      const normalized: import("../types/logistics").TripFuelItem = {
+        id: String(fallbackId),
+        ts: String(item.ts),
+        vehicle_id: item.vehicle_id ?? "",
+        driver_id: item.driver_id ?? "",
+        liters: item.liters,
+        amount: item.amount,
+        station_name: item.station_name ?? item.station ?? "",
+      };
+
+      if (typeof item.lat === "number") {
+        normalized.lat = item.lat;
+      }
+
+      if (typeof item.lon === "number") {
+        normalized.lon = item.lon;
+      }
+
+      acc.push(normalized);
+      return acc;
+    }, []),
+    totals: {
+      liters: response.totals?.liters ?? 0,
+      amount: response.totals?.amount ?? 0,
+    },
+    alerts: response.alerts ?? [],
+  };
 }

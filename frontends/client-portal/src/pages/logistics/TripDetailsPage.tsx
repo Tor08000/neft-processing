@@ -16,6 +16,7 @@ import type {
   RouteDetail,
   TripDetail,
   TripDeviationEvent,
+  RawTripDeviationEvent,
   TripDeviationSeverity,
   TripDeviationType,
   TripDeviationsResponse,
@@ -34,6 +35,8 @@ import { AppErrorState, AppForbiddenState, AppLoadingState, AppEmptyState } from
 import { ModuleUnavailablePage } from "../ModuleUnavailablePage";
 import { ApiError } from "../../api/http";
 import { formatDateTime } from "../../utils/format";
+import { normalizeDeviation } from "../../utils/normalizeDeviation";
+import { useConditionalPolling } from "../../hooks/useConditionalPolling";
 
 const statusSteps: TripStatus[] = ["CREATED", "IN_PROGRESS", "COMPLETED"];
 const TRACKING_LIMIT = 200;
@@ -122,37 +125,12 @@ const impactClass = (impact?: TripSlaImpact["impact_level"] | null) => {
   return "neft-chip neft-chip-muted";
 };
 
-const asDeviationType = (value: unknown): TripDeviationType | null => {
-  if (value === "LATE_START" || value === "ROUTE_DEVIATION" || value === "UNEXPECTED_STOP") return value;
-  return null;
-};
-
-const asDeviationSeverity = (value: unknown): TripDeviationSeverity => {
-  if (value === "WARN" || value === "CRITICAL" || value === "INFO") return value;
-  return "INFO";
-};
-
 const normalizeTripDeviationsResponse = (tripId: string, value: unknown): TripDeviationsResponse => {
   const payload = value as Partial<TripDeviationsResponse> | null;
   const itemsRaw = Array.isArray(payload?.items) ? payload.items : [];
-  const items = itemsRaw
-    .map((entry) => {
-      if (!entry || typeof entry !== "object") return null;
-      const raw = entry as Record<string, unknown>;
-      const type = asDeviationType(raw.type);
-      if (!type || typeof raw.id !== "string" || typeof raw.ts !== "string") return null;
-      return {
-        id: raw.id,
-        ts: raw.ts,
-        type,
-        severity: asDeviationSeverity(raw.severity),
-        title: typeof raw.title === "string" ? raw.title : type,
-        details: typeof raw.details === "string" ? raw.details : null,
-        evidence: (raw.evidence && typeof raw.evidence === "object" ? raw.evidence : null) as TripDeviationEvent["evidence"],
-        sla_impact: (raw.sla_impact && typeof raw.sla_impact === "object" ? raw.sla_impact : null) as TripDeviationEvent["sla_impact"],
-      } satisfies TripDeviationEvent;
-    })
-    .filter((item): item is TripDeviationEvent => Boolean(item));
+  const items = (itemsRaw as RawTripDeviationEvent[])
+    .map(normalizeDeviation)
+    .filter((deviation): deviation is TripDeviationEvent => deviation !== null);
 
   return {
     trip_id: typeof payload?.trip_id === "string" ? payload.trip_id : tripId,
@@ -361,40 +339,22 @@ export function TripDetailsPage() {
     void loadFuel();
   }, [fuelTabActive, loadFuel]);
 
-  useEffect(() => {
-    if (!fuelTabActive || !inProgress) return;
-    const timer = window.setInterval(() => {
-      void loadFuel();
-    }, FUEL_POLL_INTERVAL_MS);
-    return () => window.clearInterval(timer);
-  }, [fuelTabActive, inProgress, loadFuel]);
+  useConditionalPolling(fuelTabActive && inProgress, FUEL_POLL_INTERVAL_MS, () => {
+    void loadFuel();
+  });
 
-  useEffect(() => {
-    if (!deviationsTabActive || !inProgress) return;
-    const timer = window.setInterval(() => {
-      void loadDeviations();
-      void loadSlaImpact();
-    }, DEVIATIONS_POLL_INTERVAL_MS);
+  useConditionalPolling(deviationsTabActive && inProgress, DEVIATIONS_POLL_INTERVAL_MS, () => {
+    void loadDeviations();
+    void loadSlaImpact();
+  });
 
-    return () => {
-      window.clearInterval(timer);
-    };
-  }, [deviationsTabActive, inProgress, loadDeviations, loadSlaImpact]);
+  useConditionalPolling(trackingTabActive && inProgress, 10000, () => {
+    void loadTracking();
+  });
 
-  useEffect(() => {
-    if (!trackingTabActive || !inProgress) return;
-    const trackingTimer = window.setInterval(() => {
-      void loadTracking();
-    }, 10000);
-    const etaTimer = window.setInterval(() => {
-      void loadEta();
-    }, 30000);
-
-    return () => {
-      window.clearInterval(trackingTimer);
-      window.clearInterval(etaTimer);
-    };
-  }, [inProgress, loadEta, loadTracking, trackingTabActive]);
+  useConditionalPolling(trackingTabActive && inProgress, 30000, () => {
+    void loadEta();
+  });
 
   const handleCopyCoords = useCallback(async () => {
     if (!lastPosition) return;
@@ -694,7 +654,7 @@ export function TripDetailsPage() {
           <div className="card stack">
             <h2>{t("logisticsTrips.tracking.eta.title")}</h2>
             {etaError ? (
-              <AppErrorState message={etaError} compact onRetry={() => void loadEta()} />
+              <AppErrorState message={etaError} variant="compact" onRetry={() => void loadEta()} />
             ) : (
               <div className="grid two">
                 <div>
@@ -804,13 +764,12 @@ export function TripDetailsPage() {
           <Table
             columns={[
               { key: "ts", title: "Time", render: (row) => formatDateValue(row.ts, "-") },
-              { key: "station", title: "Station", render: (row) => row.station ?? "-" },
+              { key: "station", title: "Station", render: (row) => row.station_name },
               { key: "liters", title: "Liters", render: (row) => String(row.liters ?? 0) },
               { key: "amount", title: "Amount", render: (row) => String(row.amount ?? 0) },
-              { key: "score", title: "Score", render: (row) => String(row.score ?? 0) },
             ]}
             data={fuel?.items ?? []}
-            getRowId={(row) => row.fuel_tx_id}
+            rowKey={(row) => row.id}
             emptyState={{ title: "No fuel transactions", description: "No linked fuel operations for this trip" }}
           />
         </div>
