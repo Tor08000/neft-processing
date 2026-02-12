@@ -10,7 +10,7 @@ from app.schemas.marketplace.recommendations_v1 import RecommendationResponse, R
 from app.security.client_auth import require_client_user
 from app.services.marketplace_recommendations_service import MarketplaceRecommendationsService
 
-router = APIRouter(prefix="/v1/marketplace/client/recommendations", tags=["client-portal-v1"])
+router = APIRouter(prefix="/marketplace/client/recommendations", tags=["client-portal-v1"])
 
 
 def _extract_subscription_codes(token: dict) -> list[str]:

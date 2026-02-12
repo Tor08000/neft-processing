@@ -26,7 +26,7 @@ from app.services.audit_service import _sanitize_token_for_audit, request_contex
 from app.services.marketplace_orders_service import MarketplaceOrdersService, MarketplaceOrdersServiceError
 
 
-router = APIRouter(prefix="/v1/marketplace/client/orders", tags=["client-portal-v1"])
+router = APIRouter(prefix="/marketplace/client/orders", tags=["client-portal-v1"])
 
 
 def _ensure_client_context(principal: Principal) -> str:
