@@ -293,6 +293,7 @@ def list_unlinked(db: Session, *, date_from: datetime, date_to: datetime, limit:
 
 
 def link_manually(db: Session, *, trip_id: str, fuel_tx_id: str) -> LogisticsFuelLink:
+    trip_id = str(trip_id)
     existing = db.query(LogisticsFuelLink).filter(LogisticsFuelLink.fuel_tx_id == fuel_tx_id).one_or_none()
     if existing:
         return existing
@@ -317,6 +318,7 @@ def unlink(db: Session, *, fuel_tx_id: str) -> None:
 
 
 def trip_fuel(db: Session, *, trip_id: str) -> dict:
+    trip_id = str(trip_id)
     links = db.query(LogisticsFuelLink).filter(LogisticsFuelLink.trip_id == trip_id).order_by(LogisticsFuelLink.created_at.desc()).all()
     items = []
     liters_total = 0.0
@@ -376,7 +378,7 @@ def fuel_report(db: Session, *, date_from: datetime, date_to: datetime, group_by
     links = db.query(LogisticsFuelLink).filter(LogisticsFuelLink.created_at >= date_from, LogisticsFuelLink.created_at <= date_to).all()
     buckets: dict[str, dict] = {}
     for link in links:
-        trip = db.query(LogisticsOrder).filter(LogisticsOrder.id == link.trip_id).one_or_none()
+        trip = db.query(LogisticsOrder).filter(LogisticsOrder.id == str(link.trip_id)).one_or_none()
         tx = db.query(FuelTransaction).filter(FuelTransaction.id == link.fuel_tx_id).one_or_none()
         if not trip or not tx:
             continue
@@ -391,5 +393,5 @@ def fuel_report(db: Session, *, date_from: datetime, date_to: datetime, group_by
         bucket["amount"] += float(tx.amount_total_minor or 0)
         bucket["tx_count"] += 1
     for key, bucket in buckets.items():
-        bucket["alerts_count"] = db.query(func.count(LogisticsFuelAlert.id)).filter(LogisticsFuelAlert.trip_id == (None if group_by != "trip" else key)).scalar() or 0
+        bucket["alerts_count"] = db.query(func.count(LogisticsFuelAlert.id)).filter(LogisticsFuelAlert.trip_id == (None if group_by != "trip" else str(key))).scalar() or 0
     return list(buckets.values())
