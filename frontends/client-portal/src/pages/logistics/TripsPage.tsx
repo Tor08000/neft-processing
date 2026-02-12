@@ -29,7 +29,7 @@ const isModuleDisabledError = (error: ApiError) => {
   return code.includes("module_disabled") || error.message.includes("module_disabled");
 };
 
-const formatRange = (start?: string | null, end?: string | null, fallback: string) => {
+const formatRange = (start: string | null | undefined, end: string | null | undefined, fallback: string) => {
   if (!start && !end) return fallback;
   const startValue = start ? formatDateTime(start) : fallback;
   const endValue = end ? formatDateTime(end) : fallback;

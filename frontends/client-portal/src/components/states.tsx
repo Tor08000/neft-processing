@@ -42,13 +42,15 @@ export const AppErrorState = ({
   onRetry,
   status,
   correlationId,
+  variant,
 }: {
   message: ReactNode;
   onRetry?: () => void;
   status?: number;
   correlationId?: string | null;
+  variant?: "default" | "compact";
 }) => (
-  <ErrorStateContent message={message} onRetry={onRetry} status={status} correlationId={correlationId} />
+  <ErrorStateContent message={message} onRetry={onRetry} status={status} correlationId={correlationId} variant={variant} />
 );
 
 const ErrorStateContent = ({
@@ -56,11 +58,13 @@ const ErrorStateContent = ({
   onRetry,
   status,
   correlationId,
+  variant,
 }: {
   message: ReactNode;
   onRetry?: () => void;
   status?: number;
   correlationId?: string | null;
+  variant?: "default" | "compact";
 }) => {
   const { t } = useI18n();
   const metaParts = [];
@@ -74,7 +78,7 @@ const ErrorStateContent = ({
     <StateLayout
       title={t("errors.actionFailedTitle")}
       description={message}
-      meta={metaParts.length ? metaParts.join(" · ") : undefined}
+      meta={variant === "compact" ? undefined : metaParts.length ? metaParts.join(" · ") : undefined}
       action={
         onRetry ? (
           <button type="button" className="secondary" onClick={onRetry}>

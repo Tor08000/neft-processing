@@ -130,6 +130,17 @@ export type TripDeviationEvent = {
   type: TripDeviationType;
   severity: TripDeviationSeverity;
   title: string;
+  details: string | null;
+  evidence: TripDeviationEvidence | null;
+  sla_impact: TripSlaImpact | null;
+};
+
+export type RawTripDeviationEvent = {
+  id?: string;
+  ts?: string;
+  type?: TripDeviationType;
+  severity?: TripDeviationSeverity;
+  title?: string;
   details?: string | null;
   evidence?: TripDeviationEvidence | null;
   sla_impact?: TripSlaImpact | null;
@@ -171,13 +182,15 @@ export type FuelUnlinkedItem = {
 };
 
 export type TripFuelItem = {
-  fuel_tx_id: string;
+  id: string;
   ts: string;
+  vehicle_id: string;
+  driver_id: string;
   liters: number;
   amount: number;
-  station?: string | null;
-  score: number;
-  reason: FuelLinkReason;
+  station_name: string;
+  lat?: number;
+  lon?: number;
 };
 
 export type FuelAlertItem = {
