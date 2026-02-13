@@ -17,7 +17,11 @@ export type RawNearestStation = {
   lon?: number | null;
   distance_km?: number | null;
   nav_url?: string | null;
+  risk_zone?: "GREEN" | "YELLOW" | "RED" | null;
+  risk_zone_reason?: string | null;
 };
+
+export type StationRiskZone = "GREEN" | "YELLOW" | "RED";
 
 export type StationMapItem = {
   id: string;
@@ -27,7 +31,16 @@ export type StationMapItem = {
   lon: number;
   distanceKm: number | null;
   navUrl: string | null;
+  riskZone: StationRiskZone;
+  riskZoneReason: string | null;
 };
+
+export function normalizeRiskZone(zone: RawNearestStation["risk_zone"]): StationRiskZone {
+  if (zone === "YELLOW" || zone === "RED") {
+    return zone;
+  }
+  return "GREEN";
+}
 
 const asNumber = (value: unknown): number | null => {
   if (typeof value !== "number" || Number.isNaN(value)) {
@@ -51,6 +64,8 @@ export function mapNearestStation(raw: RawNearestStation): StationMapItem | null
     lon,
     distanceKm: asNumber(raw.distance_km),
     navUrl: raw.nav_url?.trim() || null,
+    riskZone: normalizeRiskZone(raw.risk_zone),
+    riskZoneReason: raw.risk_zone_reason?.trim() || null,
   };
 }
 

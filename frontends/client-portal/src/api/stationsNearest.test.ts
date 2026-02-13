@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildNearestStationsQuery, mapNearestStation } from "./stationsNearest";
+import { buildNearestStationsQuery, mapNearestStation, normalizeRiskZone } from "./stationsNearest";
 
 describe("mapNearestStation", () => {
   it("maps API station into UI model", () => {
@@ -21,6 +21,8 @@ describe("mapNearestStation", () => {
       lon: 37.61,
       distanceKm: 1.42,
       navUrl: "https://maps.google.com/?q=55.75,37.61",
+      riskZone: "GREEN",
+      riskZoneReason: null,
     });
   });
 
@@ -46,6 +48,28 @@ describe("mapNearestStation", () => {
     });
 
     expect(mapped?.navUrl).toBe("https://example.com/nav");
+  });
+
+  it("maps risk zone and reason", () => {
+    const mapped = mapNearestStation({
+      id: "s-2",
+      name: "АЗС",
+      address: "Адрес",
+      lat: 10,
+      lon: 10,
+      risk_zone: "RED",
+      risk_zone_reason: "Suspicious POS pattern",
+    });
+
+    expect(mapped?.riskZone).toBe("RED");
+    expect(mapped?.riskZoneReason).toBe("Suspicious POS pattern");
+  });
+});
+
+describe("normalizeRiskZone", () => {
+  it("falls back to GREEN for null/unknown", () => {
+    expect(normalizeRiskZone(null)).toBe("GREEN");
+    expect(normalizeRiskZone(undefined)).toBe("GREEN");
   });
 });
 

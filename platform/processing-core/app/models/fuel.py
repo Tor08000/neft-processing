@@ -39,6 +39,12 @@ class FuelStationStatus(str, Enum):
     INACTIVE = "INACTIVE"
 
 
+class FuelStationRiskZone(str, Enum):
+    GREEN = "GREEN"
+    YELLOW = "YELLOW"
+    RED = "RED"
+
+
 class FuelNetworkStatus(str, Enum):
     ACTIVE = "ACTIVE"
     INACTIVE = "INACTIVE"
@@ -390,6 +396,10 @@ class FuelStation(Base):
     mcc = Column(String(8), nullable=True)
     station_code = Column(String(64), nullable=True, index=True)
     status = Column(ExistingEnum(FuelStationStatus, name="fuel_station_status"), nullable=False)
+    risk_zone = Column(String(16), nullable=True, index=True)
+    risk_zone_reason = Column(Text, nullable=True)
+    risk_zone_updated_at = Column(DateTime(timezone=True), nullable=True)
+    risk_zone_updated_by = Column(String(256), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 

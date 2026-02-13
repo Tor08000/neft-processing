@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
@@ -33,6 +35,7 @@ from app.schemas.fuel import (
     FuelNetworkOut,
     FuelStationCreate,
     FuelStationOut,
+    FuelStationRiskZonePatch,
     FuelStationNetworkCreate,
     FuelStationNetworkOut,
     DeclineCode,
@@ -192,6 +195,30 @@ def create_station(payload: FuelStationCreate, db: Session = Depends(get_db)) ->
 @router.get("/stations", response_model=list[FuelStationOut])
 def list_stations(db: Session = Depends(get_db)) -> list[FuelStationOut]:
     return [FuelStationOut.model_validate(item) for item in db.query(FuelStation).all()]
+
+
+@router.patch("/stations/{station_id}/risk-zone", response_model=FuelStationOut)
+def patch_station_risk_zone(
+    station_id: str,
+    payload: FuelStationRiskZonePatch,
+    request: Request,
+    db: Session = Depends(get_db),
+    token: dict = Depends(require_admin),
+) -> FuelStationOut:
+    station = db.query(FuelStation).filter(FuelStation.id == station_id).one_or_none()
+    if station is None:
+        raise HTTPException(status_code=404, detail="station_not_found")
+    if payload.risk_zone.value == "RED" and not (payload.reason or "").strip():
+        raise HTTPException(status_code=422, detail="reason_required_for_red_zone")
+
+    actor = token.get("user_id") or token.get("email") or token.get("sub") or request.client.host or "admin"
+    station.risk_zone = payload.risk_zone.value
+    station.risk_zone_reason = payload.reason
+    station.risk_zone_updated_at = datetime.now(timezone.utc)
+    station.risk_zone_updated_by = str(actor)
+    db.commit()
+    db.refresh(station)
+    return FuelStationOut.model_validate(station)
 
 
 @router.post("/station-networks", response_model=FuelStationNetworkOut)
