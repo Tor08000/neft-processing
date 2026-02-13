@@ -9,7 +9,7 @@ export type NearestStationsParams = {
   provider?: "google" | "yandex" | "apple";
 };
 
-type RawNearestStation = {
+export type RawNearestStation = {
   id?: string | number;
   name?: string | null;
   address?: string | null;
@@ -76,4 +76,16 @@ export function buildNearestStationsQuery(params: NearestStationsParams): URLSea
   }
 
   return query;
+}
+
+
+export async function fetchStationById(token: string, stationId: string, provider: "google" | "yandex" | "apple" = "google"): Promise<StationMapItem | null> {
+  const raw = await request<RawNearestStation>(`/v1/fuel/stations/${encodeURIComponent(stationId)}`, { method: "GET" }, { token });
+  if (!raw) return null;
+  const mapped = mapNearestStation(raw);
+  if (!mapped) return null;
+  if (!mapped.navUrl && mapped.lat != null && mapped.lon != null) {
+    mapped.navUrl = `${provider === "yandex" ? "https://yandex.ru/maps/?rtext=~" : provider === "apple" ? "http://maps.apple.com/?daddr=" : "https://www.google.com/maps/dir/?api=1&destination="}${mapped.lat},${mapped.lon}`;
+  }
+  return mapped;
 }

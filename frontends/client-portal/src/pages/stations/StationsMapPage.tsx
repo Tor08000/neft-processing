@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import L from "leaflet";
 import type { LatLngExpression } from "leaflet";
 import { MapContainer, Marker, Popup, TileLayer, useMap, useMapEvents } from "react-leaflet";
@@ -6,7 +7,7 @@ import markerIcon from "leaflet/dist/images/marker-icon.png";
 import markerIconRetina from "leaflet/dist/images/marker-icon-2x.png";
 import markerShadow from "leaflet/dist/images/marker-shadow.png";
 import { useAuth } from "../../auth/AuthContext";
-import { fetchNearestStations, type StationMapItem } from "../../api/stationsNearest";
+import { fetchNearestStations, fetchStationById, type StationMapItem } from "../../api/stationsNearest";
 import "./stations-map.css";
 
 type LatLon = { lat: number; lon: number };
@@ -71,6 +72,7 @@ const parsePartnerId = (value: string): number | null => {
 
 export function StationsMapPage() {
   const { user } = useAuth();
+  const [searchParams] = useSearchParams();
   const [stations, setStations] = useState<StationMapItem[]>([]);
   const [selectedStationId, setSelectedStationId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -92,6 +94,7 @@ export function StationsMapPage() {
     () => stations.find((station) => station.id === selectedStationId) ?? null,
     [selectedStationId, stations],
   );
+  const stationIdFromQuery = searchParams.get("station_id")?.trim() || null;
 
   const loadStations = useCallback(
     async (nextQueryState: StationsQueryState) => {
@@ -107,8 +110,19 @@ export function StationsMapPage() {
           limit: 50,
           provider: nextQueryState.provider,
         });
-        setStations(data);
-        setSelectedStationId((prev) => (prev && data.some((item) => item.id === prev) ? prev : data[0]?.id ?? null));
+        let nextStations = data;
+        if (stationIdFromQuery && !data.some((item) => item.id === stationIdFromQuery)) {
+          const exactStation = await fetchStationById(user.token, stationIdFromQuery, nextQueryState.provider);
+          if (exactStation) {
+            nextStations = [exactStation, ...data];
+            setMapCenter({ lat: exactStation.lat, lon: exactStation.lon });
+          }
+        }
+        setStations(nextStations);
+        setSelectedStationId((prev) => {
+          if (stationIdFromQuery && nextStations.some((item) => item.id === stationIdFromQuery)) return stationIdFromQuery;
+          return prev && nextStations.some((item) => item.id === prev) ? prev : nextStations[0]?.id ?? null;
+        });
         setPendingCenter(null);
       } catch {
         setError("Ошибка загрузки станций");
@@ -116,7 +130,7 @@ export function StationsMapPage() {
         setLoading(false);
       }
     },
-    [user?.token],
+    [stationIdFromQuery, user?.token],
   );
 
   useEffect(() => {

@@ -19,8 +19,17 @@ export interface OperationSummary {
   correlation_id?: string | null;
 }
 
+export interface OperationStation {
+  id: string;
+  name: string;
+  address?: string | null;
+  lat?: number | null;
+  lon?: number | null;
+  nav_url?: string | null;
+}
+
 export interface OperationDetails extends OperationSummary {
-  // intentionally empty — client view hides internal fields
+  station?: OperationStation | null;
 }
 
 export interface OperationsPage {

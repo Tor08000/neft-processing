@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.db import get_db
+from app.models.fuel import FuelStation
 from app.schemas.fuel import (
     FuelStationNearestItem,
     FuelStationOut,
@@ -70,3 +71,14 @@ def nearest_fuel_stations_endpoint(
             returned=len(payload),
         ),
     )
+
+
+@router.get("/{station_id}", response_model=FuelStationOut)
+def get_fuel_station_endpoint(
+    station_id: str,
+    db: Session = Depends(get_db),
+) -> FuelStationOut:
+    station = db.query(FuelStation).filter(FuelStation.id == station_id).one_or_none()
+    if station is None:
+        raise HTTPException(status_code=404, detail="station_not_found")
+    return FuelStationOut.model_validate(station)

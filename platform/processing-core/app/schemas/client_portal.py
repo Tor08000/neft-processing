@@ -89,6 +89,15 @@ class ClientCardsResponse(BaseModel):
     items: List[ClientCard]
 
 
+class OperationStation(BaseModel):
+    id: str
+    name: str
+    address: str | None = None
+    lat: float | None = None
+    lon: float | None = None
+    nav_url: str | None = None
+
+
 class OperationSummary(BaseModel):
     id: str
     created_at: datetime
@@ -101,6 +110,7 @@ class OperationSummary(BaseModel):
     terminal_id: str | None = None
     reason: str | None = None
     quantity: Decimal | None = None
+    station: OperationStation | None = None
 
 
 class OperationDetails(OperationSummary):

@@ -11,6 +11,7 @@ from app.models.card import Card
 from app.models.client import Client
 from app.models.client_actions import DocumentAcknowledgement, InvoiceMessage, ReconciliationRequest
 from app.models.contract_limits import LimitConfig, LimitConfigScope, LimitType, LimitWindow
+from app.models.fuel import FuelNetwork, FuelNetworkStatus, FuelStation, FuelStationStatus
 from app.models.audit_log import ActorType, AuditLog, AuditVisibility
 from app.models.invoice import InvoiceStatus
 from app.models.operation import Operation, OperationStatus, OperationType, RiskResult
@@ -152,6 +153,53 @@ def test_client_operations_and_rbac(db_session, make_jwt):
         )
         assert resp.status_code == 403
 
+
+
+
+def test_client_operation_details_include_station(db_session, make_jwt):
+    client_id = uuid4()
+    other_client_id = uuid4()
+    _seed_clients(db_session, client_id, other_client_id)
+
+    network = FuelNetwork(id=str(uuid4()), name="Main", provider_code="main", status=FuelNetworkStatus.ACTIVE)
+    station = FuelStation(
+        id=str(uuid4()),
+        network_id=network.id,
+        station_code="t-station-1",
+        name="АЗС Тест",
+        country="RU",
+        city="Moscow",
+        lat=55.75,
+        lon=37.61,
+        nav_url=None,
+        status=FuelStationStatus.ACTIVE,
+    )
+    db_session.add(network)
+    db_session.add(station)
+    db_session.add(
+        Operation(
+            operation_id="op-st-1",
+            operation_type=OperationType.AUTH,
+            status=OperationStatus.APPROVED,
+            merchant_id="m1",
+            terminal_id="t-station-1",
+            client_id=str(client_id),
+            card_id="card-1",
+            amount=100,
+            currency="RUB",
+        )
+    )
+    db_session.commit()
+
+    token = make_jwt(roles=("CLIENT_USER",), client_id=str(client_id))
+    with TestClient(app, headers={"Authorization": f"Bearer {token}"}) as api_client:
+        details = api_client.get("/api/v1/client/operations/op-st-1")
+        assert details.status_code == 200
+        payload = details.json()
+        assert payload["station"]["id"] == str(station.id)
+        assert payload["station"]["name"] == "АЗС Тест"
+        assert payload["station"]["address"] == "RU, Moscow"
+        assert payload["station"]["nav_url"]
 
 def test_balances_and_statements(db_session, make_jwt):
     client_id = uuid4()
