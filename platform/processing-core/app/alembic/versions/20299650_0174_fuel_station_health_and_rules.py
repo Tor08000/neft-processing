@@ -81,7 +81,7 @@ def upgrade() -> None:
     op.execute(
         sa.text(
             f"""
-            INSERT INTO {DB_SCHEMA}.rules (scope, subject_id, selector, window, metric, policy, meta, priority, enabled, system, name, description)
+            INSERT INTO {DB_SCHEMA}.rules (scope, subject_id, selector, "window", metric, policy, meta, priority, enabled, system, name, description)
             SELECT 'TENANT', 'default', :selector, 'PER_TXN', 'FLAG', 'SOFT_DECLINE', :meta, 10, true, true,
                    'default_station_risk_red_soft_decline',
                    'System default: STATION_RISK_RED -> SOFT_DECLINE + manual review'
