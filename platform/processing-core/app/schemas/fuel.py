@@ -222,6 +222,35 @@ class FuelStationOut(BaseModel):
     created_at: datetime
 
 
+class FuelStationNearestItem(FuelStationOut):
+    model_config = ConfigDict(extra="forbid", from_attributes=True)
+
+    distance_km: float
+
+
+class FuelStationsNearestMetaQuery(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    lat: float
+    lon: float
+    radius_km: float
+    limit: int
+
+
+class FuelStationsNearestMeta(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    query: FuelStationsNearestMetaQuery
+    returned: int
+
+
+class FuelStationsNearestResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[FuelStationNearestItem]
+    meta: FuelStationsNearestMeta
+
+
 class FuelCardGroupCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -277,5 +306,9 @@ __all__ = [
     "FuelNetworkCreate",
     "FuelNetworkOut",
     "FuelStationCreate",
+    "FuelStationNearestItem",
     "FuelStationOut",
+    "FuelStationsNearestMeta",
+    "FuelStationsNearestMetaQuery",
+    "FuelStationsNearestResponse",
 ]
