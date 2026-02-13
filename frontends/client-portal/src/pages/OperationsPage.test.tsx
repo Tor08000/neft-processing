@@ -155,7 +155,7 @@ describe("Client operations", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "Показать на карте" }));
     expect(await screen.findByText("Карта станций")).toBeInTheDocument();
-    const stationCall = fetchMock.mock.calls.find((call) => String(call[0]).includes("/v1/fuel/stations/station-123"));
+    const stationCall = fetchMock.mock.calls.find((call: any[]) => String(call[0]).includes("/v1/fuel/stations/station-123"));
     expect(stationCall).toBeTruthy();
   });
 
