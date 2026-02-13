@@ -7,6 +7,7 @@ import { I18nProvider } from "./i18n";
 import { registerServiceWorker } from "./pwa/registerServiceWorker";
 import "./index.css";
 import "./styles/neft-client-brand.css";
+import "leaflet/dist/leaflet.css";
 import { applyTheme, getInitialTheme } from "./lib/theme";
 import { normalizeBase } from "@shared/lib/path";
 
