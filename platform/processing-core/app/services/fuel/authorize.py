@@ -40,6 +40,15 @@ class AuthorizationResult:
     transaction: FuelTransaction | None = None
 
 
+def _station_risk_tags(station) -> list[str]:
+    zone = (station.risk_zone or "").upper()
+    if zone == "YELLOW":
+        return ["STATION_RISK_YELLOW"]
+    if zone == "RED":
+        return ["STATION_RISK_RED"]
+    return []
+
+
 def _decline_response(
     *,
     decline_code: DeclineCode,
@@ -321,6 +330,13 @@ def authorize_fuel_tx(
     volume_ml = int(payload.volume_liters * 1000)
     amount_minor = int(payload.unit_price * volume_ml / 1000)
     base_meta = payload.meta or {}
+    station_risk_tags = _station_risk_tags(station)
+    if station_risk_tags:
+        base_meta = {
+            **base_meta,
+            "risk_tags": sorted({*list(base_meta.get("risk_tags") or []), *station_risk_tags}),
+            "station_risk_zone": station.risk_zone,
+        }
 
     limit_decision = limits.check_limits(
         db=db,

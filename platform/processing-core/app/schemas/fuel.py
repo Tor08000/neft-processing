@@ -6,7 +6,14 @@ from typing import Any, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from app.models.fuel import FuelLimitPeriod, FuelLimitScopeType, FuelLimitType, FuelTransactionStatus, FuelType
+from app.models.fuel import (
+    FuelLimitPeriod,
+    FuelLimitScopeType,
+    FuelLimitType,
+    FuelStationRiskZone,
+    FuelTransactionStatus,
+    FuelType,
+)
 
 
 class DeclineCode(str, Enum):
@@ -219,7 +226,18 @@ class FuelStationOut(BaseModel):
     nav_url: Optional[str] = None
     geo_hash: Optional[str] = None
     status: str
+    risk_zone: Optional[FuelStationRiskZone] = None
+    risk_zone_reason: Optional[str] = None
+    risk_zone_updated_at: Optional[datetime] = None
+    risk_zone_updated_by: Optional[str] = None
     created_at: datetime
+
+
+class FuelStationRiskZonePatch(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    risk_zone: FuelStationRiskZone
+    reason: Optional[str] = None
 
 
 class FuelStationNearestItem(FuelStationOut):

@@ -63,6 +63,12 @@ const formatDistance = (distanceKm: number | null): string => {
   return `${distanceKm.toFixed(1)} км`;
 };
 
+const riskZoneLabel: Record<StationMapItem["riskZone"], string> = {
+  GREEN: "GREEN",
+  YELLOW: "YELLOW",
+  RED: "RED",
+};
+
 const parsePartnerId = (value: string): number | null => {
   if (!value.trim()) return null;
   const parsed = Number(value);
@@ -260,6 +266,7 @@ export function StationsMapPage() {
                   key={station.id}
                   position={stationPosition}
                   icon={station.id === selectedStationId ? activeStationIcon : stationIcon}
+                  opacity={station.riskZone === "RED" ? 1 : station.riskZone === "YELLOW" ? 0.92 : 0.85}
                   eventHandlers={{
                     click: () => {
                       setSelectedStationId(station.id);
@@ -296,7 +303,9 @@ export function StationsMapPage() {
                       itemRefs.current[station.id] = el;
                     }}
                   >
-                    <span>{station.name}</span>
+                    <span>
+                      {station.name} <em className={`risk-badge ${station.riskZone.toLowerCase()}`}>{station.riskZone}</em>
+                    </span>
                     <small>{formatDistance(station.distanceKm)}</small>
                   </button>
                 </li>
@@ -309,6 +318,10 @@ export function StationsMapPage() {
               <h3>{selectedStation.name}</h3>
               <p>{selectedStation.address}</p>
               <p>Расстояние: {formatDistance(selectedStation.distanceKm)}</p>
+              <p>
+                Риск: <strong>{riskZoneLabel[selectedStation.riskZone]}</strong>
+              </p>
+              {selectedStation.riskZoneReason ? <p>Причина: {selectedStation.riskZoneReason}</p> : null}
               <div className="stations-map-card-actions">
                 <button
                   type="button"

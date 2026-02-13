@@ -144,6 +144,47 @@ def test_nearest_endpoint_returns_deterministic_order_for_seeded_stations(
     assert ordered_station_codes == ["S1", "S2", "S3", "S4", "S5"]
 
 
+def test_nearest_and_detail_include_risk_zone_fields(
+    fuel_stations_client: Tuple[TestClient, sessionmaker],
+) -> None:
+    client, session_local = fuel_stations_client
+
+    with session_local() as db:
+        network = FuelNetwork(name="NET", provider_code="NET", status=fuel_models.FuelNetworkStatus.ACTIVE)
+        db.add(network)
+        db.commit()
+        db.refresh(network)
+        station = FuelStation(
+            network_id=str(network.id),
+            station_code="S-RISK",
+            name="Risky",
+            lat=55.7510,
+            lon=37.6110,
+            status=fuel_models.FuelStationStatus.ACTIVE,
+            risk_zone="RED",
+            risk_zone_reason="Suspicious POS pattern",
+            risk_zone_updated_by="admin@example.com",
+        )
+        db.add(station)
+        db.commit()
+        db.refresh(station)
+
+    nearest = client.get(
+        "/api/v1/fuel/stations/nearest",
+        params={"lat": 55.7500, "lon": 37.6100, "radius_km": 50, "limit": 10},
+    )
+    assert nearest.status_code == 200
+    nearest_item = nearest.json()["items"][0]
+    assert nearest_item["risk_zone"] == "RED"
+    assert nearest_item["risk_zone_reason"] == "Suspicious POS pattern"
+
+    detail = client.get(f"/api/v1/fuel/stations/{station.id}")
+    assert detail.status_code == 200
+    detail_json = detail.json()
+    assert detail_json["risk_zone"] == "RED"
+    assert detail_json["risk_zone_reason"] == "Suspicious POS pattern"
+
+
 def test_build_nav_url_google_with_destination() -> None:
     nav_url = build_nav_url(55.75, 37.62, provider="google")
     assert nav_url is not None

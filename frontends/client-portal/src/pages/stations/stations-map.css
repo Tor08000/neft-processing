@@ -72,6 +72,32 @@
   gap: 10px;
 }
 
+.risk-badge {
+  display: inline-block;
+  margin-left: 6px;
+  border-radius: 999px;
+  padding: 1px 7px;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.risk-badge.green {
+  background: #e8f7ec;
+  color: #187a3a;
+}
+
+.risk-badge.yellow {
+  background: #fff5dd;
+  color: #9a6400;
+}
+
+.risk-badge.red {
+  background: #fde7e9;
+  color: #b12a38;
+}
+
 .stations-map-list button.active {
   border-color: var(--brand-accent, #2f6fed);
   background: rgba(47, 111, 237, 0.08);

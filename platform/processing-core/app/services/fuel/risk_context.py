@@ -48,6 +48,13 @@ def build_risk_context_for_fuel_tx(
     severity_multiplier: float | None,
     db,
 ) -> RiskContextResult:
+    station_risk_zone = (station.risk_zone or "").upper() or None
+    station_risk_tags: list[str] = []
+    if station_risk_zone == "YELLOW":
+        station_risk_tags.append("STATION_RISK_YELLOW")
+    elif station_risk_zone == "RED":
+        station_risk_tags.append("STATION_RISK_RED")
+
     local_ts = occurred_at.astimezone(MSK_TZ)
     hour_of_day = local_ts.hour
     last_hour = occurred_at - timedelta(hours=1)
@@ -224,6 +231,8 @@ def build_risk_context_for_fuel_tx(
         "fleet_trend_station_label": fleet_trends["station"].label.value if fleet_trends.get("station") else None,
         "fleet_trend_vehicle_label": fleet_trends["vehicle"].label.value if fleet_trends.get("vehicle") else None,
         "risk_hints": risk_hints,
+        "station_risk_zone": station_risk_zone,
+        "risk_tags": station_risk_tags,
     }
     if fraud_summary.get("has_strong_off_route") and fraud_summary.get("max_signal_severity_24h"):
         metadata["risk_score"] = max(metadata.get("risk_score", 0), int(fraud_summary["max_signal_severity_24h"]))
