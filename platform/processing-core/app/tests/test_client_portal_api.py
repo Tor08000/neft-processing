@@ -183,6 +183,7 @@ def test_client_operation_details_include_station(db_session, make_jwt):
             status=OperationStatus.APPROVED,
             merchant_id="m1",
             terminal_id="t-station-1",
+            fuel_station_id=station.id,
             client_id=str(client_id),
             card_id="card-1",
             amount=100,
@@ -199,7 +200,51 @@ def test_client_operation_details_include_station(db_session, make_jwt):
         assert payload["station"]["id"] == str(station.id)
         assert payload["station"]["name"] == "АЗС Тест"
         assert payload["station"]["address"] == "RU, Moscow"
-        assert payload["station"]["nav_url"]
+        assert payload["station"]["nav_url"] == "https://www.google.com/maps/dir/?api=1&destination=55.75,37.61"
+
+
+def test_client_operation_details_station_nav_url_is_null_without_coords(db_session, make_jwt):
+    client_id = uuid4()
+    other_client_id = uuid4()
+    _seed_clients(db_session, client_id, other_client_id)
+
+    network = FuelNetwork(id=str(uuid4()), name="Main", provider_code="main", status=FuelNetworkStatus.ACTIVE)
+    station = FuelStation(
+        id=str(uuid4()),
+        network_id=network.id,
+        station_code="t-station-no-coords",
+        name="АЗС Без координат",
+        country="RU",
+        city="Moscow",
+        lat=None,
+        lon=None,
+        nav_url=None,
+        status=FuelStationStatus.ACTIVE,
+    )
+    db_session.add_all([network, station])
+    db_session.add(
+        Operation(
+            operation_id="op-st-2",
+            operation_type=OperationType.AUTH,
+            status=OperationStatus.APPROVED,
+            merchant_id="m1",
+            terminal_id="t-station-no-coords",
+            fuel_station_id=station.id,
+            client_id=str(client_id),
+            card_id="card-1",
+            amount=100,
+            currency="RUB",
+        )
+    )
+    db_session.commit()
+
+    token = make_jwt(roles=("CLIENT_USER",), client_id=str(client_id))
+    with TestClient(app, headers={"Authorization": f"Bearer {token}"}) as api_client:
+        details = api_client.get("/api/v1/client/operations/op-st-2")
+        assert details.status_code == 200
+        payload = details.json()
+        assert payload["station"]["id"] == str(station.id)
+        assert payload["station"]["nav_url"] is None
 
 def test_balances_and_statements(db_session, make_jwt):
     client_id = uuid4()

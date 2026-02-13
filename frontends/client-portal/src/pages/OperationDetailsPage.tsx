@@ -165,7 +165,7 @@ export function OperationDetailsPage() {
               type="button"
               className="secondary"
               disabled={!operation.station.nav_url}
-              title={!operation.station.nav_url ? "Нет координат/URL станции" : undefined}
+              title={!operation.station.nav_url ? "Нет координат станции" : undefined}
               onClick={() => operation.station?.nav_url && window.open(operation.station.nav_url, "_blank", "noopener,noreferrer")}
             >
               Проложить маршрут
