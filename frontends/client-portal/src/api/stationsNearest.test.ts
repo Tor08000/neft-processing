@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildNearestStationsQuery, mapNearestStation } from "./logisticsStations";
+import { buildNearestStationsQuery, mapNearestStation } from "./stationsNearest";
 
 describe("mapNearestStation", () => {
   it("maps API station into UI model", () => {
