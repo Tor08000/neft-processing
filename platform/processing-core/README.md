@@ -77,6 +77,18 @@ pytest -q platform/processing-core/app/tests/test_billing_periods.py
 pytest -q tests/test_alembic_single_head.py
 ```
 
+Fuel stations nearest tests on PostgreSQL (primary deterministic run path):
+
+```bash
+docker compose exec core-api pytest -q platform/processing-core/app/tests/test_fuel_stations_nearest_api.py
+```
+
+Fast local smoke path (SQLite, optional, does not replace PostgreSQL run):
+
+```bash
+pytest -q platform/processing-core/app/tests/test_fuel_stations_nearest_api.py
+```
+
 Clean integration test run via Docker Compose (from repo root):
 
 ```bash
