@@ -39,6 +39,19 @@ class FuelStationStatus(str, Enum):
     INACTIVE = "INACTIVE"
 
 
+class FuelStationHealthStatus(str, Enum):
+    ONLINE = "ONLINE"
+    DEGRADED = "DEGRADED"
+    OFFLINE = "OFFLINE"
+
+
+class FuelStationHealthSource(str, Enum):
+    MANUAL = "MANUAL"
+    INTEGRATION = "INTEGRATION"
+    TERMINAL = "TERMINAL"
+    SYSTEM = "SYSTEM"
+
+
 class FuelStationRiskZone(str, Enum):
     GREEN = "GREEN"
     YELLOW = "YELLOW"
@@ -400,6 +413,12 @@ class FuelStation(Base):
     risk_zone_reason = Column(Text, nullable=True)
     risk_zone_updated_at = Column(DateTime(timezone=True), nullable=True)
     risk_zone_updated_by = Column(String(256), nullable=True)
+    health_status = Column(String(16), nullable=True, index=True)
+    last_heartbeat = Column(DateTime(timezone=True), nullable=True, index=True)
+    health_reason = Column(Text, nullable=True)
+    health_updated_at = Column(DateTime(timezone=True), nullable=True)
+    health_updated_by = Column(String(256), nullable=True)
+    health_source = Column(String(16), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 

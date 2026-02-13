@@ -7,6 +7,8 @@ from typing import Any, Optional
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.models.fuel import (
+    FuelStationHealthSource,
+    FuelStationHealthStatus,
     FuelLimitPeriod,
     FuelLimitScopeType,
     FuelLimitType,
@@ -230,6 +232,9 @@ class FuelStationOut(BaseModel):
     risk_zone_reason: Optional[str] = None
     risk_zone_updated_at: Optional[datetime] = None
     risk_zone_updated_by: Optional[str] = None
+    health_status: Optional[FuelStationHealthStatus] = None
+    last_heartbeat: Optional[datetime] = None
+    health_reason: Optional[str] = None
     created_at: datetime
 
 
@@ -238,6 +243,23 @@ class FuelStationRiskZonePatch(BaseModel):
 
     risk_zone: FuelStationRiskZone
     reason: Optional[str] = None
+
+
+class FuelStationHealthPatch(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    health_status: FuelStationHealthStatus
+    reason: Optional[str] = None
+    source: FuelStationHealthSource = FuelStationHealthSource.MANUAL
+
+
+class FuelStationHeartbeatIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    status: FuelStationHealthStatus = FuelStationHealthStatus.ONLINE
+    source: FuelStationHealthSource = FuelStationHealthSource.TERMINAL
+    terminal_id: Optional[str] = None
+    observed_at: Optional[datetime] = None
 
 
 class FuelStationNearestItem(FuelStationOut):

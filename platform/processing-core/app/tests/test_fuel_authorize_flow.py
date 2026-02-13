@@ -7,6 +7,7 @@ from app.db import Base, SessionLocal, engine
 from app.models.fleet import FleetVehicle, FleetVehicleStatus
 from app.models.fuel import FuelCard, FuelCardStatus, FuelLimit, FuelLimitPeriod, FuelLimitScopeType, FuelLimitType
 from app.models.fuel import FuelNetwork, FuelStation, FuelStationNetwork
+from app.models.rule import Rule
 from app.schemas.fuel import DeclineCode, FuelAuthorizeRequest
 from app.services.fuel.authorize import authorize_fuel_tx
 
@@ -132,3 +133,72 @@ def test_authorize_idempotent_response(session):
     second = authorize_fuel_tx(session, payload=payload).response
     assert first.status == second.status
     assert first.transaction_id == second.transaction_id
+
+
+def test_station_risk_red_rule_soft_declines_and_sets_manual_review_flag(session):
+    _seed_refs(session)
+    station = session.query(FuelStation).filter(FuelStation.station_code == "ST-1").one()
+    station.risk_zone = "RED"
+    session.commit()
+
+    payload = FuelAuthorizeRequest(
+        card_token="card-token-1",
+        network_code="net-1",
+        station_code="ST-1",
+        occurred_at=datetime.now(timezone.utc),
+        fuel_type="DIESEL",
+        volume_liters=1.0,
+        unit_price=100,
+        currency="RUB",
+        external_ref=str(uuid4()),
+        vehicle_plate="A123BC",
+    )
+    result = authorize_fuel_tx(session, payload=payload)
+    assert result.response.status == "REVIEW"
+    tx = result.transaction
+    assert tx is not None
+    assert tx.meta["decision"]["flags"]["manual_review_required"] is True
+    assert "STATION_RISK_RED" in tx.meta["decision"]["reason_codes"]
+
+
+def test_station_risk_red_rule_can_be_disabled(session):
+    _seed_refs(session)
+    station = session.query(FuelStation).filter(FuelStation.station_code == "ST-1").one()
+    station.risk_zone = "RED"
+    session.commit()
+
+    authorize_fuel_tx(
+        session,
+        payload=FuelAuthorizeRequest(
+            card_token="card-token-1",
+            network_code="net-1",
+            station_code="ST-1",
+            occurred_at=datetime.now(timezone.utc),
+            fuel_type="DIESEL",
+            volume_liters=1.0,
+            unit_price=100,
+            currency="RUB",
+            external_ref=str(uuid4()),
+            vehicle_plate="A123BC",
+        ),
+    )
+    rule = session.query(Rule).filter(Rule.name == "default_station_risk_red_soft_decline").one()
+    rule.enabled = False
+    session.commit()
+
+    second = authorize_fuel_tx(
+        session,
+        payload=FuelAuthorizeRequest(
+            card_token="card-token-1",
+            network_code="net-1",
+            station_code="ST-1",
+            occurred_at=datetime.now(timezone.utc),
+            fuel_type="DIESEL",
+            volume_liters=1.0,
+            unit_price=100,
+            currency="RUB",
+            external_ref=str(uuid4()),
+            vehicle_plate="A123BC",
+        ),
+    )
+    assert second.response.status == "ALLOW"
