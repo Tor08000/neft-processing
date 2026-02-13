@@ -4,6 +4,7 @@ export type NearestStationsParams = {
   lat: number;
   lon: number;
   radiusKm: number;
+  partnerId?: number | null;
   limit?: number;
   provider?: "google" | "yandex" | "apple";
 };
@@ -54,6 +55,14 @@ export function mapNearestStation(raw: RawNearestStation): StationMapItem | null
 }
 
 export async function fetchNearestStations(token: string, params: NearestStationsParams): Promise<StationMapItem[]> {
+  const query = buildNearestStationsQuery(params);
+
+  const response = await request<RawNearestStation[]>(`/v1/fuel/stations/nearest?${query.toString()}`, { method: "GET" }, { token });
+
+  return (response ?? []).map(mapNearestStation).filter((item): item is StationMapItem => Boolean(item));
+}
+
+export function buildNearestStationsQuery(params: NearestStationsParams): URLSearchParams {
   const query = new URLSearchParams({
     lat: String(params.lat),
     lon: String(params.lon),
@@ -62,7 +71,9 @@ export async function fetchNearestStations(token: string, params: NearestStation
     provider: params.provider ?? "google",
   });
 
-  const response = await request<RawNearestStation[]>(`/v1/fuel/stations/nearest?${query.toString()}`, { method: "GET" }, { token });
+  if (typeof params.partnerId === "number") {
+    query.set("partner_id", String(params.partnerId));
+  }
 
-  return (response ?? []).map(mapNearestStation).filter((item): item is StationMapItem => Boolean(item));
+  return query;
 }

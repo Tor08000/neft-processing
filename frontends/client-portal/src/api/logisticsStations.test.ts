@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mapNearestStation } from "./logisticsStations";
+import { buildNearestStationsQuery, mapNearestStation } from "./logisticsStations";
 
 describe("mapNearestStation", () => {
   it("maps API station into UI model", () => {
@@ -46,5 +46,42 @@ describe("mapNearestStation", () => {
     });
 
     expect(mapped?.navUrl).toBe("https://example.com/nav");
+  });
+});
+
+describe("buildNearestStationsQuery", () => {
+  it("does not pass partner_id when partnerId is null", () => {
+    const query = buildNearestStationsQuery({
+      lat: 55.75,
+      lon: 37.61,
+      radiusKm: 5,
+      partnerId: null,
+      provider: "google",
+    });
+
+    expect(query.get("partner_id")).toBeNull();
+  });
+
+  it("passes partner_id when partnerId is set", () => {
+    const query = buildNearestStationsQuery({
+      lat: 55.75,
+      lon: 37.61,
+      radiusKm: 5,
+      partnerId: 5,
+      provider: "google",
+    });
+
+    expect(query.get("partner_id")).toBe("5");
+  });
+
+  it("changes radius in query", () => {
+    const query = buildNearestStationsQuery({
+      lat: 55.75,
+      lon: 37.61,
+      radiusKm: 20,
+      provider: "google",
+    });
+
+    expect(query.get("radius_km")).toBe("20");
   });
 });

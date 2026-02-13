@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import L from "leaflet";
 import { MapContainer, Marker, TileLayer, useMap, useMapEvents } from "react-leaflet";
 import markerIcon from "leaflet/dist/images/marker-icon.png";
@@ -9,6 +9,13 @@ import { fetchNearestStations, type StationMapItem } from "../../api/logisticsSt
 import "./stations-map.css";
 
 type LatLon = { lat: number; lon: number };
+type StationsQueryState = {
+  centerLat: number;
+  centerLon: number;
+  radiusKm: number;
+  partnerId: number | null;
+  provider: "google" | "yandex" | "apple";
+};
 
 const DEFAULT_CENTER: LatLon = { lat: 55.751244, lon: 37.618423 };
 const RADIUS_OPTIONS = [1, 3, 5, 10, 20, 50];
@@ -21,6 +28,12 @@ const stationIcon = L.icon({
   iconAnchor: [12, 41],
   popupAnchor: [1, -34],
   shadowSize: [41, 41],
+});
+
+const activeStationIcon = L.divIcon({
+  className: "stations-map-active-marker",
+  iconSize: [20, 20],
+  iconAnchor: [10, 10],
 });
 
 function MapEvents({ onMoveEnd }: { onMoveEnd: (center: LatLon) => void }) {
@@ -47,16 +60,31 @@ const formatDistance = (distanceKm: number | null): string => {
   return `${distanceKm.toFixed(1)} км`;
 };
 
+const parsePartnerId = (value: string): number | null => {
+  if (!value.trim()) return null;
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed <= 0) return null;
+  return parsed;
+};
+
 export function StationsMapPage() {
   const { user } = useAuth();
   const [stations, setStations] = useState<StationMapItem[]>([]);
   const [selectedStationId, setSelectedStationId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [radiusKm, setRadiusKm] = useState(5);
-  const [queryCenter, setQueryCenter] = useState<LatLon>(DEFAULT_CENTER);
-  const [mapCenter, setMapCenter] = useState<LatLon>(DEFAULT_CENTER);
   const [pendingCenter, setPendingCenter] = useState<LatLon | null>(null);
+  const [mapCenter, setMapCenter] = useState<LatLon>(DEFAULT_CENTER);
+  const [partnerInput, setPartnerInput] = useState("");
+  const itemRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+
+  const [queryState, setQueryState] = useState<StationsQueryState>({
+    centerLat: DEFAULT_CENTER.lat,
+    centerLon: DEFAULT_CENTER.lon,
+    radiusKm: 5,
+    partnerId: null,
+    provider: "google",
+  });
 
   const selectedStation = useMemo(
     () => stations.find((station) => station.id === selectedStationId) ?? null,
@@ -64,21 +92,21 @@ export function StationsMapPage() {
   );
 
   const loadStations = useCallback(
-    async (center: LatLon, nextRadiusKm = radiusKm) => {
+    async (nextQueryState: StationsQueryState) => {
       if (!user?.token) return;
       setLoading(true);
       setError(null);
       try {
         const data = await fetchNearestStations(user.token, {
-          lat: center.lat,
-          lon: center.lon,
-          radiusKm: nextRadiusKm,
+          lat: nextQueryState.centerLat,
+          lon: nextQueryState.centerLon,
+          radiusKm: nextQueryState.radiusKm,
+          partnerId: nextQueryState.partnerId,
           limit: 50,
-          provider: "google",
+          provider: nextQueryState.provider,
         });
         setStations(data);
         setSelectedStationId((prev) => (prev && data.some((item) => item.id === prev) ? prev : data[0]?.id ?? null));
-        setQueryCenter(center);
         setPendingCenter(null);
       } catch {
         setError("Ошибка загрузки станций");
@@ -86,12 +114,12 @@ export function StationsMapPage() {
         setLoading(false);
       }
     },
-    [radiusKm, user?.token],
+    [user?.token],
   );
 
   useEffect(() => {
-    void loadStations(DEFAULT_CENTER, radiusKm);
-  }, [loadStations, radiusKm]);
+    void loadStations(queryState);
+  }, [loadStations]);
 
   const handleMoveEnd = useCallback((center: LatLon) => {
     setMapCenter(center);
@@ -100,21 +128,50 @@ export function StationsMapPage() {
 
   const handleSearchHere = useCallback(() => {
     if (!pendingCenter) return;
-    void loadStations(pendingCenter, radiusKm);
-  }, [loadStations, pendingCenter, radiusKm]);
+    const nextQueryState: StationsQueryState = {
+      ...queryState,
+      centerLat: pendingCenter.lat,
+      centerLon: pendingCenter.lon,
+    };
+    setQueryState(nextQueryState);
+    void loadStations(nextQueryState);
+  }, [loadStations, pendingCenter, queryState]);
 
   const handleRadiusChange = useCallback(
     (value: number) => {
-      setRadiusKm(value);
-      void loadStations(mapCenter, value);
+      const nextQueryState: StationsQueryState = {
+        ...queryState,
+        radiusKm: value,
+        centerLat: mapCenter.lat,
+        centerLon: mapCenter.lon,
+      };
+      setQueryState(nextQueryState);
+      setPendingCenter(null);
+      void loadStations(nextQueryState);
     },
-    [loadStations, mapCenter],
+    [loadStations, mapCenter, queryState],
   );
+
 
   const handleSelectStation = useCallback((station: StationMapItem) => {
     setSelectedStationId(station.id);
     setMapCenter({ lat: station.lat, lon: station.lon });
   }, []);
+
+  useEffect(() => {
+    if (!selectedStationId) return;
+    itemRefs.current[selectedStationId]?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [selectedStationId]);
+
+  const handleRetry = useCallback(() => {
+    void loadStations(queryState);
+  }, [loadStations, queryState]);
+
+  const handleIncreaseRadius = useCallback(() => {
+    const nextRadius = RADIUS_OPTIONS.find((option) => option > queryState.radiusKm);
+    if (!nextRadius) return;
+    void handleRadiusChange(nextRadius);
+  }, [handleRadiusChange, queryState.radiusKm]);
 
   return (
     <section className="stations-map-page" aria-label="stations-map-page">
@@ -124,13 +181,39 @@ export function StationsMapPage() {
 
       <div className="stations-map-controls card">
         <label htmlFor="radius_km">Радиус поиска</label>
-        <select id="radius_km" value={radiusKm} onChange={(event) => handleRadiusChange(Number(event.target.value))}>
+        <select id="radius_km" value={queryState.radiusKm} onChange={(event) => handleRadiusChange(Number(event.target.value))}>
           {RADIUS_OPTIONS.map((value) => (
             <option key={value} value={value}>
               {value} км
             </option>
           ))}
         </select>
+
+        <label htmlFor="partner_id">Партнёр</label>
+        <input
+          id="partner_id"
+          type="number"
+          inputMode="numeric"
+          min={1}
+          placeholder="ID партнёра"
+          value={partnerInput}
+          onChange={(event) => {
+            const nextValue = event.target.value;
+            setPartnerInput(nextValue);
+            if (!nextValue.trim() || parsePartnerId(nextValue) !== null) {
+              const nextQueryState: StationsQueryState = {
+                ...queryState,
+                partnerId: parsePartnerId(nextValue),
+                centerLat: mapCenter.lat,
+                centerLon: mapCenter.lon,
+              };
+              setQueryState(nextQueryState);
+              setPendingCenter(null);
+              void loadStations(nextQueryState);
+            }
+          }}
+        />
+
         <button type="button" className="secondary" disabled={!pendingCenter || loading} onClick={handleSearchHere}>
           Искать здесь
         </button>
@@ -139,7 +222,7 @@ export function StationsMapPage() {
       {error ? (
         <div className="card stations-map-alert" role="alert">
           <p>{error}</p>
-          <button type="button" className="secondary" onClick={() => void loadStations(pendingCenter ?? queryCenter, radiusKm)}>
+          <button type="button" className="secondary" onClick={handleRetry}>
             Повторить
           </button>
         </div>
@@ -155,18 +238,28 @@ export function StationsMapPage() {
               <Marker
                 key={station.id}
                 position={[station.lat, station.lon]}
-                icon={stationIcon}
-                eventHandlers={{ click: () => setSelectedStationId(station.id) }}
+                icon={station.id === selectedStationId ? activeStationIcon : stationIcon}
+                eventHandlers={{
+                  click: () => {
+                    setSelectedStationId(station.id);
+                    setMapCenter({ lat: station.lat, lon: station.lon });
+                  },
+                }}
               />
             ))}
           </MapContainer>
-          {loading ? <div className="stations-map-overlay">Загружаем станции…</div> : null}
+          {loading ? <div className="stations-map-overlay">Загрузка станций…</div> : null}
         </div>
 
         <aside className="stations-map-sidebar card">
           <h2>Станции рядом</h2>
           {!loading && !stations.length ? (
-            <p className="stations-map-empty">Станций в радиусе не найдено. Попробуйте увеличить радиус.</p>
+            <div className="stations-map-empty-wrap">
+              <p className="stations-map-empty">В радиусе не найдено</p>
+              <button type="button" className="secondary" onClick={handleIncreaseRadius} disabled={queryState.radiusKm === 50}>
+                Увеличить радиус
+              </button>
+            </div>
           ) : (
             <ul className="stations-map-list">
               {stations.map((station) => (
@@ -175,6 +268,9 @@ export function StationsMapPage() {
                     type="button"
                     className={station.id === selectedStationId ? "active" : ""}
                     onClick={() => handleSelectStation(station)}
+                    ref={(el) => {
+                      itemRefs.current[station.id] = el;
+                    }}
                   >
                     <span>{station.name}</span>
                     <small>{formatDistance(station.distanceKm)}</small>
@@ -194,12 +290,20 @@ export function StationsMapPage() {
                   type="button"
                   className="secondary"
                   disabled={!selectedStation.navUrl}
+                  title={!selectedStation.navUrl ? "Нет координат станции" : undefined}
                   onClick={() => selectedStation.navUrl && window.open(selectedStation.navUrl, "_blank", "noopener,noreferrer")}
                 >
-                  Проложить маршрут
+                  Навигация
                 </button>
                 <button type="button" className="ghost" onClick={() => void navigator.clipboard.writeText(selectedStation.address)}>
                   Скопировать адрес
+                </button>
+                <button
+                  type="button"
+                  className="ghost"
+                  onClick={() => void navigator.clipboard.writeText(`${selectedStation.lat},${selectedStation.lon}`)}
+                >
+                  Скопировать координаты
                 </button>
               </div>
             </article>
