@@ -11,7 +11,7 @@ from app.schemas.fuel import (
     FuelStationsNearestMetaQuery,
     FuelStationsNearestResponse,
 )
-from app.services.fuel.stations import NearestStationsQuery, find_nearest_stations
+from app.services.fuel.stations import NearestStationsQuery, find_nearest_stations, resolve_station_nav_url
 
 router = APIRouter(
     prefix="/api/v1/fuel/stations",
@@ -28,6 +28,7 @@ def nearest_fuel_stations_endpoint(
     only_with_coords: bool = Query(default=True),
     status: str | None = Query(default=None),
     partner_id: int | None = Query(default=None),
+    provider: str = Query(default="google", pattern="^(google|yandex|apple)$"),
     db: Session = Depends(get_db),
 ) -> FuelStationsNearestResponse:
     radius_clamped = min(max(radius_km, 0.1), 200.0)
@@ -48,7 +49,10 @@ def nearest_fuel_stations_endpoint(
 
     payload = [
         FuelStationNearestItem(
-            **FuelStationOut.model_validate(item.station).model_dump(),
+            **{
+                **FuelStationOut.model_validate(item.station).model_dump(),
+                "nav_url": resolve_station_nav_url(item.station, provider=provider),
+            },
             distance_km=round(item.distance_km, 3),
         )
         for item in items

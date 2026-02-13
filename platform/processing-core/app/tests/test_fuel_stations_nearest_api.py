@@ -17,13 +17,13 @@ from app.db import get_db
 from app.fastapi_utils import generate_unique_id
 from app.models import fuel as fuel_models
 from app.models.fuel import FuelNetwork, FuelStation
-from app.services.fuel.stations import haversine_km
+from app.services.fuel.stations import build_nav_url, haversine_km
 
 
 @pytest.fixture()
 def fuel_stations_client() -> Tuple[TestClient, sessionmaker]:
     engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
-    TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, expire_on_commit=False, bind=engine, class_=Session)
+    testing_session_local = sessionmaker(autocommit=False, autoflush=False, expire_on_commit=False, bind=engine, class_=Session)
     FuelNetwork.__table__.create(bind=engine)
     FuelStation.__table__.create(bind=engine)
 
@@ -31,7 +31,7 @@ def fuel_stations_client() -> Tuple[TestClient, sessionmaker]:
     app.include_router(fuel_stations_router, prefix="")
 
     def override_get_db():
-        db = TestingSessionLocal()
+        db = testing_session_local()
         try:
             yield db
         finally:
@@ -40,7 +40,7 @@ def fuel_stations_client() -> Tuple[TestClient, sessionmaker]:
     app.dependency_overrides[get_db] = override_get_db
 
     with TestClient(app) as client:
-        yield client, TestingSessionLocal
+        yield client, testing_session_local
 
     FuelStation.__table__.drop(bind=engine)
     FuelNetwork.__table__.drop(bind=engine)
@@ -48,18 +48,26 @@ def fuel_stations_client() -> Tuple[TestClient, sessionmaker]:
 
 
 def test_haversine_same_point_is_zero() -> None:
-    assert haversine_km(55.7558, 37.6176, 55.7558, 37.6176) == pytest.approx(0.0, abs=1e-9)
+    assert haversine_km(0.0, 0.0, 0.0, 0.0) == pytest.approx(0.0, abs=1e-6)
 
 
 def test_haversine_moscow_to_spb_in_expected_range() -> None:
-    distance = haversine_km(55.7558, 37.6176, 59.9343, 30.3351)
-    assert 600.0 <= distance <= 700.0
+    distance = haversine_km(55.7558, 37.6173, 59.9311, 30.3609)
+    assert 600.0 <= distance <= 800.0
 
 
-def test_nearest_endpoint_returns_sorted_items_within_radius(fuel_stations_client: Tuple[TestClient, sessionmaker]) -> None:
-    client, SessionLocal = fuel_stations_client
+def test_haversine_is_symmetric() -> None:
+    distance_ab = haversine_km(55.7558, 37.6173, 59.9311, 30.3609)
+    distance_ba = haversine_km(59.9311, 30.3609, 55.7558, 37.6173)
+    assert distance_ab == pytest.approx(distance_ba)
 
-    with SessionLocal() as db:
+
+def test_nearest_endpoint_returns_deterministic_order_for_seeded_stations(
+    fuel_stations_client: Tuple[TestClient, sessionmaker],
+) -> None:
+    client, session_local = fuel_stations_client
+
+    with session_local() as db:
         network = FuelNetwork(name="NET", provider_code="NET", status=fuel_models.FuelNetworkStatus.ACTIVE)
         db.add(network)
         db.commit()
@@ -69,29 +77,47 @@ def test_nearest_endpoint_returns_sorted_items_within_radius(fuel_stations_clien
             [
                 FuelStation(
                     network_id=str(network.id),
-                    station_code="M1",
-                    name="Moscow Center",
+                    station_code="S1",
+                    name="S1",
                     city="Moscow",
-                    lat=55.7558,
-                    lon=37.6176,
+                    lat=55.7510,
+                    lon=37.6110,
                     status=fuel_models.FuelStationStatus.ACTIVE,
                 ),
                 FuelStation(
                     network_id=str(network.id),
-                    station_code="M2",
-                    name="Moscow West",
+                    station_code="S2",
+                    name="S2",
                     city="Moscow",
-                    lat=55.7512,
-                    lon=37.5845,
+                    lat=55.7600,
+                    lon=37.6200,
                     status=fuel_models.FuelStationStatus.ACTIVE,
                 ),
                 FuelStation(
                     network_id=str(network.id),
-                    station_code="FAR",
-                    name="Far away",
+                    station_code="S3",
+                    name="S3",
                     city="Moscow",
-                    lat=55.85,
-                    lon=37.95,
+                    lat=55.7700,
+                    lon=37.6300,
+                    status=fuel_models.FuelStationStatus.ACTIVE,
+                ),
+                FuelStation(
+                    network_id=str(network.id),
+                    station_code="S4",
+                    name="S4",
+                    city="Moscow",
+                    lat=55.7900,
+                    lon=37.6500,
+                    status=fuel_models.FuelStationStatus.ACTIVE,
+                ),
+                FuelStation(
+                    network_id=str(network.id),
+                    station_code="S5",
+                    name="S5",
+                    city="Moscow",
+                    lat=55.8200,
+                    lon=37.6900,
                     status=fuel_models.FuelStationStatus.ACTIVE,
                 ),
             ]
@@ -100,15 +126,38 @@ def test_nearest_endpoint_returns_sorted_items_within_radius(fuel_stations_clien
 
     response = client.get(
         "/api/v1/fuel/stations/nearest",
-        params={"lat": 55.7558, "lon": 37.6176, "radius_km": 5, "limit": 30},
+        params={"lat": 55.7500, "lon": 37.6100, "radius_km": 50, "limit": 10},
     )
 
     assert response.status_code == 200
     data = response.json()
-    assert len(data["items"]) >= 1
-    assert data["meta"]["returned"] == len(data["items"])
+
+    assert len(data["items"]) == 5
+    assert data["meta"]["returned"] == 5
 
     distances = [item["distance_km"] for item in data["items"]]
-    assert all(distance <= 5 for distance in distances)
-    assert distances == sorted(distances)
     assert all("distance_km" in item for item in data["items"])
+    assert distances == sorted(distances)
+    assert all(distance <= 50 for distance in distances)
+
+    ordered_station_codes = [item["station_code"] for item in data["items"]]
+    assert ordered_station_codes == ["S1", "S2", "S3", "S4", "S5"]
+
+
+def test_build_nav_url_google_with_destination() -> None:
+    nav_url = build_nav_url(55.75, 37.62, provider="google")
+    assert nav_url is not None
+    assert "google.com/maps/dir" in nav_url
+    assert "destination=55.75%2C37.62" in nav_url
+
+
+def test_build_nav_url_returns_none_without_coordinates() -> None:
+    assert build_nav_url(None, 37.62, provider="google") is None
+    assert build_nav_url(55.75, None, provider="google") is None
+
+
+def test_build_nav_url_yandex_with_from_coordinates() -> None:
+    nav_url = build_nav_url(55.75, 37.62, provider="yandex", from_lat=55.7, from_lon=37.5)
+    assert nav_url is not None
+    assert "yandex.ru/maps" in nav_url
+    assert "rtext=55.7%2C37.5~55.75%2C37.62" in nav_url

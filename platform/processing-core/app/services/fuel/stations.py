@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from math import asin, cos, radians, sin, sqrt
+from urllib.parse import urlencode
 
 from sqlalchemy.orm import Session
 
@@ -23,6 +24,41 @@ class NearestStationsQuery:
 class NearestStationResult:
     station: FuelStation
     distance_km: float
+
+
+def build_nav_url(
+    lat: float | None,
+    lon: float | None,
+    provider: str = "google",
+    from_lat: float | None = None,
+    from_lon: float | None = None,
+) -> str | None:
+    if lat is None or lon is None:
+        return None
+
+    if provider == "google":
+        query = urlencode({"api": 1, "destination": f"{lat},{lon}"})
+        return f"https://www.google.com/maps/dir/?{query}"
+
+    if provider == "yandex":
+        if from_lat is not None and from_lon is not None:
+            query = urlencode({"rtext": f"{from_lat},{from_lon}~{lat},{lon}", "rtt": "auto"})
+            return f"https://yandex.ru/maps/?{query}"
+        query = urlencode({"pt": f"{lon},{lat}", "z": 16, "l": "map"})
+        return f"https://yandex.ru/maps/?{query}"
+
+    if provider == "apple":
+        query = urlencode({"daddr": f"{lat},{lon}"})
+        return f"https://maps.apple.com/?{query}"
+
+    query = urlencode({"api": 1, "destination": f"{lat},{lon}"})
+    return f"https://www.google.com/maps/dir/?{query}"
+
+
+def resolve_station_nav_url(station: FuelStation, provider: str = "google") -> str | None:
+    if station.nav_url:
+        return station.nav_url
+    return build_nav_url(station.lat, station.lon, provider=provider)
 
 
 def haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
