@@ -196,8 +196,10 @@ class FuelStationCreate(BaseModel):
     country: Optional[str] = None
     region: Optional[str] = None
     city: Optional[str] = None
-    lat: Optional[str] = None
-    lon: Optional[str] = None
+    lat: Optional[float] = None
+    lon: Optional[float] = None
+    nav_url: Optional[str] = None
+    geo_hash: Optional[str] = None
     status: str = "ACTIVE"
 
 
@@ -212,8 +214,10 @@ class FuelStationOut(BaseModel):
     country: Optional[str] = None
     region: Optional[str] = None
     city: Optional[str] = None
-    lat: Optional[str] = None
-    lon: Optional[str] = None
+    lat: Optional[float] = None
+    lon: Optional[float] = None
+    nav_url: Optional[str] = None
+    geo_hash: Optional[str] = None
     status: str
     created_at: datetime
 

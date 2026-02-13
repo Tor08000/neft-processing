@@ -179,6 +179,8 @@ def create_station(payload: FuelStationCreate, db: Session = Depends(get_db)) ->
         city=payload.city,
         lat=payload.lat,
         lon=payload.lon,
+        nav_url=payload.nav_url,
+        geo_hash=payload.geo_hash,
         status=payload.status,
     )
     db.add(station)

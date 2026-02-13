@@ -315,6 +315,102 @@ def _ensure_org_subscription(engine, config: DemoSeedConfig, plan_id: str | None
     return "created"
 
 
+
+
+def _ensure_demo_fuel_stations(engine) -> str:
+    if not _table_exists(engine, "fuel_networks") or not _table_exists(engine, "fuel_stations"):
+        return "skipped_missing_table"
+
+    networks = _table(engine, "fuel_networks")
+    stations = _table(engine, "fuel_stations")
+    now = _now()
+
+    provider_code = "demo_geo_network"
+    network = engine.execute(select(networks).where(networks.c.provider_code == provider_code)).mappings().first()
+    if network:
+        network_id = str(network["id"])
+    else:
+        network_id = str(uuid4())
+        network_values = _filter_columns(
+            networks,
+            {
+                "id": network_id,
+                "name": "Demo Geo Fuel Network",
+                "provider_code": provider_code,
+                "status": "ACTIVE",
+                "created_at": now,
+            },
+        )
+        engine.execute(insert(networks).values(**network_values))
+
+    city_points: list[tuple[str, str, str, float, float]] = [
+        ("Moscow", "Moscow", "ул. Тверская", 55.7558, 37.6176),
+        ("Moscow", "Moscow", "Ленинградский проспект", 55.7903, 37.5451),
+        ("Moscow", "Moscow", "Кутузовский проспект", 55.7408, 37.5313),
+        ("Moscow", "Moscow", "Варшавское шоссе", 55.6406, 37.6208),
+        ("Moscow", "Moscow", "Профсоюзная улица", 55.6717, 37.5514),
+        ("Moscow", "Moscow", "Волгоградский проспект", 55.7115, 37.6953),
+        ("Moscow", "Moscow", "Рязанский проспект", 55.7163, 37.7822),
+        ("Moscow", "Moscow", "Дмитровское шоссе", 55.8688, 37.5432),
+        ("Moscow", "Moscow", "Алтуфьевское шоссе", 55.8765, 37.5881),
+        ("Moscow", "Moscow", "МКАД 65 км", 55.8404, 37.3867),
+        ("Saint Petersburg", "Saint Petersburg", "Невский проспект", 59.9343, 30.3351),
+        ("Saint Petersburg", "Saint Petersburg", "Московский проспект", 59.8790, 30.3186),
+        ("Saint Petersburg", "Saint Petersburg", "Лиговский проспект", 59.9202, 30.3557),
+        ("Saint Petersburg", "Saint Petersburg", "Пулковское шоссе", 59.8102, 30.3176),
+        ("Saint Petersburg", "Saint Petersburg", "Приморский проспект", 59.9846, 30.2508),
+        ("Saint Petersburg", "Saint Petersburg", "Богатырский проспект", 60.0048, 30.2629),
+        ("Saint Petersburg", "Saint Petersburg", "Индустриальный проспект", 59.9487, 30.4712),
+        ("Saint Petersburg", "Saint Petersburg", "КАД 32 км", 59.8589, 30.1842),
+        ("Saint Petersburg", "Saint Petersburg", "Пискаревский проспект", 59.9896, 30.4231),
+        ("Saint Petersburg", "Saint Petersburg", "Выборгское шоссе", 60.0662, 30.3034),
+    ]
+
+    updated = 0
+    created = 0
+    for idx, (region, city, street, lat, lon) in enumerate(city_points, start=1):
+        station_code = f"DEMO-GEO-{idx:03d}"
+        station_name = f"Demo Station {idx:03d}"
+        station_address = f"{city}, {street}"
+        existing = (
+            engine.execute(
+                select(stations).where(stations.c.network_id == network_id, stations.c.station_code == station_code)
+            )
+            .mappings()
+            .first()
+        )
+        values = _filter_columns(
+            stations,
+            {
+                "network_id": network_id,
+                "station_code": station_code,
+                "name": station_name,
+                "country": "RU",
+                "region": region,
+                "city": city,
+                "lat": lat,
+                "lon": lon,
+                "status": "ACTIVE",
+                "mcc": "5541",
+                "nav_url": None,
+                "geo_hash": None,
+                "created_at": now,
+                "meta": {"address": station_address},
+            },
+        )
+        if existing:
+            engine.execute(
+                update(stations)
+                .where(stations.c.network_id == network_id, stations.c.station_code == station_code)
+                .values(**values)
+            )
+            updated += 1
+        else:
+            values["id"] = str(uuid4())
+            engine.execute(insert(stations).values(**values))
+            created += 1
+
+    return f"created={created},updated={updated}"
 def main() -> None:
     config = _load_config()
     init_db()
@@ -341,6 +437,7 @@ def main() -> None:
         for feature_key, status in feature_results.items():
             _record(f"plan_feature:{feature_key}", status)
         _record("org_subscription", _ensure_org_subscription(engine, config, plan_id))
+        _record("fuel_demo_stations", _ensure_demo_fuel_stations(engine))
 
         if plan_id:
             get_org_entitlements_snapshot(session, org_id=config.org_id)

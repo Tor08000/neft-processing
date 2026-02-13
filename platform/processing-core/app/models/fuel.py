@@ -8,6 +8,7 @@ from sqlalchemy import (
     Column,
     Date,
     DateTime,
+    Float,
     ForeignKey,
     Index,
     Integer,
@@ -366,6 +367,7 @@ class FuelStationNetwork(Base):
 class FuelStation(Base):
     __tablename__ = "fuel_stations"
     __table_args__ = (
+        Index("ix_fuel_stations_lat_lon", "lat", "lon"),
         UniqueConstraint("network_id", "station_code", name="uq_fuel_station_code_network"),
     )
 
@@ -381,8 +383,10 @@ class FuelStation(Base):
     country = Column(String(64), nullable=True)
     region = Column(String(64), nullable=True)
     city = Column(String(64), nullable=True)
-    lat = Column(String(32), nullable=True)
-    lon = Column(String(32), nullable=True)
+    lat = Column(Float, nullable=True)
+    lon = Column(Float, nullable=True)
+    nav_url = Column(Text, nullable=True)
+    geo_hash = Column(String(16), nullable=True)
     mcc = Column(String(8), nullable=True)
     station_code = Column(String(64), nullable=True, index=True)
     status = Column(ExistingEnum(FuelStationStatus, name="fuel_station_status"), nullable=False)
