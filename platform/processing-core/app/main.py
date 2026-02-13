@@ -176,6 +176,11 @@ except Exception:  # pragma: no cover - в dev может ещё не сущес
     fuel_station_prices_router = None  # type: ignore
 
 try:
+    from app.api.v1.endpoints.geo_metrics import router as geo_metrics_router
+except Exception:  # pragma: no cover - в dev может ещё не существовать
+    geo_metrics_router = None  # type: ignore
+
+try:
     from app.api.v1.endpoints.logistics import router as logistics_router
 except Exception:  # pragma: no cover - в dev может ещё не существовать
     logistics_router = None  # type: ignore
@@ -380,6 +385,8 @@ if fuel_transactions_router is not None:
     safe_include_router(app, fuel_transactions_router, prefix="")
 if fuel_stations_router is not None:
     safe_include_router(app, fuel_stations_router, prefix="")
+if geo_metrics_router is not None:
+    safe_include_router(app, geo_metrics_router, prefix="")
 if fuel_station_prices_router is not None:
     safe_include_router(app, fuel_station_prices_router, prefix="")
 if logistics_router is not None:
@@ -542,6 +549,8 @@ if fuel_transactions_router is not None:
     safe_include_router(core_prefixed_router, fuel_transactions_router, prefix="")
 if fuel_stations_router is not None:
     safe_include_router(core_prefixed_router, fuel_stations_router, prefix="")
+if geo_metrics_router is not None:
+    safe_include_router(core_prefixed_router, geo_metrics_router, prefix="")
 if fuel_station_prices_router is not None:
     safe_include_router(core_prefixed_router, fuel_station_prices_router, prefix="")
 if logistics_router is not None:
