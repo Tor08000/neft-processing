@@ -35,6 +35,7 @@ from app.schemas.fuel import (
     FuelNetworkOut,
     FuelStationCreate,
     FuelStationOut,
+    FuelStationHealthPatch,
     FuelStationRiskZonePatch,
     FuelStationNetworkCreate,
     FuelStationNetworkOut,
@@ -216,6 +217,29 @@ def patch_station_risk_zone(
     station.risk_zone_reason = payload.reason
     station.risk_zone_updated_at = datetime.now(timezone.utc)
     station.risk_zone_updated_by = str(actor)
+    db.commit()
+    db.refresh(station)
+    return FuelStationOut.model_validate(station)
+
+
+@router.patch("/stations/{station_id}/health", response_model=FuelStationOut)
+def patch_station_health(
+    station_id: str,
+    payload: FuelStationHealthPatch,
+    request: Request,
+    db: Session = Depends(get_db),
+    token: dict = Depends(require_admin),
+) -> FuelStationOut:
+    station = db.query(FuelStation).filter(FuelStation.id == station_id).one_or_none()
+    if station is None:
+        raise HTTPException(status_code=404, detail="station_not_found")
+
+    actor = token.get("user_id") or token.get("email") or token.get("sub") or request.client.host or "admin"
+    station.health_status = payload.health_status.value
+    station.health_reason = payload.reason
+    station.health_source = payload.source.value
+    station.health_updated_at = datetime.now(timezone.utc)
+    station.health_updated_by = str(actor)
     db.commit()
     db.refresh(station)
     return FuelStationOut.model_validate(station)

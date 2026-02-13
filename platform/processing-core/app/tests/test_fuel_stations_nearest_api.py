@@ -164,6 +164,8 @@ def test_nearest_and_detail_include_risk_zone_fields(
             risk_zone="RED",
             risk_zone_reason="Suspicious POS pattern",
             risk_zone_updated_by="admin@example.com",
+            health_status="DEGRADED",
+            health_reason="POS timeout",
         )
         db.add(station)
         db.commit()
@@ -177,12 +179,16 @@ def test_nearest_and_detail_include_risk_zone_fields(
     nearest_item = nearest.json()["items"][0]
     assert nearest_item["risk_zone"] == "RED"
     assert nearest_item["risk_zone_reason"] == "Suspicious POS pattern"
+    assert nearest_item["health_status"] == "DEGRADED"
+    assert nearest_item["health_reason"] == "POS timeout"
 
     detail = client.get(f"/api/v1/fuel/stations/{station.id}")
     assert detail.status_code == 200
     detail_json = detail.json()
     assert detail_json["risk_zone"] == "RED"
     assert detail_json["risk_zone_reason"] == "Suspicious POS pattern"
+    assert detail_json["health_status"] == "DEGRADED"
+    assert detail_json["health_reason"] == "POS timeout"
 
 
 def test_build_nav_url_google_with_destination() -> None:

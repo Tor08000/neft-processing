@@ -31,6 +31,7 @@ from app.services.audit_service import RequestContext
 from app.services.crm import repository as crm_repository
 from app.services.decision import DecisionEngine, DecisionOutcome
 from app.services.fuel import analytics, events, fraud, limits, repository, risk_context
+from app.services.fuel.station_policy_rules import evaluate_station_policy_rules, ensure_default_station_risk_rule
 from app.services.legal_graph.registry import LegalGraphRegistry
 
 
@@ -338,6 +339,13 @@ def authorize_fuel_tx(
             "station_risk_zone": station.risk_zone,
         }
 
+    ensure_default_station_risk_rule(db)
+    station_policy_decision = evaluate_station_policy_rules(
+        db,
+        tenant_id=card.tenant_id,
+        risk_tags=list(base_meta.get("risk_tags") or []),
+    )
+
     limit_decision = limits.check_limits(
         db=db,
         tenant_id=card.tenant_id,
@@ -467,6 +475,9 @@ def authorize_fuel_tx(
     if decision.outcome == DecisionOutcome.ALLOW and risk_result.decline_code and risk_blocking_enabled:
         status = FuelTransactionStatus.DECLINED
         decline_code = DeclineCode.RISK_BLOCK
+    if station_policy_decision.matched and station_policy_decision.policy == "SOFT_DECLINE" and risk_blocking_enabled:
+        status = FuelTransactionStatus.REVIEW_REQUIRED
+        decline_code = DeclineCode.RISK_REVIEW_REQUIRED
     if decision.outcome == DecisionOutcome.MANUAL_REVIEW and risk_blocking_enabled:
         status = FuelTransactionStatus.REVIEW_REQUIRED
         decline_code = DeclineCode.RISK_REVIEW_REQUIRED
@@ -511,6 +522,15 @@ def authorize_fuel_tx(
         external_ref=payload.external_ref,
         meta={
             **base_meta,
+            "decision": {
+                "flags": {
+                    "manual_review_required": bool(station_policy_decision.manual_review_required),
+                },
+                "reason_codes": [
+                    *(base_meta.get("decision", {}).get("reason_codes", []) if isinstance(base_meta.get("decision"), dict) else []),
+                    *([station_policy_decision.reason_code] if station_policy_decision.reason_code else []),
+                ],
+            },
             "risk_explain": risk_explain.model_dump(),
             "fraud_signals": fraud_signals_payload or None,
         },
