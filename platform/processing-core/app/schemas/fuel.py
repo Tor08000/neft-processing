@@ -352,3 +352,47 @@ __all__ = [
     "FuelStationsNearestMetaQuery",
     "FuelStationsNearestResponse",
 ]
+
+
+class FuelStationPriceItemIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    product_code: str = Field(..., min_length=1, max_length=32)
+    price: float = Field(..., gt=0)
+    currency: str = Field(default="RUB", min_length=3, max_length=3)
+    valid_from: datetime | None = None
+    valid_to: datetime | None = None
+    meta: dict[str, Any] | None = None
+
+
+class FuelStationPricesUpsertIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[FuelStationPriceItemIn] = Field(..., min_length=1, max_length=500)
+    source: str = Field(default="MANUAL")
+
+
+class FuelStationPriceItemOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    product_code: str
+    price: float
+    currency: str
+    valid_from: datetime | None = None
+    valid_to: datetime | None = None
+
+
+class FuelStationPricesOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    station_id: str
+    as_of: datetime
+    items: list[FuelStationPriceItemOut] = Field(default_factory=list)
+
+
+class FuelStationPriceImportSummary(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    inserted: int
+    updated: int
+    errors: list[str] = Field(default_factory=list)

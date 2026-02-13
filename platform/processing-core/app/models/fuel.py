@@ -52,6 +52,17 @@ class FuelStationHealthSource(str, Enum):
     SYSTEM = "SYSTEM"
 
 
+class FuelStationPriceStatus(str, Enum):
+    ACTIVE = "ACTIVE"
+    INACTIVE = "INACTIVE"
+
+
+class FuelStationPriceSource(str, Enum):
+    MANUAL = "MANUAL"
+    IMPORT = "IMPORT"
+    API = "API"
+
+
 class FuelStationRiskZone(str, Enum):
     GREEN = "GREEN"
     YELLOW = "YELLOW"
@@ -486,6 +497,27 @@ class FuelTransaction(Base):
     limit_check_details = Column(JSON, nullable=True)
     meta = Column(JSON, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class FuelStationPrice(Base):
+    __tablename__ = "fuel_station_prices"
+    __table_args__ = (
+        Index("ix_fuel_station_prices_station_product_status", "station_id", "product_code", "status"),
+        Index("ix_fuel_station_prices_station_status_valid_from", "station_id", "status", "valid_from"),
+    )
+
+    id = Column(GUID(), primary_key=True, default=new_uuid_str)
+    station_id = Column(GUID(), ForeignKey("fuel_stations.id"), nullable=False, index=True)
+    product_code = Column(String(32), nullable=False)
+    price = Column(Numeric(12, 3), nullable=False)
+    currency = Column(String(3), nullable=False, server_default="RUB")
+    status = Column(ExistingEnum(FuelStationPriceStatus, name="fuel_station_price_status"), nullable=False)
+    valid_from = Column(DateTime(timezone=True), nullable=True)
+    valid_to = Column(DateTime(timezone=True), nullable=True)
+    source = Column(ExistingEnum(FuelStationPriceSource, name="fuel_station_price_source"), nullable=False)
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+    updated_by = Column(String(256), nullable=True)
+    meta = Column(JSON, nullable=True)
 
 
 class FuelIngestJob(Base):
