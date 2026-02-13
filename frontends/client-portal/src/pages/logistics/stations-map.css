@@ -7,10 +7,12 @@
   display: flex;
   gap: 12px;
   align-items: center;
+  flex-wrap: wrap;
 }
 
-.stations-map-controls select {
-  width: 120px;
+.stations-map-controls select,
+.stations-map-controls input {
+  width: 140px;
 }
 
 .stations-map-layout {
@@ -72,10 +74,18 @@
 
 .stations-map-list button.active {
   border-color: var(--brand-accent, #2f6fed);
+  background: rgba(47, 111, 237, 0.08);
+}
+
+.stations-map-empty-wrap {
+  display: grid;
+  gap: 8px;
+  align-items: start;
 }
 
 .stations-map-empty {
   color: var(--text-muted, #6b7280);
+  margin: 0;
 }
 
 .stations-map-card {
@@ -88,12 +98,22 @@
 .stations-map-card-actions {
   display: flex;
   gap: 8px;
+  flex-wrap: wrap;
 }
 
 .stations-map-alert {
   display: flex;
   align-items: center;
   justify-content: space-between;
+}
+
+.stations-map-active-marker {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #2f6fed;
+  border: 3px solid #fff;
+  box-shadow: 0 0 0 2px rgba(47, 111, 237, 0.4);
 }
 
 @media (max-width: 1100px) {
