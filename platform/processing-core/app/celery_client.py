@@ -87,6 +87,10 @@ celery_client.conf.update(
             "task": "slo.evaluate",
             "schedule": crontab(minute="*/15"),
         },
+        "geo.metrics_backfill": {
+            "task": "geo.metrics_backfill",
+            "schedule": crontab(hour=2, minute=30),
+        },
     },
 )
 

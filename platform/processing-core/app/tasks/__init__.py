@@ -85,6 +85,12 @@ except Exception:
     pass
 
 
+try:  # pragma: no cover - optional task modules
+    import app.tasks.geo_metrics  # noqa: F401
+except Exception:
+    pass
+
+
 @celery_client.task(name="workers.ping")
 def ping(x: int = 1) -> dict:
     """Simple ping task to validate Celery connectivity."""
