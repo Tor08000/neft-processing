@@ -129,11 +129,11 @@ const navItems: ClientNavItem[] = [
     audience: "fleet",
   },
   {
-    to: "/logistics/stations-map",
-    label: "Логистика · Карта АЗС",
-    shortLabel: "Карта АЗС",
+    to: "/stations-map",
+    label: "Карта станций",
+    shortLabel: "Станции",
     icon: <Package size={18} />,
-    audience: "fleet",
+    audience: "all",
   },
   {
     to: "/fleet/employees",

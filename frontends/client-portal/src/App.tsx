@@ -80,7 +80,7 @@ import { FleetPage } from "./pages/logistics/FleetPage";
 import { TripDetailsPage } from "./pages/logistics/TripDetailsPage";
 import { TripsPage } from "./pages/logistics/TripsPage";
 import { FuelControlPage } from "./pages/logistics/FuelControlPage";
-import { StationsMapPage } from "./pages/logistics/StationsMapPage";
+import { StationsMapPage } from "./pages/stations/StationsMapPage";
 import { AuditPage } from "./pages/AuditPage";
 import { isPwaMode } from "./pwa/mode";
 import { LegalPage } from "./pages/LegalPage";
@@ -603,13 +603,14 @@ export function App({ initialSession = null }: AppProps) {
                   }
                 />
                 <Route
-                  path="/logistics/stations-map"
+                  path="/stations-map"
                   element={
-                    <ModuleGate module="LOGISTICS" capability="LOGISTICS" title="Логистика">
+                    <AccessGate title="Карта станций">
                       <StationsMapPage />
-                    </ModuleGate>
+                    </AccessGate>
                   }
                 />
+                <Route path="/logistics/stations-map" element={<Navigate to="/stations-map" replace />} />
                 <Route path="/fleet/notifications/policies" element={<Navigate to="/fleet/policy-center/notifications" replace />} />
                 <Route path="/fleet/notifications/channels" element={<Navigate to="/fleet/policy-center/channels" replace />} />
                 <Route path="/fleet/policies" element={<Navigate to="/fleet/policy-center/actions" replace />} />

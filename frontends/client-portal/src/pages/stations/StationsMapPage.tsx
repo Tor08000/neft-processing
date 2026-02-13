@@ -6,7 +6,7 @@ import markerIcon from "leaflet/dist/images/marker-icon.png";
 import markerIconRetina from "leaflet/dist/images/marker-icon-2x.png";
 import markerShadow from "leaflet/dist/images/marker-shadow.png";
 import { useAuth } from "../../auth/AuthContext";
-import { fetchNearestStations, type StationMapItem } from "../../api/logisticsStations";
+import { fetchNearestStations, type StationMapItem } from "../../api/stationsNearest";
 import "./stations-map.css";
 
 type LatLon = { lat: number; lon: number };
