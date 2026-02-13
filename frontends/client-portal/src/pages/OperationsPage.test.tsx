@@ -113,4 +113,78 @@ describe("Client operations", () => {
     expect(await screen.findByText(/Превышен дневной лимит договора/)).toBeInTheDocument();
     expect(screen.getByText(/op-2/)).toBeInTheDocument();
   });
+
+  it("shows station actions and opens map with station id", async () => {
+    const detailResponse = new Response(
+      JSON.stringify({
+        id: "op-st-1",
+        created_at: "2024-01-02T12:00:00Z",
+        amount: 1500,
+        currency: "RUB",
+        status: "APPROVED",
+        card_id: "card-9",
+        station: {
+          id: "station-123",
+          name: "АЗС 123",
+          address: "RU, Moscow",
+          nav_url: "https://maps.example/nav",
+        },
+      }),
+      { status: 200 },
+    );
+    const nearestResponse = new Response(JSON.stringify([]), { status: 200 });
+    const stationResponse = new Response(
+      JSON.stringify({ id: "station-123", name: "АЗС 123", address: "RU, Moscow", lat: 55.75, lon: 37.61, nav_url: "https://maps.example/nav" }),
+      { status: 200 },
+    );
+
+    const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
+    const fetchMock = vi.fn().mockResolvedValueOnce(detailResponse).mockResolvedValueOnce(nearestResponse).mockResolvedValueOnce(stationResponse);
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+
+    render(
+      <MemoryRouter initialEntries={["/operations/op-st-1"]}>
+        <App initialSession={session} />
+      </MemoryRouter>,
+    );
+
+    const navButton = await screen.findByRole("button", { name: "Проложить маршрут" });
+    expect(navButton).toBeEnabled();
+    await userEvent.click(navButton);
+    expect(openSpy).toHaveBeenCalledWith("https://maps.example/nav", "_blank", "noopener,noreferrer");
+
+    await userEvent.click(screen.getByRole("button", { name: "Показать на карте" }));
+    expect(await screen.findByText("Карта станций")).toBeInTheDocument();
+    const stationCall = fetchMock.mock.calls.find((call) => String(call[0]).includes("/v1/fuel/stations/station-123"));
+    expect(stationCall).toBeTruthy();
+  });
+
+  it("disables navigation when station nav_url is missing", async () => {
+    const detailResponse = new Response(
+      JSON.stringify({
+        id: "op-st-2",
+        created_at: "2024-01-02T12:00:00Z",
+        amount: 1500,
+        currency: "RUB",
+        status: "APPROVED",
+        card_id: "card-9",
+        station: { id: "station-124", name: "АЗС 124", address: "RU, Moscow", nav_url: null },
+      }),
+      { status: 200 },
+    );
+
+    const fetchMock = vi.fn().mockResolvedValue(detailResponse);
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+
+    render(
+      <MemoryRouter initialEntries={["/operations/op-st-2"]}>
+        <App initialSession={session} />
+      </MemoryRouter>,
+    );
+
+    const navButton = await screen.findByRole("button", { name: "Проложить маршрут" });
+    expect(navButton).toBeDisabled();
+    expect(navButton).toHaveAttribute("title", "Нет координат/URL станции");
+  });
+
 });

@@ -9,7 +9,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import Response
-from sqlalchemy import String, cast
+from sqlalchemy import String, cast, or_
 from sqlalchemy.orm import Session
 
 from app.api.dependencies.client import client_portal_user
@@ -31,6 +31,7 @@ from app.models.contract_limits import LimitConfig, LimitConfigScope, LimitType,
 from app.models.finance import CreditNote, InvoicePayment
 from app.models.invoice import Invoice, InvoiceStatus
 from app.models.ledger_entry import LedgerDirection, LedgerEntry
+from app.models.fuel import FuelStation
 from app.models.operation import Operation, RiskResult
 from app.repositories.billing_repository import BillingRepository
 from app.schemas.client_portal import (
@@ -50,6 +51,7 @@ from app.schemas.client_portal import (
     ClientInvoiceSummary,
     ClientProfile,
     OperationDetails,
+    OperationStation,
     OperationSummary,
     OperationsPage,
     StatementResponse,
@@ -71,6 +73,7 @@ from app.services.document_chain import compute_ack_hash
 from app.services.crm import onboarding
 from app.services.s3_storage import S3Storage
 from app.services.settlement_allocations import list_settlement_summary
+from app.services.fuel.stations import resolve_station_nav_url
 
 router = APIRouter(prefix="/v1/client", tags=["client-portal"])
 
@@ -319,7 +322,38 @@ def _humanize_reason(op: Operation) -> str | None:
     return None
 
 
-def _serialize_operation(op: Operation) -> OperationSummary:
+def _resolve_operation_station(db: Session, op: Operation) -> OperationStation | None:
+    terminal_id = (op.terminal_id or "").strip()
+    if not terminal_id:
+        return None
+
+    station = (
+        db.query(FuelStation)
+        .filter(
+            or_(
+                FuelStation.station_code == terminal_id,
+                cast(FuelStation.id, String) == terminal_id,
+            )
+        )
+        .one_or_none()
+    )
+    if station is None:
+        return None
+
+    address_parts = [station.country, station.region, station.city]
+    address = ", ".join([str(part).strip() for part in address_parts if part and str(part).strip()]) or None
+
+    return OperationStation(
+        id=str(station.id),
+        name=station.name,
+        address=address,
+        lat=station.lat,
+        lon=station.lon,
+        nav_url=resolve_station_nav_url(station),
+    )
+
+
+def _serialize_operation(db: Session, op: Operation) -> OperationSummary:
     return OperationSummary(
         id=op.operation_id,
         created_at=op.created_at,
@@ -332,6 +366,7 @@ def _serialize_operation(op: Operation) -> OperationSummary:
         terminal_id=op.terminal_id,
         reason=_humanize_reason(op),
         quantity=getattr(op, "quantity", None),
+        station=_resolve_operation_station(db, op),
     )
 
 
@@ -500,7 +535,7 @@ async def list_operations(
     operations: List[Operation] = (
         query.order_by(Operation.created_at.desc()).offset(offset).limit(limit).all()
     )
-    items = [_serialize_operation(op) for op in operations]
+    items = [_serialize_operation(db, op) for op in operations]
     return OperationsPage(items=items, total=total, limit=limit, offset=offset)
 
 
@@ -520,7 +555,7 @@ async def operation_details(
     if not op:
         raise HTTPException(status_code=404, detail="operation_not_found")
 
-    return OperationDetails(**_serialize_operation(op).dict())
+    return OperationDetails(**_serialize_operation(db, op).dict())
 
 
 @router.get("/invoices", response_model=ClientInvoiceListResponse)

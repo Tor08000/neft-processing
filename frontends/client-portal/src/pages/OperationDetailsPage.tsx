@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { fetchOperationDetails } from "../api/operations";
 import { useAuth } from "../auth/AuthContext";
 import { CopyButton } from "../components/CopyButton";
@@ -12,6 +12,7 @@ import { MoneyValue } from "../components/common/MoneyValue";
 export function OperationDetailsPage() {
   const { id } = useParams();
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [operation, setOperation] = useState<OperationDetails | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -146,6 +147,32 @@ export function OperationDetailsPage() {
           <dd className="muted">Нет данных</dd>
         </div>
       </dl>
+
+      {operation.station ? (
+        <div className="card" style={{ marginTop: 16 }}>
+          <h3>Станция</h3>
+          <p><strong>{operation.station.name}</strong></p>
+          <p>{operation.station.address ?? "Адрес не указан"}</p>
+          <div className="actions">
+            <button
+              type="button"
+              className="secondary"
+              onClick={() => navigate(`/stations-map?station_id=${encodeURIComponent(operation.station!.id)}`)}
+            >
+              Показать на карте
+            </button>
+            <button
+              type="button"
+              className="secondary"
+              disabled={!operation.station.nav_url}
+              title={!operation.station.nav_url ? "Нет координат/URL станции" : undefined}
+              onClick={() => operation.station?.nav_url && window.open(operation.station.nav_url, "_blank", "noopener,noreferrer")}
+            >
+              Проложить маршрут
+            </button>
+          </div>
+        </div>
+      ) : null}
       {operation ? (
         <SupportRequestModal
           isOpen={isSupportOpen}
