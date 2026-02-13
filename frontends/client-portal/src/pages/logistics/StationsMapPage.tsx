@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import L from "leaflet";
-import { MapContainer, Marker, TileLayer, useMap, useMapEvents } from "react-leaflet";
+import type { LatLngExpression } from "leaflet";
+import { MapContainer, Marker, Popup, TileLayer, useMap, useMapEvents } from "react-leaflet";
 import markerIcon from "leaflet/dist/images/marker-icon.png";
 import markerIconRetina from "leaflet/dist/images/marker-icon-2x.png";
 import markerShadow from "leaflet/dist/images/marker-shadow.png";
@@ -50,7 +51,8 @@ function MapEvents({ onMoveEnd }: { onMoveEnd: (center: LatLon) => void }) {
 function MapRecenter({ center }: { center: LatLon }) {
   const map = useMap();
   useEffect(() => {
-    map.flyTo([center.lat, center.lon], map.getZoom(), { duration: 0.35 });
+    const centerPosition: LatLngExpression = [center.lat, center.lon];
+    map.flyTo(centerPosition, map.getZoom(), { duration: 0.35 });
   }, [center, map]);
   return null;
 }
@@ -173,6 +175,8 @@ export function StationsMapPage() {
     void handleRadiusChange(nextRadius);
   }, [handleRadiusChange, queryState.radiusKm]);
 
+  const mapCenterPosition: LatLngExpression = [mapCenter.lat, mapCenter.lon];
+
   return (
     <section className="stations-map-page" aria-label="stations-map-page">
       <div className="page-header">
@@ -230,23 +234,29 @@ export function StationsMapPage() {
 
       <div className="stations-map-layout">
         <div className="stations-map-canvas card">
-          <MapContainer center={[mapCenter.lat, mapCenter.lon]} zoom={12} scrollWheelZoom className="stations-map-leaflet">
-            <TileLayer attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+          <MapContainer center={mapCenterPosition} zoom={12} scrollWheelZoom className="stations-map-leaflet">
+            <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution="&copy; OpenStreetMap contributors" />
             <MapEvents onMoveEnd={handleMoveEnd} />
             <MapRecenter center={mapCenter} />
-            {stations.map((station) => (
-              <Marker
-                key={station.id}
-                position={[station.lat, station.lon]}
-                icon={station.id === selectedStationId ? activeStationIcon : stationIcon}
-                eventHandlers={{
-                  click: () => {
-                    setSelectedStationId(station.id);
-                    setMapCenter({ lat: station.lat, lon: station.lon });
-                  },
-                }}
-              />
-            ))}
+            {stations.map((station) => {
+              const stationPosition: LatLngExpression = [station.lat, station.lon];
+
+              return (
+                <Marker
+                  key={station.id}
+                  position={stationPosition}
+                  icon={station.id === selectedStationId ? activeStationIcon : stationIcon}
+                  eventHandlers={{
+                    click: () => {
+                      setSelectedStationId(station.id);
+                      setMapCenter({ lat: station.lat, lon: station.lon });
+                    },
+                  }}
+                >
+                  <Popup>{station.name}</Popup>
+                </Marker>
+              );
+            })}
           </MapContainer>
           {loading ? <div className="stations-map-overlay">Загрузка станций…</div> : null}
         </div>
