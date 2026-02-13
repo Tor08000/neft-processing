@@ -322,27 +322,9 @@ def _humanize_reason(op: Operation) -> str | None:
     return None
 
 
-def _resolve_operation_station(db: Session, op: Operation) -> OperationStation | None:
-    terminal_id = (op.terminal_id or "").strip()
-    if not terminal_id:
-        return None
-
-    station = (
-        db.query(FuelStation)
-        .filter(
-            or_(
-                FuelStation.station_code == terminal_id,
-                cast(FuelStation.id, String) == terminal_id,
-            )
-        )
-        .one_or_none()
-    )
-    if station is None:
-        return None
-
+def _serialize_station(station: FuelStation) -> OperationStation:
     address_parts = [station.country, station.region, station.city]
     address = ", ".join([str(part).strip() for part in address_parts if part and str(part).strip()]) or None
-
     return OperationStation(
         id=str(station.id),
         name=station.name,
@@ -353,7 +335,40 @@ def _resolve_operation_station(db: Session, op: Operation) -> OperationStation |
     )
 
 
-def _serialize_operation(db: Session, op: Operation) -> OperationSummary:
+def _resolve_operation_station(op: Operation, station_by_id: dict[str, FuelStation], station_by_code: dict[str, FuelStation]) -> OperationStation | None:
+    if op.fuel_station_id and op.fuel_station_id in station_by_id:
+        return _serialize_station(station_by_id[op.fuel_station_id])
+
+    terminal_id = (op.terminal_id or "").strip()
+    if not terminal_id:
+        return None
+
+    station = station_by_code.get(terminal_id) or station_by_id.get(terminal_id)
+    if station is None:
+        return None
+    return _serialize_station(station)
+
+
+def _build_station_maps(db: Session, operations: list[Operation]) -> tuple[dict[str, FuelStation], dict[str, FuelStation]]:
+    station_ids = {str(op.fuel_station_id) for op in operations if getattr(op, "fuel_station_id", None)}
+    terminal_ids = {(op.terminal_id or "").strip() for op in operations if (op.terminal_id or "").strip()}
+    if not station_ids and not terminal_ids:
+        return {}, {}
+
+    query = db.query(FuelStation)
+    conditions = []
+    if station_ids:
+        conditions.append(cast(FuelStation.id, String).in_(station_ids))
+    if terminal_ids:
+        conditions.append(FuelStation.station_code.in_(terminal_ids))
+    stations = query.filter(or_(*conditions)).all() if conditions else []
+
+    by_id = {str(station.id): station for station in stations}
+    by_code = {str(station.station_code): station for station in stations if station.station_code}
+    return by_id, by_code
+
+
+def _serialize_operation(op: Operation, station_by_id: dict[str, FuelStation], station_by_code: dict[str, FuelStation]) -> OperationSummary:
     return OperationSummary(
         id=op.operation_id,
         created_at=op.created_at,
@@ -366,7 +381,7 @@ def _serialize_operation(db: Session, op: Operation) -> OperationSummary:
         terminal_id=op.terminal_id,
         reason=_humanize_reason(op),
         quantity=getattr(op, "quantity", None),
-        station=_resolve_operation_station(db, op),
+        station=_resolve_operation_station(op, station_by_id, station_by_code),
     )
 
 
@@ -535,7 +550,8 @@ async def list_operations(
     operations: List[Operation] = (
         query.order_by(Operation.created_at.desc()).offset(offset).limit(limit).all()
     )
-    items = [_serialize_operation(db, op) for op in operations]
+    station_by_id, station_by_code = _build_station_maps(db, operations)
+    items = [_serialize_operation(op, station_by_id, station_by_code) for op in operations]
     return OperationsPage(items=items, total=total, limit=limit, offset=offset)
 
 
@@ -555,7 +571,8 @@ async def operation_details(
     if not op:
         raise HTTPException(status_code=404, detail="operation_not_found")
 
-    return OperationDetails(**_serialize_operation(db, op).dict())
+    station_by_id, station_by_code = _build_station_maps(db, [op])
+    return OperationDetails(**_serialize_operation(op, station_by_id, station_by_code).dict())
 
 
 @router.get("/invoices", response_model=ClientInvoiceListResponse)

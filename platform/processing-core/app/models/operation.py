@@ -10,6 +10,7 @@ from sqlalchemy import (
     DateTime,
     Enum as SAEnum,
     Float,
+    ForeignKey,
     Numeric,
     String,
     func,
@@ -20,6 +21,7 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import synonym
 
 from app.db import Base
+from app.db.types import GUID
 
 
 json_variant = JSON().with_variant(postgresql.JSONB, "postgresql")
@@ -95,6 +97,7 @@ class Operation(Base):
 
     merchant_id = Column(String(64), index=True, nullable=False)
     terminal_id = Column(String(64), index=True, nullable=False)
+    fuel_station_id = Column(GUID(), ForeignKey("fuel_stations.id"), nullable=True, index=True)
     client_id = Column(String(64), index=True, nullable=False)
     card_id = Column(String(64), index=True, nullable=False)
     tariff_id = Column(String(64), nullable=True, index=True)

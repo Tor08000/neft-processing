@@ -184,7 +184,7 @@ describe("Client operations", () => {
 
     const navButton = await screen.findByRole("button", { name: "Проложить маршрут" });
     expect(navButton).toBeDisabled();
-    expect(navButton).toHaveAttribute("title", "Нет координат/URL станции");
+    expect(navButton).toHaveAttribute("title", "Нет координат станции");
   });
 
 });
