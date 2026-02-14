@@ -3,13 +3,15 @@ from __future__ import annotations
 import math
 from collections import defaultdict
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
+from decimal import Decimal
 
 from sqlalchemy import func
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from app.models.fuel import FuelStation
-from app.models.geo_metrics import GeoStationMetricsDaily
+from app.models.geo_metrics import GeoStationMetricsDaily, GeoTilesDaily
 
 WEB_MERCATOR_MAX_LAT = 85.0511
 
@@ -47,6 +49,22 @@ def mercator_tile_xy(lat: float, lon: float, zoom: int) -> tuple[int, int]:
 
     max_tile = n - 1
     return max(0, min(max_tile, tile_x)), max(0, min(max_tile, tile_y))
+
+
+def tile_x_from_lon(lon: float, zoom: int) -> int:
+    return mercator_tile_xy(0.0, lon, zoom)[0]
+
+
+def tile_y_from_lat(lat: float, zoom: int) -> int:
+    return mercator_tile_xy(lat, 0.0, zoom)[1]
+
+
+def tile_range_from_bbox(bbox: GeoBBox, zoom: int) -> tuple[int, int, int, int]:
+    min_x = tile_x_from_lon(bbox.min_lon, zoom)
+    max_x = tile_x_from_lon(bbox.max_lon, zoom)
+    min_y = tile_y_from_lat(bbox.max_lat, zoom)
+    max_y = tile_y_from_lat(bbox.min_lat, zoom)
+    return min(min_x, max_x), max(min_x, max_x), min(min_y, max_y), max(min_y, max_y)
 
 
 def query_station_aggregates(
@@ -126,4 +144,138 @@ def aggregate_to_tiles(stations: list[StationAggregate], *, zoom: int, metric: s
             "value": int(value) if float(value).is_integer() else value,
         }
         for (tile_x, tile_y), value in grouped.items()
+    ]
+
+
+def build_geo_tiles_for_day(db: Session, day: date, zoom: int) -> int:
+    rows = (
+        db.query(
+            GeoStationMetricsDaily.station_id,
+            FuelStation.lat,
+            FuelStation.lon,
+            GeoStationMetricsDaily.tx_count,
+            GeoStationMetricsDaily.captured_count,
+            GeoStationMetricsDaily.declined_count,
+            GeoStationMetricsDaily.amount_sum,
+            GeoStationMetricsDaily.liters_sum,
+            GeoStationMetricsDaily.risk_red_count,
+            GeoStationMetricsDaily.risk_yellow_count,
+        )
+        .join(FuelStation, FuelStation.id == GeoStationMetricsDaily.station_id)
+        .filter(GeoStationMetricsDaily.day == day)
+        .filter(FuelStation.lat.isnot(None), FuelStation.lon.isnot(None))
+        .all()
+    )
+
+    grouped: dict[tuple[int, int], dict[str, int | Decimal]] = defaultdict(
+        lambda: {
+            "tx_count": 0,
+            "captured_count": 0,
+            "declined_count": 0,
+            "amount_sum": Decimal("0"),
+            "liters_sum": Decimal("0"),
+            "risk_red_count": 0,
+            "risk_yellow_count": 0,
+        }
+    )
+
+    for row in rows:
+        tile_x, tile_y = mercator_tile_xy(float(row.lat), float(row.lon), zoom)
+        tile = grouped[(tile_x, tile_y)]
+        tile["tx_count"] = int(tile["tx_count"]) + int(row.tx_count or 0)
+        tile["captured_count"] = int(tile["captured_count"]) + int(row.captured_count or 0)
+        tile["declined_count"] = int(tile["declined_count"]) + int(row.declined_count or 0)
+        tile["amount_sum"] = Decimal(tile["amount_sum"]) + Decimal(row.amount_sum or 0)
+        tile["liters_sum"] = Decimal(tile["liters_sum"]) + Decimal(row.liters_sum or 0)
+        tile["risk_red_count"] = int(tile["risk_red_count"]) + int(row.risk_red_count or 0)
+        tile["risk_yellow_count"] = int(tile["risk_yellow_count"]) + int(row.risk_yellow_count or 0)
+
+    payload = [
+        {
+            "day": day,
+            "zoom": zoom,
+            "tile_x": tile_x,
+            "tile_y": tile_y,
+            **metrics,
+        }
+        for (tile_x, tile_y), metrics in grouped.items()
+    ]
+
+    db.query(GeoTilesDaily).filter(GeoTilesDaily.day == day, GeoTilesDaily.zoom == zoom).delete()
+    if payload:
+        if db.bind and db.bind.dialect.name == "postgresql":
+            stmt = pg_insert(GeoTilesDaily).values(payload)
+            stmt = stmt.on_conflict_do_update(
+                index_elements=["day", "zoom", "tile_x", "tile_y"],
+                set_={
+                    "tx_count": stmt.excluded.tx_count,
+                    "captured_count": stmt.excluded.captured_count,
+                    "declined_count": stmt.excluded.declined_count,
+                    "amount_sum": stmt.excluded.amount_sum,
+                    "liters_sum": stmt.excluded.liters_sum,
+                    "risk_red_count": stmt.excluded.risk_red_count,
+                    "risk_yellow_count": stmt.excluded.risk_yellow_count,
+                    "updated_at": func.now(),
+                },
+            )
+            db.execute(stmt)
+        else:
+            db.bulk_insert_mappings(GeoTilesDaily, payload)
+
+    db.commit()
+    return len(payload)
+
+
+def geo_tiles_backfill(db: Session, days: int = 7, zooms: list[int] | None = None, today: date | None = None) -> list[tuple[date, int, int]]:
+    zoom_values = zooms or [8, 10, 12]
+    anchor = today or date.today()
+    rebuilt: list[tuple[date, int, int]] = []
+    for delta in range(days):
+        target_day = anchor - timedelta(days=delta)
+        for zoom in zoom_values:
+            tiles_count = build_geo_tiles_for_day(db, day=target_day, zoom=zoom)
+            rebuilt.append((target_day, zoom, tiles_count))
+    return rebuilt
+
+
+def query_cached_tiles(
+    db: Session,
+    *,
+    date_from: date,
+    date_to: date,
+    zoom: int,
+    bbox: GeoBBox,
+    metric: str,
+) -> list[dict[str, int | float]]:
+    metric_column = {
+        "tx_count": GeoTilesDaily.tx_count,
+        "captured_count": GeoTilesDaily.captured_count,
+        "declined_count": GeoTilesDaily.declined_count,
+        "amount_sum": GeoTilesDaily.amount_sum,
+        "risk_red_count": GeoTilesDaily.risk_red_count,
+        "risk_yellow_count": GeoTilesDaily.risk_yellow_count,
+    }[metric]
+    min_x, max_x, min_y, max_y = tile_range_from_bbox(bbox, zoom)
+
+    rows = (
+        db.query(
+            GeoTilesDaily.tile_x,
+            GeoTilesDaily.tile_y,
+            func.sum(metric_column).label("value"),
+        )
+        .filter(GeoTilesDaily.day >= date_from, GeoTilesDaily.day <= date_to)
+        .filter(GeoTilesDaily.zoom == zoom)
+        .filter(GeoTilesDaily.tile_x >= min_x, GeoTilesDaily.tile_x <= max_x)
+        .filter(GeoTilesDaily.tile_y >= min_y, GeoTilesDaily.tile_y <= max_y)
+        .group_by(GeoTilesDaily.tile_x, GeoTilesDaily.tile_y)
+        .all()
+    )
+
+    return [
+        {
+            "tile_x": int(row.tile_x),
+            "tile_y": int(row.tile_y),
+            "value": int(row.value) if float(row.value).is_integer() else float(row.value),
+        }
+        for row in rows
     ]
