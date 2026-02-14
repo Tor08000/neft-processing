@@ -12,6 +12,7 @@ class GeoMetricEnum(str, Enum):
     DECLINED_COUNT = "declined_count"
     CAPTURED_COUNT = "captured_count"
     RISK_RED_COUNT = "risk_red_count"
+    RISK_YELLOW_COUNT = "risk_yellow_count"
 
 
 class GeoStationMetricsItem(BaseModel):
@@ -35,3 +36,27 @@ class GeoStationsMetricsResponse(BaseModel):
     metric: GeoMetricEnum
     items: list[GeoStationMetricsItem]
     limit: int
+
+
+class GeoBBox(BaseModel):
+    min_lat: float
+    min_lon: float
+    max_lat: float
+    max_lon: float
+
+
+class GeoTilesItem(BaseModel):
+    tile_x: int
+    tile_y: int
+    value: float | int
+
+
+class GeoTilesResponse(BaseModel):
+    date_from: date
+    date_to: date
+    zoom: int
+    metric: GeoMetricEnum
+    bbox: GeoBBox
+    items: list[GeoTilesItem]
+    returned_tiles: int
+    limit_tiles: int
