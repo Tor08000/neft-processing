@@ -51,6 +51,12 @@ class GeoTilesItem(BaseModel):
     value: float | int
 
 
+class GeoOverlayKindEnum(str, Enum):
+    RISK_RED = "RISK_RED"
+    HEALTH_OFFLINE = "HEALTH_OFFLINE"
+    HEALTH_DEGRADED = "HEALTH_DEGRADED"
+
+
 class GeoTilesResponse(BaseModel):
     date_from: date
     date_to: date
@@ -60,3 +66,41 @@ class GeoTilesResponse(BaseModel):
     items: list[GeoTilesItem]
     returned_tiles: int
     limit_tiles: int
+
+
+class GeoTilesOverlayResponse(BaseModel):
+    date_from: date
+    date_to: date
+    zoom: int
+    overlay_kind: GeoOverlayKindEnum
+    bbox: GeoBBox
+    items: list[GeoTilesItem]
+    returned_tiles: int
+    limit_tiles: int
+
+
+class GeoStationOverlayMetricEnum(str, Enum):
+    TX_COUNT = "tx_count"
+    AMOUNT_SUM = "amount_sum"
+    DECLINED_COUNT = "declined_count"
+    RISK_RED_COUNT = "risk_red_count"
+    CAPTURED_COUNT = "captured_count"
+
+
+class GeoStationOverlayItem(BaseModel):
+    station_id: str
+    name: str | None = None
+    address: str | None = None
+    lat: float
+    lon: float
+    value: float | int
+    risk_zone: str | None = None
+    health_status: str | None = None
+
+
+class GeoStationsOverlayResponse(BaseModel):
+    date_from: date
+    date_to: date
+    metric: GeoStationOverlayMetricEnum
+    items: list[GeoStationOverlayItem]
+    returned: int
