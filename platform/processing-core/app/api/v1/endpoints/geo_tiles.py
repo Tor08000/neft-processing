@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.schemas.geo import GeoBBox, GeoMetricEnum, GeoTilesResponse
 from app.services.geo_analytics import GeoBBox as ServiceGeoBBox
-from app.services.geo_analytics import aggregate_to_tiles, query_station_aggregates
+from app.services.geo_analytics import query_cached_tiles
 
 router = APIRouter(prefix="/api/v1/geo", tags=["geo"])
 
@@ -33,6 +33,8 @@ def get_geo_tiles(
         raise HTTPException(status_code=422, detail="min_lat must be less than max_lat")
     if min_lon >= max_lon:
         raise HTTPException(status_code=422, detail="min_lon must be less than max_lon")
+    if risk_zone or health_status or partner_id:
+        raise HTTPException(status_code=422, detail="risk_zone, health_status and partner_id filters are not supported for cached tiles")
 
     now_day = datetime.now(tz=timezone.utc).date()
     parsed_from = datetime.strptime(date_from, "%Y-%m-%d").date() if date_from else (now_day - timedelta(days=7))
@@ -40,17 +42,7 @@ def get_geo_tiles(
 
     bbox = ServiceGeoBBox(min_lat=min_lat, min_lon=min_lon, max_lat=max_lat, max_lon=max_lon)
 
-    station_aggregates = query_station_aggregates(
-        db,
-        date_from=parsed_from,
-        date_to=parsed_to,
-        bbox=bbox,
-        risk_zone=risk_zone,
-        health_status=health_status,
-        partner_id=partner_id,
-    )
-
-    items = aggregate_to_tiles(station_aggregates, zoom=zoom, metric=metric.value)
+    items = query_cached_tiles(db, date_from=parsed_from, date_to=parsed_to, zoom=zoom, bbox=bbox, metric=metric.value)
     sorted_items = sorted(items, key=lambda item: float(item["value"]), reverse=True)
     limited_items = sorted_items[:limit_tiles]
 

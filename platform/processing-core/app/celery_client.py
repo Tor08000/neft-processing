@@ -91,6 +91,14 @@ celery_client.conf.update(
             "task": "geo.metrics_backfill",
             "schedule": crontab(hour=2, minute=30),
         },
+        "geo.tiles_refresh": {
+            "task": "geo.tiles_refresh",
+            "schedule": crontab(hour=2, minute=45),
+        },
+        "geo.tiles_backfill_weekly": {
+            "task": "geo.tiles_backfill",
+            "schedule": crontab(day_of_week="sun", hour=3, minute=15),
+        },
     },
 )
 

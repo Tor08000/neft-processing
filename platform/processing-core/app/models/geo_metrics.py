@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sqlalchemy import Column, Date, DateTime, Index, Integer, Numeric, String, UniqueConstraint, func
+from sqlalchemy import Column, Date, DateTime, Index, Integer, Numeric, SmallInteger, String, UniqueConstraint, func
 
 from app.db import Base
 
@@ -17,6 +17,27 @@ class GeoStationMetricsDaily(Base):
 
     day = Column(Date, primary_key=True, nullable=False)
     station_id = Column(String(36), primary_key=True, nullable=False)
+    tx_count = Column(Integer, nullable=False, default=0, server_default="0")
+    captured_count = Column(Integer, nullable=False, default=0, server_default="0")
+    declined_count = Column(Integer, nullable=False, default=0, server_default="0")
+    amount_sum = Column(Numeric(14, 2), nullable=False, default=0, server_default="0")
+    liters_sum = Column(Numeric(14, 3), nullable=False, default=0, server_default="0")
+    risk_red_count = Column(Integer, nullable=False, default=0, server_default="0")
+    risk_yellow_count = Column(Integer, nullable=False, default=0, server_default="0")
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+
+
+class GeoTilesDaily(Base):
+    __tablename__ = "geo_tiles_daily"
+    __table_args__ = (
+        UniqueConstraint("day", "zoom", "tile_x", "tile_y", name="uq_geo_tiles_daily_day_zoom_tile"),
+        Index("ix_geo_tiles_daily_day_zoom_tile", "day", "zoom", "tile_x", "tile_y"),
+    )
+
+    day = Column(Date, primary_key=True, nullable=False)
+    zoom = Column(SmallInteger, primary_key=True, nullable=False)
+    tile_x = Column(Integer, primary_key=True, nullable=False)
+    tile_y = Column(Integer, primary_key=True, nullable=False)
     tx_count = Column(Integer, nullable=False, default=0, server_default="0")
     captured_count = Column(Integer, nullable=False, default=0, server_default="0")
     declined_count = Column(Integer, nullable=False, default=0, server_default="0")
