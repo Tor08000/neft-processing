@@ -33,7 +33,7 @@ Partner UI (direct): http://localhost:4175/
 ```text
 Admin
   email:    admin@example.com
-  password: admin
+  password: change-me
 
 Client
   email:    client@neft.local
@@ -45,7 +45,7 @@ Partner
 ```
 
 Источники дефолтов:
-- Admin UI: `admin@example.com` / `admin123`.【F:frontends/admin-ui/src/pages/LoginPage.tsx†L11-L15】
+- Admin UI: `NEFT_DEMO_ADMIN_EMAIL` / `NEFT_DEMO_ADMIN_PASSWORD` (или только email, если пароль скрыт в UI).【F:frontends/admin-ui/src/pages/LoginPage.tsx†L11-L15】
 - Client UI: `client@neft.local` / `client`.【F:frontends/client-portal/src/pages/LoginPage.tsx†L14-L17】
 - Partner UI: `partner@neft.local` / `partner`.【F:frontends/partner-portal/src/pages/LoginPage.tsx†L11-L14】
 

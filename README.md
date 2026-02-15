@@ -119,12 +119,12 @@ npm run ui:link-crawl
 ```bash
 curl -i -X POST http://localhost/api/auth/v1/auth/login \
   -H "Content-Type: application/json" \
-  -d "{\"email\":\"admin@example.com\",\"password\":\"admin123\"}"
+  -d "{\"email\":\"admin@example.com\",\"password\":\"change-me\"}"
 
 # Альтернатива: вход по username
 curl -i -X POST http://localhost/api/auth/v1/auth/login \
   -H "Content-Type: application/json" \
-  -d "{\"username\":\"admin\",\"password\":\"admin123\"}"
+  -d "{\"username\":\"admin\",\"password\":\"change-me\"}"
 ```
 
 ### Хранение ключей и файлов
@@ -148,10 +148,11 @@ Core API валидирует токены по ключам auth-host. Осно
 - Demo admin (dev):
   - Email: `admin@example.com`
   - Username: `admin`
-  - Password: `admin123`
+  - Password: `change-me`
 - Откройте `http://localhost/admin/`.
 - В форме логина используйте значения из `.env` (`NEFT_BOOTSTRAP_ADMIN_EMAIL` и `NEFT_BOOTSTRAP_ADMIN_PASSWORD`).
 - После входа доступен журнал операций и остальные разделы админки.
+- Для staging/prod отключайте bootstrap/seed: `AUTH_BOOTSTRAP_ENABLED=0` и `DEMO_SEED_ENABLED=0` (или задавайте отдельные production-пароли).
 
 ### Работа со снапшотами
 
@@ -161,7 +162,7 @@ Core API валидирует токены по ключам auth-host. Осно
 
 ### Админский токен для локальной разработки
 
-1) Убедитесь, что в `.env` прописаны `NEFT_BOOTSTRAP_ADMIN_EMAIL` и `NEFT_BOOTSTRAP_ADMIN_PASSWORD` (например, `admin@example.com` / `admin123`).
+1) Убедитесь, что в `.env` прописаны `NEFT_BOOTSTRAP_ADMIN_EMAIL` и `NEFT_BOOTSTRAP_ADMIN_PASSWORD` (например, `admin@example.com` / `change-me`).
 2) Выполните в PowerShell/cmd: `scripts\get_admin_token.cmd`. Скрипт запросит `access_token` у auth-host через gateway (`/api/auth/v1/auth/login`), сохранит его в `.admin_token` и выведет команду `set TOKEN=...`.
 3) Пример запроса к защищённой ручке через gateway:
 
