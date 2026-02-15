@@ -56,6 +56,7 @@ def create_access_token(
     portal: str | None = None,
     issuer: str | None = None,
     audience: str | None = None,
+    email: str | None = None,
 ) -> str:
     now = _now_utc()
     expire = now + timedelta(minutes=settings.access_token_expires_min)
@@ -76,6 +77,8 @@ def create_access_token(
         payload["org_id"] = org_id
     if portal:
         payload["portal"] = portal
+    if email:
+        payload["email"] = email
     private_key = get_private_key_pem()
     return jwt.encode(payload, private_key, algorithm=ALGORITHM)
 

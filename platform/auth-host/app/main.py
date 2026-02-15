@@ -5,6 +5,7 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.docs import get_swagger_ui_html
 
+from app.adapters.oauth_providers import oidc_client
 from app.api.routes.admin_users import router as admin_users_router
 from app.api.routes.auth import router as auth_router
 from app.api.routes.health import router as health_router
@@ -110,6 +111,7 @@ async def bootstrap_demo_user() -> None:
     logger.info("auth-host: bootstrap start")
     initialize_keys()
     settings = get_settings()
+    await oidc_client.fail_fast_validate_enabled_providers()
     if settings.bootstrap_enabled:
         await bootstrap_required_users(settings)
     else:

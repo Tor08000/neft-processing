@@ -163,6 +163,18 @@ class Settings(SharedSettings):
         "NEFT_BOOTSTRAP_ADMIN_FULL_NAME",
         _env_or_default("NEFT_DEMO_ADMIN_FULL_NAME", "Platform Admin", fallback_keys=("DEMO_ADMIN_FULL_NAME",)),
     )
+    oidc_enabled: bool = _env_bool("OIDC_ENABLED", False)
+    oidc_provider_name: str = _env_or_default("OIDC_PROVIDER_NAME", "corp")
+    oidc_issuer: str = _env_or_default("OIDC_ISSUER", "")
+    oidc_client_id: str = _env_or_default("OIDC_CLIENT_ID", "")
+    oidc_client_secret: str = _env_or_default("OIDC_CLIENT_SECRET", "")
+    oidc_redirect_uri: str = _env_or_default("OIDC_REDIRECT_URI", "")
+    oidc_scopes: str = _env_or_default("OIDC_SCOPES", "openid email profile")
+    oidc_state_secret: str = _env_or_default("OIDC_STATE_SECRET", _env_or_default("SERVICE_TOKEN", "svc-dev"))
+    oidc_state_ttl_minutes: int = _env_int("OIDC_STATE_TTL_MINUTES", 10)
+    oidc_default_role: str = _env_or_default("OIDC_DEFAULT_ROLE", "CLIENT_OWNER")
+    force_sso: bool = _env_bool("FORCE_SSO", False)
+    disable_password_login: bool = _env_bool("DISABLE_PASSWORD_LOGIN", False)
     bootstrap_admin_roles: list[str] = field(
         default_factory=lambda: _roles_env(
             "NEFT_BOOTSTRAP_ADMIN_ROLES",
@@ -212,6 +224,19 @@ class Settings(SharedSettings):
             self.auth_public_key_path,
             fallback_keys=("AUTH_JWT_PUBLIC_KEY_PATH",),
         )
+
+        self.oidc_enabled = _env_bool("OIDC_ENABLED", self.oidc_enabled)
+        self.oidc_provider_name = _env_or_default("OIDC_PROVIDER_NAME", self.oidc_provider_name)
+        self.oidc_issuer = _env_or_default("OIDC_ISSUER", self.oidc_issuer)
+        self.oidc_client_id = _env_or_default("OIDC_CLIENT_ID", self.oidc_client_id)
+        self.oidc_client_secret = _env_or_default("OIDC_CLIENT_SECRET", self.oidc_client_secret)
+        self.oidc_redirect_uri = _env_or_default("OIDC_REDIRECT_URI", self.oidc_redirect_uri)
+        self.oidc_scopes = _env_or_default("OIDC_SCOPES", self.oidc_scopes)
+        self.oidc_state_secret = _env_or_default("OIDC_STATE_SECRET", self.oidc_state_secret)
+        self.oidc_state_ttl_minutes = _env_int("OIDC_STATE_TTL_MINUTES", self.oidc_state_ttl_minutes)
+        self.oidc_default_role = _env_or_default("OIDC_DEFAULT_ROLE", self.oidc_default_role)
+        self.force_sso = _env_bool("FORCE_SSO", self.force_sso)
+        self.disable_password_login = _env_bool("DISABLE_PASSWORD_LOGIN", self.disable_password_login)
 
         self.demo_client_email = _env_or_default(
             "NEFT_DEMO_CLIENT_EMAIL", self.demo_client_email, fallback_keys=("DEMO_CLIENT_EMAIL",)

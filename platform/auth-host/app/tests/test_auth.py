@@ -374,3 +374,24 @@ def test_login_omits_demo_org_in_prod(monkeypatch):
     claims = _decode_claims(token)
     assert "org_id" not in claims
     assert "client_id" not in claims
+
+def test_login_blocked_when_force_sso_and_password_disabled(monkeypatch):
+    monkeypatch.setenv("FORCE_SSO", "1")
+    monkeypatch.setenv("DISABLE_PASSWORD_LOGIN", "1")
+
+    response = _client().post(
+        "/api/v1/auth/login",
+        json={"email": "client@neft.local", "password": "client", "portal": "client"},
+    )
+
+    assert response.status_code == 403
+    assert response.json() == {"detail": "password_login_disabled"}
+
+
+def test_oauth_start_returns_503_when_oidc_disabled(monkeypatch):
+    monkeypatch.setenv("OIDC_ENABLED", "0")
+
+    response = _client().get("/api/v1/auth/oauth/start?provider=corp&portal=client")
+
+    assert response.status_code == 503
+    assert response.json() == {"detail": "oidc_disabled"}
