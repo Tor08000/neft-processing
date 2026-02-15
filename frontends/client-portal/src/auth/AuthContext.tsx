@@ -22,8 +22,8 @@ interface AuthProviderProps {
   initialSession?: AuthSession | null;
 }
 
-const STORAGE_KEY = "neft_client_auth";
-const CLIENT_TOKEN_ISSUER = import.meta.env.VITE_CLIENT_TOKEN_ISSUER ?? "neft-client";
+const STORAGE_KEY = "neft_client_access_token";
+const CLIENT_TOKEN_ISSUER = import.meta.env.VITE_CLIENT_TOKEN_ISSUER ?? "neft-auth";
 
 function decodeJwtPayload(token: string): Record<string, unknown> | null {
   const parts = token.split(".");

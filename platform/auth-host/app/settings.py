@@ -61,13 +61,23 @@ class Settings(SharedSettings):
     auth_audience: str = _env_or_default("NEFT_AUTH_AUDIENCE", "neft-admin", fallback_keys=("AUTH_AUDIENCE",))
     auth_client_issuer: str = _env_or_default(
         "NEFT_CLIENT_ISSUER",
-        "neft-client",
+        _env_or_default("NEFT_AUTH_ISSUER", "neft-auth", fallback_keys=("AUTH_ISSUER",)),
         fallback_keys=("CLIENT_AUTH_ISSUER",),
     )
     auth_client_audience: str = _env_or_default(
         "NEFT_CLIENT_AUDIENCE",
         "neft-client",
         fallback_keys=("CLIENT_AUTH_AUDIENCE",),
+    )
+    auth_partner_issuer: str = _env_or_default(
+        "NEFT_PARTNER_ISSUER",
+        _env_or_default("NEFT_AUTH_ISSUER", "neft-auth", fallback_keys=("AUTH_ISSUER",)),
+        fallback_keys=("PARTNER_AUTH_ISSUER",),
+    )
+    auth_partner_audience: str = _env_or_default(
+        "NEFT_PARTNER_AUDIENCE",
+        "neft-partner",
+        fallback_keys=("PARTNER_AUTH_AUDIENCE",),
     )
     auth_key_dir: str = _env_or_default("AUTH_KEY_DIR", "/app/.keys", fallback_keys=("AUTH_JWT_KEY_DIR",))
     auth_private_key_path: str = field(
@@ -171,6 +181,26 @@ class Settings(SharedSettings):
         self.service_token = _env_or_default("SERVICE_TOKEN", self.service_token)
         self.auth_issuer = _env_or_default("NEFT_AUTH_ISSUER", self.auth_issuer, fallback_keys=("AUTH_ISSUER",))
         self.auth_audience = _env_or_default("NEFT_AUTH_AUDIENCE", self.auth_audience, fallback_keys=("AUTH_AUDIENCE",))
+        self.auth_client_issuer = _env_or_default(
+            "NEFT_CLIENT_ISSUER",
+            self.auth_client_issuer,
+            fallback_keys=("CLIENT_AUTH_ISSUER",),
+        )
+        self.auth_client_audience = _env_or_default(
+            "NEFT_CLIENT_AUDIENCE",
+            self.auth_client_audience,
+            fallback_keys=("CLIENT_AUTH_AUDIENCE",),
+        )
+        self.auth_partner_issuer = _env_or_default(
+            "NEFT_PARTNER_ISSUER",
+            self.auth_partner_issuer,
+            fallback_keys=("PARTNER_AUTH_ISSUER",),
+        )
+        self.auth_partner_audience = _env_or_default(
+            "NEFT_PARTNER_AUDIENCE",
+            self.auth_partner_audience,
+            fallback_keys=("PARTNER_AUTH_AUDIENCE",),
+        )
         self.auth_key_dir = _env_or_default("AUTH_KEY_DIR", self.auth_key_dir, fallback_keys=("AUTH_JWT_KEY_DIR",))
         self.auth_private_key_path = _path_env(
             "AUTH_PRIVATE_KEY_PATH",

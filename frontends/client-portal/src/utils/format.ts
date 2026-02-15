@@ -1,4 +1,4 @@
-const STORAGE_KEY = "neft_client_auth";
+const STORAGE_KEY = "neft_client_access_token";
 
 const getStoredTimezone = (): string | undefined => {
   if (typeof window === "undefined") return undefined;

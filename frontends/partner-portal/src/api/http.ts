@@ -13,7 +13,7 @@ const logErrorUrl = (url: string, status: number) => {
     console.info("[api-error]", { final_url: url, status });
   }
 };
-const DEMO_AUTH_STORAGE_KEY = "neft_partner_auth";
+const DEMO_AUTH_STORAGE_KEY = "neft_partner_access_token";
 const getDemoPartnerEmail = () => {
   if (typeof window === "undefined") return null;
   try {

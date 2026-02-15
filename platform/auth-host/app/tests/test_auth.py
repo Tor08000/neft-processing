@@ -260,6 +260,7 @@ def test_login_sets_client_portal_claims(monkeypatch):
     assert claims.get("client_id") == settings.demo_client_uuid
     assert claims.get("org_id") == settings.demo_org_id
     assert claims.get("user_id") == str(demo_user.id)
+    assert claims.get("portal") == "client"
 
 
 def test_login_sets_admin_portal_claims(monkeypatch):
@@ -296,7 +297,48 @@ def test_login_sets_admin_portal_claims(monkeypatch):
     settings = auth.get_settings()
     assert claims["iss"] == settings.auth_issuer
     assert claims["aud"] == settings.auth_audience
+    assert claims.get("portal") == "admin"
 
+
+
+
+def test_login_sets_partner_portal_claims(monkeypatch):
+    password_hash = hash_password("partner")
+    demo_user = User(
+        id="00000000-0000-0000-0000-000000000008",
+        email="partner@neft.local",
+        full_name="Demo Partner",
+        password_hash=password_hash,
+        is_active=True,
+        created_at=None,
+    )
+
+    async def fake_get_user(*, email: str | None = None, username: str | None = None):
+        candidate = email or username
+        if candidate and candidate.lower() == "partner@neft.local":
+            return demo_user
+        return None
+
+    async def fake_get_roles(_user_id: str):
+        return ["PARTNER_OWNER"]
+
+    monkeypatch.setattr(auth, "_get_user_from_db", fake_get_user)
+    monkeypatch.setattr(auth, "_get_roles_for_user", fake_get_roles)
+    monkeypatch.setenv("NEFT_ENV", "local")
+
+    response = _client().post(
+        "/api/v1/auth/login",
+        json={"email": "partner@neft.local", "password": "partner", "portal": "partner"},
+    )
+
+    assert response.status_code == 200
+    token = response.json()["access_token"]
+    claims = _decode_claims(token)
+    settings = auth.get_settings()
+    assert claims["iss"] == settings.auth_partner_issuer
+    assert claims["aud"] == settings.auth_partner_audience
+    assert claims.get("subject_type") == "partner_user"
+    assert claims.get("portal") == "partner"
 
 def test_login_omits_demo_org_in_prod(monkeypatch):
     password_hash = hash_password("client")

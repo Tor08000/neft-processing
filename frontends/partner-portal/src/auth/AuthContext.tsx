@@ -19,7 +19,7 @@ interface AuthProviderProps {
   initialSession?: AuthSession | null;
 }
 
-const STORAGE_KEY = "neft_partner_auth";
+const STORAGE_KEY = "neft_partner_access_token";
 
 export const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 

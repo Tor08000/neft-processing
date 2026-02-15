@@ -17,7 +17,7 @@ interface AuthContextValue {
   isAdmin: boolean;
 }
 
-const STORAGE_KEY = "neft_admin_auth";
+const STORAGE_KEY = "neft_admin_access_token";
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 

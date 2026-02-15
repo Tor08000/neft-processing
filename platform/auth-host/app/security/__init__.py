@@ -53,6 +53,7 @@ def create_access_token(
     client_id: str | None = None,
     user_id: str | None = None,
     org_id: int | str | None = None,
+    portal: str | None = None,
     issuer: str | None = None,
     audience: str | None = None,
 ) -> str:
@@ -73,6 +74,8 @@ def create_access_token(
         payload["user_id"] = user_id
     if org_id:
         payload["org_id"] = org_id
+    if portal:
+        payload["portal"] = portal
     private_key = get_private_key_pem()
     return jwt.encode(payload, private_key, algorithm=ALGORITHM)
 
