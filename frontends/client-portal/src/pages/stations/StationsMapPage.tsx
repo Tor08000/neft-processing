@@ -8,6 +8,7 @@ import markerIconRetina from "leaflet/dist/images/marker-icon-2x.png";
 import markerShadow from "leaflet/dist/images/marker-shadow.png";
 import { useAuth } from "../../auth/AuthContext";
 import { fetchNearestStations, fetchStationById, type StationMapItem } from "../../api/stationsNearest";
+import { sortStationPrices, useStationPrices } from "./useStationPrices";
 import "./stations-map.css";
 
 type LatLon = { lat: number; lon: number };
@@ -100,6 +101,23 @@ export function StationsMapPage() {
     () => stations.find((station) => station.id === selectedStationId) ?? null,
     [selectedStationId, stations],
   );
+  const { status: pricesStatus, items: stationPrices, retry: retryPrices, refresh: refreshPrices } = useStationPrices(
+    selectedStationId,
+    user?.token,
+  );
+  const sortedStationPrices = useMemo(() => sortStationPrices(stationPrices), [stationPrices]);
+  const latestPriceUpdate = useMemo(() => {
+    const dates = stationPrices
+      .map((item) => item.updated_at)
+      .filter((value): value is string => typeof value === "string" && value.trim() !== "")
+      .map((value) => new Date(value))
+      .filter((value) => !Number.isNaN(value.getTime()));
+
+    if (!dates.length) return null;
+
+    const latest = new Date(Math.max(...dates.map((value) => value.getTime())));
+    return latest.toLocaleString("ru-RU");
+  }, [stationPrices]);
   const stationIdFromQuery = searchParams.get("station_id")?.trim() || null;
 
   const loadStations = useCallback(
@@ -182,7 +200,10 @@ export function StationsMapPage() {
 
   useEffect(() => {
     if (!selectedStationId) return;
-    itemRefs.current[selectedStationId]?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    const selectedItem = itemRefs.current[selectedStationId];
+    if (selectedItem && typeof selectedItem.scrollIntoView === "function") {
+      selectedItem.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    }
   }, [selectedStationId]);
 
   const handleRetry = useCallback(() => {
@@ -322,6 +343,56 @@ export function StationsMapPage() {
                 Риск: <strong>{riskZoneLabel[selectedStation.riskZone]}</strong>
               </p>
               {selectedStation.riskZoneReason ? <p>Причина: {selectedStation.riskZoneReason}</p> : null}
+
+              <section className="stations-map-prices" aria-label="station-prices">
+                <div className="stations-map-prices-head">
+                  <h4>Цены</h4>
+                  <button type="button" className="ghost" onClick={() => void refreshPrices()} disabled={pricesStatus === "loading"}>
+                    Обновить цены
+                  </button>
+                </div>
+
+                {pricesStatus === "loading" ? <p>Загрузка цен…</p> : null}
+
+                {pricesStatus === "error" ? (
+                  <div>
+                    <p>Не удалось загрузить цены</p>
+                    <button type="button" className="secondary" onClick={() => void retryPrices()}>
+                      Повторить
+                    </button>
+                  </div>
+                ) : null}
+
+                {pricesStatus === "success" && !sortedStationPrices.length ? <p>Цены не опубликованы</p> : null}
+
+                {pricesStatus === "success" && sortedStationPrices.length ? (
+                  <>
+                    <table className="stations-map-prices-table">
+                      <thead>
+                        <tr>
+                          <th>Продукт</th>
+                          <th>Цена</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {sortedStationPrices.map((item) => (
+                          <tr key={`${item.product_code}-${item.updated_at ?? "n/a"}`}>
+                            <td>{item.product_code}</td>
+                            <td>
+                              {item.price ?? "—"} {item.currency ?? ""}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    {latestPriceUpdate ? <p>Обновлено: {latestPriceUpdate}</p> : null}
+                    {sortedStationPrices.some((item) => item.source) ? (
+                      <p>Источник: {sortedStationPrices.find((item) => item.source)?.source}</p>
+                    ) : null}
+                  </>
+                ) : null}
+              </section>
+
               <div className="stations-map-card-actions">
                 <button
                   type="button"
