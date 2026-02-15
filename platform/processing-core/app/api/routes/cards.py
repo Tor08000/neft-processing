@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.models.card import Card
 from app.schemas.cards import CardCreate, CardSchema, CardUpdate, CardsPage
+from app.services.event_outbox import publish_event
 
 router = APIRouter(prefix="/cards", tags=["cards"])
 
@@ -32,6 +33,19 @@ def create_card(payload: CardCreate = Body(...), db: Session = Depends(get_db)) 
         expires_at=payload.expires_at,
     )
     db.add(card)
+    publish_event(
+        db,
+        aggregate_type="card",
+        aggregate_id=payload.id,
+        event_type="card.created",
+        payload={
+            "card_id": payload.id,
+            "client_id": payload.client_id,
+            "status": payload.status,
+            "pan_masked": payload.pan_masked,
+            "expires_at": payload.expires_at.isoformat() if payload.expires_at else None,
+        },
+    )
     db.commit()
     db.refresh(card)
     return card

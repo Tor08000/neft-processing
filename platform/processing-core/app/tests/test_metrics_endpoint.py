@@ -16,6 +16,7 @@ def test_metrics_endpoint_returns_prometheus_text():
     body = response.text
     assert "core_api_up 1" in body
     assert "core_api_billing_generated_total 1" in body
+    assert "event_outbox_pending_total" in body
 
 
 def test_metric_alias_is_supported():
