@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import JSONResponse, PlainTextResponse, RedirectResponse
 from fastapi.security import HTTPAuthorizationCredentials
 
+from app.adapters.oauth_providers import oidc_client
 from app.db import DSN_ASYNC, get_conn
 from app.models import User
 from app.schemas.auth import (
@@ -35,6 +36,11 @@ from app.settings import get_settings
 router = APIRouter(prefix="/v1/auth", tags=["auth"])
 logger = logging.getLogger(__name__)
 CORE_DB_SCHEMA = os.getenv("NEFT_DB_SCHEMA", "processing_core")
+
+
+def _oidc_enabled_or_503() -> None:
+    if not get_settings().oidc_enabled:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="oidc_disabled")
 
 
 async def _core_table_exists(cur: psycopg.AsyncCursor, table_name: str) -> bool:
@@ -169,6 +175,82 @@ async def _get_roles_for_user(user_id: str) -> list[str]:
     return [row["role_code"] for row in roles_rows]
 
 
+async def _upsert_user_roles(user_id: str, roles: list[str]) -> None:
+    async with get_conn() as (conn, cur):
+        await cur.execute("DELETE FROM user_roles WHERE user_id=%s", (user_id,))
+        for role in sorted({r for r in roles if r}):
+            await cur.execute(
+                "INSERT INTO user_roles (user_id, role_code) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                (user_id, role),
+            )
+        await conn.commit()
+
+
+async def _resolve_or_create_oauth_user(*, provider_id: str | None, provider_name: str, claims: dict) -> User:
+    email = (claims.get("email") or "").strip().lower()
+    if not email:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="oidc_email_required")
+
+    provider_user_id = str(claims.get("sub") or "").strip()
+    if not provider_user_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="oidc_subject_required")
+
+    full_name = claims.get("name")
+
+    async with get_conn() as (conn, cur):
+        if provider_id:
+            await cur.execute(
+                """
+                SELECT u.id, u.email, u.username, u.full_name, u.password_hash, u.is_active, u.created_at
+                FROM oauth_identities oi
+                JOIN users u ON u.id = oi.user_id
+                WHERE oi.provider_id=%s AND oi.provider_user_id=%s
+                LIMIT 1
+                """,
+                (provider_id, provider_user_id),
+            )
+            row = await cur.fetchone()
+            if row:
+                return User.from_row(row)
+
+        await cur.execute(
+            """
+            SELECT id, email, username, full_name, password_hash, is_active, created_at
+            FROM users
+            WHERE lower(email)=lower(%s)
+            LIMIT 1
+            """,
+            (email,),
+        )
+        row = await cur.fetchone()
+        if row:
+            user = User.from_row(row)
+        else:
+            user_id = uuid4()
+            password_hash = hash_password(uuid4().hex)
+            await cur.execute(
+                """
+                INSERT INTO users (id, email, full_name, password_hash)
+                VALUES (%s, %s, %s, %s)
+                RETURNING id, email, username, full_name, password_hash, is_active, created_at
+                """,
+                (user_id, email, full_name, password_hash),
+            )
+            row = await cur.fetchone()
+            user = User.from_row(row)
+
+        await cur.execute(
+            """
+            INSERT INTO oauth_identities (user_id, provider_id, provider_name, provider_user_id, email)
+            VALUES (%s, %s, %s, %s, %s)
+            ON CONFLICT (provider_name, provider_user_id) DO NOTHING
+            """,
+            (user.id, provider_id, provider_name, provider_user_id, email),
+        )
+        await conn.commit()
+    return user
+
+
 @router.get("/health", response_model=HealthResponse)
 async def health() -> HealthResponse:
     response, status_code = build_health_response()
@@ -246,7 +328,6 @@ async def register(payload: RegisterRequest) -> SignupResponse:
 
     user = User.from_row(row)
     roles = await _get_roles_for_user(str(new_user_id))
-    settings = get_settings()
     expires_in = settings.access_token_expires_min * 60
     issuer, audience = _portal_token_config("client")
     try:
@@ -285,6 +366,10 @@ async def signup(payload: RegisterRequest) -> SignupResponse:
 
 @router.post("/login", response_model=TokenResponse)
 async def login(request: Request, payload: LoginRequest) -> TokenResponse:
+    settings = get_settings()
+    if settings.force_sso and settings.disable_password_login:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="password_login_disabled")
+
     login_email = payload.email.strip().lower() if payload.email else None
     login_username = payload.username.strip().lower() if payload.username else None
     login_identifier = login_email or login_username or ""
@@ -325,7 +410,6 @@ async def login(request: Request, payload: LoginRequest) -> TokenResponse:
     roles = await _get_roles_for_user(user.id)
     user_email = user.email
 
-    settings = get_settings()
     expires_in = settings.access_token_expires_min * 60
     issuer, audience = _portal_token_config(portal)
     if portal == "client":
@@ -365,6 +449,83 @@ async def login(request: Request, payload: LoginRequest) -> TokenResponse:
     )
 
 
+@router.get("/oauth/start")
+async def oauth_start(provider: str, portal: str, redirect_url: str | None = None) -> RedirectResponse:
+    _oidc_enabled_or_503()
+    resolved_portal = _resolve_portal(portal)
+    if not resolved_portal:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="invalid_portal")
+
+    provider_cfg = await oidc_client.resolve_provider(provider)
+    redirect = await oidc_client.build_start_redirect(
+        provider=provider_cfg,
+        portal=resolved_portal,
+        redirect_url=redirect_url,
+    )
+    return RedirectResponse(url=redirect, status_code=status.HTTP_307_TEMPORARY_REDIRECT)
+
+
+@router.get("/oauth/callback", response_model=TokenResponse)
+async def oauth_callback(code: str, state: str) -> TokenResponse:
+    _oidc_enabled_or_503()
+    provider_name = oidc_client.provider_from_state(state)
+    provider_cfg = await oidc_client.resolve_provider(provider_name)
+    result = await oidc_client.exchange_code_and_validate(provider=provider_cfg, code=code, state=state)
+    claims = result["claims"]
+
+    user = await _resolve_or_create_oauth_user(
+        provider_id=provider_cfg.id,
+        provider_name=provider_cfg.name,
+        claims=claims,
+    )
+    roles = await oidc_client.map_roles(provider_cfg.id, claims)
+    await _upsert_user_roles(user.id, roles)
+
+    settings = get_settings()
+    portal = _resolve_portal(result.get("portal")) or "client"
+    issuer, audience = _portal_token_config(portal)
+    subject_type = "user"
+    client_id = None
+    org_id = None
+    if portal == "client":
+        subject_type = "client_user"
+        client_id = await _get_client_id_for_user(user.id)
+        if not client_id:
+            client_id = await _create_core_client(user_id=user.id, email=user.email, full_name=user.full_name)
+            async with get_conn() as (conn, cur):
+                await cur.execute(
+                    "INSERT INTO user_clients (user_id, client_id) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                    (user.id, client_id),
+                )
+                await conn.commit()
+    elif portal == "partner":
+        subject_type = "partner_user"
+        if _is_dev_env():
+            org_id = settings.demo_org_id
+
+    token = create_access_token(
+        user.id,
+        roles=roles,
+        subject_type=subject_type,
+        client_id=client_id,
+        user_id=user.id,
+        org_id=org_id,
+        portal=portal,
+        issuer=issuer,
+        audience=audience,
+        email=user.email,
+    )
+    return TokenResponse(
+        access_token=token,
+        token_type="bearer",
+        expires_in=settings.access_token_expires_min * 60,
+        email=user.email,
+        subject_type=subject_type,
+        client_id=client_id,
+        roles=roles,
+    )
+
+
 @router.get("/me", response_model=AuthMeResponse)
 async def auth_me(
     request: Request,
@@ -392,11 +553,12 @@ async def auth_me(
         logger.info("auth_me unauthorized: missing subject")
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid_token")
 
+    email = payload.get("email") or subject
     roles = payload.get("roles") or []
     client_id = payload.get("client_id")
     subject_type = payload.get("subject_type", "user")
     return AuthMeResponse(
-        email=subject,
+        email=email,
         roles=roles,
         subject=subject,
         subject_type=subject_type,
