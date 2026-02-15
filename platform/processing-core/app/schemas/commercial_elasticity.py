@@ -6,10 +6,15 @@ from enum import Enum
 from pydantic import BaseModel
 
 
-class ElasticityMetric(str, Enum):
+class ElasticitySortBy(str, Enum):
     ELASTICITY_ABS = "elasticity_abs"
     CONFIDENCE = "confidence_score"
     ELASTICITY_SCORE = "elasticity_score"
+
+
+class SortOrder(str, Enum):
+    ASC = "asc"
+    DESC = "desc"
 
 
 class StationElasticityItem(BaseModel):
@@ -31,7 +36,8 @@ class StationElasticityItem(BaseModel):
 
 class StationElasticityListResponse(BaseModel):
     window_days: int
-    metric: ElasticityMetric
+    sort_by: ElasticitySortBy
+    order: SortOrder
     limit: int
     items: list[StationElasticityItem]
 
