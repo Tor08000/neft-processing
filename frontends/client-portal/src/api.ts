@@ -37,7 +37,7 @@ export class InvalidLoginPayloadError extends Error {
 export function handleUnauthorized(error: unknown): boolean {
   if (error instanceof UnauthorizedError) {
     // При 401/403 сбрасываем токен и возвращаем пользователя на экран логина.
-    localStorage.removeItem("client_token");
+    localStorage.removeItem("neft_client_access_token");
     window.location.href = `${CLIENT_BASE_PATH}/`;
     return true;
   }
@@ -58,7 +58,7 @@ export async function login(email: string, password: string): Promise<LoginResul
   const response = await fetch(`${AUTH_API_BASE}/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify({ email, password, portal: "client" }),
   });
 
   if (response.status === 401 || response.status === 403) {

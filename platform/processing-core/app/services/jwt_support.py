@@ -104,6 +104,10 @@ def _collect_roles_for_detection(claims: dict) -> set[str]:
 
 
 def detect_token_kind(claims: dict) -> str:
+    portal = str(claims.get("portal") or "").strip().lower()
+    if portal in {"client", "admin", "partner"}:
+        return portal
+
     issuer = str(claims.get("iss") or "")
     audiences = _normalize_audience(claims.get("aud"))
     subject_type = str(claims.get("subject_type") or "")
@@ -114,7 +118,7 @@ def detect_token_kind(claims: dict) -> str:
 
     client_issuer = os.getenv(
         "NEFT_CLIENT_ISSUER",
-        os.getenv("CLIENT_AUTH_ISSUER", "neft-client"),
+        os.getenv("CLIENT_AUTH_ISSUER", os.getenv("NEFT_AUTH_ISSUER", os.getenv("AUTH_ISSUER", "neft-auth"))),
     )
     client_audience = os.getenv(
         "NEFT_CLIENT_AUDIENCE",
@@ -122,12 +126,15 @@ def detect_token_kind(claims: dict) -> str:
     )
     admin_issuer = os.getenv("NEFT_AUTH_ISSUER", os.getenv("AUTH_ISSUER", "neft-auth"))
     admin_audience = os.getenv("NEFT_AUTH_AUDIENCE", os.getenv("AUTH_AUDIENCE", "neft-admin"))
+    partner_audience = os.getenv("NEFT_PARTNER_AUDIENCE", os.getenv("PARTNER_AUTH_AUDIENCE", "neft-partner"))
 
     normalized_roles = {role.upper() for role in roles}
     subject_type_normalized = subject_type.strip().lower()
     token_use_normalized = token_use.strip().lower()
 
-    if issuer == client_issuer or client_audience in audiences:
+    if client_issuer != admin_issuer and issuer == client_issuer:
+        return "client"
+    if client_audience in audiences:
         return "client"
     if subject_type_normalized == "client_user" or any(role.startswith("CLIENT_") for role in normalized_roles):
         return "client"
@@ -141,7 +148,9 @@ def detect_token_kind(claims: dict) -> str:
     if "partner" in token_use_normalized or "partner" in azp.lower() or "partner" in realm.lower():
         return "partner"
 
-    if issuer == admin_issuer or admin_audience in audiences:
+    if admin_issuer != client_issuer and issuer == admin_issuer:
+        return "admin"
+    if admin_audience in audiences:
         return "admin"
     if any(role.startswith("ADMIN") for role in normalized_roles):
         return "admin"
@@ -381,3 +390,5 @@ def resolve_jwks_key(
         missing_kid=not bool(kid),
         kid_not_found=kid_not_found,
     )
+    if partner_audience in audiences:
+        return "partner"

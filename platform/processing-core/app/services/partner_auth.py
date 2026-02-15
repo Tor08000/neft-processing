@@ -34,7 +34,7 @@ JWKS_URL = os.getenv(
 PUBLIC_KEY_CACHE_TTL = int(os.getenv("AUTH_PUBLIC_KEY_CACHE_TTL", "300"))
 EXPECTED_ISSUER = os.getenv("NEFT_AUTH_ISSUER", os.getenv("AUTH_ISSUER", "neft-auth"))
 EXPECTED_AUDIENCE = parse_expected_audience(
-    os.getenv("NEFT_AUTH_AUDIENCE", os.getenv("AUTH_AUDIENCE", "neft-admin"))
+    os.getenv("NEFT_PARTNER_AUDIENCE", os.getenv("PARTNER_AUTH_AUDIENCE", "neft-partner"))
 )
 ALLOWED_ALGS = parse_allowed_algs()
 

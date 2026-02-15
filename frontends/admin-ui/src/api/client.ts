@@ -1,7 +1,7 @@
 import { ADMIN_API_BASE, ADMIN_BASE_URL, joinUrl, normalizeAdminPath } from "./base";
 import { ApiError } from "./http";
 
-export const TOKEN_STORAGE_KEY = "neft_admin_auth";
+export const TOKEN_STORAGE_KEY = "neft_admin_access_token";
 
 type StoredSession = {
   accessToken?: string;

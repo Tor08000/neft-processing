@@ -128,6 +128,8 @@ def _portal_token_config(portal: str) -> tuple[str, str]:
     settings = get_settings()
     if portal == "client":
         return settings.auth_client_issuer, settings.auth_client_audience
+    if portal == "partner":
+        return settings.auth_partner_issuer, settings.auth_partner_audience
     return settings.auth_issuer, settings.auth_audience
 
 
@@ -254,6 +256,7 @@ async def register(payload: RegisterRequest) -> SignupResponse:
             subject_type="client_user",
             client_id=client_id,
             user_id=str(new_user_id),
+            portal="client",
             issuer=issuer,
             audience=audience,
         )
@@ -343,6 +346,7 @@ async def login(request: Request, payload: LoginRequest) -> TokenResponse:
             client_id=client_id,
             user_id=str(user.id),
             org_id=org_id,
+            portal=portal,
             issuer=issuer,
             audience=audience,
         )
