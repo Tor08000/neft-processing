@@ -4,6 +4,7 @@ import hashlib
 import json
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, timezone
+from decimal import Decimal
 from pathlib import Path
 
 import requests
@@ -12,10 +13,18 @@ from neft_shared.settings import get_settings
 from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session
 
-from app.models.fuel import FuelStation, FuelStationPrice
+from app.models.fuel import (
+    CommercialRecommendationAction,
+    FuelStation,
+    FuelStationPrice,
+    FuelStationPriceSource,
+    FuelStationPriceStatus,
+    FuelStationStatus,
+)
 from app.models.operation import Operation, OperationStatus
 from app.models.station_elasticity import StationElasticity
 from app.models.station_margin import StationMarginDay
+from app.services.fuel_prices import write_price_audit
 
 logger = get_logger(__name__)
 settings = get_settings()
@@ -379,6 +388,223 @@ def build_price_recommendations(db: Session, window_days: int = 90) -> dict[str,
     return {"created_at": created_at.isoformat(), "rows": len(rows), "policy_version": policy["version"]}
 
 
+@dataclass
+class ApplyRecommendationResult:
+    recommendation_id: str
+    status: str
+    idempotent: bool
+
+
+def _snapshot_price_row(row: FuelStationPrice | None) -> dict | None:
+    if row is None:
+        return None
+    return {
+        "product_code": row.product_code,
+        "price": float(row.price),
+        "currency": row.currency,
+        "status": row.status.value if hasattr(row.status, "value") else str(row.status),
+        "valid_from": row.valid_from.isoformat() if row.valid_from else None,
+        "valid_to": row.valid_to.isoformat() if row.valid_to else None,
+        "source": row.source.value if hasattr(row.source, "value") else str(row.source),
+        "updated_by": row.updated_by,
+        "meta": row.meta or {},
+    }
+
+
+def _status_from_action(action_type: str | None) -> str | None:
+    mapping = {"ACCEPT": "ACCEPTED", "REJECT": "REJECTED", "APPLY": "APPLIED"}
+    return mapping.get((action_type or "").upper())
+
+
+def _record_recommendation_action(
+    db: Session,
+    *,
+    rec_id: str,
+    action_type: str,
+    actor: str | None,
+    meta: dict | None = None,
+) -> None:
+    db.add(
+        CommercialRecommendationAction(
+            rec_id=rec_id,
+            action_type=action_type.upper(),
+            actor=actor,
+            meta=meta,
+        )
+    )
+
+
+def _latest_action_status(db: Session, rec_id: str) -> str | None:
+    last_action = (
+        db.query(CommercialRecommendationAction)
+        .filter(CommercialRecommendationAction.rec_id == rec_id)
+        .order_by(CommercialRecommendationAction.ts.desc(), CommercialRecommendationAction.id.desc())
+        .first()
+    )
+    return _status_from_action(last_action.action_type) if last_action else None
+
+
+def get_recommendation_by_id(db: Session, recommendation_id: str) -> dict | None:
+    if not _ch_enabled() or not _ch_ping():
+        return None
+    escaped_id = _ch_quote(recommendation_id)
+    rows = _ch_query(
+        f"""
+        SELECT rec_id, created_at, station_id, product_code, current_price, recommended_price,
+               delta_price, action, confidence, reasons, expected_volume_change_pct, expected_margin_change,
+               policy_version, status, decided_at, decided_by, meta
+        FROM neft_geo.fact_price_recommendations
+        WHERE rec_id = '{escaped_id}'
+        ORDER BY created_at DESC
+        LIMIT 1
+        """
+    )
+    if not rows:
+        return None
+
+    row = rows[0]
+    meta = json.loads(row.get("meta") or "{}")
+    station_ref = str(meta.get("station_ref") or row["station_id"])
+    status_override = _latest_action_status(db, recommendation_id)
+    return {
+        "id": row["rec_id"],
+        "created_at": row["created_at"],
+        "station_id": station_ref,
+        "product_code": row.get("product_code") or "",
+        "recommended_price": float(row.get("recommended_price") or 0),
+        "action": row.get("action") or "HOLD",
+        "policy_version": row.get("policy_version") or "",
+        "status": status_override or (row.get("status") or "DRAFT"),
+        "meta": meta,
+    }
+
+
+def apply_accepted_recommendation(
+    db: Session,
+    *,
+    recommendation_id: str,
+    actor: str | None,
+    effective_from: datetime | None,
+    comment: str | None,
+    request_id: str | None = None,
+) -> ApplyRecommendationResult:
+    recommendation = get_recommendation_by_id(db, recommendation_id)
+    if recommendation is None:
+        raise ValueError("recommendation_not_found")
+
+    if recommendation["status"] != "ACCEPTED":
+        raise ValueError("recommendation_not_accepted")
+
+    action = str(recommendation.get("action") or "").upper()
+    if action not in {"INCREASE", "DECREASE"}:
+        raise ValueError("recommendation_action_not_applicable")
+
+    product_code = str(recommendation.get("product_code") or "").strip().upper()
+    if not product_code:
+        raise ValueError("product_required")
+
+    recommended_price = float(recommendation.get("recommended_price") or 0)
+    if recommended_price <= 0:
+        raise ValueError("recommended_price_invalid")
+
+    station_id = str(recommendation["station_id"])
+    station = db.query(FuelStation).filter(FuelStation.id == station_id).one_or_none()
+    if station is None:
+        raise ValueError("station_not_found")
+    if str(station.status or "").upper() != FuelStationStatus.ACTIVE.value:
+        raise ValueError("station_inactive")
+
+    existing = (
+        db.query(FuelStationPrice)
+        .filter(
+            FuelStationPrice.station_id == station_id,
+            FuelStationPrice.product_code == product_code,
+            FuelStationPrice.meta["applied_rec_id"].astext == recommendation_id,
+        )
+        .order_by(FuelStationPrice.updated_at.desc())
+        .first()
+    )
+    if existing is not None:
+        return ApplyRecommendationResult(recommendation_id=recommendation_id, status="APPLIED", idempotent=True)
+
+    valid_from = effective_from or datetime.now(tz=timezone.utc)
+    previous_active = (
+        db.query(FuelStationPrice)
+        .filter(
+            FuelStationPrice.station_id == station_id,
+            FuelStationPrice.product_code == product_code,
+            FuelStationPrice.status == FuelStationPriceStatus.ACTIVE,
+            FuelStationPrice.valid_to.is_(None),
+        )
+        .order_by(FuelStationPrice.valid_from.desc(), FuelStationPrice.updated_at.desc())
+        .first()
+    )
+
+    previous_snapshot = _snapshot_price_row(previous_active)
+    previous_price = float(previous_active.price) if previous_active is not None else None
+    if previous_active is not None:
+        previous_active.valid_to = valid_from
+
+    warning_codes: list[str] = []
+    if str(station.health_status or "").upper() == "OFFLINE":
+        warning_codes.append("HEALTH_OFFLINE")
+    if str(station.risk_zone or "").upper() == "RED":
+        warning_codes.append("RISK_RED")
+
+    meta = {
+        "applied_rec_id": recommendation_id,
+        "policy_version": recommendation.get("policy_version"),
+        "previous_price": previous_price,
+        "comment": comment,
+    }
+    if warning_codes:
+        meta["warnings"] = warning_codes
+
+    new_row = FuelStationPrice(
+        station_id=station_id,
+        product_code=product_code,
+        price=Decimal(str(recommended_price)),
+        currency="RUB",
+        status=FuelStationPriceStatus.ACTIVE,
+        valid_from=valid_from,
+        valid_to=None,
+        source=FuelStationPriceSource.API,
+        updated_by=actor,
+        meta=meta,
+    )
+    db.add(new_row)
+    db.flush()
+
+    after_snapshot = _snapshot_price_row(new_row)
+    write_price_audit(
+        db,
+        station_id=station_id,
+        product_code=product_code,
+        action="APPLY",
+        actor=actor,
+        source="SYSTEM",
+        before=previous_snapshot,
+        after=after_snapshot,
+        request_id=request_id,
+        meta={"rec_id": recommendation_id, "warnings": warning_codes},
+    )
+
+    _record_recommendation_action(
+        db,
+        rec_id=recommendation_id,
+        action_type="APPLY",
+        actor=actor,
+        meta={
+            "effective_from": valid_from.isoformat(),
+            "comment": comment,
+            "station_id": station_id,
+            "product_code": product_code,
+            "applied_price": recommended_price,
+        },
+    )
+    return ApplyRecommendationResult(recommendation_id=recommendation_id, status="APPLIED", idempotent=False)
+
+
 def list_price_recommendations(
     db: Session,
     *,
@@ -432,6 +658,7 @@ def list_price_recommendations(
         station = stations.get(station_ref)
         if (risk_zone or health_status) and not station:
             continue
+        effective_status = _latest_action_status(db, row["rec_id"]) or (row.get("status") or "DRAFT")
         output.append(
             {
                 "id": row["rec_id"],
@@ -453,7 +680,7 @@ def list_price_recommendations(
                 "expected_volume_change_pct": row.get("expected_volume_change_pct"),
                 "expected_margin_change": row.get("expected_margin_change"),
                 "policy_version": row.get("policy_version") or "",
-                "status": row.get("status") or "DRAFT",
+                "status": effective_status,
                 "decided_at": row.get("decided_at"),
                 "decided_by": row.get("decided_by"),
             }
@@ -479,7 +706,14 @@ def _ch_quote(value: str) -> str:
     return value.replace("\\", "\\\\").replace("'", "\\'")
 
 
-def update_recommendation_status(recommendation_id: str, status: str, *, decided_by: str | None = None, comment: str | None = None) -> bool:
+def update_recommendation_status(
+    recommendation_id: str,
+    status: str,
+    *,
+    decided_by: str | None = None,
+    comment: str | None = None,
+    db: Session | None = None,
+) -> bool:
     if not _ch_enabled() or not _ch_ping():
         return False
     ensure_price_recommendations_table()
@@ -493,4 +727,14 @@ def update_recommendation_status(recommendation_id: str, status: str, *, decided
         f"meta = if(length(meta)=0, '{{\"comment\":\"{escaped_comment}\"}}', meta) "
         f"WHERE rec_id = '{escaped_id}'"
     )
+    if db is not None:
+        action_type = {"ACCEPTED": "ACCEPT", "REJECTED": "REJECT"}.get(status.upper())
+        if action_type:
+            _record_recommendation_action(
+                db,
+                rec_id=recommendation_id,
+                action_type=action_type,
+                actor=decided_by,
+                meta={"comment": comment},
+            )
     return True
