@@ -1,4 +1,4 @@
-import { request } from "./http";
+import { request, requestFormData } from "./http";
 
 export interface PaginatedResponse<T> {
   items: T[];
@@ -58,6 +58,49 @@ export interface StationPrice {
   product: string;
   price: number;
   updatedAt?: string | null;
+}
+
+
+export interface FuelStationPriceItem {
+  product_code: string;
+  price: number;
+  currency?: string | null;
+  valid_from?: string | null;
+  valid_to?: string | null;
+  updated_at?: string | null;
+  updated_by?: string | null;
+}
+
+export interface FuelStationPricesResponse {
+  station_id: string;
+  as_of?: string | null;
+  currency?: string | null;
+  items: FuelStationPriceItem[];
+}
+
+export interface FuelStationPricesUpsertPayload {
+  source: "MANUAL";
+  items: Array<{
+    product_code: string;
+    price: number;
+    currency: string;
+    valid_from?: string | null;
+    valid_to?: string | null;
+  }>;
+}
+
+export interface FuelStationPriceImportError {
+  row: number;
+  error: string;
+  raw?: string | null;
+}
+
+export interface FuelStationPriceImportSummary {
+  station_id: string;
+  inserted: number;
+  updated: number;
+  skipped: number;
+  errors: FuelStationPriceImportError[];
 }
 
 export interface TransactionListItem {
@@ -248,3 +291,27 @@ export const confirmSettlementReceived = (token: string, settlementId: string) =
 
 export const requestReconciliation = (token: string, settlementId: string) =>
   request(`/partner/settlements/${settlementId}/reconciliation-requests`, { method: "POST" }, token);
+
+
+export const fetchFuelStationPrices = (token: string, stationId: string) =>
+  request<FuelStationPricesResponse>(`/api/v1/fuel/stations/${stationId}/prices`, { method: "GET" }, { token, base: "core_root" });
+
+export const saveFuelStationPrices = (token: string, stationId: string, payload: FuelStationPricesUpsertPayload) =>
+  request<FuelStationPricesResponse>(
+    `/api/v1/partner/fuel/stations/${stationId}/prices`,
+    {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    },
+    { token, base: "core_root" },
+  );
+
+export const importFuelStationPrices = (token: string, stationId: string, file: File) => {
+  const formData = new FormData();
+  formData.append("file", file);
+  return requestFormData<FuelStationPriceImportSummary>(
+    `/api/v1/partner/fuel/stations/${stationId}/prices/import`,
+    formData,
+    { token, base: "core_root" },
+  );
+};
