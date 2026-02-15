@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import time
 from typing import Callable
 
@@ -21,6 +22,7 @@ from neft_logistics_service.schemas import (
 from neft_logistics_service.settings import get_settings
 
 settings = get_settings()
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Logistics Service", version=settings.service_version)
 
@@ -44,6 +46,19 @@ for compute_type in ("eta", "deviation"):
         LOGISTICS_COMPUTE_TOTAL.labels(type=compute_type, status=status).inc(0)
     LOGISTICS_PROVIDER_ERRORS_TOTAL.labels(provider=settings.provider, type=compute_type).inc(0)
 LOGISTICS_COMPUTE_DURATION.observe(0.0)
+
+
+@app.on_event("startup")
+def startup_log_mode() -> None:
+    logger.info(
+        "running in %s mode",
+        settings.app_env.upper(),
+        extra={
+            "app_env": settings.app_env,
+            "use_mock_logistics": settings.use_mock_logistics,
+            "provider": settings.provider,
+        },
+    )
 
 
 @app.middleware("http")

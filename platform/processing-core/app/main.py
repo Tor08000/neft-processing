@@ -258,6 +258,16 @@ INCLUDE_API_PREFIX_CORE = API_PREFIX_CORE != LEGACY_API_PREFIX
 INCLUDE_CUSTOM_CORE_PREFIX = INCLUDE_API_PREFIX_CORE and INCLUDE_CORE_PREFIX_ROUTES
 init_logging(service_name=SERVICE_NAME)
 logger = get_logger(__name__)
+logger.info(
+    "running in %s mode",
+    settings.APP_ENV.upper(),
+    extra={
+        "app_env": settings.APP_ENV,
+        "use_stub_crm": settings.USE_STUB_CRM,
+        "use_stub_edo": settings.USE_STUB_EDO,
+        "use_mock_logistics": settings.USE_MOCK_LOGISTICS,
+    },
+)
 
 
 # -----------------------------------------------------------------------------

@@ -4,9 +4,15 @@ import os
 from dataclasses import dataclass
 
 
+def _env_bool(name: str, default: str = "0") -> bool:
+    return os.getenv(name, default).lower() in {"1", "true", "yes"}
+
+
 @dataclass(frozen=True)
 class Settings:
     service_name: str = "integration-hub"
+    app_env: str = os.getenv("APP_ENV", "prod").lower()
+    use_stub_edo: bool = _env_bool("USE_STUB_EDO", "0")
     service_version: str = os.getenv("INTEGRATION_HUB_VERSION", "v1")
 
     database_url: str = os.getenv(

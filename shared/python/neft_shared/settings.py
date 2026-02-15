@@ -15,12 +15,21 @@ def _resolve_database_url() -> str:
     return os.getenv("DATABASE_URL", "postgresql+psycopg://neft:neft@postgres:5432/neft")
 
 
+def _env_bool(name: str, default: str = "0") -> bool:
+    return os.getenv(name, default).lower() in {"1", "true", "yes"}
+
+
 @dataclass
 class Settings:
     """Базовые настройки, читаемые из окружения.
 
     Переменные совпадают с .env.example и используются всеми сервисами.
     """
+
+    APP_ENV: str = os.getenv("APP_ENV", "prod").lower()
+    USE_STUB_CRM: bool = _env_bool("USE_STUB_CRM", "0")
+    USE_STUB_EDO: bool = _env_bool("USE_STUB_EDO", "0")
+    USE_MOCK_LOGISTICS: bool = _env_bool("USE_MOCK_LOGISTICS", "0")
 
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
     LOG_FORMAT: str = os.getenv("LOG_FORMAT", "plain")
