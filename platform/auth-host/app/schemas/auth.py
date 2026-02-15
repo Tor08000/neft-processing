@@ -33,6 +33,7 @@ class RegisterRequest(BaseModel):
 class LoginRequest(BaseModel):
     email: str | None = None
     username: str | None = None
+    login: str | None = Field(default=None, description="Legacy login identifier (email or username)")
     password: str
     portal: str | None = Field(default=None, description="client, admin, or partner")
 
@@ -55,6 +56,15 @@ class LoginRequest(BaseModel):
 
     @model_validator(mode="after")
     def validate_login_identifier(self) -> "LoginRequest":
+        if self.login and not self.email and not self.username:
+            if "@" in self.login:
+                self.email = _normalize_email(self.login)
+            else:
+                normalized = self.login.strip().lower()
+                if not normalized:
+                    raise ValueError("login is empty")
+                self.username = normalized
+
         if not self.email and not self.username:
             raise ValueError("email or username required")
         return self

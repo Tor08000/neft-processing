@@ -34,6 +34,20 @@ def test_login_request_rejects_missing_identifier():
         LoginRequest(password="secret")
 
 
+def test_login_request_accepts_legacy_login_email():
+    request = LoginRequest(login=" Admin@Example.com ", password="secret")
+
+    assert request.email == "admin@example.com"
+    assert request.username is None
+
+
+def test_login_request_accepts_legacy_login_username():
+    request = LoginRequest(login=" Admin ", password="secret")
+
+    assert request.username == "admin"
+    assert request.email is None
+
+
 def test_client_demo_login_local_domain_ok(monkeypatch):
     password_hash = hash_password("client")
     demo_user = User(
@@ -45,8 +59,9 @@ def test_client_demo_login_local_domain_ok(monkeypatch):
         created_at=None,
     )
 
-    async def fake_get_user(email: str):
-        if email.lower() == "client@neft.local":
+    async def fake_get_user(*, email: str | None = None, username: str | None = None):
+        candidate = email or username
+        if candidate and candidate.lower() == "client@neft.local":
             return demo_user
         return None
 
@@ -80,8 +95,9 @@ def test_client_login_invalid_password(monkeypatch):
         created_at=None,
     )
 
-    async def fake_get_user(email: str):
-        if email.lower() == "client@neft.local":
+    async def fake_get_user(*, email: str | None = None, username: str | None = None):
+        candidate = email or username
+        if candidate and candidate.lower() == "client@neft.local":
             return demo_user
         return None
 
@@ -114,8 +130,9 @@ def test_admin_login_accepts_username(monkeypatch):
         created_at=None,
     )
 
-    async def fake_get_user(login: str):
-        if login.lower() == "admin":
+    async def fake_get_user(*, email: str | None = None, username: str | None = None):
+        candidate = email or username
+        if candidate and candidate.lower() == "admin":
             return demo_user
         return None
 
@@ -144,8 +161,9 @@ def test_login_returns_503_when_rsa_invalid(monkeypatch):
         created_at=None,
     )
 
-    async def fake_get_user(email: str):
-        if email.lower() == "client@neft.local":
+    async def fake_get_user(*, email: str | None = None, username: str | None = None):
+        candidate = email or username
+        if candidate and candidate.lower() == "client@neft.local":
             return demo_user
         return None
 
@@ -179,8 +197,9 @@ def test_login_requires_portal(monkeypatch):
         created_at=None,
     )
 
-    async def fake_get_user(email: str):
-        if email.lower() == "client@neft.local":
+    async def fake_get_user(*, email: str | None = None, username: str | None = None):
+        candidate = email or username
+        if candidate and candidate.lower() == "client@neft.local":
             return demo_user
         return None
 
@@ -214,8 +233,9 @@ def test_login_sets_client_portal_claims(monkeypatch):
         created_at=None,
     )
 
-    async def fake_get_user(email: str):
-        if email.lower() == "client@neft.local":
+    async def fake_get_user(*, email: str | None = None, username: str | None = None):
+        candidate = email or username
+        if candidate and candidate.lower() == "client@neft.local":
             return demo_user
         return None
 
@@ -253,8 +273,9 @@ def test_login_sets_admin_portal_claims(monkeypatch):
         created_at=None,
     )
 
-    async def fake_get_user(email: str):
-        if email.lower() == "admin@neft.local":
+    async def fake_get_user(*, email: str | None = None, username: str | None = None):
+        candidate = email or username
+        if candidate and candidate.lower() == "admin@neft.local":
             return demo_user
         return None
 
@@ -288,8 +309,9 @@ def test_login_omits_demo_org_in_prod(monkeypatch):
         created_at=None,
     )
 
-    async def fake_get_user(email: str):
-        if email.lower() == "client@neft.local":
+    async def fake_get_user(*, email: str | None = None, username: str | None = None):
+        candidate = email or username
+        if candidate and candidate.lower() == "client@neft.local":
             return demo_user
         return None
 

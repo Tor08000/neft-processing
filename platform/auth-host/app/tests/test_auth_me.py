@@ -44,8 +44,9 @@ def test_auth_me_returns_user_payload(monkeypatch: pytest.MonkeyPatch):
         created_at=None,
     )
 
-    async def fake_get_user(email: str):
-        if email.lower() == demo_user.email:
+    async def fake_get_user(*, email: str | None = None, username: str | None = None):
+        candidate = email or username
+        if candidate and candidate.lower() == demo_user.email:
             return demo_user
         return None
 
@@ -90,8 +91,9 @@ def test_login_token_valid_for_me(monkeypatch: pytest.MonkeyPatch, tmp_path: Pat
         created_at=None,
     )
 
-    async def fake_get_user(email: str):
-        if email.lower() == demo_user.email:
+    async def fake_get_user(*, email: str | None = None, username: str | None = None):
+        candidate = email or username
+        if candidate and candidate.lower() == demo_user.email:
             return demo_user
         return None
 
@@ -143,8 +145,9 @@ def test_auth_me_accepts_partner_portal(monkeypatch: pytest.MonkeyPatch):
         created_at=None,
     )
 
-    async def fake_get_user(email: str):
-        if email.lower() == demo_user.email:
+    async def fake_get_user(*, email: str | None = None, username: str | None = None):
+        candidate = email or username
+        if candidate and candidate.lower() == demo_user.email:
             return demo_user
         return None
 
