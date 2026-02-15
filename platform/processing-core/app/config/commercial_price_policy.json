@@ -1,12 +1,15 @@
 {
-  "policy_version": "price-rec-v1",
+  "version": "v1",
   "step_up": 0.3,
   "step_down": 0.2,
   "max_delta_per_day": 0.5,
-  "margin_target_pct": 0.03,
-  "min_volume_7d": 2000.0,
-  "min_confidence": 0.4,
-  "low_elasticity_abs": 0.5,
-  "high_elasticity_threshold": -1.2,
-  "high_decline_rate": 0.12
+  "target_margin_pct": 0.03,
+  "min_volume_7d": 50,
+  "min_revenue_7d": 50000,
+  "elasticity_low_abs": 0.5,
+  "elasticity_high_abs": 1.2,
+  "high_decline_rate": 0.12,
+  "min_confidence_to_change": 0.6,
+  "guardrail_risk_zone_red": true,
+  "guardrail_health_offline": true
 }
