@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Path, Query
+from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from sqlalchemy.orm import Session
 
 from app.db import get_db
@@ -17,7 +17,7 @@ router = APIRouter(prefix="/api/v1/commercial/elasticity", tags=["commercial"])
 
 @router.get("/stations", response_model=StationElasticityListResponse)
 def list_station_elasticity(
-    window_days: int = Query(default=90, ge=30, le=90),
+    window_days: int = Query(default=90),
     sort_by: ElasticitySortBy = Query(default=ElasticitySortBy.ELASTICITY_ABS),
     order: SortOrder = Query(default=SortOrder.DESC),
     limit: int = Query(default=50, ge=1, le=200),
@@ -26,6 +26,8 @@ def list_station_elasticity(
     health_status: str | None = Query(default=None),
     db: Session = Depends(get_db),
 ) -> StationElasticityListResponse:
+    if window_days not in (30, 90):
+        raise HTTPException(status_code=422, detail="window_days must be 30 or 90")
     items = fetch_station_elasticity(
         db,
         window_days=window_days,
@@ -42,9 +44,11 @@ def list_station_elasticity(
 @router.get("/stations/{station_id}", response_model=StationElasticityDetailResponse)
 def station_elasticity_detail(
     station_id: str = Path(...),
-    window_days: int = Query(default=90, ge=30, le=90),
+    window_days: int = Query(default=90),
     db: Session = Depends(get_db),
 ) -> StationElasticityDetailResponse:
+    if window_days not in (30, 90):
+        raise HTTPException(status_code=422, detail="window_days must be 30 or 90")
     items = fetch_station_elasticity(
         db,
         window_days=window_days,

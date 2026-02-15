@@ -4,14 +4,22 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.api.v1.endpoints.commercial_elasticity import router as elasticity_router
 from app.db import get_db
 from app.fastapi_utils import generate_unique_id
-from app.models.fuel import FuelNetwork, FuelNetworkStatus, FuelStation, FuelStationStatus
+from app.models.fuel import (
+    FuelNetwork,
+    FuelNetworkStatus,
+    FuelStation,
+    FuelStationPrice,
+    FuelStationPriceSource,
+    FuelStationPriceStatus,
+    FuelStationStatus,
+)
 from app.models.operation import Operation, OperationStatus, OperationType
 from app.models.station_elasticity import StationElasticity
 from app.services.commercial_elasticity import compute_period_elasticity, elasticity_compute
@@ -24,20 +32,7 @@ def _setup_session() -> sessionmaker:
     FuelStation.__table__.create(bind=engine)
     Operation.__table__.create(bind=engine)
     StationElasticity.__table__.create(bind=engine)
-    with engine.begin() as conn:
-        conn.execute(
-            text(
-                """
-                CREATE TABLE station_prices (
-                    station_id TEXT NOT NULL,
-                    product_code TEXT,
-                    price FLOAT NOT NULL,
-                    valid_from DATETIME NOT NULL,
-                    valid_to DATETIME
-                )
-                """
-            )
-        )
+    FuelStationPrice.__table__.create(bind=engine)
     return session_local
 
 
@@ -62,14 +57,29 @@ def test_elasticity_compute_without_product_dim_sets_note(monkeypatch) -> None:
         db.commit()
         db.refresh(station)
 
-        db.execute(
-            text(
-                """
-                INSERT INTO station_prices(station_id, product_code, price, valid_from, valid_to)
-                VALUES (:sid, 'AI95', 50, :v1, :v2), (:sid, 'AI95', 55, :v2, :v3)
-                """
-            ),
-            {"sid": str(station.id), "v1": now - timedelta(days=10), "v2": now - timedelta(days=5), "v3": now},
+        db.add_all(
+            [
+                FuelStationPrice(
+                    station_id=station.id,
+                    product_code="AI95",
+                    price=50,
+                    status=FuelStationPriceStatus.ACTIVE,
+                    source=FuelStationPriceSource.MANUAL,
+                    valid_from=now - timedelta(days=10),
+                    valid_to=now - timedelta(days=5),
+                    updated_at=now - timedelta(days=10),
+                ),
+                FuelStationPrice(
+                    station_id=station.id,
+                    product_code="AI95",
+                    price=55,
+                    status=FuelStationPriceStatus.ACTIVE,
+                    source=FuelStationPriceSource.MANUAL,
+                    valid_from=now - timedelta(days=5),
+                    valid_to=None,
+                    updated_at=now - timedelta(days=5),
+                ),
+            ]
         )
 
         for idx in range(25):
@@ -91,7 +101,7 @@ def test_elasticity_compute_without_product_dim_sets_note(monkeypatch) -> None:
                     currency="RUB",
                     authorized=True,
                     product_code="AI95",
-                    quantity=20,
+                    quantity=100,
                 )
             )
             db.add(
@@ -110,21 +120,23 @@ def test_elasticity_compute_without_product_dim_sets_note(monkeypatch) -> None:
                     currency="RUB",
                     authorized=True,
                     product_code="AI95",
-                    quantity=16,
+                    quantity=80,
                 )
             )
         db.commit()
 
         monkeypatch.setattr("app.services.commercial_elasticity.detect_product_dimension", lambda: False)
+        monkeypatch.setattr("app.services.commercial_elasticity.detect_liters_dimension", lambda: True)
         result = elasticity_compute(db, window_days=30)
         assert result["rows"] >= 1
 
         saved = db.query(StationElasticity).filter(StationElasticity.station_id == str(station.id), StationElasticity.window_days == 30).first()
         assert saved is not None
         assert saved.notes == "PRODUCT_DIM_MISSING"
+        assert saved.elasticity_score < 0
 
 
-def test_elasticity_endpoint_returns_items(monkeypatch) -> None:
+def test_elasticity_endpoint_returns_items() -> None:
     session_local = _setup_session()
     now = datetime.now(tz=timezone.utc)
     with session_local() as db:
@@ -169,3 +181,16 @@ def test_elasticity_endpoint_returns_items(monkeypatch) -> None:
     assert resp.status_code == 200
     payload = resp.json()
     assert payload["items"][0]["station_id"] == str(station.id)
+
+
+def test_elasticity_endpoint_rejects_invalid_window_days() -> None:
+    app = FastAPI(generate_unique_id_function=generate_unique_id)
+    app.include_router(elasticity_router, prefix="")
+
+    def override_get_db():
+        yield None
+
+    app.dependency_overrides[get_db] = override_get_db
+    client = TestClient(app)
+    resp = client.get("/api/v1/commercial/elasticity/stations?window_days=60")
+    assert resp.status_code == 422

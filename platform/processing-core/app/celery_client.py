@@ -119,12 +119,12 @@ celery_client.conf.update(
         },
         "commercial.elasticity_compute_30": {
             "task": "commercial.elasticity_compute",
-            "schedule": crontab(hour=3, minute=40),
+            "schedule": crontab(hour=4, minute=20),
             "args": (30,),
         },
         "commercial.elasticity_compute_90": {
             "task": "commercial.elasticity_compute",
-            "schedule": crontab(hour=3, minute=50),
+            "schedule": crontab(hour=4, minute=25),
             "args": (90,),
         },
         "commercial.price_recommendations_build": {
