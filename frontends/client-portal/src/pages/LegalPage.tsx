@@ -5,8 +5,10 @@ import { formatDateTime } from "../utils/format";
 
 export function LegalPage() {
   const { user } = useAuth();
-  const { required, isBlocked, isLoading, errorMessage, document, loadDocument, accept, refresh } = useLegalGate();
+  const { required, isBlocked, isLoading, errorMessage, document, loadDocument, accept, refresh, accessState } = useLegalGate();
   const [selectedCode, setSelectedCode] = useState<string | null>(null);
+
+  const isAccessBlocked = accessState === "unauthorized" || accessState === "forbidden" || accessState === "stopped";
 
   useEffect(() => {
     void refresh();
@@ -33,7 +35,18 @@ export function LegalPage() {
         <p className="muted">Все обязательные документы приняты.</p>
       )}
 
-      {errorMessage ? <div className="card state">{errorMessage}</div> : null}
+      {errorMessage ? (
+        <div className="card state stack">
+          <div>{errorMessage}</div>
+          {isAccessBlocked ? (
+            <div className="actions">
+              <button className="secondary" type="button" onClick={() => void refresh(true)}>
+                Обновить
+              </button>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
       {isLoading ? <div className="muted">Загружаем документы...</div> : null}
 
       <div className="legal-grid">

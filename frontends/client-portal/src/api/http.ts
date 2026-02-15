@@ -116,6 +116,85 @@ export class LegalRequiredError extends ApiError {
   }
 }
 
+export class TooManyForbiddenError extends ApiError {
+  constructor(url: string, correlationId: string | null = null) {
+    super("Слишком много повторных 403-запросов. Обновите страницу или войдите заново.", 403, correlationId, null, "too_many_forbidden", {
+      url,
+      local: true,
+    });
+    this.name = "TooManyForbiddenError";
+  }
+}
+
+const RETRYABLE_STATUSES = new Set([502, 503, 504]);
+const MAX_RETRIES = 2;
+const BASE_RETRY_DELAY_MS = 1_000;
+const FORBIDDEN_WINDOW_MS = 10_000;
+const FORBIDDEN_LIMIT = 3;
+const forbiddenHistory = new Map<string, number[]>();
+
+const sleep = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
+
+const methodUrlKey = (method: string, url: string) => `${method.toUpperCase()} ${url}`;
+
+const cleanupForbiddenHistory = (key: string, now: number): number[] => {
+  const timestamps = forbiddenHistory.get(key) ?? [];
+  const filtered = timestamps.filter((stamp) => now - stamp <= FORBIDDEN_WINDOW_MS);
+  forbiddenHistory.set(key, filtered);
+  return filtered;
+};
+
+const checkForbiddenStorm = (key: string): boolean => {
+  const now = Date.now();
+  const history = cleanupForbiddenHistory(key, now);
+  return history.length >= FORBIDDEN_LIMIT;
+};
+
+const registerForbidden = (key: string): void => {
+  const now = Date.now();
+  const history = cleanupForbiddenHistory(key, now);
+  history.push(now);
+  forbiddenHistory.set(key, history);
+};
+
+const shouldRetryRequest = (attempt: number, error: unknown, response?: Response): boolean => {
+  if (attempt >= MAX_RETRIES) {
+    return false;
+  }
+  if (response) {
+    return RETRYABLE_STATUSES.has(response.status);
+  }
+  return error instanceof TypeError;
+};
+
+const fetchWithRetry = async (url: string, init: RequestInit): Promise<Response> => {
+  const method = (init.method ?? "GET").toUpperCase();
+  const key = methodUrlKey(method, url);
+  if (checkForbiddenStorm(key)) {
+    throw new TooManyForbiddenError(url);
+  }
+
+  let attempt = 0;
+  while (true) {
+    try {
+      const response = await fetch(url, init);
+      if (response.status === 403) {
+        registerForbidden(key);
+      }
+      if (!shouldRetryRequest(attempt, null, response)) {
+        return response;
+      }
+    } catch (error) {
+      if (!shouldRetryRequest(attempt, error)) {
+        throw error;
+      }
+    }
+    const delay = BASE_RETRY_DELAY_MS * 2 ** attempt;
+    await sleep(delay);
+    attempt += 1;
+  }
+};
+
 const buildHeaders = (token?: string): HttpHeaders => {
   const headers: HttpHeaders = {
     "Content-Type": "application/json",
@@ -160,7 +239,7 @@ export async function request<T>(
   const headers: HttpHeaders = { ...buildHeaders(token ?? undefined), ...(init.headers as HttpHeaders | undefined) };
   const apiBase = base === "auth" ? AUTH_API_BASE : base === "core_root" ? CORE_ROOT_API_BASE : CORE_API_BASE;
   const url = `${apiBase}${path}`;
-  const response = await fetch(url, { ...init, headers });
+  const response = await fetchWithRetry(url, { ...init, headers });
   const correlationId = response.headers.get("x-correlation-id") ?? response.headers.get("x-request-id");
   const contentType = response.headers.get("content-type") ?? "";
   const isJson = contentType.includes("application/json");
@@ -296,7 +375,7 @@ export async function requestWithMeta<T>(
   const headers: HttpHeaders = { ...buildHeaders(token ?? undefined), ...(init.headers as HttpHeaders | undefined) };
   const apiBase = base === "auth" ? AUTH_API_BASE : base === "core_root" ? CORE_ROOT_API_BASE : CORE_API_BASE;
   const url = `${apiBase}${path}`;
-  const response = await fetch(url, { ...init, headers });
+  const response = await fetchWithRetry(url, { ...init, headers });
   const correlationId = response.headers.get("x-correlation-id") ?? response.headers.get("x-request-id");
   const contentType = response.headers.get("content-type") ?? "";
   const isJson = contentType.includes("application/json");
@@ -414,10 +493,11 @@ export async function requestFormData<T>(
 
   const headers: HttpHeaders = buildAuthHeaders(token ?? undefined);
   const apiBase = base === "auth" ? AUTH_API_BASE : base === "core_root" ? CORE_ROOT_API_BASE : CORE_API_BASE;
-  const response = await fetch(`${apiBase}${path}`, { method: "POST", body: data, headers });
+  const url = `${apiBase}${path}`;
+  const response = await fetchWithRetry(url, { method: "POST", body: data, headers });
   const correlationId = response.headers.get("x-correlation-id") ?? response.headers.get("x-request-id");
 
-  logErrorUrl(`${apiBase}${path}`, response.status);
+  logErrorUrl(url, response.status);
 
   if (response.status === 401) {
     if (isAuthMeRequest(base, path)) {

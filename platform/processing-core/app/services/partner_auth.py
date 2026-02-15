@@ -48,15 +48,15 @@ def _static_public_key() -> str | None:
 def _get_bearer_token(request: Request) -> str:
     auth_header = request.headers.get("Authorization")
     if not auth_header:
-        _log_rejection("", reason="missing_token")
+        _log_rejection("", reason="missing_token", path=str(request.url.path))
         raise HTTPException(status_code=401, detail="Missing bearer token")
     if not auth_header.startswith("Bearer "):
-        _log_rejection("", reason="bad_format")
+        _log_rejection("", reason="bad_format", path=str(request.url.path))
         raise HTTPException(status_code=401, detail="Missing bearer token")
 
     token = auth_header.split(" ", 1)[1].strip()
     if not token:
-        _log_rejection("", reason="missing_token")
+        _log_rejection("", reason="missing_token", path=str(request.url.path))
         raise HTTPException(status_code=401, detail="Missing bearer token")
 
     return token
@@ -72,13 +72,14 @@ def _decode_token(token: str, key: str) -> dict:
     )
 
 
-def _log_rejection(token: str, *, reason: str, exc: Exception | None = None) -> None:
+def _log_rejection(token: str, *, reason: str, exc: Exception | None = None, path: str | None = None) -> None:
     log_token_rejection(
         logger=_logger,
         token=token,
         reason=reason,
         event="partner_auth.token_rejected",
         exc=exc,
+        path=path,
     )
 
 
