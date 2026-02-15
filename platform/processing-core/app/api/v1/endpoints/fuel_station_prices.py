@@ -1,139 +1,36 @@
 from __future__ import annotations
 
-import csv
-import io
-import json
 from datetime import datetime, timezone
-from decimal import Decimal
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
 from sqlalchemy.orm import Session
 
 from app.api.dependencies.partner import partner_portal_user
 from app.db import get_db
-from app.models.audit_log import ActorType, AuditVisibility
-from app.models.fuel import FuelStation, FuelStationPrice, FuelStationPriceSource, FuelStationPriceStatus
+from app.models.fuel import FuelStation, FuelStationPriceSource
 from app.schemas.fuel import (
+    FuelStationPriceImportError,
     FuelStationPriceImportSummary,
-    FuelStationPriceItemIn,
     FuelStationPriceItemOut,
     FuelStationPricesOut,
     FuelStationPricesUpsertIn,
 )
-from app.services.audit_service import AuditService, request_context_from_request
+from app.services.fuel_prices import (
+    get_station_prices,
+    import_station_prices_csv,
+    upsert_station_prices,
+    write_price_audit,
+)
 
 router = APIRouter(tags=["fuel-station-prices"])
-
-_ALLOWED_CURRENCY = {"RUB"}
-_ALLOWED_PRODUCTS = {"AI95", "AI92", "DT"}
-
-
-def _normalize_item(item: FuelStationPriceItemIn) -> FuelStationPriceItemIn:
-    item.product_code = item.product_code.strip().upper()
-    item.currency = item.currency.strip().upper()
-    if item.currency not in _ALLOWED_CURRENCY:
-        raise HTTPException(status_code=400, detail=f"unsupported_currency:{item.currency}")
-    if item.product_code not in _ALLOWED_PRODUCTS:
-        raise HTTPException(status_code=400, detail=f"unknown_product_code:{item.product_code}")
-    if item.valid_from and item.valid_to and item.valid_to <= item.valid_from:
-        raise HTTPException(status_code=400, detail="invalid_validity_window")
-    return item
-
-
-def _current_prices_query(db: Session, station_id: str, as_of: datetime):
-    return (
-        db.query(FuelStationPrice)
-        .filter(
-            FuelStationPrice.station_id == station_id,
-            FuelStationPrice.status == FuelStationPriceStatus.ACTIVE,
-            (FuelStationPrice.valid_from.is_(None) | (FuelStationPrice.valid_from <= as_of)),
-            (FuelStationPrice.valid_to.is_(None) | (FuelStationPrice.valid_to > as_of)),
-        )
-        .order_by(FuelStationPrice.updated_at.desc())
-    )
-
-
-def _upsert_prices(
-    db: Session,
-    station_id: str,
-    items: list[FuelStationPriceItemIn],
-    source: FuelStationPriceSource,
-    updated_by: str | None,
-) -> tuple[list[dict], list[dict], int, int]:
-    inserted = 0
-    updated = 0
-    before_items: list[dict] = []
-    after_items: list[dict] = []
-
-    for item in items:
-        normalized = _normalize_item(item)
-        row = (
-            db.query(FuelStationPrice)
-            .filter(
-                FuelStationPrice.station_id == station_id,
-                FuelStationPrice.product_code == normalized.product_code,
-                FuelStationPrice.valid_from == normalized.valid_from,
-                FuelStationPrice.valid_to == normalized.valid_to,
-            )
-            .one_or_none()
-        )
-
-        after_payload = {
-            "product_code": normalized.product_code,
-            "price": float(normalized.price),
-            "currency": normalized.currency,
-            "valid_from": normalized.valid_from.isoformat() if normalized.valid_from else None,
-            "valid_to": normalized.valid_to.isoformat() if normalized.valid_to else None,
-            "source": source.value,
-            "updated_by": updated_by,
-        }
-
-        if row is None:
-            row = FuelStationPrice(
-                station_id=station_id,
-                product_code=normalized.product_code,
-                price=Decimal(str(normalized.price)),
-                currency=normalized.currency,
-                status=FuelStationPriceStatus.ACTIVE,
-                valid_from=normalized.valid_from,
-                valid_to=normalized.valid_to,
-                source=source,
-                updated_by=updated_by,
-                meta=normalized.meta,
-            )
-            db.add(row)
-            inserted += 1
-            before_items.append({"product_code": normalized.product_code, "created": True})
-            after_items.append(after_payload)
-            continue
-
-        before_items.append(
-            {
-                "product_code": row.product_code,
-                "price": float(row.price),
-                "currency": row.currency,
-                "valid_from": row.valid_from.isoformat() if row.valid_from else None,
-                "valid_to": row.valid_to.isoformat() if row.valid_to else None,
-            }
-        )
-        row.price = Decimal(str(normalized.price))
-        row.currency = normalized.currency
-        row.status = FuelStationPriceStatus.ACTIVE
-        row.source = source
-        row.updated_by = updated_by
-        row.meta = normalized.meta
-        row.updated_at = datetime.now(timezone.utc)
-        updated += 1
-        after_items.append(after_payload)
-
-    db.flush()
-    return before_items, after_items, inserted, updated
 
 
 @router.get("/api/v1/fuel/stations/{station_id}/prices", response_model=FuelStationPricesOut)
 def get_fuel_station_prices(
     station_id: str,
     as_of: datetime | None = Query(default=None),
+    product_code: str | None = Query(default=None),
+    include_inactive: bool = Query(default=False),
     db: Session = Depends(get_db),
 ) -> FuelStationPricesOut:
     station = db.query(FuelStation).filter(FuelStation.id == station_id).one_or_none()
@@ -141,7 +38,13 @@ def get_fuel_station_prices(
         raise HTTPException(status_code=404, detail="station_not_found")
 
     effective_as_of = as_of or datetime.now(timezone.utc)
-    rows = _current_prices_query(db, station_id, effective_as_of).all()
+    rows = get_station_prices(
+        db,
+        station_id,
+        effective_as_of,
+        product_code=product_code,
+        include_inactive=include_inactive,
+    )
     items = [
         FuelStationPriceItemOut(
             product_code=row.product_code,
@@ -149,10 +52,12 @@ def get_fuel_station_prices(
             currency=row.currency,
             valid_from=row.valid_from,
             valid_to=row.valid_to,
+            source=row.source.value,
+            updated_at=row.updated_at,
         )
         for row in rows
     ]
-    return FuelStationPricesOut(station_id=station_id, as_of=effective_as_of, items=items)
+    return FuelStationPricesOut(station_id=station_id, as_of=effective_as_of, currency="RUB", items=items)
 
 
 @router.put("/api/v1/partner/fuel/stations/{station_id}/prices", response_model=FuelStationPricesOut)
@@ -167,24 +72,36 @@ def put_fuel_station_prices(
     if station is None:
         raise HTTPException(status_code=404, detail="station_not_found")
 
-    source = FuelStationPriceSource(payload.source.upper())
-    updated_by = token.get("email") or token.get("user_id") or token.get("sub")
-    before_items, after_items, _, _ = _upsert_prices(db, station_id, payload.items, source, updated_by)
+    source = payload.source.upper()
+    if source not in {member.value for member in FuelStationPriceSource}:
+        raise HTTPException(status_code=400, detail=f"unsupported_source:{source}")
 
-    audit = AuditService(db)
-    audit.audit(
-        event_type="fuel.station.prices.updated",
-        entity_type="fuel_station",
-        entity_id=station_id,
-        action="upsert_prices",
-        visibility=AuditVisibility.INTERNAL,
-        before={"items": before_items},
-        after={"items": after_items, "source": source.value},
-        request_ctx=request_context_from_request(request, token=token, actor_type=ActorType.USER),
+    actor = token.get("email") or token.get("user_id") or token.get("sub")
+    request_id = request.headers.get("X-Request-Id") or request.headers.get("X-Correlation-Id")
+    upsert_station_prices(
+        db,
+        station_id=station_id,
+        items=payload.items,
+        source=source,
+        actor=actor,
+        request_id=request_id,
     )
-
     db.commit()
-    return get_fuel_station_prices(station_id=station_id, as_of=datetime.now(timezone.utc), db=db)
+    effective_as_of = datetime.now(timezone.utc)
+    rows = get_station_prices(db, station_id, effective_as_of)
+    items = [
+        FuelStationPriceItemOut(
+            product_code=row.product_code,
+            price=float(row.price),
+            currency=row.currency,
+            valid_from=row.valid_from,
+            valid_to=row.valid_to,
+            source=row.source.value,
+            updated_at=row.updated_at,
+        )
+        for row in rows
+    ]
+    return FuelStationPricesOut(station_id=station_id, as_of=effective_as_of, currency="RUB", items=items)
 
 
 @router.post("/api/v1/partner/fuel/stations/{station_id}/prices/import", response_model=FuelStationPriceImportSummary)
@@ -199,64 +116,58 @@ async def import_fuel_station_prices(
     if station is None:
         raise HTTPException(status_code=404, detail="station_not_found")
 
+    actor = token.get("email") or token.get("user_id") or token.get("sub")
+    request_id = request.headers.get("X-Request-Id") or request.headers.get("X-Correlation-Id")
+
     payload_bytes = await file.read()
-    raw = payload_bytes.decode("utf-8")
-    errors: list[str] = []
-    parsed_items: list[FuelStationPriceItemIn] = []
-
-    try:
-        if file.filename and file.filename.lower().endswith(".json"):
-            data = json.loads(raw)
-            rows = data.get("items", data)
-            for row in rows:
-                parsed_items.append(FuelStationPriceItemIn.model_validate(row))
-        else:
-            reader = csv.DictReader(io.StringIO(raw))
-            for row in reader:
-                parsed_items.append(
-                    FuelStationPriceItemIn.model_validate(
-                        {
-                            "product_code": row.get("product_code"),
-                            "price": row.get("price"),
-                            "currency": row.get("currency") or "RUB",
-                            "valid_from": row.get("valid_from") or None,
-                            "valid_to": row.get("valid_to") or None,
-                        }
-                    )
-                )
-    except Exception as exc:
-        raise HTTPException(status_code=400, detail=f"import_parse_error:{exc}") from exc
-
+    parsed_items, parse_errors = import_station_prices_csv(payload_bytes)
     if len(parsed_items) > 500:
         raise HTTPException(status_code=400, detail="max_items_exceeded")
 
-    updated_by = token.get("email") or token.get("user_id") or token.get("sub")
-    try:
-        before_items, after_items, inserted, updated = _upsert_prices(
-            db,
-            station_id,
-            parsed_items,
-            FuelStationPriceSource.IMPORT,
-            updated_by,
-        )
-    except HTTPException as exc:
-        errors.append(str(exc.detail))
-        raise
+    row_errors: list[FuelStationPriceImportError] = [
+        FuelStationPriceImportError(row=err.row, error=err.error, raw=err.raw) for err in parse_errors
+    ]
 
-    audit = AuditService(db)
-    audit.audit(
-        event_type="fuel.station.prices.imported",
-        entity_type="fuel_station",
-        entity_id=station_id,
-        action="import_prices",
-        visibility=AuditVisibility.INTERNAL,
-        before={"items": before_items},
-        after={"items": after_items, "filename": file.filename},
-        request_ctx=request_context_from_request(request, token=token, actor_type=ActorType.USER),
+    inserted = 0
+    updated = 0
+    skipped = 0
+    for idx, item in enumerate(parsed_items, start=2):
+        try:
+            result = upsert_station_prices(
+                db,
+                station_id=station_id,
+                items=[item],
+                source=FuelStationPriceSource.IMPORT.value,
+                actor=actor,
+                request_id=request_id,
+            )
+            inserted += result.inserted
+            updated += result.updated
+            skipped += result.skipped
+        except Exception as exc:
+            row_errors.append(FuelStationPriceImportError(row=idx, error=str(exc), raw=item.model_dump_json()))
+
+    write_price_audit(
+        db,
+        station_id=station_id,
+        product_code="*",
+        action="IMPORT",
+        actor=actor,
+        source=FuelStationPriceSource.IMPORT.value,
+        before=None,
+        after=None,
+        request_id=request_id,
+        meta={"filename": file.filename, "inserted": inserted, "updated": updated, "skipped": skipped},
     )
 
     db.commit()
-    return FuelStationPriceImportSummary(inserted=inserted, updated=updated, errors=errors)
+    return FuelStationPriceImportSummary(
+        station_id=station_id,
+        inserted=inserted,
+        updated=updated,
+        skipped=skipped,
+        errors=row_errors,
+    )
 
 
 __all__ = ["router"]

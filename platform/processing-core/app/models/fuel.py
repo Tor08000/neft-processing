@@ -5,6 +5,7 @@ from enum import Enum
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    CheckConstraint,
     Column,
     Date,
     DateTime,
@@ -531,8 +532,22 @@ class FuelTransaction(Base):
 class FuelStationPrice(Base):
     __tablename__ = "fuel_station_prices"
     __table_args__ = (
+        CheckConstraint("price > 0", name="ck_fuel_station_prices_price_positive"),
+        CheckConstraint("currency = 'RUB'", name="ck_fuel_station_prices_currency"),
+        CheckConstraint(
+            "valid_to IS NULL OR valid_from IS NULL OR valid_to > valid_from",
+            name="ck_fuel_station_prices_valid_window",
+        ),
+        UniqueConstraint(
+            "station_id",
+            "product_code",
+            "valid_from",
+            "valid_to",
+            name="uq_fuel_station_prices_station_product_validity",
+        ),
         Index("ix_fuel_station_prices_station_product_status", "station_id", "product_code", "status"),
-        Index("ix_fuel_station_prices_station_status_valid_from", "station_id", "status", "valid_from"),
+        Index("ix_fuel_station_prices_station_status", "station_id", "status"),
+        Index("ix_fuel_station_prices_valid_from", "valid_from"),
     )
 
     id = Column(GUID(), primary_key=True, default=new_uuid_str)
@@ -546,6 +561,26 @@ class FuelStationPrice(Base):
     source = Column(ExistingEnum(FuelStationPriceSource, name="fuel_station_price_source"), nullable=False)
     updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
     updated_by = Column(String(256), nullable=True)
+    meta = Column(JSON, nullable=True)
+
+
+class FuelStationPriceAudit(Base):
+    __tablename__ = "fuel_station_price_audit"
+    __table_args__ = (
+        Index("ix_fuel_station_price_audit_station_ts", "station_id", "ts"),
+        Index("ix_fuel_station_price_audit_product_ts", "product_code", "ts"),
+    )
+
+    id = Column(GUID(), primary_key=True, default=new_uuid_str)
+    ts = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    station_id = Column(GUID(), ForeignKey("fuel_stations.id"), nullable=False, index=True)
+    product_code = Column(String(32), nullable=False)
+    action = Column(String(16), nullable=False)
+    actor = Column(Text, nullable=True)
+    source = Column(String(16), nullable=False)
+    before = Column(JSON, nullable=True)
+    after = Column(JSON, nullable=True)
+    request_id = Column(Text, nullable=True)
     meta = Column(JSON, nullable=True)
 
 

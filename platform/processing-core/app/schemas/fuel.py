@@ -380,6 +380,8 @@ class FuelStationPriceItemOut(BaseModel):
     currency: str
     valid_from: datetime | None = None
     valid_to: datetime | None = None
+    source: str
+    updated_at: datetime
 
 
 class FuelStationPricesOut(BaseModel):
@@ -387,12 +389,23 @@ class FuelStationPricesOut(BaseModel):
 
     station_id: str
     as_of: datetime
+    currency: str = "RUB"
     items: list[FuelStationPriceItemOut] = Field(default_factory=list)
+
+
+class FuelStationPriceImportError(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    row: int
+    error: str
+    raw: str
 
 
 class FuelStationPriceImportSummary(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    station_id: str
     inserted: int
     updated: int
-    errors: list[str] = Field(default_factory=list)
+    skipped: int = 0
+    errors: list[FuelStationPriceImportError] = Field(default_factory=list)
