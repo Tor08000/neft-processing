@@ -221,6 +221,11 @@ try:
 except Exception:  # pragma: no cover - в dev может ещё не существовать
     commercial_margin_router = None  # type: ignore
 
+try:
+    from app.api.v1.endpoints.commercial_elasticity import router as commercial_elasticity_router
+except Exception:  # pragma: no cover - в dev может ещё не существовать
+    commercial_elasticity_router = None  # type: ignore
+
 SERVICE_NAME = os.getenv("SERVICE_NAME", "core-api")
 DEFAULT_API_PREFIX = "/api/core"
 LEGACY_API_PREFIX = "/api"
@@ -416,6 +421,8 @@ if support_requests_router is not None:
     safe_include_router(app, support_requests_router, prefix="")
 if commercial_margin_router is not None:
     safe_include_router(app, commercial_margin_router, prefix="")
+if commercial_elasticity_router is not None:
+    safe_include_router(app, commercial_elasticity_router, prefix="")
 
 if intake_router is not None:
     safe_include_router(app, intake_router, prefix="")
@@ -584,6 +591,8 @@ if support_requests_router is not None:
     safe_include_router(core_prefixed_router, support_requests_router, prefix="")
 if commercial_margin_router is not None:
     safe_include_router(core_prefixed_router, commercial_margin_router, prefix="")
+if commercial_elasticity_router is not None:
+    safe_include_router(core_prefixed_router, commercial_elasticity_router, prefix="")
 if intake_router is not None:
     safe_include_router(core_prefixed_router, intake_router, prefix="")
 if partners_router is not None:
