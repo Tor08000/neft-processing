@@ -4,7 +4,11 @@ from neft_shared.logging_setup import get_logger
 
 from app.celery_client import celery_client
 from app.db import get_sessionmaker
-from app.services.fuel.station_automation import evaluate_station_health, evaluate_station_risk
+from app.services.fuel.station_automation import (
+    evaluate_station_health,
+    evaluate_station_risk_downgrade_daily,
+    evaluate_station_risk_escalation,
+)
 
 logger = get_logger(__name__)
 
@@ -24,19 +28,34 @@ def station_health_evaluate_task() -> dict[str, int]:
         session.close()
 
 
-@celery_client.task(name="ops.station_risk_evaluate")
-def station_risk_evaluate_task() -> dict[str, int]:
+@celery_client.task(name="ops.station_risk_escalate")
+def station_risk_escalate_task() -> dict[str, int]:
     session = get_sessionmaker()()
     try:
-        result = evaluate_station_risk(session)
+        result = evaluate_station_risk_escalation(session)
         session.commit()
         return result
     except Exception:  # noqa: BLE001
         session.rollback()
-        logger.exception("ops.station_risk_evaluate_failed")
+        logger.exception("ops.station_risk_escalate_failed")
         raise
     finally:
         session.close()
 
 
-__all__ = ["station_health_evaluate_task", "station_risk_evaluate_task"]
+@celery_client.task(name="ops.station_risk_downgrade_daily")
+def station_risk_downgrade_daily_task() -> dict[str, int]:
+    session = get_sessionmaker()()
+    try:
+        result = evaluate_station_risk_downgrade_daily(session)
+        session.commit()
+        return result
+    except Exception:  # noqa: BLE001
+        session.rollback()
+        logger.exception("ops.station_risk_downgrade_daily_failed")
+        raise
+    finally:
+        session.close()
+
+
+__all__ = ["station_health_evaluate_task", "station_risk_escalate_task", "station_risk_downgrade_daily_task"]

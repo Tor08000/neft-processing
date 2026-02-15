@@ -115,9 +115,13 @@ celery_client.conf.update(
             "task": "ops.station_health_evaluate",
             "schedule": crontab(minute="*/5"),
         },
-        "ops.station_risk_evaluate": {
-            "task": "ops.station_risk_evaluate",
-            "schedule": crontab(minute=0, hour="*/1"),
+        "ops.station_risk_escalate": {
+            "task": "ops.station_risk_escalate",
+            "schedule": crontab(minute="*/30"),
+        },
+        "ops.station_risk_downgrade_daily": {
+            "task": "ops.station_risk_downgrade_daily",
+            "schedule": crontab(hour=3, minute=10),
         },
     },
 )
