@@ -72,6 +72,7 @@ class LoginRequest(BaseModel):
 
 class TokenResponse(BaseModel):
     access_token: str
+    refresh_token: str | None = None
     token_type: str = "bearer"
     expires_in: int
     email: str
@@ -118,3 +119,15 @@ class AuthMeResponse(BaseModel):
     @classmethod
     def validate_email(cls, v: str) -> str:  # noqa: D417
         return _normalize_email(v)
+
+
+class RefreshRequest(BaseModel):
+    refresh_token: str
+
+
+class RevokeUserTokensRequest(BaseModel):
+    user_id: str
+
+
+class RevokeTenantTokensRequest(BaseModel):
+    tenant_id: str
