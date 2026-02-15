@@ -144,3 +144,21 @@ async def test_bootstrap_client_and_admin_without_db(monkeypatch: pytest.MonkeyP
     for user_id, role in state.roles:
         role_map.setdefault(user_id, set()).add(role)
     assert any("ADMIN" in roles for roles in role_map.values())
+
+
+def test_settings_bootstrap_enabled_honors_demo_seed_enabled(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("DEMO_SEED_ENABLED", "0")
+    monkeypatch.delenv("NEFT_BOOTSTRAP_ENABLED", raising=False)
+
+    settings = Settings()
+
+    assert settings.bootstrap_enabled is False
+
+
+def test_settings_bootstrap_enabled_explicit_override(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("DEMO_SEED_ENABLED", "0")
+    monkeypatch.setenv("NEFT_BOOTSTRAP_ENABLED", "1")
+
+    settings = Settings()
+
+    assert settings.bootstrap_enabled is True
