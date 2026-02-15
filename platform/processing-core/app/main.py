@@ -94,6 +94,7 @@ from app.services.audit_metrics import metrics as audit_metrics
 from app.fastapi_utils import generate_unique_id, safe_include_router
 from app.error_handlers import add_exception_handlers
 from app.config import settings
+from app.utils.strict_import import import_router
 from app.services.audit_signing import AuditSigningService, get_audit_signing_health, set_audit_signing_health
 from app.services.audit_service import AuditService, _sanitize_token_for_audit, request_context_from_request
 from app.services.fleet_metrics import metrics as fleet_metrics
@@ -123,120 +124,47 @@ from app.models.export_jobs import ExportJob, ExportJobStatus
 from app.security.rbac.principal import Principal, get_principal
 
 
-# Если есть отдельный роутер для чтения операций из БД – подключим его
-try:
-    from app.api.v1.endpoints.operations_read import router as operations_router
-except Exception:  # pragma: no cover - в dev может ещё не существовать
-    operations_router = None  # type: ignore
+MANDATORY_ENDPOINT_ROUTERS = [
+    ("operations_router", "app.api.v1.endpoints.operations_read", "router"),
+    ("transactions_router", "app.api.v1.endpoints.transactions", "router"),
+    ("reports_billing_router", "app.api.v1.endpoints.reports_billing", "router"),
+]
 
-# Роутер транзакций поверх operations
-try:
-    from app.api.v1.endpoints.transactions import router as transactions_router
-except Exception:  # pragma: no cover - в dev может ещё не существовать
-    transactions_router = None  # type: ignore
+OPTIONAL_ENDPOINT_ROUTERS = [
+    ("intake_router", "app.api.v1.endpoints.intake", "router"),
+    ("partners_router", "app.api.v1.endpoints.partners", "router"),
+    ("billing_invoices_router", "app.api.v1.endpoints.billing_invoices", "router"),
+    ("payouts_router", "app.api.v1.endpoints.payouts", "router"),
+    ("fuel_transactions_router", "app.api.v1.endpoints.fuel_transactions", "router"),
+    ("fuel_stations_router", "app.api.v1.endpoints.fuel_stations", "router"),
+    ("fuel_station_prices_router", "app.api.v1.endpoints.fuel_station_prices", "router"),
+    ("geo_metrics_router", "app.api.v1.endpoints.geo_metrics", "router"),
+    ("geo_tiles_router", "app.api.v1.endpoints.geo_tiles", "router"),
+    ("logistics_router", "app.api.v1.endpoints.logistics", "router"),
+    ("edo_events_router", "app.api.v1.endpoints.edo_events", "router"),
+    ("bi_router", "app.api.v1.endpoints.bi", "router"),
+    ("bi_dashboards_router", "app.api.v1.endpoints.bi_dashboards", "router"),
+    ("pricing_intelligence_router", "app.api.v1.endpoints.pricing_intelligence", "router"),
+    ("support_requests_router", "app.api.v1.endpoints.support_requests", "router"),
+    ("commercial_margin_router", "app.api.v1.endpoints.commercial_margin", "router"),
+    ("commercial_elasticity_router", "app.api.v1.endpoints.commercial_elasticity", "router"),
+    (
+        "commercial_price_recommendations_router",
+        "app.api.v1.endpoints.commercial_price_recommendations",
+        "router",
+    ),
+    (
+        "commercial_price_recommendations_admin_router",
+        "app.api.v1.endpoints.commercial_price_recommendations",
+        "admin_router",
+    ),
+]
 
-# Роутер отчётов по биллингу
-try:
-    from app.api.v1.endpoints.reports_billing import router as reports_billing_router
-except Exception:  # pragma: no cover - в dev может ещё не существовать
-    reports_billing_router = None  # type: ignore
+for router_name, module_path, attr_name in MANDATORY_ENDPOINT_ROUTERS:
+    globals()[router_name] = import_router(module_path, attr=attr_name, mandatory=True)
 
-try:
-    from app.api.v1.endpoints.intake import router as intake_router
-except Exception:  # pragma: no cover - в dev может ещё не существовать
-    intake_router = None  # type: ignore
-
-try:
-    from app.api.v1.endpoints.partners import router as partners_router
-except Exception:  # pragma: no cover - в dev может ещё не существовать
-    partners_router = None  # type: ignore
-
-try:
-    from app.api.v1.endpoints.billing_invoices import router as billing_invoices_router
-except Exception:  # pragma: no cover - в dev может ещё не существовать
-    billing_invoices_router = None  # type: ignore
-
-try:
-    from app.api.v1.endpoints.payouts import router as payouts_router
-except Exception:  # pragma: no cover - в dev может ещё не существовать
-    payouts_router = None  # type: ignore
-
-try:
-    from app.api.v1.endpoints.fuel_transactions import router as fuel_transactions_router
-except Exception:  # pragma: no cover - в dev может ещё не существовать
-    fuel_transactions_router = None  # type: ignore
-
-try:
-    from app.api.v1.endpoints.fuel_stations import router as fuel_stations_router
-except Exception:  # pragma: no cover - в dev может ещё не существовать
-    fuel_stations_router = None  # type: ignore
-
-try:
-    from app.api.v1.endpoints.fuel_station_prices import router as fuel_station_prices_router
-except Exception:  # pragma: no cover - в dev может ещё не существовать
-    fuel_station_prices_router = None  # type: ignore
-
-try:
-    from app.api.v1.endpoints.geo_metrics import router as geo_metrics_router
-except Exception:  # pragma: no cover - в dev может ещё не существовать
-    geo_metrics_router = None  # type: ignore
-
-
-try:
-    from app.api.v1.endpoints.geo_tiles import router as geo_tiles_router
-except Exception:  # pragma: no cover - в dev может ещё не существовать
-    geo_tiles_router = None  # type: ignore
-
-try:
-    from app.api.v1.endpoints.logistics import router as logistics_router
-except Exception:  # pragma: no cover - в dev может ещё не существовать
-    logistics_router = None  # type: ignore
-
-try:
-    from app.api.v1.endpoints.edo_events import router as edo_events_router
-except Exception:  # pragma: no cover - в dev может ещё не существовать
-    edo_events_router = None  # type: ignore
-
-try:
-    from app.api.v1.endpoints.bi import router as bi_router
-except Exception:  # pragma: no cover - в dev может ещё не существовать
-    bi_router = None  # type: ignore
-
-try:
-    from app.api.v1.endpoints.bi_dashboards import router as bi_dashboards_router
-except Exception:  # pragma: no cover - в dev может ещё не существовать
-    bi_dashboards_router = None  # type: ignore
-
-try:
-    from app.api.v1.endpoints.pricing_intelligence import router as pricing_intelligence_router
-except Exception:  # pragma: no cover - в dev может ещё не существовать
-    pricing_intelligence_router = None  # type: ignore
-
-try:
-    from app.api.v1.endpoints.support_requests import router as support_requests_router
-except Exception:  # pragma: no cover - в dev может ещё не существовать
-    support_requests_router = None  # type: ignore
-
-try:
-    from app.api.v1.endpoints.commercial_margin import router as commercial_margin_router
-except Exception:  # pragma: no cover - в dev может ещё не существовать
-    commercial_margin_router = None  # type: ignore
-
-try:
-    from app.api.v1.endpoints.commercial_elasticity import router as commercial_elasticity_router
-except Exception:  # pragma: no cover - в dev может ещё не существовать
-    commercial_elasticity_router = None  # type: ignore
-
-try:
-    from app.api.v1.endpoints.commercial_price_recommendations import (
-        admin_router as commercial_price_recommendations_admin_router,
-    )
-    from app.api.v1.endpoints.commercial_price_recommendations import (
-        router as commercial_price_recommendations_router,
-    )
-except Exception:  # pragma: no cover - в dev может ещё не существовать
-    commercial_price_recommendations_router = None  # type: ignore
-    commercial_price_recommendations_admin_router = None  # type: ignore
+for router_name, module_path, attr_name in OPTIONAL_ENDPOINT_ROUTERS:
+    globals()[router_name] = import_router(module_path, attr=attr_name)
 
 SERVICE_NAME = os.getenv("SERVICE_NAME", "core-api")
 DEFAULT_API_PREFIX = "/api/core"
@@ -258,9 +186,13 @@ INCLUDE_API_PREFIX_CORE = API_PREFIX_CORE != LEGACY_API_PREFIX
 INCLUDE_CUSTOM_CORE_PREFIX = INCLUDE_API_PREFIX_CORE and INCLUDE_CORE_PREFIX_ROUTES
 init_logging(service_name=SERVICE_NAME)
 logger = get_logger(__name__)
+start_mode = settings.APP_ENV.upper()
+strict_import_mode = "enabled" if settings.APP_ENV.lower() == "prod" else "optional allowed"
+logger.info("START MODE: %s", start_mode)
+logger.info("STRICT_IMPORT: %s", strict_import_mode)
 logger.info(
     "running in %s mode",
-    settings.APP_ENV.upper(),
+    start_mode,
     extra={
         "app_env": settings.APP_ENV,
         "use_stub_crm": settings.USE_STUB_CRM,
