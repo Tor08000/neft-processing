@@ -28,6 +28,7 @@ import PayoutDetailsPage from "./pages/finance/PayoutDetailsPage";
 import LegalPartnersPage from "./pages/legal/LegalPartnersPage";
 import AuditPage from "./pages/admin/AuditPage";
 import MarketplaceModerationPage from "./pages/marketplace/MarketplaceModerationPage";
+import GeoAnalyticsPage from "./pages/GeoAnalyticsPage";
 import {
   MarketplaceModerationOfferDetailPage,
   MarketplaceModerationProductDetailPage,
@@ -162,6 +163,14 @@ export function App() {
                     element={
                       <AdminRBACGate permission="finance">
                         <PayoutDetailsPage />
+                      </AdminRBACGate>
+                    }
+                  />
+                  <Route
+                    path="/geo"
+                    element={
+                      <AdminRBACGate permission="ops">
+                        <GeoAnalyticsPage />
                       </AdminRBACGate>
                     }
                   />
