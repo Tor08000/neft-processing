@@ -12,6 +12,7 @@ export default defineConfig(({ mode }) => {
 
   return {
     base: resolveBasePath(env, "/admin/"),
+    envPrefix: ["VITE_", "NEFT_"],
     plugins: [react()],
     resolve: {
       alias: {

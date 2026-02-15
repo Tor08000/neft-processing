@@ -9,8 +9,10 @@ import { AppLogo } from "@shared/brand/components";
 export const LoginPage: React.FC = () => {
   const { login, error, accessToken } = useAuth();
   const navigate = useNavigate();
-  const [email, setEmail] = useState("admin@example.com");
-  const [password, setPassword] = useState("admin123");
+  const demoAdminEmail = import.meta.env.NEFT_DEMO_ADMIN_EMAIL ?? "admin@example.com";
+  const demoAdminPassword = import.meta.env.NEFT_DEMO_ADMIN_PASSWORD;
+  const [email, setEmail] = useState(demoAdminEmail);
+  const [password, setPassword] = useState(demoAdminPassword ?? "");
   const [submitting, setSubmitting] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
   const [capsLockOn, setCapsLockOn] = useState(false);
@@ -73,8 +75,10 @@ export const LoginPage: React.FC = () => {
           </div>
         ) : null}
         <div className="login-demo muted small">
-          <CopyChip label="Demo" value="admin@example.com" onCopy={() => showToast("success", "Скопировано")} />
-          <CopyChip label="Demo" value="admin123" onCopy={() => showToast("success", "Скопировано")} />
+          <CopyChip label="Demo email" value={demoAdminEmail} onCopy={() => showToast("success", "Скопировано")} />
+          {demoAdminPassword ? (
+            <CopyChip label="Demo password" value={demoAdminPassword} onCopy={() => showToast("success", "Скопировано")} />
+          ) : null}
         </div>
         <form onSubmit={handleSubmit} className="login-form">
           <label htmlFor="admin-email">
@@ -86,7 +90,7 @@ export const LoginPage: React.FC = () => {
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="admin@example.com"
+              placeholder={demoAdminEmail}
               required
               autoComplete="username"
               disabled={submitting}
@@ -103,7 +107,7 @@ export const LoginPage: React.FC = () => {
               onChange={(e) => setPassword(e.target.value)}
               onKeyUp={(event) => setCapsLockOn(event.getModifierState("CapsLock"))}
               onBlur={() => setCapsLockOn(false)}
-              placeholder="admin123"
+              placeholder={demoAdminPassword ?? "Введите пароль"}
               required
               autoComplete="current-password"
               disabled={submitting}
