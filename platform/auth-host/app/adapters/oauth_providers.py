@@ -44,8 +44,8 @@ class OIDCClient:
         self._discovery_cache: dict[str, tuple[OIDCDiscovery, datetime]] = {}
         self._jwks_cache: dict[str, tuple[dict[str, Any], datetime]] = {}
 
-    async def resolve_provider(self, provider_name: str) -> OIDCProviderConfig:
-        provider = await self._provider_from_db(provider_name)
+    async def resolve_provider(self, provider_name: str, *, tenant_id: str | None = None) -> OIDCProviderConfig:
+        provider = await self._provider_from_db(provider_name, tenant_id=tenant_id)
         if provider:
             return provider
         provider = self._provider_from_env(provider_name)
@@ -53,17 +53,17 @@ class OIDCClient:
             return provider
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="oidc_provider_not_found")
 
-    async def _provider_from_db(self, provider_name: str) -> OIDCProviderConfig | None:
+    async def _provider_from_db(self, provider_name: str, *, tenant_id: str | None = None) -> OIDCProviderConfig | None:
         try:
             async with get_conn() as (_conn, cur):
                 await cur.execute(
                 """
-                SELECT id, name, issuer, client_id, client_secret, redirect_uri, scopes, enabled
+                SELECT id, name, issuer, client_id, client_secret, redirect_uri, scopes, enabled, tenant_id
                 FROM oidc_providers
-                WHERE lower(name)=lower(%s)
+                WHERE lower(name)=lower(%s) AND (%s::uuid IS NULL OR tenant_id=%s::uuid)
                 LIMIT 1
                 """,
-                (provider_name,),
+                (provider_name, tenant_id, tenant_id),
             )
                 row = await cur.fetchone()
         except Exception:
@@ -129,6 +129,7 @@ class OIDCClient:
         provider: OIDCProviderConfig,
         portal: str,
         redirect_url: str | None,
+        tenant_id: str,
     ) -> str:
         if not provider.enabled:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="oidc_provider_disabled")
@@ -138,6 +139,8 @@ class OIDCClient:
         state_payload = {
             "sid": secrets.token_urlsafe(24),
             "provider": provider.name,
+            "provider_id": provider.id,
+            "tenant_id": tenant_id,
             "portal": portal,
             "nonce": nonce,
             "redirect_url": redirect_url,
@@ -149,8 +152,8 @@ class OIDCClient:
         async with get_conn() as (conn, cur):
             await cur.execute(
                 """
-                INSERT INTO oauth_states (state_id, provider_name, portal, nonce, redirect_url, expires_at)
-                VALUES (%s, %s, %s, %s, %s, %s)
+                INSERT INTO oauth_states (state_id, provider_name, portal, nonce, redirect_url, expires_at, tenant_id, provider_id)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                 """,
                 (
                     state_payload["sid"],
@@ -159,6 +162,8 @@ class OIDCClient:
                     nonce,
                     redirect_url,
                     expires_at,
+                    tenant_id,
+                    provider.id,
                 ),
             )
             await conn.commit()
@@ -203,7 +208,7 @@ class OIDCClient:
         async with get_conn() as (conn, cur):
             await cur.execute(
                 """
-                SELECT provider_name, portal, nonce, redirect_url, expires_at, consumed_at
+                SELECT provider_name, portal, nonce, redirect_url, expires_at, consumed_at, tenant_id, provider_id
                 FROM oauth_states
                 WHERE state_id=%s
                 LIMIT 1
@@ -216,6 +221,10 @@ class OIDCClient:
             if row["consumed_at"] is not None or row["expires_at"] < datetime.now(tz=timezone.utc):
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="invalid_state")
             if row["provider_name"].lower() != provider.name.lower():
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="invalid_state")
+            if str(row.get("provider_id") or "") and provider.id and str(row["provider_id"]) != str(provider.id):
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="invalid_state")
+            if state_payload.get("tenant_id") and str(row.get("tenant_id") or "") != str(state_payload.get("tenant_id")):
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="invalid_state")
             await cur.execute(
                 "UPDATE oauth_states SET consumed_at=now() WHERE state_id=%s",
@@ -256,6 +265,7 @@ class OIDCClient:
             "claims": claims,
             "portal": state_payload.get("portal"),
             "redirect_url": state_payload.get("redirect_url"),
+            "tenant_id": state_payload.get("tenant_id"),
         }
 
     async def _decode_with_jwks(self, token: str, *, jwks_uri: str, issuer: str, audience: str) -> dict[str, Any]:

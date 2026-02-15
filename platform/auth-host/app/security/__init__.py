@@ -57,6 +57,9 @@ def create_access_token(
     issuer: str | None = None,
     audience: str | None = None,
     email: str | None = None,
+    tenant_id: str | None = None,
+    token_version: int = 1,
+    tenant_token_version: int = 1,
 ) -> str:
     now = _now_utc()
     expire = now + timedelta(minutes=settings.access_token_expires_min)
@@ -68,6 +71,8 @@ def create_access_token(
         "aud": audience or AUDIENCE,
         "roles": roles,
         "subject_type": subject_type,
+        "token_version": token_version,
+        "tenant_token_version": tenant_token_version,
     }
     if client_id:
         payload["client_id"] = client_id
@@ -79,6 +84,8 @@ def create_access_token(
         payload["portal"] = portal
     if email:
         payload["email"] = email
+    if tenant_id:
+        payload["tenant_id"] = tenant_id
     private_key = get_private_key_pem()
     return jwt.encode(payload, private_key, algorithm=ALGORITHM)
 
