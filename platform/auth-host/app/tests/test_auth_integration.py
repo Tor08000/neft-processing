@@ -46,6 +46,50 @@ async def test_demo_login_against_real_db():
 
 
 @pytest.mark.anyio
+async def test_bootstrap_required_users_seeds_demo_admin_and_allows_login():
+    try:
+        conn = await psycopg.AsyncConnection.connect(db.DSN_ASYNC)
+    except Exception as exc:  # pragma: no cover - skip when DB unavailable
+        pytest.skip(f"Postgres not available: {exc}")
+
+    async with conn.cursor() as cur:
+        await cur.execute("DROP TABLE IF EXISTS user_roles")
+        await cur.execute("DROP TABLE IF EXISTS users")
+        await conn.commit()
+    await conn.close()
+
+    run_auth_migrations(db.DSN_ASYNC)
+    settings = Settings()
+    await bootstrap.bootstrap_required_users(settings)
+
+    async with db.get_conn() as (_conn, cur):
+        await cur.execute(
+            "SELECT email, is_active FROM users WHERE lower(email)=lower(%s) LIMIT 1",
+            ("admin@example.com",),
+        )
+        admin_row = await cur.fetchone()
+
+        await cur.execute(
+            "SELECT role_code FROM user_roles ur JOIN users u ON u.id = ur.user_id WHERE lower(u.email)=lower(%s)",
+            ("admin@example.com",),
+        )
+        admin_roles = {r["role_code"] for r in await cur.fetchall()}
+
+    assert admin_row is not None
+    assert admin_row["is_active"] is True
+    assert {"ADMIN", "PLATFORM_ADMIN"}.issubset(admin_roles)
+
+    transport = httpx.ASGITransport(app=app, lifespan="on")
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/api/v1/auth/login",
+            json={"email": "admin@example.com", "password": "admin123", "portal": "admin"},
+        )
+
+    assert response.status_code == 200
+
+
+@pytest.mark.anyio
 async def test_demo_admin_login_and_wrong_password():
     try:
         conn = await psycopg.AsyncConnection.connect(db.DSN_ASYNC)
