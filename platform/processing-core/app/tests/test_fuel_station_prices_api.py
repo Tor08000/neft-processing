@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import os
+from datetime import datetime, timedelta, timezone
 from typing import Tuple
 
 from fastapi import FastAPI
@@ -17,8 +18,7 @@ from app.api.v1.endpoints.fuel_station_prices import router as fuel_station_pric
 from app.db import get_db
 from app.fastapi_utils import generate_unique_id
 from app.models import fuel as fuel_models
-from app.models.audit_log import AuditLog
-from app.models.fuel import FuelNetwork, FuelStation, FuelStationPrice
+from app.models.fuel import FuelNetwork, FuelStation, FuelStationPrice, FuelStationPriceAudit
 
 
 def _partner_token() -> dict:
@@ -32,7 +32,7 @@ def _make_client() -> Tuple[TestClient, sessionmaker]:
     FuelNetwork.__table__.create(bind=engine)
     FuelStation.__table__.create(bind=engine)
     FuelStationPrice.__table__.create(bind=engine)
-    AuditLog.__table__.create(bind=engine)
+    FuelStationPriceAudit.__table__.create(bind=engine)
 
     app = FastAPI(generate_unique_id_function=generate_unique_id)
     app.include_router(fuel_station_prices_router, prefix="")
@@ -51,23 +51,27 @@ def _make_client() -> Tuple[TestClient, sessionmaker]:
     return client, testing_session_local
 
 
-def test_put_then_get_station_prices_match() -> None:
-    client, session_local = _make_client()
+def _seed_station(session_local: sessionmaker, code: str) -> str:
     with session_local() as db:
-        network = FuelNetwork(name="NET", provider_code="NET", status=fuel_models.FuelNetworkStatus.ACTIVE)
+        network = FuelNetwork(name="NET", provider_code=f"NET-{code}", status=fuel_models.FuelNetworkStatus.ACTIVE)
         db.add(network)
         db.commit()
         db.refresh(network)
         station = FuelStation(
             network_id=str(network.id),
-            station_code="S1",
-            name="S1",
+            station_code=code,
+            name=code,
             status=fuel_models.FuelStationStatus.ACTIVE,
         )
         db.add(station)
         db.commit()
         db.refresh(station)
-        station_id = str(station.id)
+        return str(station.id)
+
+
+def test_put_then_get_station_prices_match() -> None:
+    client, session_local = _make_client()
+    station_id = _seed_station(session_local, "S1")
 
     put_response = client.put(
         f"/api/v1/partner/fuel/stations/{station_id}/prices",
@@ -85,36 +89,71 @@ def test_put_then_get_station_prices_match() -> None:
     assert get_response.status_code == 200
     payload = get_response.json()
     assert payload["station_id"] == station_id
+    assert payload["currency"] == "RUB"
     prices = {item["product_code"]: item["price"] for item in payload["items"]}
     assert prices["AI95"] == 56.1
     assert prices["DT"] == 63.4
 
 
-def test_import_csv_prices_returns_summary() -> None:
+def test_as_of_filtering_returns_active_window_only() -> None:
     client, session_local = _make_client()
-    with session_local() as db:
-        network = FuelNetwork(name="NET", provider_code="NET2", status=fuel_models.FuelNetworkStatus.ACTIVE)
-        db.add(network)
-        db.commit()
-        db.refresh(network)
-        station = FuelStation(
-            network_id=str(network.id),
-            station_code="S2",
-            name="S2",
-            status=fuel_models.FuelStationStatus.ACTIVE,
-        )
-        db.add(station)
-        db.commit()
-        db.refresh(station)
-        station_id = str(station.id)
+    station_id = _seed_station(session_local, "S2")
 
-    csv_data = "product_code,price,currency\nAI95,60.2,RUB\nAI92,55.1,RUB\n"
+    now = datetime.now(timezone.utc)
+    past_from = (now - timedelta(days=3)).isoformat()
+    past_to = (now - timedelta(days=1)).isoformat()
+    current_from = (now - timedelta(hours=1)).isoformat()
+
+    response = client.put(
+        f"/api/v1/partner/fuel/stations/{station_id}/prices",
+        json={
+            "source": "MANUAL",
+            "items": [
+                {"product_code": "AI95", "price": 50.0, "currency": "RUB", "valid_from": past_from, "valid_to": past_to},
+                {"product_code": "AI95", "price": 60.0, "currency": "RUB", "valid_from": current_from, "valid_to": None},
+            ],
+        },
+    )
+    assert response.status_code == 200
+
+    active = client.get(f"/api/v1/fuel/stations/{station_id}/prices", params={"as_of": now.isoformat(), "product_code": "ai95"})
+    assert active.status_code == 200
+    items = active.json()["items"]
+    assert len(items) == 1
+    assert items[0]["price"] == 60.0
+
+
+def test_import_csv_prices_returns_summary_with_errors() -> None:
+    client, session_local = _make_client()
+    station_id = _seed_station(session_local, "S3")
+
+    csv_data = "product_code,price,currency\nAI95,60.2,RUB\nAI92,bad,RUB\n"
     response = client.post(
         f"/api/v1/partner/fuel/stations/{station_id}/prices/import",
         files={"file": ("prices.csv", io.BytesIO(csv_data.encode("utf-8")), "text/csv")},
     )
     assert response.status_code == 200
     summary = response.json()
-    assert summary["inserted"] == 2
+    assert summary["station_id"] == station_id
+    assert summary["inserted"] == 1
     assert summary["updated"] == 0
-    assert summary["errors"] == []
+    assert len(summary["errors"]) == 1
+
+
+def test_put_writes_price_audit_rows() -> None:
+    client, session_local = _make_client()
+    station_id = _seed_station(session_local, "S4")
+
+    response = client.put(
+        f"/api/v1/partner/fuel/stations/{station_id}/prices",
+        headers={"X-Request-Id": "req-1"},
+        json={"source": "MANUAL", "items": [{"product_code": "AI95", "price": 56.10, "currency": "RUB"}]},
+    )
+    assert response.status_code == 200
+
+    with session_local() as db:
+        rows = db.query(FuelStationPriceAudit).filter(FuelStationPriceAudit.station_id == station_id).all()
+        assert rows
+        assert rows[0].action == "UPSERT"
+        assert rows[0].after is not None
+        assert rows[0].request_id == "req-1"
