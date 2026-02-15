@@ -424,13 +424,39 @@ class FuelStation(Base):
     risk_zone_reason = Column(Text, nullable=True)
     risk_zone_updated_at = Column(DateTime(timezone=True), nullable=True)
     risk_zone_updated_by = Column(String(256), nullable=True)
+    risk_manual_lock = Column(Boolean, nullable=False, server_default="false", default=False)
+    risk_manual_until = Column(DateTime(timezone=True), nullable=True)
+    risk_auto_enabled = Column(Boolean, nullable=False, server_default="true", default=True)
+    risk_last_auto_at = Column(DateTime(timezone=True), nullable=True)
     health_status = Column(String(16), nullable=True, index=True)
     last_heartbeat = Column(DateTime(timezone=True), nullable=True, index=True)
     health_reason = Column(Text, nullable=True)
     health_updated_at = Column(DateTime(timezone=True), nullable=True)
     health_updated_by = Column(String(256), nullable=True)
     health_source = Column(String(16), nullable=True)
+    health_manual_lock = Column(Boolean, nullable=False, server_default="false", default=False)
+    health_manual_until = Column(DateTime(timezone=True), nullable=True)
+    health_auto_enabled = Column(Boolean, nullable=False, server_default="true", default=True)
+    health_last_auto_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class OpsStationEvent(Base):
+    __tablename__ = "ops_station_events"
+    __table_args__ = (
+        Index("ix_ops_station_events_station_created", "station_id", "created_at"),
+        Index("ix_ops_station_events_type_created", "event_type", "created_at"),
+    )
+
+    id = Column(GUID(), primary_key=True, default=new_uuid_str)
+    station_id = Column(GUID(), ForeignKey("fuel_stations.id"), nullable=False, index=True)
+    event_type = Column(String(32), nullable=False)
+    old_value = Column(String(64), nullable=True)
+    new_value = Column(String(64), nullable=True)
+    computed_metrics = Column(JSON, nullable=True)
+    policy_snapshot = Column(JSON, nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    created_by = Column(String(128), nullable=False, server_default="system")
 
 
 class FuelTransaction(Base):

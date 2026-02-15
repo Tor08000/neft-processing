@@ -111,6 +111,14 @@ celery_client.conf.update(
             "task": "geo.clickhouse_sync",
             "schedule": crontab(minute="*/5"),
         },
+        "ops.station_health_evaluate": {
+            "task": "ops.station_health_evaluate",
+            "schedule": crontab(minute="*/5"),
+        },
+        "ops.station_risk_evaluate": {
+            "task": "ops.station_risk_evaluate",
+            "schedule": crontab(minute=0, hour="*/1"),
+        },
     },
 )
 
