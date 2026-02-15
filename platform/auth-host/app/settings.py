@@ -128,7 +128,7 @@ class Settings(SharedSettings):
     )
     demo_admin_roles: list[str] = field(
         default_factory=lambda: _roles_env(
-            "NEFT_DEMO_ADMIN_ROLES", ["ADMIN", "SUPERADMIN"], fallback_keys=("DEMO_ADMIN_ROLES",)
+            "NEFT_DEMO_ADMIN_ROLES", ["ADMIN", "PLATFORM_ADMIN", "SUPERADMIN"], fallback_keys=("DEMO_ADMIN_ROLES",)
         )
     )
     demo_seed_force_password_reset: bool = _env_bool("DEMO_SEED_FORCE_PASSWORD_RESET", True)
@@ -156,7 +156,11 @@ class Settings(SharedSettings):
     bootstrap_admin_roles: list[str] = field(
         default_factory=lambda: _roles_env(
             "NEFT_BOOTSTRAP_ADMIN_ROLES",
-            _roles_env("NEFT_DEMO_ADMIN_ROLES", ["ADMIN"], fallback_keys=("DEMO_ADMIN_ROLES",)),
+            _roles_env(
+                "NEFT_DEMO_ADMIN_ROLES",
+                ["ADMIN", "PLATFORM_ADMIN", "SUPERADMIN"],
+                fallback_keys=("DEMO_ADMIN_ROLES",),
+            ),
         )
     )
 
