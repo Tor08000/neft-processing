@@ -11,7 +11,6 @@ class RecommendationAction(str, Enum):
     INCREASE = "INCREASE"
     DECREASE = "DECREASE"
     REVIEW_REQUIRED = "REVIEW_REQUIRED"
-    DISABLE_STATION = "DISABLE_STATION"
 
 
 class RecommendationStatus(str, Enum):
@@ -21,12 +20,18 @@ class RecommendationStatus(str, Enum):
     APPLIED = "APPLIED"
 
 
+class RecommendationDecisionPayload(BaseModel):
+    comment: str | None = None
+
+
 class PriceRecommendationItem(BaseModel):
     id: str
     created_at: datetime
     station_id: str
     station_name: str | None = None
     station_address: str | None = None
+    station_lat: float | None = None
+    station_lon: float | None = None
     risk_zone: str | None = None
     health_status: str | None = None
     product_code: str
@@ -40,6 +45,8 @@ class PriceRecommendationItem(BaseModel):
     expected_margin_change: float | None = None
     policy_version: str
     status: RecommendationStatus
+    decided_at: datetime | None = None
+    decided_by: str | None = None
 
 
 class PriceRecommendationListResponse(BaseModel):

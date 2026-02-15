@@ -22,16 +22,19 @@ settings = get_settings()
 
 _POLICY_PATH = Path(__file__).resolve().parents[1] / "config" / "commercial_price_policy.json"
 _DEFAULT_POLICY = {
-    "policy_version": "price-rec-v1",
+    "version": "v1",
     "step_up": 0.3,
     "step_down": 0.2,
     "max_delta_per_day": 0.5,
-    "margin_target_pct": 0.03,
-    "min_volume_7d": 2000.0,
-    "min_confidence": 0.4,
-    "low_elasticity_abs": 0.5,
-    "high_elasticity_threshold": -1.2,
+    "target_margin_pct": 0.03,
+    "min_volume_7d": 50.0,
+    "min_revenue_7d": 50000.0,
+    "elasticity_low_abs": 0.5,
+    "elasticity_high_abs": 1.2,
     "high_decline_rate": 0.12,
+    "min_confidence_to_change": 0.6,
+    "guardrail_risk_zone_red": True,
+    "guardrail_health_offline": True,
 }
 
 
@@ -46,6 +49,7 @@ class SignalBundle:
     health_status: str
     risk_zone: str
     volume_7d: float
+    revenue_7d: float
     decline_rate: float
 
 
@@ -112,9 +116,9 @@ def ensure_price_recommendations_table() -> None:
     _ch_exec(
         """
         CREATE TABLE IF NOT EXISTS neft_geo.fact_price_recommendations (
-            recommendation_id String,
-            day Date MATERIALIZED toDate(created_at),
+            rec_id String,
             created_at DateTime,
+            day Date MATERIALIZED toDate(created_at),
             station_id UInt64,
             product_code LowCardinality(String),
             current_price Float64,
@@ -123,14 +127,16 @@ def ensure_price_recommendations_table() -> None:
             action LowCardinality(String),
             confidence Float64,
             reasons Array(LowCardinality(String)),
-            expected_volume_change_pct Nullable(Float64),
-            expected_margin_change Nullable(Float64),
+            expected_volume_change_pct Float64,
+            expected_margin_change Float64,
             policy_version LowCardinality(String),
             status LowCardinality(String),
+            decided_at Nullable(DateTime),
+            decided_by Nullable(String),
             meta String
         ) ENGINE = MergeTree
         PARTITION BY toYYYYMM(created_at)
-        ORDER BY (created_at, station_id, product_code)
+        ORDER BY (created_at, station_id, product_code, rec_id)
         """
     )
 
@@ -143,33 +149,56 @@ def _decision(signal: SignalBundle, policy: dict[str, float | str]) -> dict[str,
     reasons: list[str] = []
     action = "HOLD"
     delta = 0.0
-    confidence = min(max(signal.elasticity_confidence, 0.0), 1.0)
+    confidence = _confidence(signal)
 
-    if signal.health_status.upper() == "OFFLINE":
+    if bool(policy["guardrail_health_offline"]) and signal.health_status.upper() == "OFFLINE":
         return {"action": "REVIEW_REQUIRED", "delta": 0.0, "confidence": 0.95, "reasons": ["HEALTH_OFFLINE"]}
-    if signal.risk_zone.upper() == "RED":
+    if bool(policy["guardrail_risk_zone_red"]) and signal.risk_zone.upper() == "RED":
         return {"action": "REVIEW_REQUIRED", "delta": 0.0, "confidence": 0.9, "reasons": ["RISK_RED"]}
-    if signal.elasticity_confidence < float(policy["min_confidence"]):
-        return {"action": "HOLD", "delta": 0.0, "confidence": confidence, "reasons": ["LOW_CONFIDENCE"]}
     if signal.volume_7d < float(policy["min_volume_7d"]):
         return {"action": "HOLD", "delta": 0.0, "confidence": confidence, "reasons": ["LOW_VOLUME"]}
+    if signal.revenue_7d < float(policy["min_revenue_7d"]):
+        return {"action": "HOLD", "delta": 0.0, "confidence": confidence, "reasons": ["LOW_VOLUME"]}
+    if signal.elasticity_score is None or signal.elasticity_confidence < 0.4:
+        return {"action": "HOLD", "delta": 0.0, "confidence": confidence, "reasons": ["LOW_ELASTICITY_CONF"]}
 
-    e = signal.elasticity_score if signal.elasticity_score is not None else 0.0
+    e = signal.elasticity_score
     margin = signal.margin_pct if signal.margin_pct is not None else 0.0
 
-    if abs(e) < float(policy["low_elasticity_abs"]) and margin < float(policy["margin_target_pct"]):
+    if abs(e) < float(policy["elasticity_low_abs"]) and margin < float(policy["target_margin_pct"]):
         action = "INCREASE_PRICE"
         delta = min(float(policy["step_up"]), float(policy["max_delta_per_day"]))
         reasons = ["LOW_ELASTICITY", "LOW_MARGIN"]
-    elif e <= float(policy["high_elasticity_threshold"]) and signal.decline_rate >= float(policy["high_decline_rate"]):
+    elif e <= -float(policy["elasticity_high_abs"]) and signal.decline_rate >= float(policy["high_decline_rate"]):
         action = "DECREASE_PRICE"
         delta = -min(float(policy["step_down"]), float(policy["max_delta_per_day"]))
         reasons = ["HIGH_ELASTICITY", "HIGH_DECLINE"]
     else:
         reasons = ["MARGIN_STABLE"]
 
+    if action != "HOLD" and confidence < float(policy["min_confidence_to_change"]):
+        return {"action": "HOLD", "delta": 0.0, "confidence": confidence, "reasons": ["LOW_CONFIDENCE"]}
     return {"action": action, "delta": delta, "confidence": confidence, "reasons": reasons}
 
+
+
+
+def _confidence(signal: SignalBundle) -> float:
+    score = 0.5
+    if signal.elasticity_confidence > 0.6:
+        score += 0.3
+    if signal.volume_7d >= 1000:
+        score += 0.2
+    if signal.margin_pct is None:
+        score -= 0.3
+    return max(0.0, min(1.0, score))
+
+
+def _station_id_u64(station_id: str) -> int:
+    try:
+        return int(station_id)
+    except (TypeError, ValueError):
+        return int(hashlib.sha256(station_id.encode("utf-8")).hexdigest()[:16], 16)
 
 def _recommendation_id(station_id: str, product_code: str, created_day: date, policy_version: str) -> str:
     digest = hashlib.sha1(f"{station_id}:{product_code}:{created_day.isoformat()}:{policy_version}".encode("utf-8")).hexdigest()
@@ -218,6 +247,21 @@ def _load_signals(db: Session, window_days: int) -> list[SignalBundle]:
 
     vol_map = {(str(r.station_id), str(r.product_code or "")): float(r.volume_7d or 0) for r in vol_rows}
     prev_map = {(str(r.station_id), str(r.product_code or "")): float(r.volume_prev_7d or 0) for r in prev_rows}
+    rev_rows = (
+        db.query(
+            Operation.fuel_station_id.label("station_id"),
+            func.coalesce(Operation.product_code, "").label("product_code"),
+            func.sum(func.coalesce(Operation.amount, 0)).label("revenue_7d"),
+        )
+        .filter(
+            Operation.created_at >= start_7d,
+            Operation.fuel_station_id.isnot(None),
+            Operation.status.in_([OperationStatus.CAPTURED, OperationStatus.COMPLETED]),
+        )
+        .group_by(Operation.fuel_station_id, func.coalesce(Operation.product_code, ""))
+        .all()
+    )
+    rev_map = {(str(r.station_id), str(r.product_code or "")): float(r.revenue_7d or 0) for r in rev_rows}
 
     elasticity_rows = db.query(StationElasticity).filter(StationElasticity.window_days == window_days).all()
     elasticity_map = {(str(r.station_id), str(r.product_code or "")): r for r in elasticity_rows}
@@ -266,6 +310,7 @@ def _load_signals(db: Session, window_days: int) -> list[SignalBundle]:
                 health_status=str(station.health_status or "UNKNOWN"),
                 risk_zone=str(station.risk_zone or "UNKNOWN"),
                 volume_7d=vol,
+                revenue_7d=rev_map.get(key, rev_map.get((station_id, ""), 0.0)),
                 decline_rate=decline_rate,
             )
         )
@@ -291,12 +336,13 @@ def build_price_recommendations(db: Session, window_days: int = 90) -> dict[str,
         if signal.margin_pct is None:
             reasons.append("COST_UNKNOWN")
 
-        rec_id = _recommendation_id(signal.station_id, signal.product_code, created_at.date(), str(policy["policy_version"]))
+        policy_version = str(policy["version"])
+        rec_id = _recommendation_id(signal.station_id, signal.product_code, created_at.date(), policy_version)
         rows.append(
             {
-                "recommendation_id": rec_id,
+                "rec_id": rec_id,
                 "created_at": created_at.strftime("%Y-%m-%d %H:%M:%S"),
-                "station_id": int(signal.station_id),
+                "station_id": _station_id_u64(signal.station_id),
                 "product_code": signal.product_code,
                 "current_price": _quantize(signal.current_price),
                 "recommended_price": new_price,
@@ -304,28 +350,33 @@ def build_price_recommendations(db: Session, window_days: int = 90) -> dict[str,
                 "action": str(decision["action"]).replace("_PRICE", ""),
                 "confidence": _quantize(float(decision["confidence"])),
                 "reasons": reasons,
-                "expected_volume_change_pct": expected_volume_change_pct,
-                "expected_margin_change": expected_margin_change,
-                "policy_version": str(policy["policy_version"]),
+                "expected_volume_change_pct": expected_volume_change_pct if expected_volume_change_pct is not None else 0.0,
+                "expected_margin_change": expected_margin_change if expected_margin_change is not None else float("nan"),
+                "policy_version": policy_version,
                 "status": "DRAFT",
+                "decided_at": None,
+                "decided_by": None,
                 "meta": json.dumps({
+                    "station_ref": signal.station_id,
                     "health_status": signal.health_status,
                     "risk_zone": signal.risk_zone,
                     "decline_rate": signal.decline_rate,
                     "volume_7d": signal.volume_7d,
+                    "revenue_7d": signal.revenue_7d,
                     "window_days": window_days,
+                    "margin_unknown": signal.margin_pct is None,
                 }, separators=(",", ":")),
             }
         )
 
     if _ch_enabled() and _ch_ping():
         ensure_price_recommendations_table()
-        policy_version = str(policy["policy_version"])
+        policy_version = str(policy["version"])
         _ch_exec(
             f"ALTER TABLE neft_geo.fact_price_recommendations DELETE WHERE day = toDate('{created_at.date().isoformat()}') AND policy_version = '{policy_version}'"
         )
         _ch_insert(rows)
-    return {"created_at": created_at.isoformat(), "rows": len(rows), "policy_version": policy["policy_version"]}
+    return {"created_at": created_at.isoformat(), "rows": len(rows), "policy_version": policy["version"]}
 
 
 def list_price_recommendations(
@@ -354,9 +405,9 @@ def list_price_recommendations(
     where = " AND ".join(filters)
     rows = _ch_query(
         f"""
-        SELECT recommendation_id, created_at, station_id, product_code, current_price, recommended_price,
+        SELECT rec_id, created_at, station_id, product_code, current_price, recommended_price,
                delta_price, action, confidence, reasons, expected_volume_change_pct, expected_margin_change,
-               policy_version, status, meta
+               policy_version, status, decided_at, decided_by, meta
         FROM neft_geo.fact_price_recommendations
         WHERE {where}
         ORDER BY created_at DESC
@@ -364,10 +415,10 @@ def list_price_recommendations(
         """
     )
 
-    station_ids = [str(row["station_id"]) for row in rows]
+    station_refs = [str(json.loads(row.get("meta") or "{}").get("station_ref") or row["station_id"]) for row in rows]
     stations = {}
-    if station_ids:
-        q = db.query(FuelStation).filter(FuelStation.id.in_(station_ids))
+    if station_refs:
+        q = db.query(FuelStation).filter(FuelStation.id.in_(station_refs))
         if risk_zone:
             q = q.filter(FuelStation.risk_zone == risk_zone)
         if health_status:
@@ -376,17 +427,20 @@ def list_price_recommendations(
 
     output: list[dict] = []
     for row in rows:
-        station = stations.get(str(row["station_id"]))
+        meta = json.loads(row.get("meta") or "{}")
+        station_ref = str(meta.get("station_ref") or row["station_id"])
+        station = stations.get(station_ref)
         if (risk_zone or health_status) and not station:
             continue
-        meta = json.loads(row.get("meta") or "{}")
         output.append(
             {
-                "id": row["recommendation_id"],
+                "id": row["rec_id"],
                 "created_at": row["created_at"],
-                "station_id": str(row["station_id"]),
+                "station_id": station_ref,
                 "station_name": station.name if station else None,
                 "station_address": station.city if station else None,
+                "station_lat": station.lat if station else None,
+                "station_lon": station.lon if station else None,
                 "risk_zone": station.risk_zone if station else meta.get("risk_zone"),
                 "health_status": station.health_status if station else meta.get("health_status"),
                 "product_code": row.get("product_code") or "",
@@ -400,6 +454,8 @@ def list_price_recommendations(
                 "expected_margin_change": row.get("expected_margin_change"),
                 "policy_version": row.get("policy_version") or "",
                 "status": row.get("status") or "DRAFT",
+                "decided_at": row.get("decided_at"),
+                "decided_by": row.get("decided_by"),
             }
         )
     return output
@@ -419,12 +475,22 @@ def get_station_price_recommendations(db: Session, station_id: str, *, limit: in
     ) if row["station_id"] == station_id]
 
 
-def update_recommendation_status(recommendation_id: str, status: str) -> bool:
+def _ch_quote(value: str) -> str:
+    return value.replace("\\", "\\\\").replace("'", "\\'")
+
+
+def update_recommendation_status(recommendation_id: str, status: str, *, decided_by: str | None = None, comment: str | None = None) -> bool:
     if not _ch_enabled() or not _ch_ping():
         return False
     ensure_price_recommendations_table()
+    decided_at = datetime.now(tz=timezone.utc).replace(microsecond=0).strftime("%Y-%m-%d %H:%M:%S")
+    escaped_by = _ch_quote(decided_by or "system")
+    escaped_id = _ch_quote(recommendation_id)
+    escaped_comment = _ch_quote(comment or "")
     _ch_exec(
         "ALTER TABLE neft_geo.fact_price_recommendations "
-        f"UPDATE status = '{status}' WHERE recommendation_id = '{recommendation_id}'"
+        f"UPDATE status = '{status}', decided_at = toDateTime('{decided_at}'), decided_by = '{escaped_by}', "
+        f"meta = if(length(meta)=0, '{{\"comment\":\"{escaped_comment}\"}}', meta) "
+        f"WHERE rec_id = '{escaped_id}'"
     )
     return True
