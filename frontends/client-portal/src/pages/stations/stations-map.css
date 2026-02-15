@@ -121,6 +121,36 @@
   gap: 8px;
 }
 
+.stations-map-prices {
+  border-top: 1px dashed var(--border-color, #d7deea);
+  padding-top: 8px;
+  display: grid;
+  gap: 8px;
+}
+
+.stations-map-prices-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.stations-map-prices-head h4 {
+  margin: 0;
+}
+
+.stations-map-prices-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.stations-map-prices-table th,
+.stations-map-prices-table td {
+  border-bottom: 1px solid var(--border-color, #d7deea);
+  padding: 4px 0;
+  text-align: left;
+}
+
 .stations-map-card-actions {
   display: flex;
   gap: 8px;
