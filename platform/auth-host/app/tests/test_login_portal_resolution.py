@@ -17,19 +17,20 @@ def _decode_claims(token: str) -> dict:
     return jwt.get_unverified_claims(token)
 
 
-def _seed_user(monkeypatch, *, email: str, roles: list[str]):
+def _seed_user(monkeypatch, *, user_email: str, roles: list[str]):
     password_hash = hash_password("secret")
     demo_user = User(
         id="00000000-0000-0000-0000-000000000010",
-        email=email,
+        email=user_email,
         full_name="Demo User",
         password_hash=password_hash,
         is_active=True,
         created_at=None,
     )
 
-    async def fake_get_user(value: str):
-        if value.lower() == email.lower():
+    async def fake_get_user(*, email: str | None = None, username: str | None = None):
+        candidate = email or username
+        if candidate and candidate.lower() == user_email.lower():
             return demo_user
         return None
 
@@ -42,7 +43,7 @@ def _seed_user(monkeypatch, *, email: str, roles: list[str]):
 
 
 def test_login_requires_portal(monkeypatch):
-    _seed_user(monkeypatch, email="client@neft.local", roles=["CLIENT_OWNER"])
+    _seed_user(monkeypatch, user_email="client@neft.local", roles=["CLIENT_OWNER"])
     response = _client().post(
         "/api/v1/auth/login",
         json={"email": "client@neft.local", "password": "secret"},
@@ -52,7 +53,7 @@ def test_login_requires_portal(monkeypatch):
 
 
 def test_portal_resolution_from_body(monkeypatch):
-    _seed_user(monkeypatch, email="client@neft.local", roles=["CLIENT_OWNER"])
+    _seed_user(monkeypatch, user_email="client@neft.local", roles=["CLIENT_OWNER"])
     response = _client().post(
         "/api/v1/auth/login",
         json={"email": "client@neft.local", "password": "secret", "portal": "client"},
@@ -65,7 +66,7 @@ def test_portal_resolution_from_body(monkeypatch):
 
 
 def test_portal_resolution_from_header(monkeypatch):
-    _seed_user(monkeypatch, email="admin@neft.local", roles=["ADMIN"])
+    _seed_user(monkeypatch, user_email="admin@neft.local", roles=["ADMIN"])
     response = _client().post(
         "/api/v1/auth/login",
         headers={"X-Portal": "admin"},
@@ -79,7 +80,7 @@ def test_portal_resolution_from_header(monkeypatch):
 
 
 def test_portal_resolution_from_query(monkeypatch):
-    _seed_user(monkeypatch, email="partner@neft.local", roles=["PARTNER_OWNER"])
+    _seed_user(monkeypatch, user_email="partner@neft.local", roles=["PARTNER_OWNER"])
     response = _client().post(
         "/api/v1/auth/login?portal=partner",
         json={"email": "partner@neft.local", "password": "secret"},
@@ -92,7 +93,7 @@ def test_portal_resolution_from_query(monkeypatch):
 
 
 def test_demo_claims_only_in_dev(monkeypatch):
-    _seed_user(monkeypatch, email="client@neft.local", roles=["CLIENT_OWNER"])
+    _seed_user(monkeypatch, user_email="client@neft.local", roles=["CLIENT_OWNER"])
     monkeypatch.setenv("NEFT_ENV", "local")
     response = _client().post(
         "/api/v1/auth/login",

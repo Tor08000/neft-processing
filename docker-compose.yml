@@ -309,8 +309,6 @@ services:
         condition: service_healthy
       minio-init:
         condition: service_completed_successfully
-      gateway:
-        condition: service_started
     healthcheck:
       test:
         [
@@ -557,6 +555,8 @@ services:
       auth-host:
         condition: service_healthy
       ai-service:
+        condition: service_healthy
+      integration-hub:
         condition: service_healthy
     ports:
       - "80:80"

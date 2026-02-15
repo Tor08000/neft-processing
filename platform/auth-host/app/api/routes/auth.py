@@ -131,15 +131,26 @@ def _portal_token_config(portal: str) -> tuple[str, str]:
     return settings.auth_issuer, settings.auth_audience
 
 
-async def _get_user_from_db(login: str) -> User | None:
-    normalized_login = login.strip().lower()
+async def _get_user_from_db(*, email: str | None = None, username: str | None = None) -> User | None:
+    normalized_email = email.strip().lower() if email else None
+    normalized_username = username.strip().lower() if username else None
+
+    if not normalized_email and not normalized_username:
+        return None
 
     async with get_conn() as (_conn, cur):
-        await cur.execute(
-            "SELECT id, email, username, full_name, password_hash, is_active, created_at "
-            "FROM users WHERE lower(email) = lower(%s) OR lower(username) = lower(%s) LIMIT 1",
-            (normalized_login, normalized_login),
-        )
+        if normalized_email:
+            await cur.execute(
+                "SELECT id, email, username, full_name, password_hash, is_active, created_at "
+                "FROM users WHERE lower(email) = lower(%s) LIMIT 1",
+                (normalized_email,),
+            )
+        else:
+            await cur.execute(
+                "SELECT id, email, username, full_name, password_hash, is_active, created_at "
+                "FROM users WHERE lower(username) = lower(%s) LIMIT 1",
+                (normalized_username,),
+            )
         row = await cur.fetchone()
         if not row:
             return None
@@ -271,11 +282,13 @@ async def signup(payload: RegisterRequest) -> SignupResponse:
 
 @router.post("/login", response_model=TokenResponse)
 async def login(request: Request, payload: LoginRequest) -> TokenResponse:
-    login_identifier = (payload.email or payload.username or "").strip().lower()
+    login_email = payload.email.strip().lower() if payload.email else None
+    login_username = payload.username.strip().lower() if payload.username else None
+    login_identifier = login_email or login_username or ""
     portal = _resolve_login_portal(request, payload)
 
     subject_type = "user"
-    user_email = payload.email.strip().lower() if payload.email else ""
+    user_email = login_email or ""
     client_id = None
     org_id = None
 
@@ -284,7 +297,7 @@ async def login(request: Request, payload: LoginRequest) -> TokenResponse:
     )
 
     try:
-        user = await _get_user_from_db(login_identifier)
+        user = await _get_user_from_db(email=login_email, username=login_username)
     except Exception:
         logger.exception(
             "Failed to fetch user during login", extra={"login": login_identifier}

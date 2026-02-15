@@ -120,6 +120,11 @@ npm run ui:link-crawl
 curl -i -X POST http://localhost/api/auth/v1/auth/login \
   -H "Content-Type: application/json" \
   -d "{\"email\":\"admin@example.com\",\"password\":\"admin123\"}"
+
+# Альтернатива: вход по username
+curl -i -X POST http://localhost/api/auth/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d "{\"username\":\"admin\",\"password\":\"admin123\"}"
 ```
 
 ### Хранение ключей и файлов
