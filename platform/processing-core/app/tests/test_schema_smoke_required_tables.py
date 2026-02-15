@@ -26,6 +26,11 @@ pytestmark = pytest.mark.skipif(
 
 
 REQUIRED_TABLES = [
+    "users",
+    "clients",
+    "cards",
+    "client_user_roles",
+    "card_limits",
     "operations",
     "accounts",
     "ledger_entries",

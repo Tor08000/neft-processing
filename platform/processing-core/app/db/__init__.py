@@ -76,7 +76,7 @@ def make_engine_kwargs(
 
     if url.startswith("postgresql"):
         engine_kwargs["connect_args"] = {
-            "options": f"-c search_path={resolved_schema}",
+            "options": f"-c search_path={resolved_schema},public",
             "prepare_threshold": 0,
         }
 
