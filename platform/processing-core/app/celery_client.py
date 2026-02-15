@@ -34,6 +34,7 @@ celery_client.conf.update(
         "billing.dunning_scan": {"queue": "billing"},
         "billing.suspend_overdue": {"queue": "billing"},
         "commercial.elasticity_compute": {"queue": "celery"},
+        "commercial.price_recommendations_build": {"queue": "celery"},
     },
     beat_schedule={
         "billing_generate_monthly": {
@@ -124,6 +125,11 @@ celery_client.conf.update(
         "commercial.elasticity_compute_90": {
             "task": "commercial.elasticity_compute",
             "schedule": crontab(hour=3, minute=50),
+            "args": (90,),
+        },
+        "commercial.price_recommendations_build": {
+            "task": "commercial.price_recommendations_build",
+            "schedule": crontab(hour=5, minute=0),
             "args": (90,),
         },
         "ops.station_health_evaluate": {
