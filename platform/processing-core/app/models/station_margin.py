@@ -18,5 +18,6 @@ class StationMarginDay(Base):
     revenue_sum = Column(Float, nullable=False, default=0, server_default="0")
     cost_sum = Column(Float, nullable=False, default=0, server_default="0")
     gross_margin = Column(Float, nullable=False, default=0, server_default="0")
+    margin_pct = Column(Float, nullable=False, default=0, server_default="0")
     tx_count = Column(Integer, nullable=False, default=0, server_default="0")
     updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())

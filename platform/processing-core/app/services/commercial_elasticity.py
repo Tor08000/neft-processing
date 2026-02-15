@@ -354,6 +354,7 @@ def fetch_station_elasticity(
     *,
     window_days: int,
     metric: str,
+    order: str,
     limit: int,
     partner_id: str | None,
     risk_zone: str | None,
@@ -401,5 +402,5 @@ def fetch_station_elasticity(
                 "updated_at": elasticity.updated_at,
             }
         )
-    items.sort(key=lambda x: x.get(metric, 0), reverse=True)
+    items.sort(key=lambda x: x.get(metric, 0), reverse=(order == "desc"))
     return items[:limit] if not station_id else items

@@ -7,6 +7,7 @@ from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 
 import requests
+from fastapi import HTTPException
 from neft_shared.logging_setup import get_logger
 from neft_shared.settings import get_settings
 from sqlalchemy import and_, func, inspect, text
@@ -20,8 +21,12 @@ from app.models.station_margin import StationMarginDay
 logger = get_logger(__name__)
 settings = get_settings()
 
-MODEL_KEYWORDS = ("Settlement", "Clearing", "Payout", "Ledger", "Reconciliation", "Batch", "Item")
-TABLE_PATTERNS = ["%settle%", "%clearing%", "%payout%", "%ledger%", "%recon%", "%batch%", "%item%"]
+MODEL_KEYWORDS = ("settle", "clearing", "payout", "ledger", "batch", "item", "line", "entry")
+TABLE_PATTERNS = ["%settle%", "%clearing%", "%payout%", "%ledger%", "%batch%", "%item%", "%line%", "%entry%"]
+
+
+class MarginMappingError(RuntimeError):
+    pass
 
 
 @dataclass(frozen=True)
@@ -30,9 +35,18 @@ class MarginMapping:
     revenue_table: str
     join_key: str
     station_key: str
+    day_column: str
     day_semantics: str
     cost_expr: str
     revenue_expr: str
+    granularity: str
+
+
+@dataclass(frozen=True)
+class _CostCandidate:
+    table: str
+    amount_col: str
+    operation_col: str
 
 
 def _model_candidates() -> list[str]:
@@ -41,8 +55,10 @@ def _model_candidates() -> list[str]:
     for path in root.glob("*.py"):
         tree = ast.parse(path.read_text(encoding="utf-8"))
         for node in tree.body:
-            if isinstance(node, ast.ClassDef) and any(k in node.name for k in MODEL_KEYWORDS):
-                found.append(f"{path.name}:{node.name}")
+            if isinstance(node, ast.ClassDef):
+                lowered = node.name.lower()
+                if any(k in lowered for k in MODEL_KEYWORDS):
+                    found.append(f"{path.name}:{node.name}")
     return sorted(found)
 
 
@@ -55,32 +71,90 @@ def _table_candidates(db: Session) -> list[str]:
                 WHERE schemaname = :schema
                 AND (
                     tablename ILIKE :p1 OR tablename ILIKE :p2 OR tablename ILIKE :p3 OR
-                    tablename ILIKE :p4 OR tablename ILIKE :p5 OR tablename ILIKE :p6 OR tablename ILIKE :p7
+                    tablename ILIKE :p4 OR tablename ILIKE :p5 OR tablename ILIKE :p6 OR tablename ILIKE :p7 OR tablename ILIKE :p8
                 )
                 ORDER BY tablename
                 """
             ),
-            {"schema": "processing_core", "p1": TABLE_PATTERNS[0], "p2": TABLE_PATTERNS[1], "p3": TABLE_PATTERNS[2], "p4": TABLE_PATTERNS[3], "p5": TABLE_PATTERNS[4], "p6": TABLE_PATTERNS[5], "p7": TABLE_PATTERNS[6]},
+            {
+                "schema": "processing_core",
+                "p1": TABLE_PATTERNS[0],
+                "p2": TABLE_PATTERNS[1],
+                "p3": TABLE_PATTERNS[2],
+                "p4": TABLE_PATTERNS[3],
+                "p5": TABLE_PATTERNS[4],
+                "p6": TABLE_PATTERNS[5],
+                "p7": TABLE_PATTERNS[6],
+                "p8": TABLE_PATTERNS[7],
+            },
         ).fetchall()
         return [str(r[0]) for r in rows]
     return sorted(t for t in inspect(db.bind).get_table_names() if any(p.strip("%") in t for p in TABLE_PATTERNS))
 
 
+def _find_cost_candidate(db: Session, table_names: list[str]) -> _CostCandidate | None:
+    inspector = inspect(db.bind)
+    scored: list[tuple[int, _CostCandidate]] = []
+    for table in table_names:
+        cols = {c["name"] for c in inspector.get_columns(table)}
+        amount_col = next((c for c in ("amount", "payable_amount", "net_amount", "total_amount", "sum") if c in cols), "")
+        op_col = next((c for c in ("operation_id", "transaction_id", "entry_id") if c in cols), "")
+        if not amount_col:
+            continue
+        score = 0
+        if op_col:
+            score += 3
+        if "clearing" in table:
+            score += 2
+        if "item" in table or "line" in table or "operation" in table:
+            score += 1
+        if "batch" in table:
+            score += 1
+        scored.append((score, _CostCandidate(table=table, amount_col=amount_col, operation_col=op_col)))
+    if not scored:
+        return None
+    scored.sort(key=lambda x: x[0], reverse=True)
+    return scored[0][1]
+
+
 def discover_margin_mapping(db: Session) -> tuple[MarginMapping, dict[str, object]]:
-    mapping = MarginMapping(
-        settlement_table="clearing_batch_operation",
-        revenue_table="operations",
-        join_key="operation_id",
-        station_key="operations.fuel_station_id",
-        day_semantics="UTC day from operations.created_at",
-        cost_expr="clearing_batch_operation.amount / 100.0",
-        revenue_expr="COALESCE(NULLIF(operations.captured_amount, 0), operations.amount) / 100.0",
-    )
-    report = {
-        "candidate_tables": _table_candidates(db),
-        "candidate_models": _model_candidates(),
-        "chosen": mapping.__dict__,
+    table_candidates = _table_candidates(db)
+    model_candidates = _model_candidates()
+    inspector = inspect(db.bind)
+    operations_cols = {c["name"] for c in inspector.get_columns("operations")}
+
+    station_col = next((c for c in ("fuel_station_id", "station_id", "azs_id", "merchant_id") if c in operations_cols), "")
+    day_col = next((c for c in ("created_at", "captured_at", "updated_at") if c in operations_cols), "")
+    revenue_col = "captured_amount" if "captured_amount" in operations_cols else ("amount" if "amount" in operations_cols else "")
+    cost_candidate = _find_cost_candidate(db, table_candidates)
+
+    report: dict[str, object] = {
+        "candidate_tables": table_candidates,
+        "candidate_models": model_candidates,
+        "detected": {
+            "operations_station_column": station_col,
+            "operations_day_column": day_col,
+            "operations_revenue_column": revenue_col,
+            "cost_candidate": cost_candidate.__dict__ if cost_candidate else None,
+        },
     }
+
+    if not station_col or not day_col or not revenue_col or not cost_candidate or not cost_candidate.operation_col:
+        report["error"] = "Could not determine margin mapping from schema"
+        raise MarginMappingError(json.dumps(report, ensure_ascii=False, indent=2))
+
+    mapping = MarginMapping(
+        settlement_table=cost_candidate.table,
+        revenue_table="operations",
+        join_key=f"{cost_candidate.table}.{cost_candidate.operation_col}=operations.operation_id",
+        station_key=f"operations.{station_col}",
+        day_column=f"operations.{day_col}",
+        day_semantics=f"UTC day from operations.{day_col}",
+        cost_expr=f"COALESCE({cost_candidate.table}.{cost_candidate.amount_col}, 0) / 100.0",
+        revenue_expr="COALESCE(NULLIF(operations.captured_amount, 0), operations.amount) / 100.0",
+        granularity="LINE_ITEMS",
+    )
+    report["chosen"] = mapping.__dict__
     return mapping, report
 
 
@@ -132,6 +206,7 @@ def _ch_insert(rows: list[dict]) -> None:
 
 
 def _compute_rows(db: Session, target_day: date) -> list[dict]:
+    discover_margin_mapping(db)
     start = datetime.combine(target_day, time.min, tzinfo=timezone.utc)
     end = start + timedelta(days=1)
     revenue_expr = (func.coalesce(func.nullif(Operation.captured_amount, 0), Operation.amount) / 100.0)
@@ -157,18 +232,27 @@ def _compute_rows(db: Session, target_day: date) -> list[dict]:
     for row in rows:
         revenue = float(row.revenue_sum or 0)
         cost = float(row.cost_sum or 0)
+        gross_margin = revenue - cost
         output.append(
             {
                 "day": target_day,
                 "station_id": str(row.station_id),
                 "revenue_sum": revenue,
                 "cost_sum": cost,
-                "gross_margin": revenue - cost,
+                "gross_margin": gross_margin,
+                "margin_pct": (gross_margin / revenue) if revenue else 0.0,
                 "tx_count": int(row.tx_count or 0),
                 "updated_at": datetime.now(tz=timezone.utc),
             }
         )
     return output
+
+
+def _station_id_to_uint64(station_id: str) -> int:
+    digits = "".join(ch for ch in station_id if ch.isdigit())
+    if not digits:
+        return 0
+    return int(digits[:19])
 
 
 def rebuild_station_margin_for_day(db: Session, target_day: date) -> int:
@@ -184,13 +268,14 @@ def rebuild_station_margin_for_day(db: Session, target_day: date) -> int:
                 """
                 CREATE TABLE IF NOT EXISTS neft_geo.fact_station_margin_day (
                     day Date,
-                    station_id String,
+                    station_id UInt64,
                     revenue_sum Float64,
                     cost_sum Float64,
                     gross_margin Float64,
+                    margin_pct Float64,
                     tx_count UInt32,
                     updated_at DateTime
-                ) ENGINE = SummingMergeTree
+                ) ENGINE = ReplacingMergeTree(updated_at)
                 PARTITION BY toYYYYMM(day)
                 ORDER BY (day, station_id)
                 """
@@ -201,10 +286,11 @@ def rebuild_station_margin_for_day(db: Session, target_day: date) -> int:
                 [
                     {
                         "day": row["day"].isoformat(),
-                        "station_id": row["station_id"],
+                        "station_id": _station_id_to_uint64(row["station_id"]),
                         "revenue_sum": row["revenue_sum"],
                         "cost_sum": row["cost_sum"],
                         "gross_margin": row["gross_margin"],
+                        "margin_pct": row["margin_pct"],
                         "tx_count": row["tx_count"],
                         "updated_at": row["updated_at"].strftime("%Y-%m-%d %H:%M:%S"),
                     }
@@ -248,47 +334,47 @@ def fetch_station_margin(
     health_status: str | None,
 ) -> list[dict]:
     reverse = order == "desc"
-    if _ch_enabled() and _ch_ping():
+    if _ch_enabled():
+        if not _ch_ping():
+            raise HTTPException(status_code=503, detail="ClickHouse unavailable for commercial margin analytics")
         try:
             rows = _ch_query(
                 f"""
                 SELECT station_id, sum(revenue_sum) AS revenue_sum, sum(cost_sum) AS cost_sum,
-                       sum(gross_margin) AS gross_margin, toUInt32(sum(tx_count)) AS tx_count
+                       sum(gross_margin) AS gross_margin, sum(tx_count) AS tx_count
                 FROM neft_geo.fact_station_margin_day
                 WHERE day >= toDate('{date_from.isoformat()}') AND day <= toDate('{date_to.isoformat()}')
                 GROUP BY station_id
                 """
             )
-            by_station = {str(r["station_id"]): r for r in rows}
-            q = db.query(FuelStation).filter(FuelStation.id.in_(list(by_station.keys())))
-            if partner_id:
-                q = q.filter(FuelStation.network_id == partner_id)
-            if risk_zone:
-                q = q.filter(FuelStation.risk_zone == risk_zone)
-            if health_status:
-                q = q.filter(FuelStation.health_status == health_status)
+            ch_station_rows = _ch_query("SELECT station_id, name, address, lat, lon FROM neft_geo.dim_stations")
+            ch_stations = {str(r.get("station_id")): r for r in ch_station_rows}
             items = []
-            for st in q.all():
-                agg = by_station.get(str(st.id), {})
+            for agg in rows:
+                station_id = str(agg.get("station_id"))
+                st = ch_stations.get(station_id, {})
                 rev = float(agg.get("revenue_sum", 0) or 0)
                 cost = float(agg.get("cost_sum", 0) or 0)
                 gm = float(agg.get("gross_margin", rev - cost) or 0)
-                items.append({
-                    "station_id": str(st.id),
-                    "station_name": st.name,
-                    "station_address": st.city,
-                    "lat": st.lat,
-                    "lon": st.lon,
-                    "revenue_sum": rev,
-                    "cost_sum": cost,
-                    "gross_margin": gm,
-                    "margin_pct": (gm / rev) if rev else 0.0,
-                    "tx_count": int(agg.get("tx_count", 0) or 0),
-                })
+                items.append(
+                    {
+                        "station_id": station_id,
+                        "station_name": st.get("name"),
+                        "station_address": st.get("address"),
+                        "lat": st.get("lat"),
+                        "lon": st.get("lon"),
+                        "revenue_sum": rev,
+                        "cost_sum": cost,
+                        "gross_margin": gm,
+                        "margin_pct": (gm / rev) if rev else 0.0,
+                        "tx_count": int(float(agg.get("tx_count", 0) or 0)),
+                    }
+                )
             items.sort(key=lambda x: x.get(sort_by, 0), reverse=reverse)
             return items[:limit]
         except Exception:
             logger.exception("commercial.margin_clickhouse_read_failed")
+            raise HTTPException(status_code=503, detail="ClickHouse unavailable for commercial margin analytics")
 
     sort_column = {
         "gross_margin": func.sum(StationMarginDay.gross_margin),

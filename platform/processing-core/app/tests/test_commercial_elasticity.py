@@ -165,7 +165,7 @@ def test_elasticity_endpoint_returns_items(monkeypatch) -> None:
     app.dependency_overrides[get_db] = override_get_db
     client = TestClient(app)
 
-    resp = client.get("/api/v1/commercial/elasticity/stations?window_days=90&metric=elasticity_abs&limit=20")
+    resp = client.get("/api/v1/commercial/elasticity/stations?window_days=90&sort_by=elasticity_abs&order=desc&limit=20")
     assert resp.status_code == 200
     payload = resp.json()
     assert payload["items"][0]["station_id"] == str(station.id)
