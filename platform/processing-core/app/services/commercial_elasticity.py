@@ -9,10 +9,9 @@ from statistics import median
 import requests
 from neft_shared.logging_setup import get_logger
 from neft_shared.settings import get_settings
-from sqlalchemy import inspect, literal, text
 from sqlalchemy.orm import Session
 
-from app.models.fuel import FuelStation
+from app.models.fuel import FuelStation, FuelStationPrice
 from app.models.operation import Operation, OperationStatus
 from app.models.station_elasticity import StationElasticity
 
@@ -20,8 +19,9 @@ logger = get_logger(__name__)
 settings = get_settings()
 
 MIN_PRICE_CHANGE_PCT = 0.5
-MIN_VOLUME_THRESHOLD = 200.0
-MIN_TX_THRESHOLD = 20
+MIN_VOLUME_LITERS = 2000.0
+MIN_VOLUME_TX = 50
+EPSILON = 1e-9
 
 
 @dataclass(frozen=True)
@@ -66,8 +66,15 @@ def _ch_exec(query: str) -> None:
         raise RuntimeError(response.text)
 
 
+def _to_datetime(value: datetime | str) -> datetime:
+    if isinstance(value, datetime):
+        return value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
+    parsed = datetime.fromisoformat(str(value).replace(" ", "T"))
+    return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=timezone.utc)
+
+
 def detect_product_dimension() -> bool:
-    if not _ch_enabled():
+    if not _ch_enabled() or not _ch_ping():
         return False
     try:
         rows = _ch_query("DESCRIBE TABLE neft_geo.raw_fuel_events")
@@ -75,39 +82,19 @@ def detect_product_dimension() -> bool:
         logger.exception("commercial.elasticity_product_dim_detect_failed")
         return False
     cols = {str(row.get("name", "")).lower() for row in rows}
-    return "product_code" in cols or "product_id" in cols
+    return "product_code" in cols
 
 
-def _discover_price_source(db: Session) -> tuple[str, bool]:
-    inspector = inspect(db.bind)
-    table_names = set(inspector.get_table_names())
-    for table_name in ("fuel_station_prices", "station_prices", "f3_station_prices"):
-        if table_name in table_names:
-            cols = {c["name"] for c in inspector.get_columns(table_name)}
-            has_product = "product_code" in cols or "product_id" in cols
-            return table_name, has_product
-    if _ch_enabled():
-        try:
-            rows = _ch_query(
-                """
-                SELECT name FROM system.tables
-                WHERE database = 'neft_geo' AND name in ('dim_prices', 'f3_station_prices')
-                """
-            )
-            if rows:
-                return str(rows[0]["name"]), True
-        except Exception:
-            logger.exception("commercial.elasticity_price_source_detect_failed")
-    return "", False
-
-
-def _to_datetime(value: datetime | str) -> datetime:
-    if isinstance(value, datetime):
-        return value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
-    parsed = datetime.fromisoformat(str(value).replace(" ", "T"))
-    if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=timezone.utc)
-    return parsed
+def detect_liters_dimension() -> bool:
+    if not _ch_enabled() or not _ch_ping():
+        return False
+    try:
+        rows = _ch_query("DESCRIBE TABLE neft_geo.raw_fuel_events")
+    except Exception:
+        logger.exception("commercial.elasticity_liters_dim_detect_failed")
+        return False
+    cols = {str(row.get("name", "")).lower() for row in rows}
+    return "liters" in cols
 
 
 def _ensure_ch_table() -> None:
@@ -124,198 +111,206 @@ def _ensure_ch_table() -> None:
             confidence_score Float64,
             sample_points UInt32,
             total_volume Float64,
-            notes LowCardinality(String),
-            updated_at DateTime
+            updated_at DateTime,
+            notes LowCardinality(String)
         ) ENGINE = ReplacingMergeTree(updated_at)
         ORDER BY (station_id, product_code, window_days)
         """
     )
 
 
-def _load_price_periods(db: Session, window_start: datetime, has_product_dim: bool) -> list[PricePeriod]:
-    table_name, source_has_product = _discover_price_source(db)
-    if table_name:
-        cols = {c["name"] for c in inspect(db.bind).get_columns(table_name)}
-        product_col = "product_code" if "product_code" in cols else ("product_id" if "product_id" in cols else None)
-        from_col = "valid_from" if "valid_from" in cols else ("created_at" if "created_at" in cols else "updated_at")
-        to_col = "valid_to" if "valid_to" in cols else None
-
-        product_select = f"{product_col} AS product_code" if product_col else "'' AS product_code"
-        q = f"SELECT station_id, {product_select}, price, {from_col} AS from_ts"
-        if to_col:
-            q += f", {to_col} AS to_ts"
-        q += f" FROM {table_name} WHERE {from_col} >= :window_start ORDER BY station_id, "
-        q += ("product_code, " if product_col else "") + "from_ts"
-
-        rows = db.execute(text(q), {"window_start": window_start}).mappings().all()
-        periods: list[PricePeriod] = []
-        grouped: dict[tuple[str, str], list] = defaultdict(list)
-        for row in rows:
-            grouped[(str(row["station_id"]), str(row.get("product_code") or ""))].append(row)
-        for (station_id, product_code), items in grouped.items():
-            for idx, row in enumerate(items):
-                start_ts = _to_datetime(row["from_ts"])
-                raw_end = row.get("to_ts") or (items[idx + 1]["from_ts"] if idx + 1 < len(items) else datetime.now(tz=timezone.utc))
-                end_ts = _to_datetime(raw_end)
-                periods.append(
-                    PricePeriod(
-                        station_id=station_id,
-                        product_code=product_code if (has_product_dim and source_has_product) else "",
-                        price=float(row["price"]),
-                        start_ts=start_ts,
-                        end_ts=end_ts,
-                    )
-                )
-        if periods:
-            return periods
-
-    product_expr = Operation.product_code if has_product_dim else literal("")
+def _load_price_periods(db: Session, window_start: datetime) -> list[PricePeriod]:
+    now = datetime.now(tz=timezone.utc)
     rows = (
         db.query(
-            Operation.fuel_station_id.label("station_id"),
-            product_expr.label("product_code"),
-            Operation.unit_price.label("price"),
-            Operation.created_at.label("from_ts"),
+            FuelStationPrice.station_id,
+            FuelStationPrice.product_code,
+            FuelStationPrice.price,
+            FuelStationPrice.valid_from,
+            FuelStationPrice.updated_at,
         )
         .filter(
-            Operation.created_at >= window_start,
-            Operation.fuel_station_id.isnot(None),
-            Operation.status.in_([OperationStatus.CAPTURED, OperationStatus.COMPLETED]),
-            Operation.unit_price.isnot(None),
+            FuelStationPrice.status == "ACTIVE",
+            FuelStationPrice.price.isnot(None),
         )
-        .order_by(Operation.fuel_station_id, product_expr, Operation.created_at)
+        .order_by(FuelStationPrice.station_id, FuelStationPrice.product_code, FuelStationPrice.valid_from, FuelStationPrice.updated_at)
         .all()
     )
 
-    grouped_prices: dict[tuple[str, str], list] = defaultdict(list)
+    grouped: dict[tuple[str, str], list] = defaultdict(list)
     for row in rows:
-        grouped_prices[(str(row.station_id), str(row.product_code or ""))].append(row)
+        grouped[(str(row.station_id), str(row.product_code or ""))].append(row)
 
     periods: list[PricePeriod] = []
-    for (station_id, product_code), items in grouped_prices.items():
-        for idx, row in enumerate(items):
-            next_ts = items[idx + 1].from_ts if idx + 1 < len(items) else (row.from_ts + timedelta(days=1))
+    for (station_id, product_code), series in grouped.items():
+        starts: list[tuple[datetime, float]] = []
+        for row in series:
+            start_ts = row.valid_from or row.updated_at
+            if start_ts is None:
+                continue
+            starts.append((_to_datetime(start_ts), float(row.price)))
+        starts.sort(key=lambda item: item[0])
+        for idx, (start_ts, price) in enumerate(starts):
+            end_ts = starts[idx + 1][0] if idx + 1 < len(starts) else now
+            if end_ts <= window_start or start_ts >= now:
+                continue
             periods.append(
                 PricePeriod(
                     station_id=station_id,
-                    product_code=product_code if has_product_dim else "",
-                    price=float(row.price),
-                    start_ts=row.from_ts,
-                    end_ts=next_ts,
+                    product_code=product_code,
+                    price=price,
+                    start_ts=max(start_ts, window_start),
+                    end_ts=min(end_ts, now),
                 )
             )
     return periods
 
 
-def _op_volume(op: Operation) -> float:
-    if op.quantity is not None and float(op.quantity) > 0:
-        return float(op.quantity)
-    return 1.0
+def _load_ch_events(window_start: datetime, has_product_dim: bool, use_liters: bool) -> dict[tuple[str, str], list[tuple[datetime, float]]]:
+    if not _ch_enabled() or not _ch_ping():
+        return {}
+    product_select = "ifNull(product_code, '') AS product_code" if has_product_dim else "'' AS product_code"
+    volume_expr = "toFloat64(ifNull(liters, 0))" if use_liters else "1.0"
+    query = f"""
+        SELECT
+          toString(station_id) AS station_id,
+          {product_select},
+          event_ts,
+          {volume_expr} AS q
+        FROM neft_geo.raw_fuel_events
+        WHERE captured = 1
+          AND event_ts >= toDateTime('{window_start.strftime('%Y-%m-%d %H:%M:%S')}')
+          AND station_id != 0
+        ORDER BY station_id, product_code, event_ts
+    """
+    rows = _ch_query(query)
+    grouped: dict[tuple[str, str], list[tuple[datetime, float]]] = defaultdict(list)
+    for row in rows:
+        key = (str(row.get("station_id", "")), str(row.get("product_code", "")) if has_product_dim else "")
+        grouped[key].append((_to_datetime(row["event_ts"]), float(row.get("q") or 0.0)))
+    return grouped
+
+
+def _load_pg_events(db: Session, window_start: datetime, has_product_dim: bool) -> dict[tuple[str, str], list[tuple[datetime, float]]]:
+    rows = (
+        db.query(Operation)
+        .filter(
+            Operation.created_at >= window_start,
+            Operation.fuel_station_id.isnot(None),
+            Operation.status == OperationStatus.CAPTURED,
+        )
+        .all()
+    )
+    grouped: dict[tuple[str, str], list[tuple[datetime, float]]] = defaultdict(list)
+    for op in rows:
+        amount = float(op.quantity) if op.quantity is not None and float(op.quantity) > 0 else 1.0
+        grouped[(str(op.fuel_station_id), str(op.product_code or "") if has_product_dim else "")].append((_to_datetime(op.created_at), amount))
+    return grouped
 
 
 def compute_period_elasticity(prev_price: float, cur_price: float, prev_q: float, cur_q: float) -> float | None:
     if prev_price <= 0:
         return None
-    dp = ((cur_price - prev_price) / prev_price) * 100.0
-    if abs(dp) < MIN_PRICE_CHANGE_PCT:
+    dp = (cur_price - prev_price) / max(prev_price, EPSILON)
+    if abs(dp) < (MIN_PRICE_CHANGE_PCT / 100.0):
         return None
-    dq = 0.0 if prev_q <= 0 else ((cur_q - prev_q) / prev_q) * 100.0
+    dq = (cur_q - prev_q) / max(prev_q, EPSILON)
     return dq / dp
 
 
-def _calculate_elasticity(periods: list[PricePeriod], operations: list[Operation], has_product_dim: bool) -> list[dict]:
-    op_groups: dict[tuple[str, str], list[Operation]] = defaultdict(list)
-    for op in operations:
-        key = (str(op.fuel_station_id), str(op.product_code or "") if has_product_dim else "")
-        op_groups[key].append(op)
-
+def _calculate_elasticity(
+    periods: list[PricePeriod],
+    events: dict[tuple[str, str], list[tuple[datetime, float]]],
+    has_product_dim: bool,
+    use_liters: bool,
+) -> list[dict]:
     by_key: dict[tuple[str, str], list[PricePeriod]] = defaultdict(list)
     for period in periods:
-        by_key[(period.station_id, period.product_code if has_product_dim else "")].append(period)
+        key = (period.station_id, period.product_code if has_product_dim else "")
+        by_key[key].append(period)
 
     updated = datetime.now(tz=timezone.utc)
     output: list[dict] = []
     for (station_id, product_code), station_periods in by_key.items():
         sorted_periods = sorted(station_periods, key=lambda p: p.start_ts)
+        event_series = events.get((station_id, product_code), [])
+
         demand_series: list[tuple[PricePeriod, float, int]] = []
         for period in sorted_periods:
-            vol = 0.0
+            q = 0.0
             tx = 0
-            for op in op_groups.get((station_id, product_code if has_product_dim else ""), []):
-                op_ts = _to_datetime(op.created_at)
-                if op_ts >= period.start_ts and op_ts < period.end_ts:
-                    vol += _op_volume(op)
+            for event_ts, volume in event_series:
+                if period.start_ts <= event_ts < period.end_ts:
+                    q += volume
                     tx += 1
-            demand_series.append((period, vol, tx))
+            demand_series.append((period, q, tx))
 
         eis: list[float] = []
-        total_volume = sum(v for _, v, _ in demand_series)
-        max_dp = 0.0
+        total_volume = sum(q for _, q, _ in demand_series)
+        max_dp_pct = 0.0
         low_volume = False
         for idx in range(1, len(demand_series)):
             prev_period, q_prev, tx_prev = demand_series[idx - 1]
             cur_period, q_cur, _ = demand_series[idx]
-            if q_prev < MIN_VOLUME_THRESHOLD and tx_prev < MIN_TX_THRESHOLD:
+            prev_volume_threshold = MIN_VOLUME_LITERS if use_liters else MIN_VOLUME_TX
+            prev_observed = q_prev if use_liters else float(tx_prev)
+            if prev_observed < prev_volume_threshold:
                 low_volume = True
                 continue
-            if prev_period.price <= 0:
-                continue
-            dp = ((cur_period.price - prev_period.price) / prev_period.price) * 100.0
-            max_dp = max(max_dp, abs(dp))
+
+            dp_pct = abs((cur_period.price - prev_period.price) / max(prev_period.price, EPSILON)) * 100.0
+            max_dp_pct = max(max_dp_pct, dp_pct)
             elasticity = compute_period_elasticity(prev_period.price, cur_period.price, q_prev, q_cur)
-            if elasticity is None:
-                continue
-            eis.append(elasticity)
+            if elasticity is not None:
+                eis.append(elasticity)
+
+        sample_points = len(eis)
+        base_conf = min(1.0, sample_points / 5.0)
+        if total_volume < (MIN_VOLUME_LITERS if use_liters else MIN_VOLUME_TX):
+            base_conf *= 0.6
+        if max_dp_pct < 1.0:
+            base_conf *= 0.7
 
         note = "OK"
         if not has_product_dim:
             note = "PRODUCT_DIM_MISSING"
-        if low_volume and total_volume < MIN_VOLUME_THRESHOLD:
+        if sample_points == 0 and max_dp_pct < MIN_PRICE_CHANGE_PCT:
+            note = "INSUFFICIENT_VARIATION"
+        if low_volume and total_volume < (MIN_VOLUME_LITERS if use_liters else MIN_VOLUME_TX):
             note = "INSUFFICIENT_VOLUME"
-        if not eis:
-            note = "INSUFFICIENT_VARIATION" if max_dp < MIN_PRICE_CHANGE_PCT else note
 
-        sample_points = len(eis)
-        base_conf = min(1.0, sample_points / 5.0)
-        if total_volume < MIN_VOLUME_THRESHOLD:
-            base_conf *= 0.6
-        if max_dp < 1.0:
-            base_conf *= 0.7
-
-        elasticity_score = float(median(eis)) if eis else 0.0
-        elasticity_abs = float(median([abs(x) for x in eis])) if eis else 0.0
         output.append(
             {
                 "station_id": station_id,
                 "product_code": product_code if has_product_dim else "",
-                "elasticity_score": elasticity_score,
-                "elasticity_abs": elasticity_abs,
+                "elasticity_score": float(median(eis)) if eis else 0.0,
+                "elasticity_abs": float(median(abs(x) for x in eis)) if eis else 0.0,
                 "confidence_score": min(1.0, max(0.0, base_conf)),
                 "sample_points": sample_points,
                 "total_volume": total_volume,
-                "notes": note,
                 "updated_at": updated,
+                "notes": note,
             }
         )
     return output
 
 
+def _to_uint64(station_id: str) -> int:
+    return int(float(station_id))
+
+
 def elasticity_compute(db: Session, window_days: int = 90) -> dict[str, object]:
     window_start = datetime.now(tz=timezone.utc) - timedelta(days=window_days)
     has_product_dim = detect_product_dimension()
+    use_liters = detect_liters_dimension()
     _ensure_ch_table()
 
-    operations = (
-        db.query(Operation)
-        .filter(
-            Operation.created_at >= window_start,
-            Operation.fuel_station_id.isnot(None),
-            Operation.status.in_([OperationStatus.CAPTURED, OperationStatus.COMPLETED]),
-        )
-        .all()
-    )
-    periods = _load_price_periods(db, window_start=window_start, has_product_dim=has_product_dim)
-    rows = _calculate_elasticity(periods, operations, has_product_dim)
+    periods = _load_price_periods(db, window_start=window_start)
+    events = _load_ch_events(window_start=window_start, has_product_dim=has_product_dim, use_liters=use_liters)
+    if not events:
+        events = _load_pg_events(db, window_start=window_start, has_product_dim=has_product_dim)
+
+    rows = _calculate_elasticity(periods, events, has_product_dim, use_liters)
 
     db.query(StationElasticity).filter(StationElasticity.window_days == window_days).delete()
     for row in rows:
@@ -323,27 +318,31 @@ def elasticity_compute(db: Session, window_days: int = 90) -> dict[str, object]:
     db.commit()
 
     if _ch_enabled() and _ch_ping() and rows:
-        payload = "\n".join(
-            json.dumps(
+        serializable_rows = []
+        for row in rows:
+            try:
+                station_id_uint = _to_uint64(str(row["station_id"]))
+            except Exception:
+                continue
+            serializable_rows.append(
                 {
                     **row,
-                    "station_id": int(float(row["station_id"])),
+                    "station_id": station_id_uint,
                     "window_days": window_days,
                     "updated_at": row["updated_at"].strftime("%Y-%m-%d %H:%M:%S"),
-                },
-                separators=(",", ":"),
+                }
             )
-            for row in rows
-        ) + "\n"
-        try:
-            requests.post(
-                f"{settings.CLICKHOUSE_URL.rstrip('/')}/",
-                params={"database": settings.CLICKHOUSE_DB, "query": "INSERT INTO neft_geo.fact_station_elasticity FORMAT JSONEachRow"},
-                data=payload.encode("utf-8"),
-                timeout=30,
-            ).raise_for_status()
-        except Exception:
-            logger.exception("commercial.elasticity_clickhouse_write_failed")
+        if serializable_rows:
+            payload = "\n".join(json.dumps(item, separators=(",", ":")) for item in serializable_rows) + "\n"
+            try:
+                requests.post(
+                    f"{settings.CLICKHOUSE_URL.rstrip('/')}/",
+                    params={"database": settings.CLICKHOUSE_DB, "query": "INSERT INTO neft_geo.fact_station_elasticity FORMAT JSONEachRow"},
+                    data=payload.encode("utf-8"),
+                    timeout=30,
+                ).raise_for_status()
+            except Exception:
+                logger.exception("commercial.elasticity_clickhouse_write_failed")
 
     logger.info("commercial.elasticity_computed window_days=%s stations=%s has_product_dim=%s", window_days, len(rows), has_product_dim)
     return {"window_days": window_days, "has_product_dim": has_product_dim, "rows": len(rows)}
