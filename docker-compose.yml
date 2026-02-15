@@ -305,6 +305,26 @@ services:
     ports:
       - "8001:8000"
 
+
+  event-worker:
+    build:
+      context: .
+      dockerfile: platform/processing-core/Dockerfile
+    container_name: neft-processing-event-worker-1
+    profiles: ["prod", "dev"]
+    env_file:
+      - .env
+    environment:
+      APP_ENV: ${APP_ENV:-prod}
+      SERVICE_NAME: event-worker
+      NEFT_DB_SCHEMA: ${NEFT_DB_SCHEMA:-processing_core}
+    command: ["python", "-m", "app.event_worker"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
   integration-hub:
     build:
       context: .

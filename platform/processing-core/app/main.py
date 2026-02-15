@@ -105,6 +105,7 @@ from app.services.partner_trust_metrics import metrics as partner_trust_metrics
 from app.services.email_metrics import metrics as email_metrics
 from app.services.report_schedule_metrics import metrics as report_schedule_metrics
 from app.services.notification_metrics import metrics as notification_metrics
+from app.services.event_outbox_metrics import load_event_outbox_metrics
 from app.services.limits import (
     CheckAndReserveRequest,
     CheckAndReserveTaskResponse,
@@ -1342,6 +1343,32 @@ def _risk_v5_metrics() -> list[str]:
     return lines
 
 
+def _event_outbox_metrics() -> list[str]:
+    db = get_sessionmaker()()
+    try:
+        snapshot = load_event_outbox_metrics(db)
+    finally:
+        db.close()
+
+    return [
+        "# HELP event_outbox_pending_total Number of pending outbox events.",
+        "# TYPE event_outbox_pending_total gauge",
+        f"event_outbox_pending_total {snapshot.pending_total}",
+        "# HELP event_outbox_failed_total Number of failed outbox events.",
+        "# TYPE event_outbox_failed_total gauge",
+        f"event_outbox_failed_total {snapshot.failed_total}",
+        "# HELP event_outbox_published_total Number of published outbox events.",
+        "# TYPE event_outbox_published_total gauge",
+        f"event_outbox_published_total {snapshot.published_total}",
+        "# HELP event_outbox_retry_total Total outbox retry attempts.",
+        "# TYPE event_outbox_retry_total counter",
+        f"event_outbox_retry_total {snapshot.retry_total}",
+        "# HELP event_outbox_lag_seconds Max lag (seconds) for pending outbox events.",
+        "# TYPE event_outbox_lag_seconds gauge",
+        f"event_outbox_lag_seconds {snapshot.lag_seconds}",
+    ]
+
+
 @app.get("/metrics", response_class=PlainTextResponse)
 def metrics() -> str:  # pragma: no cover - response verified via API test
     lines = [
@@ -1368,6 +1395,7 @@ def metrics() -> str:  # pragma: no cover - response verified via API test
     lines.extend(_fleet_metrics())
     lines.extend(_bi_metrics())
     lines.extend(_reconciliation_metrics())
+    lines.extend(_event_outbox_metrics())
     return "\n".join(lines) + "\n"
 
 
