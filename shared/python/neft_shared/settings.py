@@ -225,7 +225,8 @@ class Settings:
     )
     BI_CLICKHOUSE_ENABLED: bool = os.getenv("BI_CLICKHOUSE_ENABLED", "0").lower() in {"1", "true", "yes"}
     CLICKHOUSE_URL: str = os.getenv("CLICKHOUSE_URL", "http://clickhouse:8123")
-    CLICKHOUSE_DB: str = os.getenv("CLICKHOUSE_DB", "default")
+    CLICKHOUSE_DB: str = os.getenv("CLICKHOUSE_DB", "neft_geo")
+    GEO_ANALYTICS_BACKEND: str = os.getenv("GEO_ANALYTICS_BACKEND", "clickhouse")
 
     # Telegram notifications
     TELEGRAM_BOT_TOKEN: str = os.getenv("TELEGRAM_BOT_TOKEN", "")

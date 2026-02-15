@@ -15,6 +15,13 @@ from app.schemas.geo import (
 )
 from app.services.geo_analytics import GeoBBox as ServiceGeoBBox
 from app.services.geo_analytics import query_station_overlay_points
+from app.services.geo_clickhouse import (
+    GeoClickhouseError,
+    clickhouse_geo_enabled,
+    clickhouse_ping,
+    fetch_top_station_metrics as fetch_top_station_metrics_ch,
+    query_station_overlay_points as query_station_overlay_points_ch,
+)
 from app.services.geo_metrics import fetch_top_station_metrics
 
 router = APIRouter(prefix="/api/v1/geo/stations", tags=["geo"])
@@ -42,15 +49,37 @@ def get_geo_stations_metrics(
     )
     parsed_to = datetime.strptime(date_to, "%Y-%m-%d").date() if date_to else now_day
 
-    items = fetch_top_station_metrics(
-        db,
-        date_from=parsed_from,
-        date_to=parsed_to,
-        metric=metric.value,
-        limit=limit,
-        risk_zone=risk_zone,
-        health_status=health_status,
-    )
+    use_clickhouse = clickhouse_geo_enabled() and clickhouse_ping()
+    if use_clickhouse:
+        try:
+            items = fetch_top_station_metrics_ch(
+                date_from=parsed_from,
+                date_to=parsed_to,
+                metric=metric.value,
+                limit=limit,
+                risk_zone=risk_zone,
+                health_status=health_status,
+            )
+        except GeoClickhouseError:
+            items = fetch_top_station_metrics(
+                db,
+                date_from=parsed_from,
+                date_to=parsed_to,
+                metric=metric.value,
+                limit=limit,
+                risk_zone=risk_zone,
+                health_status=health_status,
+            )
+    else:
+        items = fetch_top_station_metrics(
+            db,
+            date_from=parsed_from,
+            date_to=parsed_to,
+            metric=metric.value,
+            limit=limit,
+            risk_zone=risk_zone,
+            health_status=health_status,
+        )
 
     return GeoStationsMetricsResponse(
         date_from=parsed_from,
@@ -92,20 +121,47 @@ def get_geo_stations_overlay(
     )
     parsed_to = datetime.strptime(date_to, "%Y-%m-%d").date() if date_to else now_day
 
-    items = query_station_overlay_points(
-        db,
-        date_from=parsed_from,
-        date_to=parsed_to,
-        bbox=ServiceGeoBBox(
-            min_lat=min_lat, min_lon=min_lon, max_lat=max_lat, max_lon=max_lon
-        ),
-        metric=metric.value,
-        limit=limit,
-        risk_zone=risk_zone,
-        health_status=health_status,
-        partner_id=partner_id,
-        min_value=min_value,
-    )
+    bbox = ServiceGeoBBox(min_lat=min_lat, min_lon=min_lon, max_lat=max_lat, max_lon=max_lon)
+    use_clickhouse = clickhouse_geo_enabled() and clickhouse_ping()
+    if use_clickhouse:
+        try:
+            items = query_station_overlay_points_ch(
+                date_from=parsed_from,
+                date_to=parsed_to,
+                bbox=bbox,
+                metric=metric.value,
+                limit=limit,
+                risk_zone=risk_zone,
+                health_status=health_status,
+                partner_id=partner_id,
+                min_value=min_value,
+            )
+        except GeoClickhouseError:
+            items = query_station_overlay_points(
+                db,
+                date_from=parsed_from,
+                date_to=parsed_to,
+                bbox=bbox,
+                metric=metric.value,
+                limit=limit,
+                risk_zone=risk_zone,
+                health_status=health_status,
+                partner_id=partner_id,
+                min_value=min_value,
+            )
+    else:
+        items = query_station_overlay_points(
+            db,
+            date_from=parsed_from,
+            date_to=parsed_to,
+            bbox=bbox,
+            metric=metric.value,
+            limit=limit,
+            risk_zone=risk_zone,
+            health_status=health_status,
+            partner_id=partner_id,
+            min_value=min_value,
+        )
 
     metric_getters = {
         "tx_count": lambda item: item.tx_count,

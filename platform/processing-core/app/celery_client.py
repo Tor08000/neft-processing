@@ -107,6 +107,10 @@ celery_client.conf.update(
             "task": "geo.tiles_overlays_backfill",
             "schedule": crontab(day_of_week="sun", hour=3, minute=30),
         },
+        "geo.clickhouse_sync": {
+            "task": "geo.clickhouse_sync",
+            "schedule": crontab(minute="*/5"),
+        },
     },
 )
 
