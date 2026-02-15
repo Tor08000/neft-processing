@@ -486,7 +486,7 @@ BEGIN
   EXECUTE format('CREATE SCHEMA IF NOT EXISTS %I', '${schema_resolved}');
 END \$\$;
 
-SET search_path TO "${schema_resolved}",public;
+SET search_path TO \"${schema_resolved}\",public;
 
 DO \$\$
 BEGIN
@@ -702,14 +702,16 @@ fi
 
 echo "[entrypoint] version validation OK: heads=[$(printf "%s\n" "$found_versions_sorted" | tr '\n' ' ')]"
 
-required_state=$(psql "$PSQL_URL" -v ON_ERROR_STOP=1 -Atc "SET search_path TO \"${schema_resolved}\",public; SELECT to_regclass('${schema_resolved}.operations'), to_regclass('${schema_resolved}.alembic_version_core');" | tail -n 1)
-IFS='|' read -r required_operations required_version_table <<EOF
-$required_state
+required_tables_state=$(psql "$PSQL_URL" -v ON_ERROR_STOP=1 -Atc "SET search_path TO \"${schema_resolved}\",public; SELECT to_regclass('${schema_resolved}.users'), to_regclass('${schema_resolved}.clients'), to_regclass('${schema_resolved}.client_user_roles'), to_regclass('${schema_resolved}.cards'), to_regclass('${schema_resolved}.card_limits'), to_regclass('${schema_resolved}.operations'), to_regclass('${schema_resolved}.alembic_version_core');" | tail -n 1)
+IFS='|' read -r required_users required_clients required_client_user_roles required_cards required_card_limits required_operations required_version_table <<EOF
+$required_tables_state
 EOF
-if [ -z "$required_operations" ] || [ -z "$required_version_table" ]; then
-    echo "[entrypoint] required tables missing after migrations: ${schema_resolved}.operations=${required_operations} ${schema_resolved}.alembic_version_core=${required_version_table}" >&2
+if [ -z "$required_users" ] || [ -z "$required_clients" ] || [ -z "$required_client_user_roles" ] || [ -z "$required_cards" ] || [ -z "$required_card_limits" ] || [ -z "$required_operations" ] || [ -z "$required_version_table" ]; then
+    echo "[entrypoint] required tables missing after migrations: ${schema_resolved}.users=${required_users} ${schema_resolved}.clients=${required_clients} ${schema_resolved}.client_user_roles=${required_client_user_roles} ${schema_resolved}.cards=${required_cards} ${schema_resolved}.card_limits=${required_card_limits} ${schema_resolved}.operations=${required_operations} ${schema_resolved}.alembic_version_core=${required_version_table}" >&2
     exit 1
 fi
+echo "[entrypoint] required tables present: users=${required_users} clients=${required_clients} client_user_roles=${required_client_user_roles} cards=${required_cards} card_limits=${required_card_limits} operations=${required_operations} version_table=${required_version_table}"
+
 
 run_pytest=0
 if [ "${NEFT_MODE}" = "test" ]; then
