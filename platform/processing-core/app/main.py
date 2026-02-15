@@ -226,6 +226,17 @@ try:
 except Exception:  # pragma: no cover - в dev может ещё не существовать
     commercial_elasticity_router = None  # type: ignore
 
+try:
+    from app.api.v1.endpoints.commercial_price_recommendations import (
+        admin_router as commercial_price_recommendations_admin_router,
+    )
+    from app.api.v1.endpoints.commercial_price_recommendations import (
+        router as commercial_price_recommendations_router,
+    )
+except Exception:  # pragma: no cover - в dev может ещё не существовать
+    commercial_price_recommendations_router = None  # type: ignore
+    commercial_price_recommendations_admin_router = None  # type: ignore
+
 SERVICE_NAME = os.getenv("SERVICE_NAME", "core-api")
 DEFAULT_API_PREFIX = "/api/core"
 LEGACY_API_PREFIX = "/api"
@@ -423,6 +434,10 @@ if commercial_margin_router is not None:
     safe_include_router(app, commercial_margin_router, prefix="")
 if commercial_elasticity_router is not None:
     safe_include_router(app, commercial_elasticity_router, prefix="")
+if commercial_price_recommendations_router is not None:
+    safe_include_router(app, commercial_price_recommendations_router, prefix="")
+if commercial_price_recommendations_admin_router is not None:
+    safe_include_router(app, commercial_price_recommendations_admin_router, prefix="")
 
 if intake_router is not None:
     safe_include_router(app, intake_router, prefix="")
