@@ -34,7 +34,7 @@ def test_auth_me_requires_bearer_token():
 
 
 def test_auth_me_returns_user_payload(monkeypatch: pytest.MonkeyPatch):
-    password_hash = hash_password("admin")
+    password_hash = hash_password("admin123")
     demo_user = User(
         id="00000000-0000-0000-0000-000000000999",
         email="admin@example.com",
@@ -59,7 +59,7 @@ def test_auth_me_returns_user_payload(monkeypatch: pytest.MonkeyPatch):
 
     login = client.post(
         "/api/v1/auth/login",
-        json={"email": "admin@example.com", "password": "admin", "portal": "admin"},
+        json={"email": "admin@example.com", "password": "admin123", "portal": "admin"},
     )
     assert login.status_code == 200
 
@@ -80,7 +80,7 @@ def test_auth_me_returns_user_payload(monkeypatch: pytest.MonkeyPatch):
 
 
 def test_login_token_valid_for_me(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
-    password_hash = hash_password("admin")
+    password_hash = hash_password("admin123")
     demo_user = User(
         id="00000000-0000-0000-0000-000000000999",
         email="admin@example.com",
@@ -113,7 +113,7 @@ def test_login_token_valid_for_me(monkeypatch: pytest.MonkeyPatch, tmp_path: Pat
 
     login = client.post(
         "/api/v1/auth/login",
-        json={"email": "admin@example.com", "password": "admin", "portal": "admin"},
+        json={"email": "admin@example.com", "password": "admin123", "portal": "admin"},
     )
     assert login.status_code == 200
 
@@ -133,7 +133,7 @@ def test_login_token_valid_for_me(monkeypatch: pytest.MonkeyPatch, tmp_path: Pat
 
 
 def test_auth_me_accepts_partner_portal(monkeypatch: pytest.MonkeyPatch):
-    password_hash = hash_password("admin")
+    password_hash = hash_password("admin123")
     demo_user = User(
         id="00000000-0000-0000-0000-000000000999",
         email="admin@example.com",
@@ -158,7 +158,7 @@ def test_auth_me_accepts_partner_portal(monkeypatch: pytest.MonkeyPatch):
 
     login = client.post(
         "/api/v1/auth/login",
-        json={"email": "admin@example.com", "password": "admin", "portal": "partner"},
+        json={"email": "admin@example.com", "password": "admin123", "portal": "partner"},
     )
     assert login.status_code == 200
 

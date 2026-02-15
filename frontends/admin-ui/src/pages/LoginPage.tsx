@@ -10,7 +10,7 @@ export const LoginPage: React.FC = () => {
   const { login, error, accessToken } = useAuth();
   const navigate = useNavigate();
   const [email, setEmail] = useState("admin@example.com");
-  const [password, setPassword] = useState("admin");
+  const [password, setPassword] = useState("admin123");
   const [submitting, setSubmitting] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
   const [capsLockOn, setCapsLockOn] = useState(false);
@@ -74,7 +74,7 @@ export const LoginPage: React.FC = () => {
         ) : null}
         <div className="login-demo muted small">
           <CopyChip label="Demo" value="admin@example.com" onCopy={() => showToast("success", "Скопировано")} />
-          <CopyChip label="Demo" value="admin" onCopy={() => showToast("success", "Скопировано")} />
+          <CopyChip label="Demo" value="admin123" onCopy={() => showToast("success", "Скопировано")} />
         </div>
         <form onSubmit={handleSubmit} className="login-form">
           <label htmlFor="admin-email">
@@ -103,7 +103,7 @@ export const LoginPage: React.FC = () => {
               onChange={(e) => setPassword(e.target.value)}
               onKeyUp={(event) => setCapsLockOn(event.getModifierState("CapsLock"))}
               onBlur={() => setCapsLockOn(false)}
-              placeholder="admin"
+              placeholder="admin123"
               required
               autoComplete="current-password"
               disabled={submitting}

@@ -18,14 +18,20 @@ def _client() -> TestClient:
 
 
 def test_login_request_normalizes_email():
-    request = LoginRequest(email=" Client@Example.COM \t", password="secret")
+    request = LoginRequest(email=" Client@Example.COM 	", password="secret")
 
     assert request.email == "client@example.com"
 
 
-def test_login_request_rejects_invalid_email():
+def test_login_request_accepts_username():
+    request = LoginRequest(username=" Admin ", password="secret")
+
+    assert request.username == "admin"
+
+
+def test_login_request_rejects_missing_identifier():
     with pytest.raises(ValidationError):
-        LoginRequest(email="invalid", password="secret")
+        LoginRequest(password="secret")
 
 
 def test_client_demo_login_local_domain_ok(monkeypatch):
@@ -93,6 +99,39 @@ def test_client_login_invalid_password(monkeypatch):
     assert response.status_code == 401
     assert response.json() == {"detail": "Invalid credentials"}
 
+
+
+
+def test_admin_login_accepts_username(monkeypatch):
+    password_hash = hash_password("admin123")
+    demo_user = User(
+        id="00000000-0000-0000-0000-00000000000a",
+        email="admin@example.com",
+        username="admin",
+        full_name="Demo Admin",
+        password_hash=password_hash,
+        is_active=True,
+        created_at=None,
+    )
+
+    async def fake_get_user(login: str):
+        if login.lower() == "admin":
+            return demo_user
+        return None
+
+    async def fake_get_roles(_user_id: str):
+        return ["ADMIN", "PLATFORM_ADMIN"]
+
+    monkeypatch.setattr(auth, "_get_user_from_db", fake_get_user)
+    monkeypatch.setattr(auth, "_get_roles_for_user", fake_get_roles)
+
+    response = _client().post(
+        "/api/v1/auth/login",
+        json={"username": "admin", "password": "admin123", "portal": "admin"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["email"] == "admin@example.com"
 
 def test_login_returns_503_when_rsa_invalid(monkeypatch):
     password_hash = hash_password("client")
@@ -204,7 +243,7 @@ def test_login_sets_client_portal_claims(monkeypatch):
 
 
 def test_login_sets_admin_portal_claims(monkeypatch):
-    password_hash = hash_password("admin")
+    password_hash = hash_password("admin123")
     demo_user = User(
         id="00000000-0000-0000-0000-000000000006",
         email="admin@neft.local",
@@ -227,7 +266,7 @@ def test_login_sets_admin_portal_claims(monkeypatch):
 
     response = _client().post(
         "/api/v1/auth/login",
-        json={"email": "admin@neft.local", "password": "admin", "portal": "admin"},
+        json={"email": "admin@neft.local", "password": "admin123", "portal": "admin"},
     )
 
     assert response.status_code == 200

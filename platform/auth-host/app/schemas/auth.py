@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 def _normalize_email(value: str) -> str:
@@ -31,14 +31,33 @@ class RegisterRequest(BaseModel):
 
 
 class LoginRequest(BaseModel):
-    email: str
+    email: str | None = None
+    username: str | None = None
     password: str
     portal: str | None = Field(default=None, description="client, admin, or partner")
 
     @field_validator("email")
     @classmethod
-    def validate_email(cls, v: str) -> str:  # noqa: D417
+    def validate_email(cls, v: str | None) -> str | None:  # noqa: D417
+        if v is None:
+            return None
         return _normalize_email(v)
+
+    @field_validator("username")
+    @classmethod
+    def validate_username(cls, v: str | None) -> str | None:  # noqa: D417
+        if v is None:
+            return None
+        normalized = v.strip().lower()
+        if not normalized:
+            raise ValueError("username is empty")
+        return normalized
+
+    @model_validator(mode="after")
+    def validate_login_identifier(self) -> "LoginRequest":
+        if not self.email and not self.username:
+            raise ValueError("email or username required")
+        return self
 
 
 class TokenResponse(BaseModel):

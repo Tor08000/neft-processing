@@ -45,7 +45,7 @@ Partner
 ```
 
 Источники дефолтов:
-- Admin UI: `admin@example.com` / `admin`.【F:frontends/admin-ui/src/pages/LoginPage.tsx†L11-L15】
+- Admin UI: `admin@example.com` / `admin123`.【F:frontends/admin-ui/src/pages/LoginPage.tsx†L11-L15】
 - Client UI: `client@neft.local` / `client`.【F:frontends/client-portal/src/pages/LoginPage.tsx†L14-L17】
 - Partner UI: `partner@neft.local` / `partner`.【F:frontends/partner-portal/src/pages/LoginPage.tsx†L11-L14】
 

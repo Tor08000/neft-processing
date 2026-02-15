@@ -6,6 +6,7 @@ from typing import Any
 
 import pytest
 
+import app.bootstrap as bootstrap_module
 from app.bootstrap import bootstrap_admin_account, seed_demo_client_account
 from app.settings import Settings
 
@@ -29,13 +30,14 @@ class _FakeCursor:
             user = next((u for u in self.state.users if u["email"].lower() == email), None)
             self._rows = [user] if user else []
         elif q.startswith("insert into users"):
-            user_id, email, full_name, password_hash = params
+            user_id, email, username, full_name, password_hash = params
             existing = next((u for u in self.state.users if u["email"].lower() == email.lower()), None)
             if not existing:
                 self.state.users.append(
                     {
                         "id": user_id,
                         "email": email,
+                        "username": username,
                         "full_name": full_name,
                         "password_hash": password_hash,
                         "is_active": True,
@@ -97,7 +99,7 @@ def _patch_db(monkeypatch: pytest.MonkeyPatch, state: _FakeState):
     def _fake_get_conn():
         return _FakeContext(state)
 
-    monkeypatch.setattr("app.bootstrap.get_conn", _fake_get_conn)
+    monkeypatch.setattr(bootstrap_module, "get_conn", _fake_get_conn)
 
 
 @pytest.mark.anyio

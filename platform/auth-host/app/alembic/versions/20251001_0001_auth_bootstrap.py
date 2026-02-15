@@ -35,6 +35,7 @@ def upgrade() -> None:
             "users",
             sa.Column("id", sa.UUID(), primary_key=True),
             sa.Column("email", sa.Text(), nullable=False, unique=True),
+            sa.Column("username", sa.Text(), nullable=True, unique=True),
             sa.Column("full_name", sa.Text(), nullable=True),
             sa.Column("password_hash", sa.Text(), nullable=False),
             sa.Column("is_active", sa.Boolean(), nullable=False, server_default=sa.text("TRUE")),
@@ -44,6 +45,9 @@ def upgrade() -> None:
 
     op.execute(
         sa.text(f'CREATE INDEX IF NOT EXISTS idx_users_email_lower ON "{AUTH_SCHEMA}".users (lower(email))')
+    )
+    op.execute(
+        sa.text(f'CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username_lower ON "{AUTH_SCHEMA}".users (lower(username)) WHERE username IS NOT NULL')
     )
 
     if not _table_exists("user_roles"):

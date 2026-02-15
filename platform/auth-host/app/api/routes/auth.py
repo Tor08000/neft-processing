@@ -71,16 +71,16 @@ async def _create_core_client(*, user_id: str, email: str, full_name: str | None
 
 
 async def _get_client_id_for_user(user_id: str) -> str | None:
-    async with get_conn() as (_conn, cur):
-        try:
+    try:
+        async with get_conn() as (_conn, cur):
             await cur.execute(
                 "SELECT client_id FROM user_clients WHERE user_id=%s",
                 (user_id,),
             )
             row = await cur.fetchone()
-        except Exception:
-            return None
-        return row["client_id"] if row else None
+            return row["client_id"] if row else None
+    except Exception:
+        return None
 
 
 def _admin_credentials() -> tuple[str, str]:
@@ -131,14 +131,14 @@ def _portal_token_config(portal: str) -> tuple[str, str]:
     return settings.auth_issuer, settings.auth_audience
 
 
-async def _get_user_from_db(email: str) -> User | None:
-    email_normalized = email.strip().lower()
+async def _get_user_from_db(login: str) -> User | None:
+    normalized_login = login.strip().lower()
 
     async with get_conn() as (_conn, cur):
         await cur.execute(
-            "SELECT id, email, full_name, password_hash, is_active, created_at "
-            "FROM users WHERE lower(email) = lower(%s) LIMIT 1",
-            (email_normalized,),
+            "SELECT id, email, username, full_name, password_hash, is_active, created_at "
+            "FROM users WHERE lower(email) = lower(%s) OR lower(username) = lower(%s) LIMIT 1",
+            (normalized_login, normalized_login),
         )
         row = await cur.fetchone()
         if not row:
@@ -271,30 +271,29 @@ async def signup(payload: RegisterRequest) -> SignupResponse:
 
 @router.post("/login", response_model=TokenResponse)
 async def login(request: Request, payload: LoginRequest) -> TokenResponse:
-    normalized_email = payload.email.strip().lower()
+    login_identifier = (payload.email or payload.username or "").strip().lower()
     portal = _resolve_login_portal(request, payload)
 
     subject_type = "user"
-    user_email = normalized_email
+    user_email = payload.email.strip().lower() if payload.email else ""
     client_id = None
     org_id = None
 
     logger.info(
-        "login attempt: email=%s -> normalized=%s", payload.email, normalized_email
+        "login attempt: login=%s", login_identifier
     )
 
     try:
-        user = await _get_user_from_db(normalized_email)
+        user = await _get_user_from_db(login_identifier)
     except Exception:
         logger.exception(
-            "Failed to fetch user during login", extra={"email": normalized_email}
+            "Failed to fetch user during login", extra={"login": login_identifier}
         )
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="internal_error")
 
     logger.info(
-        "login attempt: email=%s -> normalized=%s, user_found=%s",
-        payload.email,
-        normalized_email,
+        "login attempt: login=%s, user_found=%s",
+        login_identifier,
         bool(user),
     )
 
@@ -335,7 +334,7 @@ async def login(request: Request, payload: LoginRequest) -> TokenResponse:
             audience=audience,
         )
     except InvalidRSAKeyError:
-        logger.error("RSA keys unavailable during login", extra={"email": normalized_email})
+        logger.error("RSA keys unavailable during login", extra={"login": login_identifier})
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="rsa_keys_unavailable")
 
     return TokenResponse(
