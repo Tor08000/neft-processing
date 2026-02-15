@@ -104,6 +104,11 @@ INTEGRATION_HUB_UP.set(1)
 @app.on_event("startup")
 def startup() -> None:
     init_db()
+    logger.info(
+        "running in %s mode",
+        settings.app_env.upper(),
+        extra={"app_env": settings.app_env, "use_stub_edo": settings.use_stub_edo},
+    )
 
 
 @app.middleware("http")
@@ -223,6 +228,8 @@ def edo_document_status(edo_document_id: str, db: Session = Depends(get_db)) -> 
 
 @app.post("/v1/edo/send", response_model=EdoStubSendResponse)
 def edo_stub_send(payload: EdoStubSendRequest, request: Request, db: Session = Depends(get_db)) -> EdoStubSendResponse:
+    if not settings.use_stub_edo:
+        raise HTTPException(status_code=404, detail="edo_stub_disabled")
     record = create_stub_document(
         db,
         document_id=payload.doc_id,
@@ -245,6 +252,8 @@ def edo_stub_send(payload: EdoStubSendRequest, request: Request, db: Session = D
 
 @app.get("/v1/edo/{edo_doc_id}/status", response_model=EdoStubStatusResponse)
 def edo_stub_status(edo_doc_id: str, request: Request, db: Session = Depends(get_db)) -> EdoStubStatusResponse:
+    if not settings.use_stub_edo:
+        raise HTTPException(status_code=404, detail="edo_stub_disabled")
     record = get_stub_document(db, edo_doc_id)
     if not record:
         raise HTTPException(status_code=404, detail="edo_stub_document_not_found")
@@ -267,6 +276,8 @@ def edo_stub_simulate(
     request: Request,
     db: Session = Depends(get_db),
 ) -> EdoStubStatusResponse:
+    if not settings.use_stub_edo:
+        raise HTTPException(status_code=404, detail="edo_stub_disabled")
     try:
         status = EdoStubStatus(payload.status)
     except ValueError as exc:
