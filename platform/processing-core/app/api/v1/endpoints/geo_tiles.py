@@ -15,6 +15,13 @@ from app.schemas.geo import (
 )
 from app.services.geo_analytics import GeoBBox as ServiceGeoBBox
 from app.services.geo_analytics import query_cached_overlay_tiles, query_cached_tiles
+from app.services.geo_clickhouse import (
+    GeoClickhouseError,
+    clickhouse_geo_enabled,
+    clickhouse_ping,
+    query_overlay_tiles as query_overlay_tiles_ch,
+    query_tiles as query_tiles_ch,
+)
 
 router = APIRouter(prefix="/api/v1/geo", tags=["geo"])
 
@@ -57,14 +64,34 @@ def get_geo_tiles(
         min_lat=min_lat, min_lon=min_lon, max_lat=max_lat, max_lon=max_lon
     )
 
-    items = query_cached_tiles(
-        db,
-        date_from=parsed_from,
-        date_to=parsed_to,
-        zoom=zoom,
-        bbox=bbox,
-        metric=metric.value,
-    )
+    use_clickhouse = clickhouse_geo_enabled() and clickhouse_ping()
+    if use_clickhouse:
+        try:
+            items = query_tiles_ch(
+                date_from=parsed_from,
+                date_to=parsed_to,
+                zoom=zoom,
+                bbox=bbox,
+                metric=metric.value,
+            )
+        except GeoClickhouseError:
+            items = query_cached_tiles(
+                db,
+                date_from=parsed_from,
+                date_to=parsed_to,
+                zoom=zoom,
+                bbox=bbox,
+                metric=metric.value,
+            )
+    else:
+        items = query_cached_tiles(
+            db,
+            date_from=parsed_from,
+            date_to=parsed_to,
+            zoom=zoom,
+            bbox=bbox,
+            metric=metric.value,
+        )
     sorted_items = sorted(items, key=lambda item: float(item["value"]), reverse=True)
     limited_items = sorted_items[:limit_tiles]
 
@@ -111,14 +138,34 @@ def get_geo_tiles_overlays(
     bbox = ServiceGeoBBox(
         min_lat=min_lat, min_lon=min_lon, max_lat=max_lat, max_lon=max_lon
     )
-    items = query_cached_overlay_tiles(
-        db,
-        date_from=parsed_from,
-        date_to=parsed_to,
-        zoom=zoom,
-        bbox=bbox,
-        overlay_kind=overlay_kind.value,
-    )
+    use_clickhouse = clickhouse_geo_enabled() and clickhouse_ping()
+    if use_clickhouse:
+        try:
+            items = query_overlay_tiles_ch(
+                date_from=parsed_from,
+                date_to=parsed_to,
+                zoom=zoom,
+                bbox=bbox,
+                overlay_kind=overlay_kind.value,
+            )
+        except GeoClickhouseError:
+            items = query_cached_overlay_tiles(
+                db,
+                date_from=parsed_from,
+                date_to=parsed_to,
+                zoom=zoom,
+                bbox=bbox,
+                overlay_kind=overlay_kind.value,
+            )
+    else:
+        items = query_cached_overlay_tiles(
+            db,
+            date_from=parsed_from,
+            date_to=parsed_to,
+            zoom=zoom,
+            bbox=bbox,
+            overlay_kind=overlay_kind.value,
+        )
     sorted_items = sorted(items, key=lambda item: int(item["value"]), reverse=True)
     limited_items = sorted_items[:limit_tiles]
 

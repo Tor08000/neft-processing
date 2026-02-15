@@ -41,9 +41,15 @@ services:
     image: clickhouse/clickhouse-server:24.6
     container_name: neft-processing-clickhouse-1
     environment:
-      CLICKHOUSE_DB: ${CLICKHOUSE_DB:-default}
+      CLICKHOUSE_DB: ${CLICKHOUSE_DB:-neft_geo}
     volumes:
       - clickhouse-data:/var/lib/clickhouse
+      - ./analytics/ddl:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8123/ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
     ports:
       - "8123:8123"
       - "9002:9000"
@@ -246,7 +252,7 @@ services:
       NEFT_PDF_AUTO_GENERATE: ${NEFT_PDF_AUTO_GENERATE:-1}
       BI_CLICKHOUSE_ENABLED: ${BI_CLICKHOUSE_ENABLED:-0}
       CLICKHOUSE_URL: ${CLICKHOUSE_URL:-http://clickhouse:8123}
-      CLICKHOUSE_DB: ${CLICKHOUSE_DB:-default}
+      CLICKHOUSE_DB: ${CLICKHOUSE_DB:-neft_geo}
       DOCUMENT_SERVICE_ENABLED: ${DOCUMENT_SERVICE_ENABLED:-0}
       DOCUMENT_SERVICE_URL: ${DOCUMENT_SERVICE_URL:-http://document-service:8000}
       LOGISTICS_SERVICE_ENABLED: ${LOGISTICS_SERVICE_ENABLED:-0}
@@ -414,7 +420,7 @@ services:
       NEFT_PDF_AUTO_GENERATE: ${NEFT_PDF_AUTO_GENERATE:-1}
       BI_CLICKHOUSE_ENABLED: ${BI_CLICKHOUSE_ENABLED:-0}
       CLICKHOUSE_URL: ${CLICKHOUSE_URL:-http://clickhouse:8123}
-      CLICKHOUSE_DB: ${CLICKHOUSE_DB:-default}
+      CLICKHOUSE_DB: ${CLICKHOUSE_DB:-neft_geo}
     depends_on:
       core-api:
         condition: service_healthy
@@ -473,7 +479,7 @@ services:
       NEFT_PDF_AUTO_GENERATE: ${NEFT_PDF_AUTO_GENERATE:-1}
       BI_CLICKHOUSE_ENABLED: ${BI_CLICKHOUSE_ENABLED:-0}
       CLICKHOUSE_URL: ${CLICKHOUSE_URL:-http://clickhouse:8123}
-      CLICKHOUSE_DB: ${CLICKHOUSE_DB:-default}
+      CLICKHOUSE_DB: ${CLICKHOUSE_DB:-neft_geo}
     depends_on:
       core-api:
         condition: service_healthy
