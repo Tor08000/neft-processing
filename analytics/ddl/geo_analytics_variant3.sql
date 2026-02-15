@@ -139,3 +139,17 @@ INNER JOIN dim_stations s ON s.station_id = r.station_id
 ARRAY JOIN [8,10,12] AS z
 WHERE r.risk_red = 1
 GROUP BY day, zoom, overlay_kind, tile_x, tile_y;
+
+CREATE TABLE IF NOT EXISTS fact_station_margin_day
+(
+  day Date,
+  station_id String,
+  revenue_sum Float64,
+  cost_sum Float64,
+  gross_margin Float64,
+  tx_count UInt32,
+  updated_at DateTime
+)
+ENGINE = SummingMergeTree
+PARTITION BY toYYYYMM(day)
+ORDER BY (day, station_id);
