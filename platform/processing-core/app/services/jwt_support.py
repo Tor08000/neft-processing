@@ -32,6 +32,21 @@ _jwks_cache: dict[str, tuple[float, dict]] = {}
 _public_key_cache: dict[str, tuple[float, str]] = {}
 _jwks_failure_cache: dict[str, tuple[float, int]] = {}
 _public_key_failure_cache: dict[str, tuple[float, int]] = {}
+_rejection_log_window: dict[tuple[str, str, str, str, str, str], float] = {}
+
+REJECTION_LOG_WINDOW_SECONDS = float(os.getenv("AUTH_REJECTION_LOG_WINDOW_SECONDS", "10"))
+
+
+def _should_emit_rejection_log(key: tuple[str, str, str, str, str, str], *, now: float | None = None) -> bool:
+    ts = time.time() if now is None else now
+    expired = [item for item, seen_at in _rejection_log_window.items() if ts - seen_at > REJECTION_LOG_WINDOW_SECONDS]
+    for item in expired:
+        _rejection_log_window.pop(item, None)
+    last_seen = _rejection_log_window.get(key)
+    if last_seen is not None and ts - last_seen <= REJECTION_LOG_WINDOW_SECONDS:
+        return False
+    _rejection_log_window[key] = ts
+    return True
 
 
 def parse_allowed_algs(default: str = "RS256") -> list[str]:
@@ -210,20 +225,33 @@ def log_token_rejection(
     reason: str,
     event: str,
     exc: Exception | None = None,
+    path: str | None = None,
 ) -> None:
     header = get_unverified_header(token)
     claims = get_unverified_claims(token)
+    issuer = str(claims.get("iss") or "")
+    audience = claims.get("aud")
+    audience_value = ",".join(str(item) for item in audience) if isinstance(audience, list) else str(audience or "")
+    subject = str(claims.get("sub") or "")
+    path_value = path or ""
     payload = {
-        "iss": claims.get("iss"),
-        "aud": claims.get("aud"),
+        "iss": issuer,
+        "aud": audience,
         "alg": header.get("alg"),
         "kid": header.get("kid"),
-        "subject": claims.get("sub"),
+        "subject": subject,
         "reason": reason,
+        "path": path_value or None,
     }
     if exc is not None:
         payload["error"] = str(exc)
-    logger.warning(event, extra=payload)
+
+    service = event.split(".", 1)[0]
+    dedupe_key = (service, issuer, audience_value, subject, reason, path_value)
+    if _should_emit_rejection_log(dedupe_key):
+        logger.warning(event, extra=payload)
+    elif os.getenv("ENV", "").lower() == "dev":
+        logger.debug(f"{event}.suppressed", extra=payload)
 
 
 def _fetch_cached(
