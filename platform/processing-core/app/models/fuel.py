@@ -584,6 +584,20 @@ class FuelStationPriceAudit(Base):
     meta = Column(JSON, nullable=True)
 
 
+class CommercialRecommendationAction(Base):
+    __tablename__ = "commercial_recommendation_actions"
+    __table_args__ = (
+        Index("ix_commercial_recommendation_actions_rec_ts", "rec_id", "ts"),
+    )
+
+    id = Column(GUID(), primary_key=True, default=new_uuid_str)
+    rec_id = Column(String(128), nullable=False, index=True)
+    action_type = Column(String(16), nullable=False)
+    actor = Column(String(256), nullable=True)
+    ts = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    meta = Column(JSON, nullable=True)
+
+
 class FuelIngestJob(Base):
     __tablename__ = "fuel_ingest_jobs"
     __table_args__ = (Index("ix_fuel_ingest_jobs_provider_received", "provider_code", "received_at"),)

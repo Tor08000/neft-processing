@@ -24,6 +24,10 @@ class RecommendationDecisionPayload(BaseModel):
     comment: str | None = None
 
 
+class RecommendationApplyPayload(BaseModel):
+    effective_from: datetime | None = None
+    comment: str | None = None
+
 class PriceRecommendationItem(BaseModel):
     id: str
     created_at: datetime

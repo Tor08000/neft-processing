@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 
 from app.api.dependencies.admin import require_admin_user
@@ -11,10 +11,12 @@ from app.schemas.commercial_price_recommendations import (
     PriceRecommendationListResponse,
     PriceRecommendationStatusResponse,
     RecommendationAction,
+    RecommendationApplyPayload,
     RecommendationDecisionPayload,
     RecommendationStatus,
 )
 from app.services.commercial_price_recommendations import (
+    apply_accepted_recommendation,
     get_station_price_recommendations,
     list_price_recommendations,
     update_recommendation_status,
@@ -76,6 +78,7 @@ def accept_recommendation(
     recommendation_id: str,
     payload: RecommendationDecisionPayload,
     token: dict = Depends(require_admin_user),
+    db: Session = Depends(get_db),
 ) -> PriceRecommendationStatusResponse:
     decided_by = str(token.get("sub") or token.get("email") or "admin")
     if not update_recommendation_status(
@@ -83,6 +86,7 @@ def accept_recommendation(
         RecommendationStatus.ACCEPTED.value,
         decided_by=decided_by,
         comment=payload.comment,
+        db=db,
     ):
         raise HTTPException(status_code=503, detail="recommendations_storage_unavailable")
     return PriceRecommendationStatusResponse(id=recommendation_id, status=RecommendationStatus.ACCEPTED)
@@ -93,6 +97,7 @@ def reject_recommendation(
     recommendation_id: str,
     payload: RecommendationDecisionPayload,
     token: dict = Depends(require_admin_user),
+    db: Session = Depends(get_db),
 ) -> PriceRecommendationStatusResponse:
     decided_by = str(token.get("sub") or token.get("email") or "admin")
     if not update_recommendation_status(
@@ -100,6 +105,40 @@ def reject_recommendation(
         RecommendationStatus.REJECTED.value,
         decided_by=decided_by,
         comment=payload.comment,
+        db=db,
     ):
         raise HTTPException(status_code=503, detail="recommendations_storage_unavailable")
     return PriceRecommendationStatusResponse(id=recommendation_id, status=RecommendationStatus.REJECTED)
+
+
+@admin_router.post("/{recommendation_id}/apply", response_model=PriceRecommendationStatusResponse)
+def apply_recommendation(
+    recommendation_id: str,
+    payload: RecommendationApplyPayload,
+    request: Request,
+    token: dict = Depends(require_admin_user),
+    db: Session = Depends(get_db),
+) -> PriceRecommendationStatusResponse:
+    actor = str(token.get("sub") or token.get("email") or "admin")
+    request_id = request.headers.get("X-Request-Id") or request.headers.get("X-Correlation-Id")
+    try:
+        apply_accepted_recommendation(
+            db,
+            recommendation_id=recommendation_id,
+            actor=actor,
+            effective_from=payload.effective_from,
+            comment=payload.comment,
+            request_id=request_id,
+        )
+        db.commit()
+    except ValueError as exc:
+        db.rollback()
+        detail = str(exc)
+        status_code = 400
+        if detail in {"recommendation_not_accepted", "recommendation_action_not_applicable"}:
+            status_code = 409
+        if detail in {"recommendation_not_found", "station_not_found"}:
+            status_code = 404
+        raise HTTPException(status_code=status_code, detail=detail) from exc
+
+    return PriceRecommendationStatusResponse(id=recommendation_id, status=RecommendationStatus.APPLIED)
