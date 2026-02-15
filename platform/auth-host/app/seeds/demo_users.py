@@ -42,6 +42,7 @@ def _parse_roles(raw_value: str | None, default: list[str]) -> list[str]:
 @dataclass(frozen=True)
 class DemoUser:
     email: str
+    username: str | None
     password: str
     full_name: str | None
     roles: list[str]
@@ -50,6 +51,7 @@ class DemoUser:
 
 def get_demo_users() -> list[DemoUser]:
     admin_email = _require_env("NEFT_BOOTSTRAP_ADMIN_EMAIL")
+    admin_username = _env_or_default("NEFT_BOOTSTRAP_ADMIN_USERNAME", _env_or_default("ADMIN_USERNAME", "admin"))
     admin_password = _require_env("NEFT_BOOTSTRAP_ADMIN_PASSWORD")
     admin_full_name = _env_or_default(
         "NEFT_BOOTSTRAP_ADMIN_FULL_NAME",
@@ -104,12 +106,14 @@ def get_demo_users() -> list[DemoUser]:
     return [
         DemoUser(
             email=admin_email,
+            username=admin_username,
             password=admin_password,
             full_name=admin_full_name,
             roles=admin_roles,
         ),
         DemoUser(
             email=client_email,
+            username=None,
             password=client_password,
             full_name=client_full_name,
             roles=client_roles,
@@ -117,6 +121,7 @@ def get_demo_users() -> list[DemoUser]:
         ),
         DemoUser(
             email=partner_email,
+            username=None,
             password=partner_password,
             full_name=partner_full_name,
             roles=partner_roles,
@@ -133,13 +138,14 @@ async def ensure_user(
     bootstrap_password_version: int = 0,
 ) -> str:
     normalized_email = demo_user.email.strip().lower()
+    normalized_username = demo_user.username.strip().lower() if demo_user.username else None
     password_hash = hash_password(demo_user.password)
     demo_user_id = demo_user.preferred_id or uuid4()
 
     async with get_conn() as (conn, cur):
         await cur.execute(
             """
-            SELECT id, email, full_name, password_hash, is_active, bootstrap_password_version
+            SELECT id, email, username, full_name, password_hash, is_active, bootstrap_password_version
             FROM users
             WHERE lower(email) = lower(%s)
             """,
@@ -162,11 +168,11 @@ async def ensure_user(
             insert_version = target_version if reset_password_once and force_password else 0
             await cur.execute(
                 """
-                INSERT INTO users (id, email, full_name, password_hash, is_active, bootstrap_password_version)
-                VALUES (%s, %s, %s, %s, TRUE, %s)
+                INSERT INTO users (id, email, username, full_name, password_hash, is_active, bootstrap_password_version)
+                VALUES (%s, %s, %s, %s, %s, TRUE, %s)
                 ON CONFLICT (email) DO NOTHING
                 """,
-                (user_id, normalized_email, demo_user.full_name, password_hash, insert_version),
+                (user_id, normalized_email, normalized_username, demo_user.full_name, password_hash, insert_version),
             )
             password_reset = True
             full_name_updated = bool(demo_user.full_name)
@@ -190,6 +196,12 @@ async def ensure_user(
                         (password_hash, target_version, user_id),
                     )
                     password_reset = True
+
+            if normalized_username and normalized_username != (existing_user.get("username") or ""):
+                await cur.execute(
+                    "UPDATE users SET username = %s WHERE id = %s",
+                    (normalized_username, user_id),
+                )
 
             if demo_user.full_name and demo_user.full_name != existing_user.get("full_name"):
                 await cur.execute(

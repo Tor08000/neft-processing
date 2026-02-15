@@ -113,8 +113,13 @@ class Settings(SharedSettings):
         "admin@example.com",
         fallback_keys=("DEMO_ADMIN_EMAIL",),
     )
+    demo_admin_username: str = _env_or_default(
+        "NEFT_DEMO_ADMIN_USERNAME",
+        "admin",
+        fallback_keys=("DEMO_ADMIN_USERNAME",),
+    )
     demo_admin_password: str = _env_or_default(
-        "NEFT_DEMO_ADMIN_PASSWORD", "admin", fallback_keys=("DEMO_ADMIN_PASSWORD",)
+        "NEFT_DEMO_ADMIN_PASSWORD", "admin123", fallback_keys=("DEMO_ADMIN_PASSWORD",)
     )
     demo_admin_full_name: str = _env_or_default(
         "NEFT_DEMO_ADMIN_FULL_NAME",
@@ -136,9 +141,13 @@ class Settings(SharedSettings):
         "NEFT_BOOTSTRAP_ADMIN_EMAIL",
         _env_or_default("NEFT_DEMO_ADMIN_EMAIL", "admin@example.com", fallback_keys=("DEMO_ADMIN_EMAIL",)),
     )
+    bootstrap_admin_username: str = _env_or_default(
+        "NEFT_BOOTSTRAP_ADMIN_USERNAME",
+        _env_or_default("NEFT_DEMO_ADMIN_USERNAME", "admin", fallback_keys=("DEMO_ADMIN_USERNAME",)),
+    )
     bootstrap_admin_password: str = _env_or_default(
         "NEFT_BOOTSTRAP_ADMIN_PASSWORD",
-        _env_or_default("NEFT_DEMO_ADMIN_PASSWORD", "admin", fallback_keys=("DEMO_ADMIN_PASSWORD",)),
+        _env_or_default("NEFT_DEMO_ADMIN_PASSWORD", "admin123", fallback_keys=("DEMO_ADMIN_PASSWORD",)),
     )
     bootstrap_admin_full_name: str = _env_or_default(
         "NEFT_BOOTSTRAP_ADMIN_FULL_NAME",
@@ -188,6 +197,9 @@ class Settings(SharedSettings):
         self.demo_admin_email = _env_or_default(
             "NEFT_DEMO_ADMIN_EMAIL", self.demo_admin_email, fallback_keys=("DEMO_ADMIN_EMAIL",)
         )
+        self.demo_admin_username = _env_or_default(
+            "NEFT_DEMO_ADMIN_USERNAME", self.demo_admin_username, fallback_keys=("DEMO_ADMIN_USERNAME",)
+        )
         self.demo_admin_password = _env_or_default(
             "NEFT_DEMO_ADMIN_PASSWORD", self.demo_admin_password, fallback_keys=("DEMO_ADMIN_PASSWORD",)
         )
@@ -210,6 +222,9 @@ class Settings(SharedSettings):
         )
         self.bootstrap_admin_email = _env_or_default(
             "NEFT_BOOTSTRAP_ADMIN_EMAIL", self.bootstrap_admin_email
+        )
+        self.bootstrap_admin_username = _env_or_default(
+            "NEFT_BOOTSTRAP_ADMIN_USERNAME", self.bootstrap_admin_username
         )
         self.bootstrap_admin_password = _env_or_default(
             "NEFT_BOOTSTRAP_ADMIN_PASSWORD", self.bootstrap_admin_password

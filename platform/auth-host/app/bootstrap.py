@@ -53,6 +53,7 @@ async def bootstrap_demo_client(settings: Settings | None = None) -> None:
     settings = settings or get_settings()
     await _ensure_demo_user(
         email=settings.demo_client_email.strip(),
+        username=None,
         password=settings.demo_client_password,
         full_name=settings.demo_client_full_name,
         roles=["CLIENT_OWNER"],
@@ -88,6 +89,7 @@ async def bootstrap_admin_account_with_seed(
     roles = settings.bootstrap_admin_roles or settings.demo_admin_roles
     await _ensure_demo_user(
         email=email,
+        username=(settings.bootstrap_admin_username or settings.demo_admin_username),
         password=password,
         full_name=full_name,
         roles=roles,
@@ -111,6 +113,7 @@ async def bootstrap_admin(settings: Settings | None = None) -> None:
 
     status = await _ensure_demo_user(
         email=email,
+        username=(settings.bootstrap_admin_username or settings.demo_admin_username),
         password=password,
         full_name=settings.bootstrap_admin_full_name,
         roles=settings.bootstrap_admin_roles,
@@ -133,6 +136,7 @@ def _safe_uuid(value: str | None) -> UUID:
 async def _ensure_demo_user(
     *,
     email: str,
+    username: str | None,
     password: str,
     full_name: str | None,
     roles: list[str],
@@ -142,13 +146,14 @@ async def _ensure_demo_user(
     force_password_reset: bool = False,
 ) -> str:
     normalized_email = email.strip().lower()
+    normalized_username = username.strip().lower() if username else None
     password_hash = hash_password(password)
     demo_user_id = preferred_id or uuid4()
 
     async with get_conn() as (conn, cur):
         await cur.execute(
             """
-            SELECT id, email, password_hash, is_active FROM users WHERE lower(email) = lower(%s)
+            SELECT id, email, username, password_hash, is_active FROM users WHERE lower(email) = lower(%s)
             """,
             (normalized_email,),
         )
@@ -160,12 +165,12 @@ async def _ensure_demo_user(
         if not existing_user:
             await cur.execute(
                 """
-                INSERT INTO users (id, email, full_name, password_hash, is_active)
-                VALUES (%s, %s, %s, %s, TRUE)
+                INSERT INTO users (id, email, username, full_name, password_hash, is_active)
+                VALUES (%s, %s, %s, %s, %s, TRUE)
                 ON CONFLICT (email) DO NOTHING
                 RETURNING id
                 """,
-                (user_id, normalized_email, full_name, password_hash),
+                (user_id, normalized_email, normalized_username, full_name, password_hash),
             )
             row = await cur.fetchone()
             user_id = row.get("id") if row else user_id
@@ -177,6 +182,12 @@ async def _ensure_demo_user(
                     "UPDATE users SET is_active = TRUE WHERE id = %s",
                     (user_id,),
                 )
+            if normalized_username and normalized_username != (existing_user.get("username") or ""):
+                await cur.execute(
+                    "UPDATE users SET username = %s WHERE id = %s",
+                    (normalized_username, user_id),
+                )
+
             existing_hash = existing_user.get("password_hash")
             if force_password_reset:
                 await cur.execute(

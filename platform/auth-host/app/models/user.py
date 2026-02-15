@@ -13,6 +13,7 @@ class User:
     password_hash: str
     is_active: bool
     created_at: datetime | None
+    username: str | None = None
 
     @classmethod
     def from_row(cls, row: Mapping[str, Any]) -> "User":
@@ -23,4 +24,5 @@ class User:
             password_hash=row["password_hash"],
             is_active=bool(row.get("is_active", True)),
             created_at=row.get("created_at"),
+            username=row.get("username"),
         )
