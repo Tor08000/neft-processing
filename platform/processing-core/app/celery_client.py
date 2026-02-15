@@ -111,6 +111,10 @@ celery_client.conf.update(
             "task": "geo.clickhouse_sync",
             "schedule": crontab(minute="*/5"),
         },
+        "commercial.margin_build_daily": {
+            "task": "commercial.margin_build_daily",
+            "schedule": crontab(hour=3, minute=30),
+        },
         "ops.station_health_evaluate": {
             "task": "ops.station_health_evaluate",
             "schedule": crontab(minute="*/5"),
