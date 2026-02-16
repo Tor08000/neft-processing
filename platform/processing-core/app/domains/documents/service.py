@@ -8,9 +8,18 @@ from uuid import uuid4
 
 from fastapi import HTTPException, UploadFile
 
-from app.domains.documents.models import Document, DocumentDirection, DocumentFile, DocumentStatus
+from datetime import datetime
+
+from app.domains.documents.models import (
+    Document,
+    DocumentDirection,
+    DocumentFile,
+    DocumentSenderType,
+    DocumentStatus,
+)
 from app.domains.documents.repo import DocumentsRepository
 from app.domains.documents.schemas import (
+    AdminInboundDocumentCreateIn,
     DocumentCreateIn,
     DocumentDetailsResponse,
     DocumentFileOut,
@@ -59,6 +68,8 @@ class DocumentsService:
         q: str | None,
         limit: int,
         offset: int,
+        date_from: datetime | None = None,
+        date_to: datetime | None = None,
     ) -> DocumentsListResponse:
         rows, total = self.repo.list_documents(
             client_id=client_id,
@@ -67,14 +78,19 @@ class DocumentsService:
             q=q,
             limit=limit,
             offset=offset,
+            date_from=date_from,
+            date_to=date_to,
         )
         items = [
             DocumentListItem(
                 id=str(doc.id),
                 direction=doc.direction,
                 title=doc.title,
+                category=doc.category,
                 doc_type=doc.doc_type,
                 status=doc.status,
+                sender_type=doc.sender_type,
+                sender_name=doc.sender_name,
                 counterparty_name=doc.counterparty_name,
                 number=doc.number,
                 date=doc.date,
@@ -109,6 +125,44 @@ class DocumentsService:
             event_type=TimelineEventType.DOCUMENT_CREATED,
             meta={"direction": DocumentDirection.OUTBOUND.value},
             actor_type=TimelineActorType.USER,
+            actor_user_id=actor_user_id,
+            request_context=request_context,
+        )
+        return self._to_document_out(item, [])
+
+
+    def create_inbound_document_by_admin(
+        self,
+        *,
+        client_id: str,
+        data: AdminInboundDocumentCreateIn,
+        actor_user_id: str | None = None,
+        request_context: TimelineRequestContext | None = None,
+    ) -> DocumentOut:
+        attach_mode = data.attach_mode.upper().strip()
+        if attach_mode not in {"UPLOAD", "RENDER"}:
+            raise HTTPException(status_code=400, detail="invalid_attach_mode")
+
+        item = self.repo.create_document(
+            id=str(uuid4()),
+            client_id=client_id,
+            direction=DocumentDirection.INBOUND.value,
+            title=data.title,
+            category=data.category,
+            description=data.description,
+            status=DocumentStatus.DRAFT.value,
+            sender_type=DocumentSenderType.NEFT.value,
+        )
+        self.timeline.append_event(
+            item,
+            event_type=TimelineEventType.DOCUMENT_CREATED,
+            meta={
+                "direction": DocumentDirection.INBOUND.value,
+                "sender_type": DocumentSenderType.NEFT.value,
+                "category": item.category,
+                "attach_mode": attach_mode,
+            },
+            actor_type=TimelineActorType.SYSTEM,
             actor_user_id=actor_user_id,
             request_context=request_context,
         )
@@ -173,6 +227,68 @@ class DocumentsService:
                 "sha256": item.sha256,
             },
             actor_type=TimelineActorType.USER,
+            actor_user_id=actor_user_id,
+            request_context=request_context,
+        )
+        return self._to_file_out(item)
+
+
+    async def attach_file_admin_inbound(
+        self,
+        *,
+        document_id: str,
+        upload_file: UploadFile,
+        actor_user_id: str | None = None,
+        request_context: TimelineRequestContext | None = None,
+    ) -> DocumentFileOut:
+        document = self.repo.get_document_by_id(document_id=document_id)
+        if document is None:
+            raise HTTPException(status_code=404, detail="document_not_found")
+        if document.direction != DocumentDirection.INBOUND.value:
+            raise HTTPException(status_code=400, detail="invalid_direction")
+        if not upload_file.filename:
+            raise HTTPException(status_code=400, detail="file_required")
+
+        payload = await upload_file.read()
+        if not payload:
+            raise HTTPException(status_code=400, detail="file_required")
+        if len(payload) > self.max_upload_bytes():
+            raise HTTPException(status_code=413, detail="file_too_large")
+
+        mime = upload_file.content_type or "application/octet-stream"
+        if mime not in _ALLOWED_MIME:
+            raise HTTPException(status_code=415, detail="unsupported_mime")
+
+        file_id = str(uuid4())
+        filename = self.sanitize_filename(upload_file.filename)
+        storage_key = f"neft/client/{document.client_id}/inbound/{document_id}/{file_id}/{filename}"
+        sha256 = hashlib.sha256(payload).hexdigest()
+
+        if self.storage is None:
+            raise RuntimeError("documents_storage_not_configured")
+        self.storage.ensure_bucket()
+        self.storage.put_object(storage_key, payload, mime)
+
+        item = self.repo.create_document_file(
+            id=file_id,
+            document_id=document_id,
+            storage_key=storage_key,
+            filename=filename,
+            mime=mime,
+            size=len(payload),
+            sha256=sha256,
+        )
+        self.timeline.append_event(
+            document,
+            event_type=TimelineEventType.FILE_UPLOADED,
+            meta={
+                "file_id": item.id,
+                "filename": item.filename,
+                "size": item.size,
+                "mime": item.mime,
+                "sha256": item.sha256,
+            },
+            actor_type=TimelineActorType.SYSTEM,
             actor_user_id=actor_user_id,
             request_context=request_context,
         )
@@ -273,9 +389,12 @@ class DocumentsService:
             client_id=document.client_id,
             direction=document.direction,
             title=document.title,
+            category=document.category,
             doc_type=document.doc_type,
             description=document.description,
             status=document.status,
+            sender_type=document.sender_type,
+            sender_name=document.sender_name,
             counterparty_name=document.counterparty_name,
             counterparty_inn=document.counterparty_inn,
             number=document.number,
