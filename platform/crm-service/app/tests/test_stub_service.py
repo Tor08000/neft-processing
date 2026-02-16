@@ -8,7 +8,7 @@ def test_health() -> None:
     response = client.get("/health")
 
     assert response.status_code == 200
-    assert response.json() == {"status": "ok", "service": "crm-service", "version": "stub-v0"}
+    assert response.json() == {"status": "ok", "service": "crm-service", "version": "v1"}
 
 
 def test_metrics() -> None:
@@ -16,4 +16,4 @@ def test_metrics() -> None:
     response = client.get("/metrics")
 
     assert response.status_code == 200
-    assert "crm_service_up 1" in response.text
+    assert "crm_service_up 1.0" in response.text

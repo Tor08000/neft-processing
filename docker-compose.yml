@@ -408,11 +408,18 @@ services:
       - "8003:8000"
 
   crm-service:
-    profiles: ["dev"]
+    profiles: ["prod", "dev"]
     build:
       context: .
       dockerfile: platform/crm-service/Dockerfile
     container_name: neft-processing-crm-1
+    environment:
+      CRM_DATABASE_URL: ${CRM_DATABASE_URL:-postgresql+psycopg2://postgres:postgres@db:5432/neft}
+      CRM_JWT_SECRET: ${CRM_JWT_SECRET:-}
+      CRM_JWT_ALGORITHM: ${CRM_JWT_ALGORITHM:-HS256}
+    depends_on:
+      db:
+        condition: service_healthy
     expose:
       - "8000"
     healthcheck:
