@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import os
 from dataclasses import dataclass
+from datetime import datetime, timezone
 
 from fastapi import HTTPException
 
@@ -49,8 +50,12 @@ class ClientGeneratedDocsService:
             self.storage.put_object(bucket, storage_key, pdf_bytes, "application/pdf")
             filename = template.filename_pattern.format(inn=application.inn or "unknown")
             status = GeneratedDocStatus.GENERATED.value
+            platform_signed_at = None
+            platform_signature_hash = None
             if self._sign_mode() == "mock":
                 status = GeneratedDocStatus.SIGNED_BY_PLATFORM.value
+                platform_signed_at = datetime.now(timezone.utc)
+                platform_signature_hash = hashlib.sha256(f"platform:{storage_key}".encode("utf-8")).hexdigest()
 
             generated.append(
                 self.docs_repo.create_document(
@@ -66,6 +71,8 @@ class ClientGeneratedDocsService:
                     template_id=template.template_id,
                     checksum_sha256=hashlib.sha256(pdf_bytes).hexdigest(),
                     created_by_user_id=actor_user_id,
+                    platform_signed_at=platform_signed_at,
+                    platform_signature_hash=platform_signature_hash,
                 )
             )
         return generated
