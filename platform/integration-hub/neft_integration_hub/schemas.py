@@ -66,6 +66,18 @@ class EdoStubSimulateRequest(BaseModel):
     note: str | None = None
 
 
+class NotificationSendRequest(BaseModel):
+    channel: str
+    template: str
+    to: str
+    variables: dict = Field(default_factory=dict)
+
+
+class NotificationSendResponse(BaseModel):
+    status: str
+    mode: str
+
+
 class WebhookOwner(BaseModel):
     type: str
     id: str
@@ -212,6 +224,8 @@ __all__ = [
     "EdoStubSendResponse",
     "EdoStubSimulateRequest",
     "EdoStubStatusResponse",
+    "NotificationSendRequest",
+    "NotificationSendResponse",
     "WebhookDeliveryResponse",
     "WebhookEndpointCreate",
     "WebhookEndpointResponse",

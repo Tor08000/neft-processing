@@ -1,6 +1,18 @@
 from enum import Enum
 
-from sqlalchemy import BigInteger, Column, DateTime, ForeignKey, Integer, Numeric, String, UniqueConstraint, JSON, Text
+from sqlalchemy import (
+    BigInteger,
+    Column,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    Numeric,
+    String,
+    UniqueConstraint,
+    JSON,
+    Text,
+)
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
 
@@ -121,11 +133,17 @@ class ClientUserRole(Base):
 
 class ClientInvitation(Base):
     __tablename__ = "client_invitations"
+    __table_args__ = (
+        Index("ix_client_invitations_client_status", "client_id", "status"),
+        Index("ix_client_invitations_email", "email"),
+        UniqueConstraint("token_hash", name="uq_client_invitations_token_hash"),
+    )
 
     id = Column(GUID(), primary_key=True, default=new_uuid_str)
     client_id = Column(GUID(), ForeignKey("clients.id"), nullable=False, index=True)
     email = Column(String(256), nullable=False)
     invited_by_user_id = Column(String(64), nullable=False)
+    created_by_user_id = Column(String(64), nullable=True)
     roles = Column(JSON, nullable=False, default=list)
     token_hash = Column(Text, nullable=False)
     expires_at = Column(DateTime(timezone=True), nullable=False)
@@ -133,6 +151,35 @@ class ClientInvitation(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     accepted_at = Column(DateTime(timezone=True), nullable=True)
     accepted_by_user_id = Column(String(64), nullable=True)
+    revoked_at = Column(DateTime(timezone=True), nullable=True)
+    revoked_by_user_id = Column(String(64), nullable=True)
+    revocation_reason = Column(Text, nullable=True)
+    resent_count = Column(Integer, nullable=False, server_default="0")
+    last_sent_at = Column(DateTime(timezone=True), nullable=True)
+    last_send_status = Column(String(32), nullable=True)
+    last_send_error = Column(Text, nullable=True)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
+class NotificationOutbox(Base):
+    __tablename__ = "notification_outbox"
+    __table_args__ = (
+        Index("ix_notification_outbox_status_retry", "status", "next_attempt_at"),
+        Index("ix_notification_outbox_aggregate", "aggregate_type", "aggregate_id"),
+    )
+
+    id = Column(GUID(), primary_key=True, default=new_uuid_str)
+    event_type = Column(Text, nullable=False)
+    aggregate_type = Column(Text, nullable=False, server_default="client_invitation")
+    aggregate_id = Column(GUID(), nullable=False)
+    tenant_client_id = Column(GUID(), nullable=True, index=True)
+    payload = Column(JSON, nullable=False, default=dict)
+    status = Column(String(16), nullable=False, server_default="NEW", index=True)
+    attempts = Column(Integer, nullable=False, server_default="0")
+    next_attempt_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), index=True)
+    last_error = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
 
 
 class LimitTemplate(Base):

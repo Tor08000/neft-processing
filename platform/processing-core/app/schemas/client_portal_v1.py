@@ -81,6 +81,45 @@ class ClientInvitationOut(BaseModel):
     token: str | None = None
 
 
+class ClientInvitationResendRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    expires_in_days: int = Field(default=7, ge=1, le=30)
+
+
+class ClientInvitationRevokeRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    reason: str | None = None
+
+
+class ClientInvitationActionResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    status: str
+    expires_at: datetime | None = None
+    resent_count: int | None = None
+
+
+class ClientInvitationSummary(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    invitation_id: str
+    email: str
+    roles: list[str] = Field(default_factory=list)
+    status: str
+    expires_at: datetime
+    resent_count: int = 0
+    last_sent_at: datetime | None = None
+    created_at: datetime
+
+
+class ClientInvitationsResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[ClientInvitationSummary]
+
+
 class ClientUserRolesUpdateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

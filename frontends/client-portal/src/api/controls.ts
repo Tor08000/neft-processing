@@ -3,6 +3,7 @@ import type { AuthSession } from "./types";
 import type {
   ClientFeaturesResponse,
   ClientInvitationResponse,
+  ClientInvitationsResponse,
   ClientLimitsResponse,
   ClientServicesResponse,
   ClientUsersResponse,
@@ -71,6 +72,27 @@ export function toggleClientFeature(user: AuthSession | null, featureKey: string
   return requestWithMeta<ControlToggleResponse>(
     `/client/features/${featureKey}/toggle`,
     { method: "POST" },
+    withToken(user),
+  );
+}
+
+
+export function fetchClientInvitations(user: AuthSession | null): Promise<ClientInvitationsResponse> {
+  return request<ClientInvitationsResponse>("/client/users/invitations", { method: "GET" }, withToken(user));
+}
+
+export function resendClientInvitation(user: AuthSession | null, invitationId: string, expiresInDays = 7) {
+  return requestWithMeta(
+    `/client/users/invitations/${invitationId}/resend`,
+    { method: "POST", body: JSON.stringify({ expires_in_days: expiresInDays }) },
+    withToken(user),
+  );
+}
+
+export function revokeClientInvitation(user: AuthSession | null, invitationId: string, reason?: string) {
+  return requestWithMeta(
+    `/client/users/invitations/${invitationId}/revoke`,
+    { method: "POST", body: JSON.stringify(reason ? { reason } : {}) },
     withToken(user),
   );
 }

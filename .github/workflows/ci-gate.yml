@@ -74,6 +74,15 @@ jobs:
       - name: Processing-core client users invitations and roles unit
         run: pytest -q platform/processing-core/app/tests/test_client_users_list.py platform/processing-core/app/tests/test_client_users_invite.py platform/processing-core/app/tests/test_client_users_roles.py
 
+      - name: Processing-core invitation resend/revoke unit
+        run: pytest -q platform/processing-core/app/tests/test_client_invitations_resend_revoke.py
+
+      - name: Processing-core notification outbox worker unit
+        run: pytest -q platform/processing-core/app/tests/test_notification_outbox_worker.py
+
+      - name: Integration-hub notifications unit
+        run: pytest -q platform/integration-hub/neft_integration_hub/tests/test_notifications_send.py
+
       - name: Processing-core generated docs v1 unit
         run: pytest -q platform/processing-core/app/tests/test_client_generated_docs_v1.py
 
@@ -163,6 +172,9 @@ jobs:
         run: scripts/ci/smoke_client_approve_flow.sh
       - name: Client users smoke
         run: scripts/ci/smoke_client_users.sh
+
+      - name: Client invitation resend/revoke smoke
+        run: scripts/ci/smoke_client_invitation_resend_revoke.sh
 
       - name: Client docflow smoke
         run: scripts/ci/smoke_client_docflow.sh
