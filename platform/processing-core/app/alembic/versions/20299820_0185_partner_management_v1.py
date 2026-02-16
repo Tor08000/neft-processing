@@ -69,7 +69,7 @@ def upgrade() -> None:
         op.create_check_constraint(
             "ck_partners_partner_type_v1",
             "partners",
-            "partner_type IN ('FUEL_NETWORK','SERVICE_PROVIDER','EDO_PROVIDER','LOGISTICS_PROVIDER','OTHER')",
+            "partner_type IN ('FUEL_NETWORK','MERCHANT','SERVICE_PROVIDER','EDO_PROVIDER','LOGISTICS_PROVIDER','OTHER')",
             schema=DB_SCHEMA,
         )
     if not constraint_exists(bind, "partners", "ck_partners_status_v1", schema=DB_SCHEMA):
@@ -143,6 +143,7 @@ def upgrade() -> None:
         schema=DB_SCHEMA,
     )
     create_index_if_not_exists(bind, "uq_partner_terms_partner_version", "partner_terms", ["partner_id", "version"], schema=DB_SCHEMA, unique=True)
+    create_index_if_not_exists(bind, "ix_partner_terms_partner_status", "partner_terms", ["partner_id", "status"], schema=DB_SCHEMA)
     if not constraint_exists(bind, "partner_terms", "ck_partner_terms_status_v1", schema=DB_SCHEMA):
         op.create_check_constraint(
             "ck_partner_terms_status_v1",

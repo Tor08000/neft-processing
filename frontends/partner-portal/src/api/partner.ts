@@ -315,3 +315,56 @@ export const importFuelStationPrices = (token: string, stationId: string, file: 
     { token, base: "core_root" },
   );
 };
+
+export interface PartnerMeV1Response {
+  partner: {
+    id: string;
+    code: string;
+    legal_name: string;
+    brand_name?: string | null;
+    status: string;
+    contacts?: Record<string, unknown>;
+  };
+  my_roles: string[];
+}
+
+export interface PartnerLocationV1 {
+  id: string;
+  partner_id: string;
+  title: string;
+  address: string;
+  city?: string | null;
+  region?: string | null;
+  external_id?: string | null;
+  code?: string | null;
+  lat?: number | null;
+  lon?: number | null;
+  status: string;
+}
+
+export interface PartnerTermsV1 {
+  id: string;
+  partner_id: string;
+  version: number;
+  status: string;
+  terms: Record<string, unknown>;
+}
+
+export const fetchPartnerMeV1 = (token: string) => request<PartnerMeV1Response>("/partner/me", {}, token);
+export const patchPartnerMeV1 = (token: string, payload: { brand_name?: string; contacts?: Record<string, unknown> }) =>
+  request<PartnerProfile>("/partner/me", { method: "PATCH", body: JSON.stringify(payload) }, token);
+export const fetchPartnerLocationsV1 = (token: string) => request<PartnerLocationV1[]>("/partner/locations", {}, token);
+export const createPartnerLocationV1 = (
+  token: string,
+  payload: { title: string; address: string; city?: string; region?: string; external_id?: string; lat?: number; lon?: number },
+) => request<PartnerLocationV1>("/partner/locations", { method: "POST", body: JSON.stringify(payload) }, token);
+export const patchPartnerLocationV1 = (token: string, id: string, payload: Partial<PartnerLocationV1>) =>
+  request<PartnerLocationV1>(`/partner/locations/${id}`, { method: "PATCH", body: JSON.stringify(payload) }, token);
+export const deactivatePartnerLocationV1 = (token: string, id: string) =>
+  request<PartnerLocationV1>(`/partner/locations/${id}`, { method: "DELETE" }, token);
+export const fetchPartnerUsersV1 = (token: string) => request<{ user_id: string; roles: string[] }[]>("/partner/users", {}, token);
+export const addPartnerUserV1 = (token: string, payload: { user_id?: string; email?: string; roles: string[] }) =>
+  request<{ user_id: string; roles: string[] }>("/partner/users", { method: "POST", body: JSON.stringify(payload) }, token);
+export const removePartnerUserV1 = (token: string, userId: string) =>
+  request(`/partner/users/${userId}`, { method: "DELETE" }, token);
+export const fetchPartnerTermsV1 = (token: string) => request<PartnerTermsV1>("/partner/terms", {}, token);
