@@ -23,6 +23,7 @@ from app.domains.client.onboarding.service import (
     ensure_submit_allowed,
     validate_patch_fields,
 )
+from app.routers.client_generated_docs_v1 import router as client_generated_docs_v1_router
 from app.routers.client_onboarding_documents_v1 import router as client_onboarding_documents_v1_router
 
 router = APIRouter(prefix="/onboarding", tags=["client-onboarding"])
@@ -120,3 +121,4 @@ def get_my_onboarding_application(
 
 
 router.include_router(client_onboarding_documents_v1_router)
+router.include_router(client_generated_docs_v1_router)
