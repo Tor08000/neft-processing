@@ -65,6 +65,9 @@ jobs:
       - name: Processing-core client onboarding v1 unit
         run: pytest -q platform/processing-core/app/tests/test_client_onboarding_v1.py
 
+      - name: Processing-core onboarding review admin v1 unit
+        run: pytest -q platform/processing-core/app/tests/test_onboarding_review_admin_v1.py
+
   migrations:
     name: Migrations
     runs-on: ubuntu-latest
@@ -119,6 +122,9 @@ jobs:
 
       - name: Client onboarding documents smoke
         run: scripts/ci/smoke_client_onboarding_documents.sh
+
+      - name: Client onboarding review smoke
+        run: scripts/ci/smoke_onboarding_review_flow.sh
 
       - name: Playwright smoke
         run: scripts/ci/gate_playwright_smoke.sh

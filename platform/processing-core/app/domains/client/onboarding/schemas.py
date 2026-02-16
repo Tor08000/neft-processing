@@ -42,6 +42,12 @@ class OnboardingApplicationResponse(BaseModel):
     updated_at: datetime
     created_by_user_id: str | None
     submitted_at: datetime | None
+    reviewed_by_user_id: str | None = None
+    reviewed_at: datetime | None = None
+    decision_reason: str | None = None
+    client_id: str | None = None
+    approved_at: datetime | None = None
+    rejected_at: datetime | None = None
 
 
 class CreateOnboardingApplicationResponse(BaseModel):
