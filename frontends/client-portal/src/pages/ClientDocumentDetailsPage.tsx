@@ -1,9 +1,19 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
-import { downloadClientDocumentFile, getClientDocument, uploadClientDocumentFile, type ClientDocumentDetails } from "../api/client/documents";
+import {
+  downloadClientDocumentFile,
+  getClientDocument,
+  getClientDocumentTimeline,
+  submitClientDocument,
+  uploadClientDocumentFile,
+  type ClientDocumentDetails,
+  type ClientDocumentTimelineEvent,
+} from "../api/client/documents";
 import { ApiError } from "../api/http";
 import { useAuth } from "../auth/AuthContext";
+import { Toast } from "../components/Toast/Toast";
+import { useToast } from "../components/Toast/useToast";
 
 function formatSize(size: number): string {
   if (size > 1024 * 1024) return `${(size / (1024 * 1024)).toFixed(1)} MB`;
@@ -19,13 +29,18 @@ export function ClientDocumentDetailsPage() {
   const [loading, setLoading] = useState(true);
   const [errorCode, setErrorCode] = useState<number | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [timeline, setTimeline] = useState<ClientDocumentTimelineEvent[]>([]);
+  const [activeTab, setActiveTab] = useState<"files" | "history">("files");
+  const { toast, showToast } = useToast();
 
   useEffect(() => {
     if (!id) return;
     setLoading(true);
-    getClientDocument(id, user)
-      .then((d) => {
+    Promise.all([getClientDocument(id, user), getClientDocumentTimeline(id, user)])
+      .then(([d, events]) => {
         setDocument(d);
+        setTimeline(events);
         setErrorCode(null);
       })
       .catch((err: unknown) => {
@@ -48,6 +63,8 @@ export function ClientDocumentDetailsPage() {
     try {
       const created = await uploadClientDocumentFile(id, file, user);
       setDocument((prev) => (prev ? { ...prev, files: [created, ...prev.files] } : prev));
+      const events = await getClientDocumentTimeline(id, user);
+      setTimeline(events);
     } catch (err) {
       if (err instanceof ApiError) {
         setErrorCode(err.status);
@@ -57,6 +74,39 @@ export function ClientDocumentDetailsPage() {
     } finally {
       setUploading(false);
     }
+  };
+
+  const onSubmit = async () => {
+    if (!id) return;
+    setSubmitting(true);
+    try {
+      const updated = await submitClientDocument(id, user);
+      const events = await getClientDocumentTimeline(id, user);
+      setDocument(updated);
+      setTimeline(events);
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 409) {
+        if (err.detail === "missing_files") {
+          showToast({ kind: "error", text: "Сначала загрузите файл" });
+        } else if (err.detail === "already_submitted") {
+          showToast({ kind: "error", text: "Уже подготовлен" });
+        }
+      }
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const statusLabel = document.status === "READY_TO_SEND" ? "Готов к отправке" : "Черновик";
+  const canSubmit = document.direction === "OUTBOUND" && document.status === "DRAFT";
+
+  const describeEvent = (event: ClientDocumentTimelineEvent): string => {
+    if (event.event_type === "DOCUMENT_CREATED") return "Документ создан";
+    if (event.event_type === "FILE_UPLOADED") return `Файл загружен: ${String(event.meta.filename ?? "—")}`;
+    if (event.event_type === "STATUS_CHANGED") {
+      return `Статус изменён: ${String(event.meta.from ?? "—")} → ${String(event.meta.to ?? "—")}`;
+    }
+    return event.event_type;
   };
 
   if (!id) return <div className="card">Документ не найден</div>;
@@ -72,11 +122,34 @@ export function ClientDocumentDetailsPage() {
         <Link to="/client/documents">Назад</Link>
       </div>
       <p>Направление: {document.direction}</p>
-      <p>Статус: {document.status}</p>
+      <p>
+        Статус:{" "}
+        <span className="pill" style={{ background: document.status === "READY_TO_SEND" ? "#dcfce7" : "#fef3c7" }}>
+          {statusLabel}
+        </span>
+      </p>
       <p>Тип: {document.doc_type ?? "—"}</p>
       <p>Описание: {document.description ?? "—"}</p>
 
-      <div style={{ margin: "12px 0" }}>
+      {canSubmit ? (
+        <div style={{ margin: "12px 0" }}>
+          <button type="button" onClick={() => void onSubmit()} disabled={submitting || document.files.length === 0}>
+            Подготовить к отправке
+          </button>
+          {document.files.length === 0 ? <span className="muted small"> Загрузите хотя бы один файл</span> : null}
+        </div>
+      ) : null}
+
+      <div style={{ margin: "12px 0", display: "flex", gap: 8 }}>
+        <button type="button" className={activeTab === "files" ? "secondary" : "ghost"} onClick={() => setActiveTab("files")}>
+          Файлы
+        </button>
+        <button type="button" className={activeTab === "history" ? "secondary" : "ghost"} onClick={() => setActiveTab("history")}>
+          История
+        </button>
+      </div>
+
+      {activeTab === "files" ? <div style={{ margin: "12px 0" }}>
         <label htmlFor="file-upload">Загрузить файл</label>
         <input
           id="file-upload"
@@ -85,9 +158,9 @@ export function ClientDocumentDetailsPage() {
           disabled={uploading}
         />
         {uploading ? <p>Загрузка файла…</p> : null}
-      </div>
+      </div> : null}
 
-      <table>
+      {activeTab === "files" ? <table>
         <thead>
           <tr>
             <th>Файл</th>
@@ -108,7 +181,19 @@ export function ClientDocumentDetailsPage() {
             </tr>
           ))}
         </tbody>
-      </table>
+      </table> : null}
+
+      {activeTab === "history" ? (
+        <ul>
+          {timeline.map((event) => (
+            <li key={event.id}>
+              <strong>{describeEvent(event)}</strong>
+              <div className="muted small">{new Date(event.created_at).toLocaleString()}</div>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      <Toast toast={toast} onClose={() => showToast(null)} />
     </div>
   );
 }

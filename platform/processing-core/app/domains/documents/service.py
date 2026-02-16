@@ -18,6 +18,13 @@ from app.domains.documents.schemas import (
     DocumentOut,
     DocumentsListResponse,
 )
+from app.domains.documents.timeline_schemas import TimelineEventOut
+from app.domains.documents.timeline_service import (
+    DocumentTimelineService,
+    TimelineActorType,
+    TimelineEventType,
+    TimelineRequestContext,
+)
 
 _ALLOWED_MIME = {
     "application/pdf",
@@ -41,6 +48,7 @@ class DocumentsService:
     def __init__(self, repo: DocumentsRepository, storage=None):
         self.repo = repo
         self.storage = storage
+        self.timeline = DocumentTimelineService(repo=repo)
 
     def list_documents(
         self,
@@ -79,7 +87,14 @@ class DocumentsService:
         ]
         return DocumentsListResponse(items=items, total=total, limit=limit, offset=offset)
 
-    def create_outbound_draft(self, *, client_id: str, data: DocumentCreateIn) -> DocumentOut:
+    def create_outbound_draft(
+        self,
+        *,
+        client_id: str,
+        data: DocumentCreateIn,
+        actor_user_id: str | None = None,
+        request_context: TimelineRequestContext | None = None,
+    ) -> DocumentOut:
         item = self.repo.create_document(
             id=str(uuid4()),
             client_id=client_id,
@@ -89,9 +104,25 @@ class DocumentsService:
             description=data.description,
             status=DocumentStatus.DRAFT.value,
         )
+        self.timeline.append_event(
+            item,
+            event_type=TimelineEventType.DOCUMENT_CREATED,
+            meta={"direction": DocumentDirection.OUTBOUND.value},
+            actor_type=TimelineActorType.USER,
+            actor_user_id=actor_user_id,
+            request_context=request_context,
+        )
         return self._to_document_out(item, [])
 
-    async def attach_file(self, *, client_id: str, document_id: str, upload_file: UploadFile) -> DocumentFileOut:
+    async def attach_file(
+        self,
+        *,
+        client_id: str,
+        document_id: str,
+        upload_file: UploadFile,
+        actor_user_id: str | None = None,
+        request_context: TimelineRequestContext | None = None,
+    ) -> DocumentFileOut:
         document = self.repo.get_document(client_id=client_id, document_id=document_id)
         if document is None:
             raise HTTPException(status_code=404, detail="document_not_found")
@@ -131,7 +162,72 @@ class DocumentsService:
             size=len(payload),
             sha256=sha256,
         )
+        self.timeline.append_event(
+            document,
+            event_type=TimelineEventType.FILE_UPLOADED,
+            meta={
+                "file_id": item.id,
+                "filename": item.filename,
+                "size": item.size,
+                "mime": item.mime,
+                "sha256": item.sha256,
+            },
+            actor_type=TimelineActorType.USER,
+            actor_user_id=actor_user_id,
+            request_context=request_context,
+        )
         return self._to_file_out(item)
+
+    def submit_ready_to_send(
+        self,
+        *,
+        client_id: str,
+        document_id: str,
+        actor_user_id: str | None = None,
+        request_context: TimelineRequestContext | None = None,
+    ) -> DocumentOut:
+        document = self.repo.get_document(client_id=client_id, document_id=document_id)
+        if document is None:
+            raise HTTPException(status_code=404, detail="document_not_found")
+        if document.direction != DocumentDirection.OUTBOUND.value:
+            raise HTTPException(status_code=400, detail="invalid_direction")
+        if document.status == DocumentStatus.READY_TO_SEND.value:
+            raise HTTPException(status_code=409, detail="already_submitted")
+        if document.status != DocumentStatus.DRAFT.value:
+            raise HTTPException(status_code=409, detail="document_not_editable")
+
+        files = self.repo.list_document_files(document_id=document_id)
+        if not files:
+            raise HTTPException(status_code=409, detail="missing_files")
+
+        updated = self.repo.update_document_status(document=document, status=DocumentStatus.READY_TO_SEND.value)
+        self.timeline.append_event(
+            updated,
+            event_type=TimelineEventType.STATUS_CHANGED,
+            meta={"from": DocumentStatus.DRAFT.value, "to": DocumentStatus.READY_TO_SEND.value},
+            actor_type=TimelineActorType.USER,
+            actor_user_id=actor_user_id,
+            request_context=request_context,
+        )
+        return self._to_document_out(updated, files)
+
+    def list_timeline_events(self, *, client_id: str, document_id: str) -> list[TimelineEventOut]:
+        document = self.repo.get_document(client_id=client_id, document_id=document_id)
+        if document is None:
+            raise HTTPException(status_code=404, detail="document_not_found")
+        events = self.repo.list_timeline_events(document_id=document_id)
+        return [
+            TimelineEventOut(
+                id=str(item.id),
+                event_type=item.event_type,
+                message=item.message,
+                meta=item.meta or {},
+                actor_type=item.actor_type,
+                actor_user_id=str(item.actor_user_id) if item.actor_user_id else None,
+                created_at=item.created_at,
+            )
+            for item in events
+        ]
 
     def get_document_with_files(self, *, client_id: str, document_id: str) -> DocumentOut | None:
         document = self.repo.get_document(client_id=client_id, document_id=document_id)
