@@ -73,6 +73,8 @@ from app.models.support_ticket import (
 )
 from app.models.user_notification_preferences import UserNotificationChannel, UserNotificationPreference
 from app.models.subscriptions_v1 import SubscriptionPlan, SubscriptionPlanModule
+from app.domains.cards import CardsDomainError, CardsRepository, CardsService
+from app.domains.cards.schemas import CardCreateInput, LimitUpdate
 from app.schemas.client_cards_v1 import (
     BulkApplyTemplateRequest,
     BulkCardAccessRequest,
@@ -83,6 +85,7 @@ from app.schemas.client_cards_v1 import (
     CardAccessOut,
     CardCreateRequest,
     CardLimitRequest,
+    CardLimitsUpdateRequest,
     CardLimitOut,
     CardListResponse,
     CardOut,
@@ -4119,45 +4122,57 @@ def list_cards(
 ) -> CardListResponse:
     client = _resolve_client(db, token)
     if client is None:
-        raise HTTPException(status_code=404, detail="org_not_found")
-    card_ids = _accessible_card_ids(db, token=token, client_id=str(client.id))
-    if not card_ids and not _is_card_admin(token):
-        return CardListResponse(items=[])
-    query = db.query(Card).filter(Card.client_id == str(client.id))
-    if not _is_card_admin(token):
-        query = query.filter(Card.id.in_(card_ids))
-    cards = query.all()
-    limits = db.query(CardLimit).filter(CardLimit.client_id == str(client.id)).all()
-    limits_map: dict[str, list[CardLimitOut]] = {}
-    for item in limits:
-        limits_map.setdefault(item.card_id, []).append(
-            CardLimitOut(limit_type=item.limit_type, amount=float(item.amount), currency=item.currency)
-        )
+        raise HTTPException(status_code=404, detail={"error": "card_not_found", "message": "Client not found"})
+    service = CardsService(CardsRepository(db))
+    data = service.list_cards(str(client.id))
     return CardListResponse(
         items=[
-            CardOut(id=card.id, status=card.status, pan_masked=card.pan_masked, limits=limits_map.get(card.id, []))
-            for card in cards
-        ]
+            CardOut(
+                id=item.id,
+                status=item.status,
+                pan_masked=item.masked_pan,
+                masked_pan=item.masked_pan,
+                issued_at=item.issued_at,
+                limits=[
+                    CardLimitOut(limit_type=limit.limit_type, amount=limit.amount, currency=limit.currency, active=limit.active)
+                    for limit in item.limits
+                ],
+            )
+            for item in data.items
+        ],
+        templates=[
+            {"id": tpl.id, "name": tpl.name, "is_default": tpl.is_default}
+            for tpl in data.templates
+        ],
     )
 
 
-@router.post("/cards", response_model=CardOut)
+@router.post("/cards", response_model=CardOut, status_code=201)
 def create_card(
     payload: CardCreateRequest,
     token: dict = Depends(client_auth.require_onboarding_user),
     db: Session = Depends(get_db),
 ) -> CardOut:
     if not _is_card_admin(token):
-        raise HTTPException(status_code=403, detail="forbidden")
+        raise HTTPException(status_code=403, detail={"error": "card_forbidden", "message": "Forbidden"})
     client = _resolve_client(db, token)
     if client is None:
-        raise HTTPException(status_code=404, detail="org_not_found")
+        raise HTTPException(status_code=404, detail={"error": "card_not_found", "message": "Client not found"})
     _enforce_portal_write_access(db=db, request=None, token=token)
-    card_id = f"card-{uuid4()}"
-    card = Card(id=card_id, client_id=str(client.id), status="ACTIVE", pan_masked=payload.pan_masked)
-    db.add(card)
-    db.commit()
-    return CardOut(id=card.id, status=card.status, pan_masked=card.pan_masked, limits=[])
+    service = CardsService(CardsRepository(db))
+    try:
+        item = service.create_card(str(client.id), CardCreateInput(label=payload.label or payload.pan_masked, template_id=payload.template_id))
+    except CardsDomainError as exc:
+        status = 409 if exc.code == "template_not_found" else 400
+        raise HTTPException(status_code=status, detail={"error": exc.code, "message": exc.message}) from exc
+    return CardOut(
+        id=item.id,
+        status=item.status,
+        pan_masked=item.masked_pan,
+        masked_pan=item.masked_pan,
+        issued_at=item.issued_at,
+        limits=[CardLimitOut(limit_type=limit.limit_type, amount=limit.amount, currency=limit.currency, active=limit.active) for limit in item.limits],
+    )
 
 
 @router.patch("/cards/{card_id}", response_model=CardOut)
@@ -4452,44 +4467,38 @@ def get_card(
     return CardOut(id=card.id, status=card.status, pan_masked=card.pan_masked, limits=limit_out)
 
 
-@router.patch("/cards/{card_id}/limits", response_model=CardOut)
+@router.put("/cards/{card_id}/limits", response_model=CardOut)
 def update_card_limits(
     card_id: str,
-    payload: CardLimitRequest,
+    payload: CardLimitsUpdateRequest,
     request: Request,
     token: dict = Depends(client_auth.require_onboarding_user),
     db: Session = Depends(get_db),
 ) -> CardOut:
     client = _resolve_client(db, token)
     if client is None:
-        raise HTTPException(status_code=404, detail="org_not_found")
-    card = db.query(Card).filter(Card.id == card_id, Card.client_id == str(client.id)).one_or_none()
-    if not card:
-        raise HTTPException(status_code=404, detail="card_not_found")
+        raise HTTPException(status_code=404, detail={"error": "card_not_found", "message": "Client not found"})
     if not _is_card_admin(token):
-        raise HTTPException(status_code=403, detail="forbidden")
+        raise HTTPException(status_code=403, detail={"error": "card_forbidden", "message": "Forbidden"})
     _enforce_portal_write_access(db=db, request=request, token=token)
-    existing = (
-        db.query(CardLimit)
-        .filter(CardLimit.card_id == card.id, CardLimit.limit_type == payload.limit_type)
-        .one_or_none()
-    )
-    before = None
-    if existing:
-        before = {"limit_type": existing.limit_type, "amount": float(existing.amount), "currency": existing.currency}
-        existing.amount = payload.amount
-        existing.currency = payload.currency
-    else:
-        db.add(
-            CardLimit(
-                client_id=str(client.id),
-                card_id=card.id,
-                limit_type=payload.limit_type,
-                amount=payload.amount,
-                currency=payload.currency,
-            )
+    service = CardsService(CardsRepository(db))
+    try:
+        card = service.replace_limits(
+            str(client.id),
+            card_id,
+            [
+                LimitUpdate(
+                    limit_type=item.limit_type,
+                    amount=item.amount,
+                    currency=item.currency,
+                    active=getattr(item, "active", True),
+                )
+                for item in payload.limits
+            ],
         )
-    db.commit()
+    except CardsDomainError as exc:
+        status = 404 if exc.code == "card_not_found" else 400
+        raise HTTPException(status_code=status, detail={"error": exc.code, "message": exc.message}) from exc
     _audit_event(
         db,
         request=request,
@@ -4497,13 +4506,35 @@ def update_card_limits(
         event_type="limit_change",
         entity_type="card",
         entity_id=card.id,
-        before=before,
-        after={"limit_type": payload.limit_type, "amount": payload.amount, "currency": payload.currency},
-        action="limit_update",
+        before=None,
+        after={"replace_all": True, "limits": payload.model_dump().get("limits", [])},
+        action="limit_replace",
     )
-    limits = db.query(CardLimit).filter(CardLimit.card_id == card.id).all()
-    limit_out = [CardLimitOut(limit_type=item.limit_type, amount=float(item.amount), currency=item.currency) for item in limits]
-    return CardOut(id=card.id, status=card.status, pan_masked=card.pan_masked, limits=limit_out)
+    return CardOut(
+        id=card.id,
+        status=card.status,
+        pan_masked=card.masked_pan,
+        masked_pan=card.masked_pan,
+        issued_at=card.issued_at,
+        limits=[CardLimitOut(limit_type=item.limit_type, amount=item.amount, currency=item.currency, active=item.active) for item in card.limits],
+    )
+
+
+@router.patch("/cards/{card_id}/limits", response_model=CardOut)
+def update_card_limits_compat(
+    card_id: str,
+    payload: CardLimitRequest,
+    request: Request,
+    token: dict = Depends(client_auth.require_onboarding_user),
+    db: Session = Depends(get_db),
+) -> CardOut:
+    return update_card_limits(
+        card_id=card_id,
+        payload=CardLimitsUpdateRequest(limits=[payload]),
+        request=request,
+        token=token,
+        db=db,
+    )
 
 
 @router.get("/cards/{card_id}/transactions", response_model=list[CardTransactionOut])

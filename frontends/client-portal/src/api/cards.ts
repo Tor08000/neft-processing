@@ -14,6 +14,7 @@ type ApiCard = {
   id: string;
   status: string;
   pan_masked?: string | null;
+  masked_pan?: string | null;
   limits: ApiCardLimit[];
 };
 
@@ -27,7 +28,7 @@ const normalizeLimitWindow = (limitType: string): string => {
 const toClientCard = (card: ApiCard): ClientCard => ({
   id: card.id,
   status: card.status,
-  pan_masked: card.pan_masked,
+  pan_masked: card.pan_masked ?? card.masked_pan,
   limits: card.limits.map((limit) => ({
     type: limit.limit_type,
     value: limit.amount,
@@ -35,9 +36,14 @@ const toClientCard = (card: ApiCard): ClientCard => ({
   })),
 });
 
-export async function fetchCards(user: AuthSession | null): Promise<ClientCardsResponse> {
-  const response = await request<{ items: ApiCard[] }>("/client/cards", { method: "GET" }, withToken(user));
-  return { items: response.items.map(toClientCard) };
+export async function fetchCards(user: AuthSession | null): Promise<ClientCardsResponse & { templates?: { id: string; name: string; is_default: boolean }[] }> {
+  const response = await request<{ items: ApiCard[]; templates?: { id: string; name: string; is_default: boolean }[] }>("/client/cards", { method: "GET" }, withToken(user));
+  return { items: response.items.map(toClientCard), templates: response.templates ?? [] };
+}
+
+export async function createCard(payload: { label: string; template_id?: string | null }, user: AuthSession | null): Promise<ClientCard> {
+  const response = await request<ApiCard>("/client/cards", { method: "POST", body: JSON.stringify(payload) }, withToken(user));
+  return toClientCard(response);
 }
 
 export async function fetchCard(cardId: string, user: AuthSession | null): Promise<ClientCard> {

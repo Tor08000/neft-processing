@@ -61,8 +61,8 @@ const navItems: ClientNavItem[] = [
   },
   {
     to: "/cards",
-    label: "Топливо и карты",
-    shortLabel: "Топливо",
+    label: "Карты",
+    shortLabel: "Карты",
     icon: <ShoppingCart size={18} />,
     audience: "all",
   },
@@ -148,7 +148,7 @@ const navItems: ClientNavItem[] = [
     label: "Лимиты",
     shortLabel: "Лимиты",
     icon: <ClipboardCheck size={18} />,
-    audience: "fleet",
+    audience: "all",
   },
   {
     to: "/client/reports",
