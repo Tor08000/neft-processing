@@ -20,6 +20,11 @@ jobs:
           python -m pip install -e platform/integration-hub
           pytest platform/integration-hub -q
           pytest platform/logistics-service -q
+      - name: Run CRM service tests
+        run: |
+          python -m pip install -r platform/crm-service/requirements.txt
+          pytest -q platform/crm-service/app/tests
+
   migration-smoke:
     runs-on: ubuntu-latest
     steps:
