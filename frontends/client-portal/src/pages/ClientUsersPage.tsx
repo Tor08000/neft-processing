@@ -52,6 +52,9 @@ export function ClientUsersPage() {
   const [revokeInvite, setRevokeInvite] = useState<ClientInvitationSummary | null>(null);
   const [revokeReason, setRevokeReason] = useState("");
   const [invitationCooldowns, setInvitationCooldowns] = useState<Record<string, number>>({});
+  const [inviteQuery, setInviteQuery] = useState("");
+  const [inviteStatus, setInviteStatus] = useState("ALL");
+  const [inviteSort, setInviteSort] = useState("created_at_desc");
 
   const canManage = hasAnyRole(user, ["CLIENT_OWNER", "CLIENT_ADMIN"]);
   const emailValid = newEmail.trim() !== "" && newEmail.includes("@");
@@ -63,7 +66,7 @@ export function ClientUsersPage() {
     fetchClientUsers(user)
       .then(async (resp) => {
         setUsers(resp.items ?? []);
-        const invites = await fetchClientInvitations(user);
+        const invites = await fetchClientInvitations(user, { status: inviteStatus, q: inviteQuery || undefined, sort: inviteSort });
         setInvitations(invites.items ?? []);
       })
       .catch((err: unknown) => {
@@ -78,7 +81,7 @@ export function ClientUsersPage() {
 
   useEffect(() => {
     loadUsers();
-  }, [user]);
+  }, [user, inviteQuery, inviteSort, inviteStatus]);
 
   const activeUsers = useMemo(() => users.filter((item) => item.status !== "disabled"), [users]);
 
@@ -103,6 +106,14 @@ export function ClientUsersPage() {
       />
     );
   }
+
+  const invitationStatusBadge = (status: string) => {
+    if (status === "PENDING") return <span className="badge pending">Ожидает</span>;
+    if (status === "ACCEPTED") return <span className="badge success">Принято</span>;
+    if (status === "REVOKED") return <span className="badge error">Отозвано</span>;
+    if (status === "EXPIRED") return <span className="badge warning">Истекло</span>;
+    return <span className="badge neutral">{status}</span>;
+  };
 
   const openAddModal = () => {
     setIsAddOpen(true);
@@ -172,19 +183,28 @@ export function ClientUsersPage() {
 
     try {
       await resendClientInvitation(user, invitation.invitation_id, 7);
-      showToast({ kind: "success", text: "Приглашение отправлено повторно" });
+      showToast({ kind: "success", text: "Приглашение отправлено" });
       loadUsers();
     } catch (err) {
+      if (err instanceof ApiError) {
+        if (err.status === 429) {
+          showToast({ kind: "error", text: "Слишком часто. Попробуйте позже." });
+          return;
+        }
+        if (err.status === 409) {
+          showToast({ kind: "error", text: "Приглашение нельзя переотправить в текущем статусе." });
+          return;
+        }
+      }
       showToast({ kind: "error", text: "Ошибка отправки приглашения" });
     }
   };
-
   const handleRevokeInvite = async () => {
     if (!user || !revokeInvite) return;
     setIsSubmitting(true);
     try {
       await revokeClientInvitation(user, revokeInvite.invitation_id, revokeReason || undefined);
-      showToast({ kind: "success", text: "Приглашение отозвано" });
+      showToast({ kind: "success", text: "Отозвано" });
       setRevokeInvite(null);
       setRevokeReason("");
       loadUsers();
@@ -293,8 +313,26 @@ export function ClientUsersPage() {
         <div className="card__header">
           <div>
             <h3>Приглашения</h3>
-            <p className="muted">Управление pending-приглашениями.</p>
+            <p className="muted">Управление приглашениями.</p>
           </div>
+        </div>
+        <div className="filters-row" style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+          <input placeholder="Поиск email" value={inviteQuery} onChange={(event) => setInviteQuery(event.target.value)} />
+          <select value={inviteStatus} onChange={(event) => setInviteStatus(event.target.value)}>
+            <option value="ALL">All</option>
+            <option value="PENDING">Pending</option>
+            <option value="ACCEPTED">Accepted</option>
+            <option value="REVOKED">Revoked</option>
+            <option value="EXPIRED">Expired</option>
+          </select>
+          <select value={inviteSort} onChange={(event) => setInviteSort(event.target.value)}>
+            <option value="created_at_desc">Created desc</option>
+            <option value="created_at_asc">Created asc</option>
+            <option value="expires_at_asc">Expires asc</option>
+          </select>
+          <button type="button" className="ghost" onClick={() => { setInviteQuery(""); setInviteStatus("ALL"); setInviteSort("created_at_desc"); }}>
+            Reset filters
+          </button>
         </div>
         {invitations.length === 0 ? (
           <AppEmptyState title="Приглашений нет" description="Создайте приглашение для нового пользователя." />
@@ -302,20 +340,21 @@ export function ClientUsersPage() {
           <table className="table">
             <thead>
               <tr>
-                <th>Email</th><th>Роли</th><th>Статус</th><th>Срок</th><th>Отправок</th><th>Действия</th>
+                <th>Email</th><th>Role</th><th>Status</th><th>Created</th><th>Expires</th><th>Sent count</th><th>Действия</th>
               </tr>
             </thead>
             <tbody>
               {invitations.map((item) => (
                 <tr key={item.invitation_id}>
                   <td>{item.email}</td>
-                  <td>{item.roles.join(", ")}</td>
-                  <td>{item.status}</td>
+                  <td>{item.role ?? item.roles[0] ?? "—"}</td>
+                  <td>{invitationStatusBadge(item.status)}</td>
+                  <td>{new Date(item.created_at).toLocaleString()}</td>
                   <td>{new Date(item.expires_at).toLocaleString()}</td>
                   <td>{item.resent_count}</td>
                   <td>
                     <div className="actions">
-                      <button type="button" className="secondary" disabled={item.status !== "PENDING" || !!invitationCooldowns[item.invitation_id]} onClick={() => void handleResendInvite(item)}>
+                      <button title={item.status === "EXPIRED" ? "истекло" : undefined} type="button" className="secondary" disabled={item.status !== "PENDING" || !!invitationCooldowns[item.invitation_id]} onClick={() => void handleResendInvite(item)}>
                         {invitationCooldowns[item.invitation_id] ? `Повторить (${invitationCooldowns[item.invitation_id]})` : "Переотправить"}
                       </button>
                       <button type="button" className="ghost" disabled={item.status !== "PENDING"} onClick={() => setRevokeInvite(item)}>
@@ -410,7 +449,7 @@ export function ClientUsersPage() {
       </ConfirmActionModal>
       <ConfirmActionModal
         isOpen={Boolean(revokeInvite)}
-        title="Отозвать приглашение"
+        title="Отозвать приглашение?"
         description={revokeInvite ? `Приглашение: ${revokeInvite.email}` : undefined}
         confirmLabel="Отозвать"
         onConfirm={() => void handleRevokeInvite()}

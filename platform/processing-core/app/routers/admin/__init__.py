@@ -74,6 +74,7 @@ from app.routers.admin import (
     ops_runtime,
     seed_partner_money,
     partners_v1,
+    client_invitations,
 )
 
 router = APIRouter(prefix="/v1/admin", tags=["admin"], dependencies=[Depends(require_admin_user)])
@@ -150,5 +151,6 @@ router.include_router(me.router)
 router.include_router(ops_runtime.router)
 router.include_router(seed_partner_money.router)
 router.include_router(partners_v1.router)
+router.include_router(client_invitations.router)
 
 __all__ = ["router"]

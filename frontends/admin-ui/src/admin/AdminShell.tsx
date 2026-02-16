@@ -9,6 +9,7 @@ const NAV_ITEMS = [
   { key: "runtime", label: "Runtime", to: "/runtime", permissionKey: "ops" },
   { key: "finance", label: "Finance", to: "/finance" },
   { key: "geo", label: "Geo Analytics", to: "/geo", permissionKey: "ops" },
+  { key: "invitations", label: "Invitations", to: "/invitations", permissionKey: "ops" },
   { key: "sales", label: "Sales", to: "/sales" },
   { key: "legal", label: "Legal", to: "/legal/partners" },
   { key: "audit", label: "Audit", to: "/audit", permissionKey: "superadmin" },

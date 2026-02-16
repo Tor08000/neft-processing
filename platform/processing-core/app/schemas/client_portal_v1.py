@@ -106,6 +106,7 @@ class ClientInvitationSummary(BaseModel):
 
     invitation_id: str
     email: str
+    role: str | None = None
     roles: list[str] = Field(default_factory=list)
     status: str
     expires_at: datetime
@@ -118,6 +119,7 @@ class ClientInvitationsResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     items: list[ClientInvitationSummary]
+    total: int = 0
 
 
 class ClientUserRolesUpdateRequest(BaseModel):

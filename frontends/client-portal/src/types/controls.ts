@@ -60,6 +60,7 @@ export interface ClientInvitationResponse {
 export interface ClientInvitationSummary {
   invitation_id: string;
   email: string;
+  role?: string | null;
   roles: string[];
   status: string;
   expires_at: string;
@@ -70,10 +71,12 @@ export interface ClientInvitationSummary {
 
 export interface ClientInvitationsResponse {
   items?: ClientInvitationSummary[] | null;
+  total?: number;
 }
 
 export interface CreateClientUserPayload {
   email: string;
+  role?: string | null;
   roles: string[];
 }
 
