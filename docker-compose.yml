@@ -2,7 +2,6 @@ services:
   postgres:
     image: postgres:16
     container_name: neft-processing-postgres-1
-    profiles: ["prod", "dev"]
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-neft}
       POSTGRES_USER: ${POSTGRES_USER:-neft}
@@ -22,7 +21,6 @@ services:
   redis:
     image: redis:7.4-alpine
     container_name: neft-processing-redis-1
-    profiles: ["prod", "dev"]
     command: ["redis-server", "--appendonly", "yes", "--databases", "4"]
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
@@ -184,7 +182,6 @@ services:
       context: .
       dockerfile: platform/auth-host/Dockerfile
     container_name: neft-processing-auth-host-1
-    profiles: ["prod", "dev"]
     env_file:
       - .env
     environment:
@@ -255,7 +252,6 @@ services:
       context: .
       dockerfile: platform/processing-core/Dockerfile
     container_name: neft-processing-core-api-1
-    profiles: ["prod", "dev"]
     env_file:
       - .env
     environment:
@@ -333,7 +329,6 @@ services:
       context: .
       dockerfile: platform/processing-core/Dockerfile
     container_name: neft-processing-event-worker-1
-    profiles: ["prod", "dev"]
     env_file:
       - .env
     environment:
@@ -352,7 +347,6 @@ services:
       context: .
       dockerfile: platform/integration-hub/Dockerfile
     container_name: neft-processing-integration-hub-1
-    profiles: ["prod", "dev"]
     env_file:
       - .env
     environment:
@@ -408,17 +402,16 @@ services:
       - "8003:8000"
 
   crm-service:
-    profiles: ["prod", "dev"]
     build:
       context: .
       dockerfile: platform/crm-service/Dockerfile
     container_name: neft-processing-crm-1
     environment:
-      CRM_DATABASE_URL: ${CRM_DATABASE_URL:-postgresql+psycopg2://postgres:postgres@db:5432/neft}
+      CRM_DATABASE_URL: ${CRM_DATABASE_URL:-postgresql+psycopg2://postgres:postgres@postgres:5432/neft}
       CRM_JWT_SECRET: ${CRM_JWT_SECRET:-}
       CRM_JWT_ALGORITHM: ${CRM_JWT_ALGORITHM:-HS256}
     depends_on:
-      db:
+      postgres:
         condition: service_healthy
     expose:
       - "8000"
@@ -433,7 +426,6 @@ services:
       context: .
       dockerfile: platform/logistics-service/Dockerfile
     container_name: neft-processing-logistics-1
-    profiles: ["prod", "dev"]
     environment:
       APP_ENV: ${APP_ENV:-prod}
       USE_MOCK_LOGISTICS: ${USE_MOCK_LOGISTICS:-0}
@@ -472,7 +464,6 @@ services:
       context: .
       dockerfile: platform/billing-clearing/Dockerfile
     container_name: neft-processing-workers-1
-    profiles: ["prod", "dev"]
     env_file:
       - .env
     environment:
@@ -536,7 +527,6 @@ services:
       context: .
       dockerfile: platform/billing-clearing/Dockerfile
     container_name: neft-processing-beat-1
-    profiles: ["prod", "dev"]
     env_file:
       - .env
     environment:
@@ -626,7 +616,6 @@ services:
       dockerfile: gateway/Dockerfile
     image: neft-processing-gateway:latest
     container_name: neft-processing-gateway-1
-    profiles: ["prod", "dev"]
     depends_on:
       admin-web:
         condition: service_healthy
