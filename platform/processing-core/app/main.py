@@ -32,6 +32,7 @@ from app.routers.client import router as client_router
 from app.routers.client_fleet import router as fleet_router
 from app.routers.client_documents import router as client_documents_router
 from app.routers.client_documents_v1 import router as client_documents_v1_router
+from app.routers.admin_documents_v1 import router as admin_documents_v1_router
 from app.routers.admin_auth_gateway import router as admin_auth_gateway_router, v1_router as admin_auth_gateway_v1_router
 from app.routers.admin_me_legacy import router as admin_me_legacy_router
 from app.routers.admin.me import AdminMeResponse, admin_me
@@ -538,6 +539,7 @@ if INCLUDE_CUSTOM_CORE_PREFIX:
     safe_include_router(app, client_service_bookings_router, prefix=API_PREFIX_CORE)
 safe_include_router(app, client_documents_router)
 safe_include_router(app, client_documents_v1_router)
+safe_include_router(app, admin_documents_v1_router)
 if INCLUDE_CORE_PREFIX_ROUTES:
     safe_include_router(app, document_templates_router, prefix=API_PREFIX_CORE)
 if INCLUDE_CORE_PREFIX_ROUTES:

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime
+
 from sqlalchemy import desc, func, or_
 from sqlalchemy.orm import Session
 
@@ -19,6 +21,8 @@ class DocumentsRepository:
         q: str | None,
         limit: int,
         offset: int,
+        date_from: datetime | None = None,
+        date_to: datetime | None = None,
     ) -> tuple[list[tuple[Document, int]], int]:
         query = (
             self.db.query(Document, func.count(DocumentFile.id).label("files_count"))
@@ -39,6 +43,11 @@ class DocumentsRepository:
                     Document.counterparty_name.ilike(pattern),
                 )
             )
+
+        if date_from is not None:
+            query = query.filter(Document.created_at >= date_from)
+        if date_to is not None:
+            query = query.filter(Document.created_at <= date_to)
 
         grouped = query.group_by(Document.id)
         total_query = self.db.query(func.count()).select_from(grouped.subquery())
@@ -108,3 +117,7 @@ class DocumentsRepository:
         self.db.commit()
         self.db.refresh(document)
         return document
+
+
+    def get_document_by_id(self, *, document_id: str) -> Document | None:
+        return self.db.query(Document).filter(Document.id == document_id).one_or_none()

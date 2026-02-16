@@ -22,6 +22,13 @@ class DocumentStatus(str, enum.Enum):
     SIGNED = "SIGNED"
     REJECTED = "REJECTED"
     CANCELLED = "CANCELLED"
+    DELIVERED = "DELIVERED"
+
+
+class DocumentSenderType(str, enum.Enum):
+    NEFT = "NEFT"
+    CLIENT = "CLIENT"
+    PARTNER = "PARTNER"
 
 
 class Document(Base):
@@ -36,9 +43,12 @@ class Document(Base):
     client_id: Mapped[str] = mapped_column(String(64), nullable=False)
     direction: Mapped[str] = mapped_column(String(16), nullable=False)
     title: Mapped[str] = mapped_column(Text, nullable=False)
+    category: Mapped[str | None] = mapped_column(Text, nullable=True)
     doc_type: Mapped[str | None] = mapped_column(Text, nullable=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String(32), nullable=False)
+    sender_type: Mapped[str] = mapped_column(String(32), nullable=False, default=DocumentSenderType.NEFT.value)
+    sender_name: Mapped[str | None] = mapped_column(Text, nullable=True)
     counterparty_name: Mapped[str | None] = mapped_column(Text, nullable=True)
     counterparty_inn: Mapped[str | None] = mapped_column(Text, nullable=True)
     number: Mapped[str | None] = mapped_column(Text, nullable=True)

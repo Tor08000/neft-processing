@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
@@ -44,6 +46,8 @@ def list_client_documents(
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
     sort: str = Query("created_at_desc"),
+    date_from: datetime | None = Query(None),
+    date_to: datetime | None = Query(None),
     svc: DocumentsService = Depends(_service),
 ) -> DocumentsListResponse:
     if sort != "created_at_desc":
@@ -60,6 +64,8 @@ def list_client_documents(
         q=q,
         limit=limit,
         offset=offset,
+        date_from=date_from,
+        date_to=date_to,
     )
 
 
@@ -130,6 +136,19 @@ def get_client_document(
         raise HTTPException(status_code=404, detail="document_not_found")
     return document
 
+
+
+
+@router.get("/{document_id}/files", response_model=list[DocumentFileOut])
+def list_client_document_files(
+    document_id: str,
+    token: dict = Depends(client_portal_user),
+    svc: DocumentsService = Depends(_service),
+) -> list[DocumentFileOut]:
+    document = svc.get_document_with_files(client_id=_client_id_from_token(token), document_id=document_id)
+    if document is None:
+        raise HTTPException(status_code=404, detail="document_not_found")
+    return document.files
 
 @router.get("/files/{file_id}/download")
 def download_client_document_file(
