@@ -11,9 +11,13 @@ import {
   type OnboardingApplication,
 } from "../api/onboarding";
 import {
+  downloadGeneratedOnboardingDocument,
   downloadOnboardingDocument,
+  generateOnboardingDocuments,
+  listGeneratedOnboardingDocuments,
   listOnboardingDocuments,
   uploadOnboardingDocument,
+  type GeneratedOnboardingDocumentItem,
   type OnboardingDocStatus,
   type OnboardingDocType,
   type OnboardingDocumentItem,
@@ -47,6 +51,7 @@ export function OnboardingSelfRegistrationPage({ mode }: { mode: "start" | "form
   const [uploadingType, setUploadingType] = useState<OnboardingDocType | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [generatedDocs, setGeneratedDocs] = useState<GeneratedOnboardingDocumentItem[]>([]);
 
   const session = useMemo(() => getOnboardingSession(), []);
 
@@ -63,6 +68,8 @@ export function OnboardingSelfRegistrationPage({ mode }: { mode: "start" | "form
       setOgrn(app.ogrn ?? "");
       const docs = await listOnboardingDocuments(session.appId);
       setDocuments(docs);
+      const generated = await listGeneratedOnboardingDocuments(session.appId);
+      setGeneratedDocs(generated);
     } catch (e) {
       if (e instanceof ApiError && (e.status === 401 || e.status === 403)) {
         clearOnboardingSession();
@@ -140,6 +147,8 @@ export function OnboardingSelfRegistrationPage({ mode }: { mode: "start" | "form
       await uploadOnboardingDocument(session.appId, docType, file);
       const docs = await listOnboardingDocuments(session.appId);
       setDocuments(docs);
+      const generated = await listGeneratedOnboardingDocuments(session.appId);
+      setGeneratedDocs(generated);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Не удалось загрузить документ");
     } finally {
@@ -149,6 +158,31 @@ export function OnboardingSelfRegistrationPage({ mode }: { mode: "start" | "form
 
   const latestForType = (docType: OnboardingDocType): OnboardingDocumentItem | undefined =>
     documents.find((item) => item.doc_type === docType);
+
+  const docKindLabel = (kind: string) => {
+    if (kind === "OFFER") return "Оферта";
+    if (kind === "SERVICE_AGREEMENT") return "Договор услуг";
+    if (kind === "DPA") return "DPA / 152-ФЗ";
+    return kind;
+  };
+
+  const generateDocs = async () => {
+    if (!session.appId) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const items = await generateOnboardingDocuments(session.appId);
+      setGeneratedDocs(items);
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 400 && (e.details as { reason_code?: string } | undefined)?.reason_code === "feature_disabled_in_prod") {
+        setError("Документы будут доступны после проверки/включения подписи");
+        return;
+      }
+      setError(e instanceof Error ? e.message : "Не удалось сформировать документы");
+    } finally {
+      setBusy(false);
+    }
+  };
 
   if (mode === "start") {
     return (
@@ -238,6 +272,24 @@ export function OnboardingSelfRegistrationPage({ mode }: { mode: "start" | "form
         <li>Rejected</li>
       </ol>
       {application?.status === "DRAFT" ? <Link to="/client/onboarding/form">Редактировать</Link> : null}
+      <section style={{ marginTop: 20 }}>
+        <h2>Документы на подпись</h2>
+        <button type="button" disabled={busy} onClick={() => void generateDocs()}>
+          {busy ? "Формируем..." : "Сформировать документы"}
+        </button>
+        <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
+          {generatedDocs.map((item) => (
+            <div key={item.id} style={{ display: "flex", gap: 12, alignItems: "center" }}>
+              <span>{docKindLabel(item.doc_kind)} v{item.version}</span>
+              <span style={{ color: "#666" }}>{item.status}</span>
+              <button type="button" onClick={() => void downloadGeneratedOnboardingDocument(item.id, item.filename)}>
+                Скачать
+              </button>
+            </div>
+          ))}
+          {generatedDocs.length === 0 ? <span style={{ color: "#666" }}>Документы ещё не сформированы</span> : null}
+        </div>
+      </section>
       {error ? <p>{error}</p> : null}
     </main>
   );
