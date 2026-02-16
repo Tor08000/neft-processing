@@ -114,6 +114,8 @@ class AuthMeResponse(BaseModel):
     subject: str
     subject_type: str = "user"
     client_id: str | None = None
+    portal: str = "client"
+    user_id: str | None = None
 
     @field_validator("email")
     @classmethod
@@ -131,3 +133,11 @@ class RevokeUserTokensRequest(BaseModel):
 
 class RevokeTenantTokensRequest(BaseModel):
     tenant_id: str
+
+
+class VerifyResponse(BaseModel):
+    valid: bool
+    portal: str
+    subject: str
+    user_id: str | None = None
+    roles: list[str] = Field(default_factory=list)

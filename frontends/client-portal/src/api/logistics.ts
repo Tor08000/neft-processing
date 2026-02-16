@@ -84,7 +84,7 @@ export async function fetchVehicles(
   params?: LogisticsListParams,
 ): Promise<PaginatedResponse<VehicleDTO>> {
   const suffix = buildQuery(params);
-  return request<PaginatedResponse<VehicleDTO>>(`/core/client/logistics/fleet${suffix}`, { method: "GET" }, { token });
+  return request<PaginatedResponse<VehicleDTO>>(`/client/logistics/fleet${suffix}`, { method: "GET" }, { token });
 }
 
 export async function fetchDrivers(
@@ -92,7 +92,7 @@ export async function fetchDrivers(
   params?: LogisticsListParams,
 ): Promise<PaginatedResponse<DriverDTO>> {
   const suffix = buildQuery(params);
-  return request<PaginatedResponse<DriverDTO>>(`/core/client/logistics/fleet/drivers${suffix}`, { method: "GET" }, { token });
+  return request<PaginatedResponse<DriverDTO>>(`/client/logistics/fleet/drivers${suffix}`, { method: "GET" }, { token });
 }
 
 export async function fetchTrips(
@@ -100,15 +100,15 @@ export async function fetchTrips(
   params?: TripListParams,
 ): Promise<PaginatedResponse<TripListItem>> {
   const suffix = buildTripQuery(params);
-  return request<PaginatedResponse<TripListItem>>(`/core/client/logistics/trips${suffix}`, { method: "GET" }, { token });
+  return request<PaginatedResponse<TripListItem>>(`/client/logistics/trips${suffix}`, { method: "GET" }, { token });
 }
 
 export async function fetchTripById(token: string, tripId: string): Promise<TripDetail> {
-  return request<TripDetail>(`/core/client/logistics/trips/${tripId}`, { method: "GET" }, { token });
+  return request<TripDetail>(`/client/logistics/trips/${tripId}`, { method: "GET" }, { token });
 }
 
 export async function fetchTripRoute(token: string, tripId: string): Promise<RouteDetail> {
-  return request<RouteDetail>(`/core/client/logistics/trips/${tripId}/route`, { method: "GET" }, { token });
+  return request<RouteDetail>(`/client/logistics/trips/${tripId}/route`, { method: "GET" }, { token });
 }
 
 export async function fetchTripTracking(
@@ -120,15 +120,15 @@ export async function fetchTripTracking(
   if (params?.since) query.set("since", params.since);
   if (typeof params?.limit === "number") query.set("limit", String(params.limit));
   const suffix = query.toString();
-  return request<TripTrackingResponse>(`/core/client/logistics/trips/${tripId}/tracking${suffix ? `?${suffix}` : ""}`, { method: "GET" }, { token });
+  return request<TripTrackingResponse>(`/client/logistics/trips/${tripId}/tracking${suffix ? `?${suffix}` : ""}`, { method: "GET" }, { token });
 }
 
 export async function fetchTripPosition(token: string, tripId: string): Promise<TripTrackingResponse["last"]> {
-  return request<TripTrackingResponse["last"]>(`/core/client/logistics/trips/${tripId}/position`, { method: "GET" }, { token });
+  return request<TripTrackingResponse["last"]>(`/client/logistics/trips/${tripId}/position`, { method: "GET" }, { token });
 }
 
 export async function fetchTripEta(token: string, tripId: string): Promise<TripEta> {
-  return request<TripEta>(`/core/client/logistics/trips/${tripId}/eta`, { method: "GET" }, { token });
+  return request<TripEta>(`/client/logistics/trips/${tripId}/eta`, { method: "GET" }, { token });
 }
 
 
@@ -150,11 +150,11 @@ export async function fetchTripDeviations(
   if (typeof params?.limit === "number") query.set("limit", String(params.limit));
   if (params?.type && params.type !== "ALL") query.set("type", params.type);
   const suffix = query.toString();
-  return request<TripDeviationsResponse>(`/core/client/logistics/trips/${tripId}/deviations${suffix ? `?${suffix}` : ""}`, { method: "GET" }, { token });
+  return request<TripDeviationsResponse>(`/client/logistics/trips/${tripId}/deviations${suffix ? `?${suffix}` : ""}`, { method: "GET" }, { token });
 }
 
 export async function fetchTripSlaImpact(token: string, tripId: string): Promise<TripSlaImpact> {
-  return request<TripSlaImpact>(`/core/client/logistics/trips/${tripId}/sla-impact`, { method: "GET" }, { token });
+  return request<TripSlaImpact>(`/client/logistics/trips/${tripId}/sla-impact`, { method: "GET" }, { token });
 }
 
 export async function runFuelLinker(
@@ -162,7 +162,7 @@ export async function runFuelLinker(
   params: { date_from: string; date_to: string },
 ): Promise<{ processed: number; linked: number; unlinked: number; alerts_created: number }> {
   const query = new URLSearchParams(params);
-  return request(`/core/client/logistics/fuel/linker:run?${query.toString()}`, { method: "POST" }, { token });
+  return request(`/client/logistics/fuel/linker:run?${query.toString()}`, { method: "POST" }, { token });
 }
 
 export async function fetchUnlinkedFuel(
@@ -172,7 +172,7 @@ export async function fetchUnlinkedFuel(
   const query = new URLSearchParams({ date_from: params.date_from, date_to: params.date_to });
   if (typeof params.limit === "number") query.set("limit", String(params.limit));
   if (typeof params.offset === "number") query.set("offset", String(params.offset));
-  return request(`/core/client/logistics/fuel/unlinked?${query.toString()}`, { method: "GET" }, { token });
+  return request(`/client/logistics/fuel/unlinked?${query.toString()}`, { method: "GET" }, { token });
 }
 
 export async function fetchFuelAlerts(
@@ -185,7 +185,7 @@ export async function fetchFuelAlerts(
   if (params.status) query.set("status", params.status);
   if (typeof params.limit === "number") query.set("limit", String(params.limit));
   if (typeof params.offset === "number") query.set("offset", String(params.offset));
-  return request(`/core/client/logistics/fuel/alerts?${query.toString()}`, { method: "GET" }, { token });
+  return request(`/client/logistics/fuel/alerts?${query.toString()}`, { method: "GET" }, { token });
 }
 
 export async function fetchFuelReport(
@@ -194,11 +194,11 @@ export async function fetchFuelReport(
 ): Promise<import("../types/logistics").FuelReportItem[]> {
   const query = new URLSearchParams({ date_from: params.date_from, date_to: params.date_to, group_by: params.group_by });
   if (params.period) query.set("period", params.period);
-  return request(`/core/client/logistics/reports/fuel?${query.toString()}`, { method: "GET" }, { token });
+  return request(`/client/logistics/reports/fuel?${query.toString()}`, { method: "GET" }, { token });
 }
 
 export async function fetchTripFuel(token: string, tripId: string): Promise<import("../types/logistics").TripFuelResponse> {
-  const response = await request<RawTripFuelResponse>(`/core/client/logistics/trips/${tripId}/fuel`, { method: "GET" }, { token });
+  const response = await request<RawTripFuelResponse>(`/client/logistics/trips/${tripId}/fuel`, { method: "GET" }, { token });
 
   return {
     trip_id: response.trip_id ?? tripId,

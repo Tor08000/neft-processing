@@ -27,6 +27,7 @@ from app.schemas.auth import (
     RefreshRequest,
     RevokeUserTokensRequest,
     RevokeTenantTokensRequest,
+    VerifyResponse,
 )
 from app.security import (
     create_access_token,
@@ -211,10 +212,13 @@ def _resolve_login_portal(request: Request, payload: LoginRequest) -> str:
     portal = _resolve_portal(request.query_params.get("portal"))
     if portal:
         return portal
-    raise HTTPException(
-        status_code=status.HTTP_400_BAD_REQUEST,
-        detail={"error": "portal_required", "reason_code": "PORTAL_REQUIRED"},
-    )
+
+    path = request.url.path.lower()
+    if "/partner" in path:
+        return "partner"
+    if "/admin" in path:
+        return "admin"
+    return "client"
 
 
 def _is_dev_env() -> bool:
@@ -692,6 +696,24 @@ async def oauth_callback(request: Request, code: str, state: str) -> TokenRespon
     )
 
 
+@router.get("/verify", response_model=VerifyResponse)
+async def verify_token(
+    request: Request,
+    credentials: HTTPAuthorizationCredentials | None = Depends(security_scheme),
+) -> VerifyResponse:
+    if credentials is None or credentials.scheme.lower() != "bearer" or not credentials.credentials:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="not_authenticated")
+
+    portal = _resolve_portal(request.headers.get("X-Portal")) or _resolve_portal(request.query_params.get("portal")) or "client"
+    issuer, audience = _portal_token_config(portal)
+    payload = decode_access_token(credentials.credentials, issuer=issuer, audience=audience)
+    token_portal = _resolve_portal(payload.get("portal")) or portal
+    if token_portal != portal:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="wrong_portal")
+
+    return VerifyResponse(valid=True, portal=portal, subject=str(payload.get("sub") or ""), user_id=payload.get("user_id"), roles=payload.get("roles") or [])
+
+
 @router.post("/refresh", response_model=TokenResponse)
 async def refresh_tokens(request: Request, payload: RefreshRequest) -> TokenResponse:
     token_payload = _decode_refresh_token(payload.refresh_token)
@@ -852,4 +874,6 @@ async def auth_me(
         subject=subject,
         subject_type=subject_type,
         client_id=client_id,
+        portal=portal,
+        user_id=user_id,
     )

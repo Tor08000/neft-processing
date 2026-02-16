@@ -42,14 +42,18 @@ def _seed_user(monkeypatch, *, user_email: str, roles: list[str]):
     return demo_user
 
 
-def test_login_requires_portal(monkeypatch):
+def test_login_legacy_defaults(monkeypatch):
     _seed_user(monkeypatch, user_email="client@neft.local", roles=["CLIENT_OWNER"])
     response = _client().post(
         "/api/v1/auth/login",
         json={"email": "client@neft.local", "password": "secret"},
     )
-    assert response.status_code == 400
-    assert response.json() == {"detail": {"error": "portal_required", "reason_code": "PORTAL_REQUIRED"}}
+    assert response.status_code == 200
+    settings = auth.get_settings()
+    claims = _decode_claims(response.json()["access_token"])
+    assert claims["iss"] == settings.auth_client_issuer
+    assert claims["aud"] == settings.auth_client_audience
+    assert claims["portal"] == "client"
 
 
 def test_portal_resolution_from_body(monkeypatch):
@@ -88,8 +92,8 @@ def test_portal_resolution_from_query(monkeypatch):
     assert response.status_code == 200
     settings = auth.get_settings()
     claims = _decode_claims(response.json()["access_token"])
-    assert claims["iss"] == settings.auth_issuer
-    assert claims["aud"] == settings.auth_audience
+    assert claims["iss"] == settings.auth_partner_issuer
+    assert claims["aud"] == settings.auth_partner_audience
 
 
 def test_demo_claims_only_in_dev(monkeypatch):
