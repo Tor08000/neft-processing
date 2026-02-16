@@ -53,6 +53,7 @@ class Settings:
 
     edo_stub_delivered_after_seconds: int = int(os.getenv("EDO_STUB_DELIVERED_AFTER_SECONDS", "20"))
     edo_stub_signed_after_seconds: int = int(os.getenv("EDO_STUB_SIGNED_AFTER_SECONDS", "60"))
+    internal_token: str = os.getenv("INTEGRATION_HUB_INTERNAL_TOKEN", "")
 
 
 _settings: Settings | None = None

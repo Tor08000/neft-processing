@@ -1,0 +1,6 @@
+services:
+  logistics-service:
+    environment:
+      APP_ENV: dev
+      LOGISTICS_PROVIDER: mock
+      USE_MOCK_LOGISTICS: 1

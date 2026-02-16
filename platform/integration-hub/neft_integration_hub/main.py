@@ -4,7 +4,7 @@ import logging
 from typing import Callable
 from uuid import uuid4
 
-from fastapi import Depends, FastAPI, HTTPException, Request, Response
+from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Gauge, generate_latest
 from sqlalchemy.orm import Session
 
@@ -596,3 +596,49 @@ def _count_in_status(db: Session, status: str) -> int:
 
 
 __all__ = ["app"]
+
+from datetime import datetime, timezone
+
+from fastapi import Header
+
+
+def _require_internal_token(x_internal_token: str | None = Header(default=None, alias="X-Internal-Token")) -> None:
+    if settings.internal_token and x_internal_token != settings.internal_token:
+        raise HTTPException(status_code=401, detail="invalid_internal_token")
+
+
+@app.post("/v1/logistics/fleet/list")
+def logistics_fleet_list(payload: dict, _auth: None = Depends(_require_internal_token)) -> dict:
+    limit = int(payload.get("limit", 50))
+    offset = int(payload.get("offset", 0))
+    return {"ok": True, "request_id": str(uuid4()), "items": [], "total": 0, "limit": limit, "offset": offset}
+
+
+@app.post("/v1/logistics/fleet/upsert")
+def logistics_fleet_upsert(payload: dict, _auth: None = Depends(_require_internal_token)) -> dict:
+    vehicle = {
+        "vehicle_id": str(payload.get("vehicle_id", "vehicle-demo")),
+        "plate_number": str(payload.get("plate_number", "A000AA00")),
+        "kind": str(payload.get("kind", "truck")),
+        "status": str(payload.get("status", "active")),
+    }
+    return {"ok": True, "request_id": str(uuid4()), "vehicle": vehicle}
+
+
+@app.post("/v1/logistics/trips/create")
+def logistics_trip_create(payload: dict, _auth: None = Depends(_require_internal_token)) -> dict:
+    trip_id = str(payload.get("trip_id", "trip-demo"))
+    return {"ok": True, "request_id": str(uuid4()), "trip_id": trip_id, "status": "created"}
+
+
+@app.get("/v1/logistics/trips/{trip_id}/status")
+def logistics_trip_status(trip_id: str, _auth: None = Depends(_require_internal_token)) -> dict:
+    return {"ok": True, "request_id": str(uuid4()), "trip_id": trip_id, "status": "created", "updated_at": datetime.now(timezone.utc).isoformat()}
+
+
+@app.post("/v1/logistics/fuel/consumption")
+def logistics_fuel_consumption(payload: dict, _auth: None = Depends(_require_internal_token)) -> dict:
+    trip_id = str(payload.get("trip_id", "trip-demo"))
+    distance_km = float(payload.get("distance_km", 0))
+    liters = round(distance_km * 0.28, 2)
+    return {"ok": True, "request_id": str(uuid4()), "trip_id": trip_id, "liters": liters, "method": "integration_hub"}

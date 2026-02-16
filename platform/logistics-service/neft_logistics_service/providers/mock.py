@@ -11,9 +11,30 @@ from neft_logistics_service.schemas import (
     Explain,
 )
 
+from neft_logistics_service.schemas.fleet import FleetListRequest, FleetListResponse, FleetUpsertRequest, FleetUpsertResponse, FleetVehicle
+from neft_logistics_service.schemas.fuel import FuelConsumptionRequest, FuelConsumptionResponse
+from neft_logistics_service.schemas.trips import TripCreateRequest, TripCreateResponse, TripStatusResponse
+
 
 class MockProvider(BaseProvider):
     name = "mock"
+
+    def fleet_list(self, request: FleetListRequest) -> FleetListResponse:
+        return FleetListResponse(items=[], total=0, limit=request.limit, offset=request.offset, request_id="mock-request")
+
+    def fleet_upsert(self, request: FleetUpsertRequest) -> FleetUpsertResponse:
+        return FleetUpsertResponse(vehicle=FleetVehicle(**request.model_dump()), request_id="mock-request")
+
+    def trip_create(self, request: TripCreateRequest) -> TripCreateResponse:
+        return TripCreateResponse(trip_id=request.trip_id, status="created", request_id="mock-request")
+
+    def trip_get_status(self, trip_id: str) -> TripStatusResponse:
+        return TripStatusResponse(trip_id=trip_id, status="created", request_id="mock-request")
+
+    def fuel_get_consumption(self, request: FuelConsumptionRequest) -> FuelConsumptionResponse:
+        liters = round(request.distance_km * 0.28, 2)
+        return FuelConsumptionResponse(trip_id=request.trip_id, liters=liters, method="mock", request_id="mock-request")
+
 
     def compute_eta(self, request: EtaRequest) -> EtaResponse:
         distance_km = _route_distance_km(request)

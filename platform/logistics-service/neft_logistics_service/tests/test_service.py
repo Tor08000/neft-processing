@@ -1,4 +1,6 @@
-from __future__ import annotations
+import os
+
+os.environ.setdefault("LOGISTICS_PROVIDER", "mock")
 
 from fastapi.testclient import TestClient
 from jsonschema import validate
