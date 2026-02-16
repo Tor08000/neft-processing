@@ -6,6 +6,7 @@ from app.domains.client.deps import get_client_context
 from app.domains.client.repo import ClientRepository
 from app.domains.client.schemas import ClientMeResponse
 from app.domains.client.service import build_client_me_response
+from app.routers.client_onboarding_v1 import router as client_onboarding_v1_router
 
 router = APIRouter(prefix="/client/v1", tags=["client-v1"])
 
@@ -19,3 +20,6 @@ def client_v1_health() -> dict[str, str]:
 def client_v1_me(context: tuple[dict, ClientRepository] = Depends(get_client_context)) -> ClientMeResponse:
     token, repo = context
     return build_client_me_response(token=token, repo=repo)
+
+
+router.include_router(client_onboarding_v1_router)
