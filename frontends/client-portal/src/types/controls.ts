@@ -36,20 +36,28 @@ export interface LimitChangeRequestResponse {
 }
 
 export interface ClientUserSummary {
-  id: string;
-  email: string;
-  role: string;
+  user_id: string;
+  email?: string | null;
+  full_name?: string | null;
   status?: string | null;
-  last_login?: string | null;
+  roles: string[];
 }
 
 export interface ClientUsersResponse {
   items?: ClientUserSummary[] | null;
 }
 
+export interface ClientInvitationResponse {
+  invitation_id: string;
+  email: string;
+  status: string;
+  expires_at: string;
+  token?: string | null;
+}
+
 export interface CreateClientUserPayload {
   email: string;
-  role: string;
+  roles: string[];
 }
 
 export interface UpdateClientUserPayload {

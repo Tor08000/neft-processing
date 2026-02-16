@@ -7,7 +7,6 @@ import { AppEmptyState, AppErrorState, AppForbiddenState, AppLoadingState } from
 import { Toast } from "../components/Toast/Toast";
 import { useToast } from "../components/Toast/useToast";
 import type { ClientUserSummary } from "../types/controls";
-import { formatDateTime } from "../utils/format";
 import { hasAnyRole } from "../utils/roles";
 
 interface PageErrorState {
@@ -18,8 +17,8 @@ interface PageErrorState {
 
 const roleLabels: Record<string, string> = {
   CLIENT_OWNER: "CLIENT_OWNER",
-  CLIENT_ADMIN: "CLIENT_ADMIN",
-  CLIENT_USER: "CLIENT_USER",
+  CLIENT_MANAGER: "CLIENT_MANAGER",
+  CLIENT_VIEWER: "CLIENT_VIEWER",
 };
 
 export function ClientUsersPage() {
@@ -31,18 +30,18 @@ export function ClientUsersPage() {
 
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [newEmail, setNewEmail] = useState("");
-  const [newRole, setNewRole] = useState("CLIENT_USER");
+  const [newRole, setNewRole] = useState("CLIENT_VIEWER");
   const [addError, setAddError] = useState<PageErrorState | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [roleUser, setRoleUser] = useState<ClientUserSummary | null>(null);
-  const [roleValue, setRoleValue] = useState("CLIENT_USER");
+  const [roleValue, setRoleValue] = useState("CLIENT_VIEWER");
   const [roleError, setRoleError] = useState<PageErrorState | null>(null);
 
   const [disableUser, setDisableUser] = useState<ClientUserSummary | null>(null);
   const [disableError, setDisableError] = useState<PageErrorState | null>(null);
 
-  const canManage = hasAnyRole(user, ["CLIENT_OWNER", "CLIENT_ADMIN"]);
+  const canManage = hasAnyRole(user, ["CLIENT_OWNER", "CLIENT_MANAGER"]);
   const emailValid = newEmail.trim() !== "" && newEmail.includes("@");
 
   const loadUsers = () => {
@@ -92,7 +91,7 @@ export function ClientUsersPage() {
   const openAddModal = () => {
     setIsAddOpen(true);
     setNewEmail("");
-    setNewRole("CLIENT_USER");
+    setNewRole("CLIENT_VIEWER");
     setAddError(null);
   };
 
@@ -101,7 +100,7 @@ export function ClientUsersPage() {
     setIsSubmitting(true);
     setAddError(null);
     try {
-      const response = await createClientUser(user, { email: newEmail, role: newRole });
+      const response = await createClientUser(user, { email: newEmail, roles: [newRole] });
       showToast({ kind: "success", text: `Пользователь приглашён: ${newEmail}` });
       setIsAddOpen(false);
       loadUsers();
@@ -121,8 +120,8 @@ export function ClientUsersPage() {
     setIsSubmitting(true);
     setRoleError(null);
     try {
-      const response = await updateClientUserRole(user, roleUser.id, { roles: [roleValue] });
-      showToast({ kind: "success", text: `Роль обновлена: ${roleUser.email} → ${roleValue}` });
+      const response = await updateClientUserRole(user, roleUser.user_id, { roles: [roleValue] });
+      showToast({ kind: "success", text: `Роль обновлена: ${roleUser.email ?? roleUser.user_id} → ${roleValue}` });
       setRoleUser(null);
       loadUsers();
     } catch (err) {
@@ -141,8 +140,8 @@ export function ClientUsersPage() {
     setIsSubmitting(true);
     setDisableError(null);
     try {
-      const response = await disableClientUser(user, disableUser.id);
-      showToast({ kind: "success", text: `Пользователь отключён: ${disableUser.email}` });
+      const response = await disableClientUser(user, disableUser.user_id);
+      showToast({ kind: "success", text: `Пользователь отключён: ${disableUser.email ?? disableUser.user_id}` });
       setDisableUser(null);
       loadUsers();
     } catch (err) {
@@ -168,7 +167,7 @@ export function ClientUsersPage() {
             Пригласить сотрудника
           </button>
         </div>
-        {!canManage ? <div className="muted small">Действия доступны только CLIENT_OWNER/CLIENT_ADMIN.</div> : null}
+        {!canManage ? <div className="muted small">Действия доступны только CLIENT_OWNER/CLIENT_MANAGER.</div> : null}
       </section>
 
       <section className="card">
@@ -179,8 +178,9 @@ export function ClientUsersPage() {
             <table className="table">
               <thead>
                 <tr>
+                  <th>Имя</th>
                   <th>Email</th>
-                  <th>Роль</th>
+                  <th>Роли</th>
                   <th>Статус</th>
                   <th>Last login</th>
                   <th>Действия</th>
@@ -188,20 +188,21 @@ export function ClientUsersPage() {
               </thead>
               <tbody>
                 {users.map((item) => (
-                  <tr key={item.id}>
-                    <td>{item.email}</td>
-                    <td>{roleLabels[item.role] ?? item.role}</td>
+                  <tr key={item.user_id}>
+                    <td>{item.full_name ?? "—"}</td>
+                    <td>{item.email ?? "—"}</td>
+                    <td>{(item.roles ?? []).map((role) => roleLabels[role] ?? role).join(", ") || "—"}</td>
                     <td>{item.status ?? "—"}</td>
-                    <td>{item.last_login ? formatDateTime(item.last_login) : "—"}</td>
+                    <td>—</td>
                     <td>
                       <div className="actions">
                         <button
                           type="button"
                           className="secondary"
-                          disabled={!canManage}
+                          disabled={!canManage || (item.email ?? "").toLowerCase() === (user?.email ?? "").toLowerCase()}
                           onClick={() => {
                             setRoleUser(item);
-                            setRoleValue(item.role);
+                            setRoleValue(item.roles?.[0] ?? "CLIENT_VIEWER");
                             setRoleError(null);
                           }}
                         >
@@ -210,7 +211,7 @@ export function ClientUsersPage() {
                         <button
                           type="button"
                           className="ghost"
-                          disabled={!canManage || item.status?.toUpperCase() === "DISABLED"}
+                          disabled={!canManage || item.status?.toUpperCase() === "DISABLED" || !item.email}
                           onClick={() => {
                             setDisableUser(item);
                             setDisableError(null);
@@ -247,8 +248,8 @@ export function ClientUsersPage() {
         <label className="filter">
           Роль
           <select value={newRole} onChange={(event) => setNewRole(event.target.value)}>
-            <option value="CLIENT_USER">CLIENT_USER</option>
-            <option value="CLIENT_ADMIN">CLIENT_ADMIN</option>
+            <option value="CLIENT_VIEWER">CLIENT_VIEWER</option>
+            <option value="CLIENT_MANAGER">CLIENT_MANAGER</option>
             <option value="CLIENT_OWNER">CLIENT_OWNER</option>
           </select>
         </label>
@@ -275,8 +276,8 @@ export function ClientUsersPage() {
         <label className="filter">
           Роль
           <select value={roleValue} onChange={(event) => setRoleValue(event.target.value)}>
-            <option value="CLIENT_USER">CLIENT_USER</option>
-            <option value="CLIENT_ADMIN">CLIENT_ADMIN</option>
+            <option value="CLIENT_VIEWER">CLIENT_VIEWER</option>
+            <option value="CLIENT_MANAGER">CLIENT_MANAGER</option>
             <option value="CLIENT_OWNER">CLIENT_OWNER</option>
           </select>
         </label>

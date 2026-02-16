@@ -1,6 +1,6 @@
 from enum import Enum
 
-from sqlalchemy import BigInteger, Column, DateTime, ForeignKey, Integer, Numeric, String, UniqueConstraint, JSON
+from sqlalchemy import BigInteger, Column, DateTime, ForeignKey, Integer, Numeric, String, UniqueConstraint, JSON, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
 
@@ -115,8 +115,24 @@ class ClientUserRole(Base):
     id = Column(GUID(), primary_key=True, default=new_uuid_str)
     client_id = Column(GUID(), ForeignKey("clients.id"), nullable=False, index=True)
     user_id = Column(String(64), nullable=False, index=True)
-    roles = Column(String, nullable=False)
+    roles = Column(JSON, nullable=False, default=list)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class ClientInvitation(Base):
+    __tablename__ = "client_invitations"
+
+    id = Column(GUID(), primary_key=True, default=new_uuid_str)
+    client_id = Column(GUID(), ForeignKey("clients.id"), nullable=False, index=True)
+    email = Column(String(256), nullable=False)
+    invited_by_user_id = Column(String(64), nullable=False)
+    roles = Column(JSON, nullable=False, default=list)
+    token_hash = Column(Text, nullable=False)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    status = Column(String(32), nullable=False, server_default="PENDING")
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    accepted_at = Column(DateTime(timezone=True), nullable=True)
+    accepted_by_user_id = Column(String(64), nullable=True)
 
 
 class LimitTemplate(Base):

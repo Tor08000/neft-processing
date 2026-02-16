@@ -4,6 +4,7 @@ import csv
 import logging
 import math
 import os
+import secrets
 from typing import Any
 from datetime import date, datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
@@ -27,6 +28,7 @@ from app.models.client_portal import (
     CardAccess,
     CardAccessScope,
     CardLimit,
+    ClientInvitation,
     ClientOperation,
     ClientUserRole,
     LimitTemplate,
@@ -89,7 +91,6 @@ from app.schemas.client_cards_v1 import (
     LimitTemplateListResponse,
     LimitTemplateOut,
     LimitTemplateUpdateRequest,
-    UserRoleUpdateRequest,
 )
 from app.schemas.client_portal_v1 import (
     ClientAuditEventSummary,
@@ -125,7 +126,9 @@ from app.schemas.client_portal_v1 import (
     ReportScheduleUpdateRequest,
     ClientSubscriptionOut,
     ClientSubscriptionSelectRequest,
+    ClientInvitationOut,
     ClientUserInviteRequest,
+    ClientUserRolesUpdateRequest,
     ClientUserSummary,
     ClientUsersResponse,
     ContractInfo,
@@ -601,9 +604,31 @@ def _is_card_admin(token: dict) -> bool:
     return bool(roles.intersection({"CLIENT_OWNER", "CLIENT_ADMIN", "CLIENT_FLEET_MANAGER"}))
 
 
+CLIENT_USER_ROLE_WHITELIST = {"CLIENT_OWNER", "CLIENT_MANAGER", "CLIENT_VIEWER"}
+
+
 def _is_user_admin(token: dict) -> bool:
     roles = set(_normalize_roles(token))
-    return bool(roles.intersection({"CLIENT_OWNER", "CLIENT_ADMIN"}))
+    return bool(roles.intersection({"CLIENT_OWNER", "CLIENT_MANAGER", "CLIENT_ADMIN"}))
+
+
+def _is_client_owner(token: dict) -> bool:
+    return "CLIENT_OWNER" in set(_normalize_roles(token))
+
+
+def _normalize_client_roles(roles: list[str]) -> list[str]:
+    normalized: list[str] = []
+    for role in roles:
+        role_value = str(role).strip().upper()
+        if role_value in CLIENT_USER_ROLE_WHITELIST and role_value not in normalized:
+            normalized.append(role_value)
+    if not normalized:
+        normalized.append("CLIENT_VIEWER")
+    return normalized
+
+
+def _is_dev_env() -> bool:
+    return os.getenv("APP_ENV", "prod").lower() in {"dev", "local", "development", "test"}
 
 
 def _is_driver(token: dict) -> bool:
@@ -5885,133 +5910,127 @@ def list_users(
         raise HTTPException(status_code=404, detail="org_not_found")
     if not _is_user_admin(token):
         raise HTTPException(status_code=403, detail="forbidden")
-    users = (
-        db.query(ClientEmployee)
-        .filter(ClientEmployee.client_id == str(client.id))
-        .order_by(ClientEmployee.created_at.desc())
-        .all()
-    )
 
-    role_map: dict[str, str] = {}
-    if _table_exists(db, "client_user_roles"):
-        try:
-            role_rows = db.query(ClientUserRole).filter(ClientUserRole.client_id == str(client.id)).all()
-            role_map = {str(row.user_id): str(row.roles).split(",")[0] for row in role_rows}
-        except Exception:
-            role_map = {}
+    memberships = _table(db, "client_users") if _table_exists(db, "client_users") else None
+    users_tbl = _table(db, "users") if _table_exists(db, "users") else None
+    roles_tbl = _table(db, "client_user_roles") if _table_exists(db, "client_user_roles") else None
 
-    items = [
-        ClientUserSummary(
-            id=str(user_item.id),
-            email=user_item.email,
-            role=role_map.get(str(user_item.id), "CLIENT_USER"),
-            status=user_item.status.value if user_item.status else None,
-            last_login=None,
-        )
-        for user_item in users
-    ]
+    role_map: dict[str, list[str]] = {}
+    if roles_tbl is not None:
+        role_rows = db.execute(
+            select(roles_tbl.c.user_id, roles_tbl.c.roles).where(roles_tbl.c.client_id == str(client.id))
+        ).all()
+        for user_id, roles in role_rows:
+            if isinstance(roles, list):
+                role_map[str(user_id)] = [str(item) for item in roles]
+            elif isinstance(roles, str):
+                role_map[str(user_id)] = [item for item in roles.split(",") if item]
+            else:
+                role_map[str(user_id)] = []
 
-    user_ids = {item.id for item in items}
-    if _table_exists(db, "client_users"):
-        try:
-            memberships = _table(db, "client_users")
-            rows = db.execute(
-                select(memberships.c.user_id, memberships.c.status)
-                .where(memberships.c.client_id == str(client.id))
-                .order_by(memberships.c.created_at.desc())
-            ).all()
-            for user_id, status in rows:
-                normalized_id = str(user_id)
-                if normalized_id in user_ids:
-                    continue
-                items.append(
-                    ClientUserSummary(
-                        id=normalized_id,
-                        email=None,
-                        role=role_map.get(normalized_id, "CLIENT_USER"),
-                        status=str(status) if status else "ACTIVE",
-                        last_login=None,
-                    )
+    items: list[ClientUserSummary] = []
+    if memberships is not None:
+        stmt = select(
+            memberships.c.user_id,
+            memberships.c.status,
+            users_tbl.c.email if users_tbl is not None and "email" in users_tbl.c else None,
+            users_tbl.c.full_name if users_tbl is not None and "full_name" in users_tbl.c else None,
+        ).where(memberships.c.client_id == str(client.id))
+        if users_tbl is not None:
+            stmt = stmt.select_from(memberships.outerjoin(users_tbl, users_tbl.c.id == memberships.c.user_id))
+        rows = db.execute(stmt).all()
+        for user_id, status, email, full_name in rows:
+            roles = role_map.get(str(user_id), [])
+            items.append(
+                ClientUserSummary(
+                    user_id=str(user_id),
+                    email=email,
+                    full_name=full_name,
+                    status=str(status) if status else "ACTIVE",
+                    roles=roles,
                 )
-                user_ids.add(normalized_id)
-        except Exception:
-            pass
+            )
 
+    owner_rank = lambda payload: 0 if "CLIENT_OWNER" in payload.roles else 1
+    items.sort(key=lambda payload: (owner_rank(payload), (payload.email or "").lower(), payload.user_id))
     return ClientUsersResponse(items=items)
 
 
-@router.post("/users/invite", response_model=ClientUserSummary, status_code=201)
+@router.post("/users/invite", response_model=ClientInvitationOut, status_code=201)
 def invite_user(
     payload: ClientUserInviteRequest,
     token: dict = Depends(client_auth.require_onboarding_user),
     db: Session = Depends(get_db),
-) -> ClientUserSummary:
+) -> ClientInvitationOut:
     client = _resolve_client(db, token)
     if client is None:
         raise HTTPException(status_code=404, detail="org_not_found")
     if not _is_user_admin(token):
         raise HTTPException(status_code=403, detail="forbidden")
+
     email = payload.email.strip().lower()
-    if not email:
-        raise HTTPException(status_code=422, detail="email_required")
-    employee = (
-        db.query(ClientEmployee)
-        .filter(ClientEmployee.client_id == str(client.id), ClientEmployee.email == email)
+    if "@" not in email or "." not in email.split("@")[-1]:
+        raise HTTPException(status_code=422, detail="invalid_email")
+
+    caller_email = (token.get("email") or "").strip().lower()
+    if caller_email and caller_email == email:
+        raise HTTPException(status_code=400, detail="cannot_invite_self")
+
+    memberships = _table(db, "client_users") if _table_exists(db, "client_users") else None
+    users_tbl = _table(db, "users") if _table_exists(db, "users") else None
+    if memberships is not None and users_tbl is not None and "email" in users_tbl.c:
+        member_exists = db.execute(
+            select(memberships.c.user_id)
+            .select_from(memberships.join(users_tbl, users_tbl.c.id == memberships.c.user_id))
+            .where(memberships.c.client_id == str(client.id))
+            .where(func.lower(users_tbl.c.email) == email)
+            .limit(1)
+        ).scalar_one_or_none()
+        if member_exists is not None:
+            raise HTTPException(status_code=409, detail="already_member")
+
+    pending = (
+        db.query(ClientInvitation)
+        .filter(
+            ClientInvitation.client_id == str(client.id),
+            func.lower(ClientInvitation.email) == email,
+            ClientInvitation.status == "PENDING",
+        )
         .one_or_none()
     )
-    if employee:
-        employee.status = EmployeeStatus.INVITED
-    else:
-        employee = ClientEmployee(client_id=str(client.id), email=email, status=EmployeeStatus.INVITED)
-        db.add(employee)
-        db.flush()
-    role_record = (
-        db.query(ClientUserRole)
-        .filter(ClientUserRole.client_id == str(client.id), ClientUserRole.user_id == str(employee.id))
-        .one_or_none()
+    if pending is not None:
+        raise HTTPException(status_code=409, detail="invite_already_pending")
+
+    token_raw = secrets.token_urlsafe(32)
+    pepper = os.getenv("CLIENT_INVITATION_TOKEN_PEPPER", "")
+    token_hash = sha256(f"{token_raw}{pepper}".encode("utf-8")).hexdigest()
+    invitation = ClientInvitation(
+        client_id=str(client.id),
+        email=email,
+        invited_by_user_id=str(token.get("user_id") or token.get("sub") or "unknown"),
+        roles=_normalize_client_roles(payload.roles),
+        token_hash=token_hash,
+        expires_at=datetime.now(timezone.utc) + timedelta(days=7),
+        status="PENDING",
     )
-    if role_record:
-        role_record.roles = payload.role
-    else:
-        role_record = ClientUserRole(client_id=str(client.id), user_id=str(employee.id), roles=payload.role)
-        db.add(role_record)
+    db.add(invitation)
     db.commit()
-    return ClientUserSummary(
-        id=str(employee.id),
-        email=employee.email,
-        role=payload.role,
-        status=employee.status.value,
-        last_login=None,
+    db.refresh(invitation)
+
+    return ClientInvitationOut(
+        invitation_id=str(invitation.id),
+        email=invitation.email,
+        status=invitation.status,
+        expires_at=invitation.expires_at,
+        token=token_raw if _is_dev_env() else None,
     )
 
 
-@router.delete("/users/{user_id}")
-def disable_user(
-    user_id: str,
-    token: dict = Depends(client_auth.require_onboarding_user),
-    db: Session = Depends(get_db),
-) -> dict:
-    client = _resolve_client(db, token)
-    if client is None:
-        raise HTTPException(status_code=404, detail="org_not_found")
-    if not _is_user_admin(token):
-        raise HTTPException(status_code=403, detail="forbidden")
-    employee = (
-        db.query(ClientEmployee)
-        .filter(ClientEmployee.client_id == str(client.id), ClientEmployee.id == user_id)
-        .one_or_none()
-    )
-    if not employee:
-        raise HTTPException(status_code=404, detail="user_not_found")
-    employee.status = EmployeeStatus.DISABLED
-    db.commit()
-    return {"status": "disabled"}
-
-
+@router.post("/users/{user_id}/roles")
 @router.patch("/users/{user_id}/roles")
 def update_user_roles(
     user_id: str,
-    payload: UserRoleUpdateRequest,
+    payload: ClientUserRolesUpdateRequest,
     request: Request,
     token: dict = Depends(client_auth.require_onboarding_user),
     db: Session = Depends(get_db),
@@ -6021,19 +6040,37 @@ def update_user_roles(
         raise HTTPException(status_code=404, detail="org_not_found")
     if not _is_user_admin(token):
         raise HTTPException(status_code=403, detail="forbidden")
-    roles = payload.roles
-    roles_normalized = ",".join([str(role) for role in roles])
+
+    actor_id = str(token.get("user_id") or token.get("sub") or "")
+    roles = _normalize_client_roles(payload.roles)
+
+    if user_id == actor_id and "CLIENT_OWNER" not in roles:
+        raise HTTPException(status_code=400, detail="cannot_change_own_owner_role")
+
+    role_records = db.query(ClientUserRole).filter(ClientUserRole.client_id == str(client.id)).all()
+    owner_count = 0
+    target_before_owner = False
+    for rec in role_records:
+        rec_roles = rec.roles if isinstance(rec.roles, list) else str(rec.roles).split(",")
+        has_owner = "CLIENT_OWNER" in [str(item).upper() for item in rec_roles if item]
+        if has_owner:
+            owner_count += 1
+        if str(rec.user_id) == user_id:
+            target_before_owner = has_owner
+
+    if target_before_owner and "CLIENT_OWNER" not in roles and owner_count <= 1:
+        raise HTTPException(status_code=409, detail="cannot_remove_last_owner")
+
     record = (
         db.query(ClientUserRole)
         .filter(ClientUserRole.client_id == str(client.id), ClientUserRole.user_id == user_id)
         .one_or_none()
     )
-    before = {"roles": record.roles.split(",")} if record else None
+    before = {"roles": record.roles if record else []}
     if record:
-        record.roles = roles_normalized
+        record.roles = roles
     else:
-        record = ClientUserRole(client_id=str(client.id), user_id=user_id, roles=roles_normalized)
-        db.add(record)
+        db.add(ClientUserRole(client_id=str(client.id), user_id=user_id, roles=roles))
     db.commit()
     _audit_event(
         db,
