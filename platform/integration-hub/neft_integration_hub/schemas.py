@@ -66,6 +66,44 @@ class EdoStubSimulateRequest(BaseModel):
     note: str | None = None
 
 
+
+
+class EdoIntDocumentFile(BaseModel):
+    storage_key: str
+    filename: str
+    sha256: str | None = None
+    mime: str
+    size: int
+
+
+class EdoIntDocument(BaseModel):
+    document_id: str
+    client_id: str
+    title: str
+    category: str | None = None
+    files: list[EdoIntDocumentFile]
+    meta: dict = Field(default_factory=dict)
+
+
+class EdoIntSendRequest(BaseModel):
+    idempotency_key: str
+    provider: str
+    document: EdoIntDocument
+
+
+class EdoIntSendResponse(BaseModel):
+    edo_message_id: str
+    edo_status: str
+    provider: str
+    provider_mode: str
+
+
+class EdoIntStatusResponse(BaseModel):
+    edo_message_id: str
+    edo_status: str
+    provider_status_raw: dict = Field(default_factory=dict)
+    updated_at: datetime
+
 class NotificationSendRequest(BaseModel):
     channel: str
     template: str
@@ -234,6 +272,11 @@ __all__ = [
     "DispatchRequest",
     "DispatchResponse",
     "EdoDocumentResponse",
+    "EdoIntDocument",
+    "EdoIntDocumentFile",
+    "EdoIntSendRequest",
+    "EdoIntSendResponse",
+    "EdoIntStatusResponse",
     "EdoStubSendRequest",
     "EdoStubSendResponse",
     "EdoStubSimulateRequest",

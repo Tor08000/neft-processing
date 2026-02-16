@@ -42,6 +42,27 @@ export type ClientDocumentDetails = {
   files: ClientDocumentFile[];
 };
 
+
+
+export type ClientDocumentEdoState = {
+  id: string;
+  document_id: string;
+  client_id: string;
+  provider: string | null;
+  provider_mode: string;
+  edo_status: string;
+  edo_message_id: string | null;
+  last_error_code: string | null;
+  last_error_message: string | null;
+  attempts_send: number;
+  attempts_poll: number;
+  next_poll_at: string | null;
+  last_polled_at: string | null;
+  last_status_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export type ClientDocumentTimelineEvent = {
   id: string;
   event_type: "DOCUMENT_CREATED" | "FILE_UPLOADED" | "STATUS_CHANGED" | string;
@@ -126,4 +147,13 @@ export async function downloadClientDocumentFile(fileId: string, user: AuthSessi
   a.download = filename;
   a.click();
   URL.revokeObjectURL(url);
+}
+
+
+export function sendClientDocument(documentId: string, user: AuthSession | null): Promise<ClientDocumentEdoState> {
+  return request<ClientDocumentEdoState>(`/client/documents/${documentId}/send`, { method: "POST" }, withToken(user));
+}
+
+export function getClientDocumentEdoState(documentId: string, user: AuthSession | null): Promise<ClientDocumentEdoState | null> {
+  return request<ClientDocumentEdoState | null>(`/client/documents/${documentId}/edo`, { method: "GET" }, withToken(user));
 }

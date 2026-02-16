@@ -4,10 +4,13 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   downloadClientDocumentFile,
   getClientDocument,
+  getClientDocumentEdoState,
   getClientDocumentTimeline,
+  sendClientDocument,
   submitClientDocument,
   uploadClientDocumentFile,
   type ClientDocumentDetails,
+  type ClientDocumentEdoState,
   type ClientDocumentTimelineEvent,
 } from "../api/client/documents";
 import { ApiError } from "../api/http";
@@ -31,16 +34,19 @@ export function ClientDocumentDetailsPage() {
   const [uploading, setUploading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [timeline, setTimeline] = useState<ClientDocumentTimelineEvent[]>([]);
+  const [edoState, setEdoState] = useState<ClientDocumentEdoState | null>(null);
+  const [sendingToEdo, setSendingToEdo] = useState(false);
   const [activeTab, setActiveTab] = useState<"files" | "history">("files");
   const { toast, showToast } = useToast();
 
   useEffect(() => {
     if (!id) return;
     setLoading(true);
-    Promise.all([getClientDocument(id, user), getClientDocumentTimeline(id, user)])
-      .then(([d, events]) => {
+    Promise.all([getClientDocument(id, user), getClientDocumentTimeline(id, user), getClientDocumentEdoState(id, user)])
+      .then(([d, events, edo]) => {
         setDocument(d);
         setTimeline(events);
+        setEdoState(edo);
         setErrorCode(null);
       })
       .catch((err: unknown) => {
@@ -56,6 +62,22 @@ export function ClientDocumentDetailsPage() {
       })
       .finally(() => setLoading(false));
   }, [id, user, navigate]);
+
+
+
+  useEffect(() => {
+    if (!id || !edoState) return;
+    const terminal = new Set(["DELIVERED", "SIGNED", "REJECTED"]);
+    if (terminal.has(edoState.edo_status)) return;
+    const interval = window.setInterval(() => {
+      void getClientDocumentEdoState(id, user)
+        .then((state) => {
+          setEdoState(state);
+        })
+        .catch(() => undefined);
+    }, 15000);
+    return () => window.clearInterval(interval);
+  }, [id, user, edoState?.edo_status]);
 
   const onUpload = async (file: File | null) => {
     if (!file || !id) return;
@@ -98,6 +120,30 @@ export function ClientDocumentDetailsPage() {
   };
 
   const statusLabel = document.status === "READY_TO_SEND" ? "Готов к отправке" : "Черновик";
+
+  const onSendToEdo = async () => {
+    if (!id) return;
+    setSendingToEdo(true);
+    try {
+      const state = await sendClientDocument(id, user);
+      setEdoState(state);
+      const refreshed = await getClientDocument(id, user);
+      setDocument(refreshed);
+    } catch (err) {
+      if (err instanceof ApiError) {
+        const payload = err.detail as { error_code?: string } | string;
+        const code = typeof payload === "string" ? payload : payload?.error_code;
+        if (code === "EDO_NOT_CONFIGURED") {
+          showToast({ kind: "error", text: "ЭДО не настроен для production. Свяжитесь с менеджером." });
+        } else {
+          showToast({ kind: "error", text: "Не удалось отправить документ в ЭДО" });
+        }
+      }
+    } finally {
+      setSendingToEdo(false);
+    }
+  };
+
   const canSubmit = document.direction === "OUTBOUND" && document.status === "DRAFT";
 
   const describeEvent = (event: ClientDocumentTimelineEvent): string => {
@@ -139,6 +185,30 @@ export function ClientDocumentDetailsPage() {
           {document.files.length === 0 ? <span className="muted small"> Загрузите хотя бы один файл</span> : null}
         </div>
       ) : null}
+
+
+
+      {document.direction === "OUTBOUND" ? (
+        <div style={{ margin: "12px 0" }}>
+          <button type="button" onClick={() => void onSendToEdo()} disabled={sendingToEdo || document.status !== "READY_TO_SEND"}>
+            {sendingToEdo ? "Отправка…" : "Отправить"}
+          </button>
+        </div>
+      ) : null}
+
+      <div style={{ margin: "12px 0", borderTop: "1px solid #eee", paddingTop: 12 }}>
+        <h3>Статус ЭДО</h3>
+        {edoState ? (
+          <>
+            <p>Провайдер: {edoState.provider ?? "—"} ({edoState.provider_mode})</p>
+            <p>Статус: {edoState.edo_status}</p>
+            <p>Обновлён: {edoState.last_status_at ? new Date(edoState.last_status_at).toLocaleString() : "—"}</p>
+            {edoState.last_error_message ? <p className="muted">Ошибка: {edoState.last_error_message}</p> : null}
+          </>
+        ) : (
+          <p className="muted">Ещё не отправлялся в ЭДО.</p>
+        )}
+      </div>
 
       <div style={{ margin: "12px 0", display: "flex", gap: 8 }}>
         <button type="button" className={activeTab === "files" ? "secondary" : "ghost"} onClick={() => setActiveTab("files")}>

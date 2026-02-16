@@ -21,7 +21,7 @@ from neft_integration_hub.metrics import (
     WEBHOOK_PAUSED_ENDPOINTS_TOTAL,
     WEBHOOK_REPLAY_SCHEDULED_TOTAL,
 )
-from neft_integration_hub.models import EdoDocument, EdoStubStatus, WebhookAlert, WebhookAlertType, WebhookEndpoint
+from neft_integration_hub.models import EdoDocument, EdoStubDocument, EdoStubStatus, WebhookAlert, WebhookAlertType, WebhookEndpoint
 from neft_integration_hub.schemas import (
     DispatchRequest,
     DispatchResponse,
@@ -30,6 +30,9 @@ from neft_integration_hub.schemas import (
     NotifyEmailSendRequest,
     NotifyEmailSendResponse,
     EdoDocumentResponse,
+    EdoIntSendRequest,
+    EdoIntSendResponse,
+    EdoIntStatusResponse,
     EdoStubSendRequest,
     EdoStubSendResponse,
     EdoStubSimulateRequest,
@@ -285,6 +288,42 @@ def send_email(payload: NotifyEmailSendRequest) -> NotifyEmailSendResponse:
 
     return NotifyEmailSendResponse(status="sent", message_id=message_id)
 
+
+
+
+@app.post("/api/int/v1/edo/send", response_model=EdoIntSendResponse)
+def edo_int_send(payload: EdoIntSendRequest, db: Session = Depends(get_db)) -> EdoIntSendResponse:
+    if payload.provider.lower() == "mock" and not settings.use_stub_edo and settings.app_env == "prod":
+        raise HTTPException(status_code=422, detail="edo_mock_disabled")
+    existing = db.query(EdoStubDocument).filter(EdoStubDocument.document_id == payload.document.document_id).first()
+    if existing is None:
+        existing = create_stub_document(
+            db,
+            document_id=payload.document.document_id,
+            counterparty=payload.document.meta or {},
+            payload_ref=payload.idempotency_key,
+            meta={"client_id": payload.document.client_id, "provider": payload.provider},
+        )
+    provider_mode = "mock" if payload.provider.lower() == "mock" or settings.use_stub_edo else "real"
+    return EdoIntSendResponse(
+        edo_message_id=existing.id,
+        edo_status=existing.status if existing.status in {"SENT", "QUEUED"} else "QUEUED",
+        provider=payload.provider.lower(),
+        provider_mode=provider_mode,
+    )
+
+
+@app.get("/api/int/v1/edo/{edo_message_id}/status", response_model=EdoIntStatusResponse)
+def edo_int_status(edo_message_id: str, provider: str | None = None, db: Session = Depends(get_db)) -> EdoIntStatusResponse:
+    record = get_stub_document(db, edo_message_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="edo_stub_document_not_found")
+    return EdoIntStatusResponse(
+        edo_message_id=record.id,
+        edo_status=record.status,
+        provider_status_raw={"provider": provider or "mock", "stub": True},
+        updated_at=record.updated_at,
+    )
 
 @app.post("/v1/edo/dispatch", response_model=DispatchResponse)
 def edo_dispatch(payload: DispatchRequest, db: Session = Depends(get_db)) -> DispatchResponse:

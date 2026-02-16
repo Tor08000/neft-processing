@@ -77,3 +77,22 @@ class DocumentOut(BaseModel):
 
 class DocumentDetailsResponse(DocumentOut):
     pass
+
+
+class EdoStateOut(BaseModel):
+    id: str
+    document_id: str
+    client_id: str
+    provider: str | None = None
+    provider_mode: str
+    edo_status: str
+    edo_message_id: str | None = None
+    last_error_code: str | None = None
+    last_error_message: str | None = None
+    attempts_send: int
+    attempts_poll: int
+    next_poll_at: dt.datetime | None = None
+    last_polled_at: dt.datetime | None = None
+    last_status_at: dt.datetime | None = None
+    created_at: dt.datetime
+    updated_at: dt.datetime

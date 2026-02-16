@@ -248,3 +248,7 @@ clean-volumes:
 
 clean-images:
 	$(DOCKER_COMPOSE) down --rmi local
+
+
+test-edo-doc:
+	pytest -q platform/processing-core/app/tests/test_client_documents_send_edo.py platform/processing-core/app/tests/test_edo_poll_worker.py

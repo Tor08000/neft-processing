@@ -5,7 +5,7 @@ from datetime import datetime
 from sqlalchemy import desc, func, or_
 from sqlalchemy.orm import Session
 
-from app.domains.documents.models import Document, DocumentDirection, DocumentFile, DocumentTimelineEvent
+from app.domains.documents.models import Document, DocumentDirection, DocumentEdoState, DocumentFile, DocumentTimelineEvent
 
 
 class DocumentsRepository:
@@ -121,3 +121,39 @@ class DocumentsRepository:
 
     def get_document_by_id(self, *, document_id: str) -> Document | None:
         return self.db.query(Document).filter(Document.id == document_id).one_or_none()
+
+    def get_edo_state(self, *, document_id: str) -> DocumentEdoState | None:
+        return self.db.query(DocumentEdoState).filter(DocumentEdoState.document_id == document_id).one_or_none()
+
+    def get_edo_state_for_client(self, *, client_id: str, document_id: str) -> DocumentEdoState | None:
+        return (
+            self.db.query(DocumentEdoState)
+            .filter(DocumentEdoState.document_id == document_id)
+            .filter(DocumentEdoState.client_id == client_id)
+            .one_or_none()
+        )
+
+    def create_edo_state(self, **kwargs) -> DocumentEdoState:
+        item = DocumentEdoState(**kwargs)
+        self.db.add(item)
+        self.db.commit()
+        self.db.refresh(item)
+        return item
+
+    def save_edo_state(self, item: DocumentEdoState) -> DocumentEdoState:
+        self.db.add(item)
+        self.db.commit()
+        self.db.refresh(item)
+        return item
+
+    def list_edostates_for_poll(self, *, now: datetime, limit: int = 100) -> list[DocumentEdoState]:
+        pollable = {"SENT", "QUEUED", "SENDING", "ERROR", "PROVIDER_UNAVAILABLE"}
+        return (
+            self.db.query(DocumentEdoState)
+            .filter(DocumentEdoState.edo_status.in_(pollable))
+            .filter(DocumentEdoState.next_poll_at.isnot(None))
+            .filter(DocumentEdoState.next_poll_at <= now)
+            .order_by(DocumentEdoState.next_poll_at.asc())
+            .limit(limit)
+            .all()
+        )

@@ -137,3 +137,8 @@ def ping(x: int = 1) -> dict:
 
 
 __all__ = ["ping"]
+
+try:  # pragma: no cover - optional task modules
+    import app.tasks.edo_poll  # noqa: F401
+except Exception:
+    pass
