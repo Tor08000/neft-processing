@@ -42,6 +42,27 @@ class ClientGeneratedDocumentsRepository:
         stmt = select(func.max(ClientGeneratedDocument.version)).where(and_(*clauses))
         return int(self.db.execute(stmt).scalar_one() or 0)
 
+
+    def mark_client_signed(
+        self,
+        doc: ClientGeneratedDocument,
+        *,
+        sign_method: str,
+        sign_phone: str | None,
+        signature_hash: str,
+    ) -> ClientGeneratedDocument:
+        now = datetime.now(timezone.utc)
+        doc.status = "SIGNED_BY_CLIENT"
+        doc.client_signed_at = now
+        doc.client_sign_method = sign_method
+        doc.client_sign_phone = sign_phone
+        doc.client_signature_hash = signature_hash
+        doc.updated_at = now
+        self.db.add(doc)
+        self.db.commit()
+        self.db.refresh(doc)
+        return doc
+
     def update_status(self, doc: ClientGeneratedDocument, status: str) -> ClientGeneratedDocument:
         doc.status = status
         doc.updated_at = datetime.now(timezone.utc)

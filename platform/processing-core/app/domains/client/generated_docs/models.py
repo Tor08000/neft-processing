@@ -28,6 +28,8 @@ class ClientGeneratedDocument(Base):
     __table_args__ = (
         Index("ix_client_generated_documents_application_id", "client_application_id"),
         Index("ix_client_generated_documents_client_id", "client_id"),
+        Index("ix_client_generated_documents_status", "status"),
+        Index("ix_client_generated_documents_client_signed_at", "client_signed_at"),
         UniqueConstraint("client_application_id", "doc_kind", "version", name="uq_client_generated_docs_app_kind_version"),
         UniqueConstraint("client_id", "doc_kind", "version", name="uq_client_generated_docs_client_kind_version"),
         CheckConstraint(
@@ -57,3 +59,9 @@ class ClientGeneratedDocument(Base):
     updated_at: Mapped[DateTime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
     )
+    platform_signed_at: Mapped[DateTime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    platform_signature_hash: Mapped[str | None] = mapped_column(Text, nullable=True)
+    client_signed_at: Mapped[DateTime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    client_sign_method: Mapped[str | None] = mapped_column(String, nullable=True)
+    client_sign_phone: Mapped[str | None] = mapped_column(Text, nullable=True)
+    client_signature_hash: Mapped[str | None] = mapped_column(Text, nullable=True)
