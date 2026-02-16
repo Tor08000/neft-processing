@@ -33,6 +33,7 @@ from app.models.client_portal import (
     ClientUserRole,
     LimitTemplate,
 )
+
 from app.models.export_jobs import ExportJob, ExportJobFormat, ExportJobReportType, ExportJobStatus
 from app.models.report_schedules import ReportSchedule, ReportScheduleKind, ReportScheduleStatus
 from app.models.fleet import ClientEmployee, EmployeeStatus, FleetDriver
@@ -126,7 +127,12 @@ from app.schemas.client_portal_v1 import (
     ReportScheduleUpdateRequest,
     ClientSubscriptionOut,
     ClientSubscriptionSelectRequest,
+    ClientInvitationActionResponse,
     ClientInvitationOut,
+    ClientInvitationResendRequest,
+    ClientInvitationRevokeRequest,
+    ClientInvitationSummary,
+    ClientInvitationsResponse,
     ClientUserInviteRequest,
     ClientUserRolesUpdateRequest,
     ClientUserSummary,
@@ -240,6 +246,7 @@ from app.services.billing_payment_intakes import (
     get_invoice,
     list_invoice_payment_intakes,
 )
+from app.services.client_invitation_notifications import enqueue_client_invitation_notification
 from app.services.client_notifications import (
     ClientNotificationSeverity,
     create_notification,
@@ -5956,6 +5963,41 @@ def list_users(
     return ClientUsersResponse(items=items)
 
 
+def _build_invitation_token() -> tuple[str, str]:
+    token_raw = secrets.token_urlsafe(32)
+    pepper = os.getenv("CLIENT_INVITATION_TOKEN_PEPPER", "")
+    token_hash = sha256(f"{token_raw}{pepper}".encode("utf-8")).hexdigest()
+    return token_raw, token_hash
+
+
+def _enqueue_invitation_event(
+    db: Session,
+    *,
+    invitation: ClientInvitation,
+    event_type: str,
+    token_raw: str | None = None,
+) -> None:
+    base_url = os.getenv("GATEWAY_PUBLIC_BASE_URL", "http://localhost:8080")
+    payload: dict[str, Any] = {
+        "channel": "email",
+        "template": "client_invitation",
+        "to": invitation.email,
+        "variables": {
+            "roles": invitation.roles or [],
+            "accept_url": f"{base_url}/client/invitations/accept?token={token_raw}" if token_raw else None,
+        },
+        "invitation_id": str(invitation.id),
+        "client_id": str(invitation.client_id),
+    }
+    enqueue_client_invitation_notification(
+        db,
+        event_type=event_type,
+        invitation_id=str(invitation.id),
+        client_id=str(invitation.client_id),
+        payload=payload,
+    )
+
+
 @router.post("/users/invite", response_model=ClientInvitationOut, status_code=201)
 def invite_user(
     payload: ClientUserInviteRequest,
@@ -6001,19 +6043,22 @@ def invite_user(
     if pending is not None:
         raise HTTPException(status_code=409, detail="invite_already_pending")
 
-    token_raw = secrets.token_urlsafe(32)
-    pepper = os.getenv("CLIENT_INVITATION_TOKEN_PEPPER", "")
-    token_hash = sha256(f"{token_raw}{pepper}".encode("utf-8")).hexdigest()
+    token_raw, token_hash = _build_invitation_token()
     invitation = ClientInvitation(
         client_id=str(client.id),
         email=email,
         invited_by_user_id=str(token.get("user_id") or token.get("sub") or "unknown"),
+        created_by_user_id=str(token.get("user_id") or token.get("sub") or "unknown"),
+        resent_count=0,
+        last_sent_at=datetime.now(timezone.utc),
+        last_send_status="NEW",
         roles=_normalize_client_roles(payload.roles),
         token_hash=token_hash,
         expires_at=datetime.now(timezone.utc) + timedelta(days=7),
         status="PENDING",
     )
     db.add(invitation)
+    _enqueue_invitation_event(db, invitation=invitation, event_type="client_invitation_created", token_raw=token_raw)
     db.commit()
     db.refresh(invitation)
 
@@ -6024,6 +6069,132 @@ def invite_user(
         expires_at=invitation.expires_at,
         token=token_raw if _is_dev_env() else None,
     )
+
+
+@router.get("/users/invitations", response_model=ClientInvitationsResponse)
+def list_user_invitations(
+    token: dict = Depends(client_auth.require_onboarding_user),
+    db: Session = Depends(get_db),
+) -> ClientInvitationsResponse:
+    client = _resolve_client(db, token)
+    if client is None:
+        raise HTTPException(status_code=404, detail="org_not_found")
+    if not _is_user_admin(token):
+        raise HTTPException(status_code=403, detail="forbidden")
+
+    rows = (
+        db.query(ClientInvitation)
+        .filter(ClientInvitation.client_id == str(client.id))
+        .order_by(ClientInvitation.created_at.desc())
+        .all()
+    )
+    return ClientInvitationsResponse(
+        items=[
+            ClientInvitationSummary(
+                invitation_id=str(item.id),
+                email=item.email,
+                roles=item.roles or [],
+                status=item.status,
+                expires_at=item.expires_at,
+                resent_count=int(item.resent_count or 0),
+                last_sent_at=item.last_sent_at,
+                created_at=item.created_at,
+            )
+            for item in rows
+        ]
+    )
+
+
+@router.post("/users/invitations/{invitation_id}/revoke", response_model=ClientInvitationActionResponse)
+def revoke_user_invitation(
+    invitation_id: str,
+    payload: ClientInvitationRevokeRequest | None = None,
+    request: Request | None = None,
+    token: dict = Depends(client_auth.require_onboarding_user),
+    db: Session = Depends(get_db),
+) -> ClientInvitationActionResponse:
+    client = _resolve_client(db, token)
+    if client is None:
+        raise HTTPException(status_code=404, detail="org_not_found")
+    if not _is_user_admin(token):
+        raise HTTPException(status_code=403, detail="forbidden")
+
+    invitation = db.query(ClientInvitation).filter(ClientInvitation.id == invitation_id, ClientInvitation.client_id == str(client.id)).one_or_none()
+    if invitation is None:
+        raise HTTPException(status_code=404, detail="invitation_not_found")
+    if invitation.status != "PENDING":
+        raise HTTPException(status_code=409, detail="invitation_not_pending")
+
+    actor_id = str(token.get("user_id") or token.get("sub") or "unknown")
+    invitation.status = "REVOKED"
+    invitation.revoked_at = datetime.now(timezone.utc)
+    invitation.revoked_by_user_id = actor_id
+    invitation.revocation_reason = payload.reason if payload else None
+    invitation.updated_at = datetime.now(timezone.utc)
+
+    _enqueue_invitation_event(db, invitation=invitation, event_type="client_invitation_revoked")
+    if request is not None:
+        _audit_event(
+            db,
+            request=request,
+            token=token,
+            event_type="invitation_revoke",
+            entity_type="client_invitation",
+            entity_id=str(invitation.id),
+            before={"status": "PENDING"},
+            after={"status": "REVOKED"},
+            action="revoke_invitation",
+            reason=payload.reason if payload else None,
+        )
+    db.commit()
+    return ClientInvitationActionResponse(status="REVOKED")
+
+
+@router.post("/users/invitations/{invitation_id}/resend", response_model=ClientInvitationActionResponse)
+def resend_user_invitation(
+    invitation_id: str,
+    payload: ClientInvitationResendRequest | None = None,
+    request: Request | None = None,
+    token: dict = Depends(client_auth.require_onboarding_user),
+    db: Session = Depends(get_db),
+) -> ClientInvitationActionResponse:
+    client = _resolve_client(db, token)
+    if client is None:
+        raise HTTPException(status_code=404, detail="org_not_found")
+    if not _is_client_owner(token):
+        raise HTTPException(status_code=403, detail="forbidden")
+
+    invitation = db.query(ClientInvitation).filter(ClientInvitation.id == invitation_id, ClientInvitation.client_id == str(client.id)).one_or_none()
+    if invitation is None:
+        raise HTTPException(status_code=404, detail="invitation_not_found")
+    if invitation.status != "PENDING":
+        raise HTTPException(status_code=409, detail="invitation_not_pending")
+
+    expires_days = min(max(int(payload.expires_in_days if payload else 7), 1), 30)
+    token_raw, token_hash = _build_invitation_token()
+    invitation.token_hash = token_hash
+    invitation.expires_at = datetime.now(timezone.utc) + timedelta(days=expires_days)
+    invitation.resent_count = int(invitation.resent_count or 0) + 1
+    invitation.last_sent_at = datetime.now(timezone.utc)
+    invitation.last_send_status = "NEW"
+    invitation.last_send_error = None
+    invitation.updated_at = datetime.now(timezone.utc)
+
+    _enqueue_invitation_event(db, invitation=invitation, event_type="client_invitation_resent", token_raw=token_raw)
+    if request is not None:
+        _audit_event(
+            db,
+            request=request,
+            token=token,
+            event_type="invitation_resend",
+            entity_type="client_invitation",
+            entity_id=str(invitation.id),
+            before={"resent_count": int(invitation.resent_count or 0) - 1},
+            after={"resent_count": int(invitation.resent_count or 0)},
+            action="resend_invitation",
+        )
+    db.commit()
+    return ClientInvitationActionResponse(status="PENDING", expires_at=invitation.expires_at, resent_count=int(invitation.resent_count or 0))
 
 
 @router.post("/users/{user_id}/roles")

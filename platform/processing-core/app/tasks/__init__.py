@@ -80,6 +80,11 @@ except Exception:
     pass
 
 try:  # pragma: no cover - optional task modules
+    import app.tasks.notification_outbox  # noqa: F401
+except Exception:
+    pass
+
+try:  # pragma: no cover - optional task modules
     import app.tasks.service_slo  # noqa: F401
 except Exception:
     pass

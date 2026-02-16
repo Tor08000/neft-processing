@@ -20,6 +20,8 @@ from neft_integration_hub.models import EdoDocument, EdoStubStatus, WebhookAlert
 from neft_integration_hub.schemas import (
     DispatchRequest,
     DispatchResponse,
+    NotificationSendRequest,
+    NotificationSendResponse,
     EdoDocumentResponse,
     EdoStubSendRequest,
     EdoStubSendResponse,
@@ -104,10 +106,16 @@ INTEGRATION_HUB_UP.set(1)
 @app.on_event("startup")
 def startup() -> None:
     init_db()
+    if settings.notifications_mode == "real" and not settings.notifications_email_provider:
+        raise RuntimeError("notifications_real_mode_requires_provider")
     logger.info(
         "running in %s mode",
         settings.app_env.upper(),
-        extra={"app_env": settings.app_env, "use_stub_edo": settings.use_stub_edo},
+        extra={
+            "app_env": settings.app_env,
+            "use_stub_edo": settings.use_stub_edo,
+            "notifications_mode": settings.notifications_mode,
+        },
     )
 
 
@@ -197,6 +205,28 @@ async def _handle_webhook_intake(
     )
     _log_intake(source, payload, request, verified)
     return WebhookIntakeResponse(event_id=payload.event_id, status="accepted", verified=verified)
+
+
+
+
+@app.post("/api/int/v1/notifications/send", response_model=NotificationSendResponse)
+def send_notification(payload: NotificationSendRequest, request: Request) -> NotificationSendResponse:
+    request_id = getattr(request.state, "request_id", None)
+    if settings.notifications_mode == "mock":
+        logger.info(
+            "notifications.mock",
+            extra={"request_id": request_id, "payload": payload.model_dump()},
+        )
+        return NotificationSendResponse(status="accepted", mode="mock")
+
+    if payload.channel.lower() == "email" and not settings.notifications_email_provider:
+        raise HTTPException(status_code=500, detail="email_provider_not_configured")
+
+    logger.info(
+        "notifications.real",
+        extra={"request_id": request_id, "channel": payload.channel, "template": payload.template, "to": payload.to},
+    )
+    return NotificationSendResponse(status="accepted", mode="real")
 
 
 @app.post("/v1/edo/dispatch", response_model=DispatchResponse)

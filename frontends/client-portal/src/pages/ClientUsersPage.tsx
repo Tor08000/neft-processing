@@ -1,12 +1,20 @@
 import { useEffect, useMemo, useState } from "react";
-import { createClientUser, disableClientUser, fetchClientUsers, updateClientUserRole } from "../api/controls";
+import {
+  createClientUser,
+  disableClientUser,
+  fetchClientInvitations,
+  fetchClientUsers,
+  resendClientInvitation,
+  revokeClientInvitation,
+  updateClientUserRole,
+} from "../api/controls";
 import { ApiError } from "../api/http";
 import { useAuth } from "../auth/AuthContext";
 import { ConfirmActionModal } from "../components/ConfirmActionModal";
 import { AppEmptyState, AppErrorState, AppForbiddenState, AppLoadingState } from "../components/states";
 import { Toast } from "../components/Toast/Toast";
 import { useToast } from "../components/Toast/useToast";
-import type { ClientUserSummary } from "../types/controls";
+import type { ClientInvitationSummary, ClientUserSummary } from "../types/controls";
 import { hasAnyRole } from "../utils/roles";
 
 interface PageErrorState {
@@ -24,6 +32,7 @@ const roleLabels: Record<string, string> = {
 export function ClientUsersPage() {
   const { user } = useAuth();
   const [users, setUsers] = useState<ClientUserSummary[]>([]);
+  const [invitations, setInvitations] = useState<ClientInvitationSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<PageErrorState | null>(null);
   const { toast, showToast } = useToast();
@@ -40,8 +49,11 @@ export function ClientUsersPage() {
 
   const [disableUser, setDisableUser] = useState<ClientUserSummary | null>(null);
   const [disableError, setDisableError] = useState<PageErrorState | null>(null);
+  const [revokeInvite, setRevokeInvite] = useState<ClientInvitationSummary | null>(null);
+  const [revokeReason, setRevokeReason] = useState("");
+  const [invitationCooldowns, setInvitationCooldowns] = useState<Record<string, number>>({});
 
-  const canManage = hasAnyRole(user, ["CLIENT_OWNER", "CLIENT_MANAGER"]);
+  const canManage = hasAnyRole(user, ["CLIENT_OWNER", "CLIENT_ADMIN"]);
   const emailValid = newEmail.trim() !== "" && newEmail.includes("@");
 
   const loadUsers = () => {
@@ -49,7 +61,11 @@ export function ClientUsersPage() {
     setIsLoading(true);
     setError(null);
     fetchClientUsers(user)
-      .then((resp) => setUsers(resp.items ?? []))
+      .then(async (resp) => {
+        setUsers(resp.items ?? []);
+        const invites = await fetchClientInvitations(user);
+        setInvitations(invites.items ?? []);
+      })
       .catch((err: unknown) => {
         if (err instanceof ApiError) {
           setError({ message: err.message, status: err.status, correlationId: err.correlationId });
@@ -130,6 +146,48 @@ export function ClientUsersPage() {
       } else {
         setRoleError({ message: err instanceof Error ? err.message : "Не удалось изменить роль" });
       }
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+
+
+  const handleResendInvite = async (invitation: ClientInvitationSummary) => {
+    if (!user) return;
+    if (invitationCooldowns[invitation.invitation_id]) return;
+    setInvitationCooldowns((state) => ({ ...state, [invitation.invitation_id]: 10 }));
+    const timer = setInterval(() => {
+      setInvitationCooldowns((state) => {
+        const current = state[invitation.invitation_id] ?? 0;
+        if (current <= 1) {
+          clearInterval(timer);
+          const next = { ...state };
+          delete next[invitation.invitation_id];
+          return next;
+        }
+        return { ...state, [invitation.invitation_id]: current - 1 };
+      });
+    }, 1000);
+
+    try {
+      await resendClientInvitation(user, invitation.invitation_id, 7);
+      showToast({ kind: "success", text: "Приглашение отправлено повторно" });
+      loadUsers();
+    } catch (err) {
+      showToast({ kind: "error", text: "Ошибка отправки приглашения" });
+    }
+  };
+
+  const handleRevokeInvite = async () => {
+    if (!user || !revokeInvite) return;
+    setIsSubmitting(true);
+    try {
+      await revokeClientInvitation(user, revokeInvite.invitation_id, revokeReason || undefined);
+      showToast({ kind: "success", text: "Приглашение отозвано" });
+      setRevokeInvite(null);
+      setRevokeReason("");
+      loadUsers();
     } finally {
       setIsSubmitting(false);
     }
@@ -230,6 +288,48 @@ export function ClientUsersPage() {
         )}
       </section>
 
+
+      <section className="card">
+        <div className="card__header">
+          <div>
+            <h3>Приглашения</h3>
+            <p className="muted">Управление pending-приглашениями.</p>
+          </div>
+        </div>
+        {invitations.length === 0 ? (
+          <AppEmptyState title="Приглашений нет" description="Создайте приглашение для нового пользователя." />
+        ) : (
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Email</th><th>Роли</th><th>Статус</th><th>Срок</th><th>Отправок</th><th>Действия</th>
+              </tr>
+            </thead>
+            <tbody>
+              {invitations.map((item) => (
+                <tr key={item.invitation_id}>
+                  <td>{item.email}</td>
+                  <td>{item.roles.join(", ")}</td>
+                  <td>{item.status}</td>
+                  <td>{new Date(item.expires_at).toLocaleString()}</td>
+                  <td>{item.resent_count}</td>
+                  <td>
+                    <div className="actions">
+                      <button type="button" className="secondary" disabled={item.status !== "PENDING" || !!invitationCooldowns[item.invitation_id]} onClick={() => void handleResendInvite(item)}>
+                        {invitationCooldowns[item.invitation_id] ? `Повторить (${invitationCooldowns[item.invitation_id]})` : "Переотправить"}
+                      </button>
+                      <button type="button" className="ghost" disabled={item.status !== "PENDING"} onClick={() => setRevokeInvite(item)}>
+                        Отозвать
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </section>
+
       <ConfirmActionModal
         isOpen={isAddOpen}
         title="Добавить пользователя"
@@ -307,6 +407,21 @@ export function ClientUsersPage() {
             {disableError.correlationId ? <div className="muted small">Correlation ID: {disableError.correlationId}</div> : null}
           </div>
         ) : null}
+      </ConfirmActionModal>
+      <ConfirmActionModal
+        isOpen={Boolean(revokeInvite)}
+        title="Отозвать приглашение"
+        description={revokeInvite ? `Приглашение: ${revokeInvite.email}` : undefined}
+        confirmLabel="Отозвать"
+        onConfirm={() => void handleRevokeInvite()}
+        onCancel={() => setRevokeInvite(null)}
+        isProcessing={isSubmitting}
+        isConfirmDisabled={!revokeInvite}
+      >
+        <label className="filter">
+          Причина (опционально)
+          <input value={revokeReason} onChange={(event) => setRevokeReason(event.target.value)} />
+        </label>
       </ConfirmActionModal>
       {toast ? <Toast toast={toast} onClose={() => showToast(null)} /> : null}
     </div>

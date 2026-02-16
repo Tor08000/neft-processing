@@ -55,6 +55,23 @@ export interface ClientInvitationResponse {
   token?: string | null;
 }
 
+
+
+export interface ClientInvitationSummary {
+  invitation_id: string;
+  email: string;
+  roles: string[];
+  status: string;
+  expires_at: string;
+  resent_count: number;
+  last_sent_at?: string | null;
+  created_at: string;
+}
+
+export interface ClientInvitationsResponse {
+  items?: ClientInvitationSummary[] | null;
+}
+
 export interface CreateClientUserPayload {
   email: string;
   roles: string[];
