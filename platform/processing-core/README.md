@@ -1,5 +1,19 @@
 Core API service (FastAPI)
 
+
+## Client Portal API namespace
+
+Canonical client endpoints are versioned under:
+
+- `/api/core/client/v1/*`
+
+Current baseline endpoints:
+
+- `GET /api/core/client/v1/me`
+- `GET /api/core/client/v1/health`
+
+Legacy `/api/core/client/me` remains available for backward compatibility, but new integrations should use `/client/v1/me`.
+
 ## Operational scenarios (refund / reversal / dispute)
 
 Admin endpoints (prefixed with `/api/core/v1/admin`):

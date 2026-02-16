@@ -38,6 +38,13 @@ jobs:
       - name: Frontend lint/typecheck
         run: scripts/ci/gate_frontend_typecheck.sh
 
+      - name: Client portal lint/typecheck (explicit)
+        run: |
+          cd frontends/client-portal
+          npm ci
+          npm run typecheck
+          npm run lint
+
   unit-tests:
     name: Unit tests
     runs-on: ubuntu-latest
@@ -51,6 +58,9 @@ jobs:
 
       - name: Run unit tests
         run: scripts/ci/gate_unit_tests.sh
+
+      - name: Processing-core client v1 me unit
+        run: pytest -q platform/processing-core/app/tests/test_client_v1_me.py
 
   migrations:
     name: Migrations

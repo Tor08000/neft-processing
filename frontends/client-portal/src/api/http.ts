@@ -6,6 +6,20 @@ type ApiBase = "core" | "auth" | "core_root";
 
 export type HttpHeaders = Record<string, string>;
 
+
+const STORAGE_KEY = "neft_client_access_token";
+
+const getStoredToken = (): string | undefined => {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return undefined;
+    const parsed = JSON.parse(raw) as { token?: string };
+    return parsed.token;
+  } catch {
+    return undefined;
+  }
+};
+
 const isAuthMeRequest = (base: ApiBase, path: string) => base === "auth" && path.includes("/me");
 const logErrorUrl = (url: string, status: number) => {
   if (import.meta.env.DEV && status >= 400) {
@@ -227,10 +241,10 @@ export async function request<T>(
   let token: string | null | undefined;
   let base: ApiBase = "core";
   if (tokenOrOptions && typeof tokenOrOptions === "object" && !Array.isArray(tokenOrOptions)) {
-    token = tokenOrOptions.token ?? undefined;
+    token = tokenOrOptions.token ?? getStoredToken();
     base = tokenOrOptions.base ?? base;
   } else {
-    token = (tokenOrOptions as string | null | undefined) ?? undefined;
+    token = (tokenOrOptions as string | null | undefined) ?? getStoredToken();
     if (typeof maybeBase === "string") {
       base = maybeBase;
     }
@@ -272,6 +286,12 @@ export async function request<T>(
       window.dispatchEvent(new Event("client-auth-logout"));
     }
     throw new UnauthorizedError();
+  }
+  if (response.status === 403) {
+    window.dispatchEvent(new Event("client-auth-forbidden"));
+  }
+  if (response.status >= 500) {
+    window.dispatchEvent(new CustomEvent("client-api-error", { detail: { status: response.status, url } }));
   }
   if (response.status === 422) {
     const details = isJson ? await response.json().catch(() => undefined) : await readResponseText();
@@ -363,10 +383,10 @@ export async function requestWithMeta<T>(
   let token: string | null | undefined;
   let base: ApiBase = "core";
   if (tokenOrOptions && typeof tokenOrOptions === "object" && !Array.isArray(tokenOrOptions)) {
-    token = tokenOrOptions.token ?? undefined;
+    token = tokenOrOptions.token ?? getStoredToken();
     base = tokenOrOptions.base ?? base;
   } else {
-    token = (tokenOrOptions as string | null | undefined) ?? undefined;
+    token = (tokenOrOptions as string | null | undefined) ?? getStoredToken();
     if (typeof maybeBase === "string") {
       base = maybeBase;
     }
@@ -396,6 +416,12 @@ export async function requestWithMeta<T>(
       window.dispatchEvent(new Event("client-auth-logout"));
     }
     throw new UnauthorizedError();
+  }
+  if (response.status === 403) {
+    window.dispatchEvent(new Event("client-auth-forbidden"));
+  }
+  if (response.status >= 500) {
+    window.dispatchEvent(new CustomEvent("client-api-error", { detail: { status: response.status, url } }));
   }
   if (response.status === 422) {
     const details = isJson ? await response.json().catch(() => undefined) : await readResponseText();
@@ -482,10 +508,10 @@ export async function requestFormData<T>(
   let token: string | null | undefined;
   let base: ApiBase = "core";
   if (tokenOrOptions && typeof tokenOrOptions === "object" && !Array.isArray(tokenOrOptions)) {
-    token = tokenOrOptions.token ?? undefined;
+    token = tokenOrOptions.token ?? getStoredToken();
     base = tokenOrOptions.base ?? base;
   } else {
-    token = (tokenOrOptions as string | null | undefined) ?? undefined;
+    token = (tokenOrOptions as string | null | undefined) ?? getStoredToken();
     if (typeof maybeBase === "string") {
       base = maybeBase;
     }
@@ -504,6 +530,12 @@ export async function requestFormData<T>(
       window.dispatchEvent(new Event("client-auth-logout"));
     }
     throw new UnauthorizedError();
+  }
+  if (response.status === 403) {
+    window.dispatchEvent(new Event("client-auth-forbidden"));
+  }
+  if (response.status >= 500) {
+    window.dispatchEvent(new CustomEvent("client-api-error", { detail: { status: response.status, url } }));
   }
   if (response.status === 422) {
     const details = await response.json().catch(() => undefined);
