@@ -42,6 +42,7 @@ class ClientOnboardingApplication(Base):
     created_by_user_id: Mapped[str | None] = mapped_column(GUID(), nullable=True)
     submitted_at: Mapped[DateTime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     reviewed_by_user_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    approved_by_user_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     reviewed_at: Mapped[DateTime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     decision_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     client_id: Mapped[str | None] = mapped_column(GUID(), ForeignKey("clients.id"), nullable=True)

@@ -30,6 +30,7 @@ export function OverviewPage() {
   const { user } = useAuth();
   const { client } = useClient();
   const isDemoClientAccount = isDemoClient(user?.email ?? client?.user?.email ?? null);
+  const isActivated = Boolean(client?.org?.id) && (client?.org?.status ?? client?.org_status) === "ACTIVE";
 
   useEffect(() => {
     const handleModeChange = (event: Event) => {
@@ -102,6 +103,13 @@ export function OverviewPage() {
           Премиальная сводка по балансу, автопарку и операциям за текущий период.
         </p>
       </div>
+
+      {isActivated ? (
+        <div className="neftc-card" style={{ marginBottom: 16, borderColor: "#66bb6a" }}>
+          <strong>Аккаунт активирован</strong>
+          <div className="neftc-text-muted">Компания подключена. Разделы «Компания», «Пользователи» и «Документы» доступны.</div>
+        </div>
+      ) : null}
 
       <section className="neftc-overview__hero-grid">
         {hasData ? (

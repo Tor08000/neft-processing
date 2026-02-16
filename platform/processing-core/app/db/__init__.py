@@ -185,6 +185,7 @@ def init_db() -> None:
     from app.domains.client.onboarding.models import ClientOnboardingApplication  # noqa: F401
     from app.domains.client.onboarding.documents.models import ClientDocument  # noqa: F401
     from app.domains.client.generated_docs.models import ClientGeneratedDocument  # noqa: F401
+    from app.models.client_portal import ClientUserRole, ClientUser  # noqa: F401
     from app.domains.client.docflow.models import (
         ClientDocumentPackage,
         ClientDocumentPackageItem,

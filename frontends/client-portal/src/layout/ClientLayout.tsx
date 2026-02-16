@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
+import { useClient } from "../auth/ClientContext";
 import { useLegalGate } from "../auth/LegalGateContext";
 import { isPwaMode } from "../pwa/mode";
 import { PwaNotificationsPrompt } from "../pwa/PwaNotificationsPrompt";
@@ -164,6 +165,7 @@ interface ClientLayoutProps {
 
 export function ClientLayout({ pwaMode = isPwaMode }: ClientLayoutProps) {
   const { user, logout } = useAuth();
+  const { client } = useClient();
   const { isFeatureDisabled } = useLegalGate();
   const location = useLocation();
   const [theme, setTheme] = useState(getInitialTheme());
@@ -176,10 +178,14 @@ export function ClientLayout({ pwaMode = isPwaMode }: ClientLayoutProps) {
     window.dispatchEvent(new CustomEvent("neftc:client-mode", { detail: mode }));
   }, [mode]);
 
-  const filteredItems = useMemo(
-    () => navItems.filter((item) => item.audience === "all" || mode === "fleet"),
-    [mode],
-  );
+  const hasActivatedClient = Boolean(client?.org?.id);
+
+  const filteredItems = useMemo(() => {
+    const activationAllowed = new Set(["/dashboard", "/documents", "/fleet/employees"]);
+    return navItems
+      .filter((item) => item.audience === "all" || mode === "fleet")
+      .filter((item) => hasActivatedClient || activationAllowed.has(item.to));
+  }, [hasActivatedClient, mode]);
 
   const activePath = location.pathname;
 

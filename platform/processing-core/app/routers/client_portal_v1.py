@@ -5891,20 +5891,53 @@ def list_users(
         .order_by(ClientEmployee.created_at.desc())
         .all()
     )
-    role_rows = db.query(ClientUserRole).filter(ClientUserRole.client_id == str(client.id)).all()
-    role_map = {row.user_id: row.roles.split(",")[0] for row in role_rows}
-    return ClientUsersResponse(
-        items=[
-            ClientUserSummary(
-                id=str(user_item.id),
-                email=user_item.email,
-                role=role_map.get(str(user_item.id), "CLIENT_USER"),
-                status=user_item.status.value if user_item.status else None,
-                last_login=None,
-            )
-            for user_item in users
-        ]
-    )
+
+    role_map: dict[str, str] = {}
+    if _table_exists(db, "client_user_roles"):
+        try:
+            role_rows = db.query(ClientUserRole).filter(ClientUserRole.client_id == str(client.id)).all()
+            role_map = {str(row.user_id): str(row.roles).split(",")[0] for row in role_rows}
+        except Exception:
+            role_map = {}
+
+    items = [
+        ClientUserSummary(
+            id=str(user_item.id),
+            email=user_item.email,
+            role=role_map.get(str(user_item.id), "CLIENT_USER"),
+            status=user_item.status.value if user_item.status else None,
+            last_login=None,
+        )
+        for user_item in users
+    ]
+
+    user_ids = {item.id for item in items}
+    if _table_exists(db, "client_users"):
+        try:
+            memberships = _table(db, "client_users")
+            rows = db.execute(
+                select(memberships.c.user_id, memberships.c.status)
+                .where(memberships.c.client_id == str(client.id))
+                .order_by(memberships.c.created_at.desc())
+            ).all()
+            for user_id, status in rows:
+                normalized_id = str(user_id)
+                if normalized_id in user_ids:
+                    continue
+                items.append(
+                    ClientUserSummary(
+                        id=normalized_id,
+                        email=None,
+                        role=role_map.get(normalized_id, "CLIENT_USER"),
+                        status=str(status) if status else "ACTIVE",
+                        last_login=None,
+                    )
+                )
+                user_ids.add(normalized_id)
+        except Exception:
+            pass
+
+    return ClientUsersResponse(items=items)
 
 
 @router.post("/users/invite", response_model=ClientUserSummary, status_code=201)
