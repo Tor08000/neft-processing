@@ -173,3 +173,44 @@ def test_auth_me_accepts_partner_portal(monkeypatch: pytest.MonkeyPatch):
     )
 
     assert resp.status_code == 200
+
+
+def test_auth_verify_returns_portal_and_subject(monkeypatch: pytest.MonkeyPatch):
+    password_hash = hash_password("admin123")
+    demo_user = User(
+        id="00000000-0000-0000-0000-000000000999",
+        email="admin@example.com",
+        full_name="Demo Admin",
+        password_hash=password_hash,
+        is_active=True,
+        created_at=None,
+    )
+
+    async def fake_get_user(*, email: str | None = None, username: str | None = None):
+        candidate = email or username
+        if candidate and candidate.lower() == demo_user.email:
+            return demo_user
+        return None
+
+    async def fake_get_roles(_user_id: str):
+        return ["ADMIN"]
+
+    monkeypatch.setattr(auth, "_get_user_from_db", fake_get_user)
+    monkeypatch.setattr(auth, "_get_roles_for_user", fake_get_roles)
+
+    client = TestClient(app)
+    login = client.post(
+        "/api/v1/auth/login",
+        json={"email": "admin@example.com", "password": "admin123", "portal": "admin"},
+    )
+    assert login.status_code == 200
+    token = login.json()["access_token"]
+
+    resp = client.get(
+        "/api/v1/auth/verify",
+        headers={"Authorization": f"Bearer {token}", "X-Portal": "admin"},
+    )
+
+    assert resp.status_code == 200
+    assert resp.json()["portal"] == "admin"
+    assert resp.json()["valid"] is True
