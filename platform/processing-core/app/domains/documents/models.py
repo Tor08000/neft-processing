@@ -31,6 +31,19 @@ class DocumentSenderType(str, enum.Enum):
     PARTNER = "PARTNER"
 
 
+class EdoStatus(str, enum.Enum):
+    NEW = "NEW"
+    SENDING = "SENDING"
+    QUEUED = "QUEUED"
+    SENT = "SENT"
+    DELIVERED = "DELIVERED"
+    SIGNED = "SIGNED"
+    REJECTED = "REJECTED"
+    ERROR = "ERROR"
+    EDO_NOT_CONFIGURED = "EDO_NOT_CONFIGURED"
+    PROVIDER_UNAVAILABLE = "PROVIDER_UNAVAILABLE"
+
+
 class Document(Base):
     __tablename__ = "documents"
     __table_args__ = (
@@ -61,6 +74,7 @@ class Document(Base):
     )
 
     files: Mapped[list["DocumentFile"]] = relationship(back_populates="document")
+    edo_state: Mapped["DocumentEdoState | None"] = relationship(back_populates="document", uselist=False)
 
 
 class DocumentFile(Base):
@@ -102,3 +116,34 @@ class DocumentTimelineEvent(Base):
     ip: Mapped[str | None] = mapped_column(String(45), nullable=True)
     user_agent: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class DocumentEdoState(Base):
+    __tablename__ = "document_edostate"
+    __table_args__ = (
+        UniqueConstraint("document_id", name="uq_document_edostate_document_id"),
+        Index("idx_document_edostate_next_poll_at", "next_poll_at"),
+        Index("idx_document_edostate_client_id_status", "client_id", "edo_status"),
+        {"extend_existing": True},
+    )
+
+    id: Mapped[str] = mapped_column(GUID(), primary_key=True)
+    document_id: Mapped[str] = mapped_column(GUID(), ForeignKey("documents.id", ondelete="CASCADE"), nullable=False)
+    client_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    provider: Mapped[str | None] = mapped_column(Text, nullable=True)
+    provider_mode: Mapped[str] = mapped_column(String(16), nullable=False, default="real")
+    edo_status: Mapped[str] = mapped_column(String(32), nullable=False, default=EdoStatus.NEW.value)
+    edo_message_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    last_error_code: Mapped[str | None] = mapped_column(Text, nullable=True)
+    last_error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    attempts_send: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+    attempts_poll: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+    next_poll_at: Mapped[DateTime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_polled_at: Mapped[DateTime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_status_at: Mapped[DateTime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[DateTime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+    document: Mapped[Document] = relationship(back_populates="edo_state")

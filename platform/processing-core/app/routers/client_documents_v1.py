@@ -9,8 +9,16 @@ from sqlalchemy.orm import Session
 from app.api.dependencies.client import client_portal_user
 from app.db import get_db
 from app.domains.documents.models import DocumentDirection
+from app.domains.documents.edo_service import DocumentEdoService
 from app.domains.documents.repo import DocumentsRepository
-from app.domains.documents.schemas import DocumentCreateIn, DocumentDetailsResponse, DocumentFileOut, DocumentOut, DocumentsListResponse
+from app.domains.documents.schemas import (
+    DocumentCreateIn,
+    DocumentDetailsResponse,
+    DocumentFileOut,
+    DocumentOut,
+    DocumentsListResponse,
+    EdoStateOut,
+)
 from app.domains.documents.service import DocumentsService
 from app.domains.documents.storage import DocumentsStorage
 from app.domains.documents.timeline_schemas import TimelineEventOut
@@ -29,6 +37,32 @@ def _client_id_from_token(token: dict) -> str:
 def _service(db: Session = Depends(get_db)) -> DocumentsService:
     return DocumentsService(repo=DocumentsRepository(db=db), storage=DocumentsStorage.from_env())
 
+
+
+
+def _edo_service(db: Session = Depends(get_db)) -> DocumentEdoService:
+    return DocumentEdoService(repo=DocumentsRepository(db=db))
+
+
+def _to_edo_out(item) -> EdoStateOut:
+    return EdoStateOut(
+        id=str(item.id),
+        document_id=str(item.document_id),
+        client_id=str(item.client_id),
+        provider=item.provider,
+        provider_mode=item.provider_mode,
+        edo_status=item.edo_status,
+        edo_message_id=item.edo_message_id,
+        last_error_code=item.last_error_code,
+        last_error_message=item.last_error_message,
+        attempts_send=int(item.attempts_send or 0),
+        attempts_poll=int(item.attempts_poll or 0),
+        next_poll_at=item.next_poll_at,
+        last_polled_at=item.last_polled_at,
+        last_status_at=item.last_status_at,
+        created_at=item.created_at,
+        updated_at=item.updated_at,
+    )
 
 def _timeline_request_context(request: Request) -> TimelineRequestContext:
     return TimelineRequestContext(
@@ -164,3 +198,29 @@ def download_client_document_file(
     stream = svc.storage.get_object_stream(item.file.storage_key)
     headers = {"Content-Disposition": f'attachment; filename="{item.file.filename}"'}
     return StreamingResponse(stream, media_type=item.file.mime, headers=headers)
+
+
+@router.post("/{document_id}/send", response_model=EdoStateOut)
+def send_client_document_to_edo(
+    document_id: str,
+    token: dict = Depends(client_portal_user),
+    edo: DocumentEdoService = Depends(_edo_service),
+) -> EdoStateOut:
+    state = edo.send_document(
+        client_id=_client_id_from_token(token),
+        document_id=document_id,
+        actor_user_id=token.get("user_id") or token.get("sub"),
+    )
+    return _to_edo_out(state)
+
+
+@router.get("/{document_id}/edo", response_model=EdoStateOut | None)
+def get_client_document_edo_state(
+    document_id: str,
+    token: dict = Depends(client_portal_user),
+    edo: DocumentEdoService = Depends(_edo_service),
+) -> EdoStateOut | None:
+    state = edo.get_edo_state_for_client(client_id=_client_id_from_token(token), document_id=document_id)
+    if state is None:
+        return None
+    return _to_edo_out(state)
