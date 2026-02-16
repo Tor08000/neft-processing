@@ -141,3 +141,20 @@ class VerifyResponse(BaseModel):
     subject: str
     user_id: str | None = None
     roles: list[str] = Field(default_factory=list)
+
+
+class LogoutAllRequest(BaseModel):
+    tenant_id: str | None = None
+
+
+class ForceLogoutRequest(BaseModel):
+    tenant_id: str
+    all_sessions: bool = True
+    reason: str | None = None
+
+
+class SessionStatusResponse(BaseModel):
+    sid: str
+    active: bool
+    revoked_at: datetime | None = None
+    reason: str | None = None

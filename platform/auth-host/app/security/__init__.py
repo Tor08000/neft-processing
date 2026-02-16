@@ -5,6 +5,7 @@ import hmac
 import secrets
 import os
 from datetime import datetime, timedelta, timezone
+from uuid import uuid4
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -60,6 +61,8 @@ def create_access_token(
     tenant_id: str | None = None,
     token_version: int = 1,
     tenant_token_version: int = 1,
+    session_id: str | None = None,
+    jti: str | None = None,
 ) -> str:
     now = _now_utc()
     expire = now + timedelta(minutes=settings.access_token_expires_min)
@@ -73,6 +76,8 @@ def create_access_token(
         "subject_type": subject_type,
         "token_version": token_version,
         "tenant_token_version": tenant_token_version,
+        "jti": jti or str(uuid4()),
+        "ver": token_version,
     }
     if client_id:
         payload["client_id"] = client_id
@@ -86,6 +91,8 @@ def create_access_token(
         payload["email"] = email
     if tenant_id:
         payload["tenant_id"] = tenant_id
+    if session_id:
+        payload["sid"] = session_id
     private_key = get_private_key_pem()
     return jwt.encode(payload, private_key, algorithm=ALGORITHM)
 
