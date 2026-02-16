@@ -26,6 +26,7 @@ from app.routers.admin_core_finance import router as admin_core_finance_router
 from app.routers.admin_legacy_aliases import router as admin_legacy_aliases_router
 from app.routers.admin_runtime import router as admin_runtime_router
 from app.routers.admin_runtime_legacy import router as admin_runtime_legacy_router
+from app.routers.admin_partners import router as admin_partners_router
 from app.routers.client import router as client_router
 from app.routers.client_fleet import router as fleet_router
 from app.routers.client_documents import router as client_documents_router
@@ -41,6 +42,7 @@ from app.routers.partner_core import router as partner_core_router
 from app.routers.partner_finance import router as partner_finance_router
 from app.routers.partner_finance_legacy import router as partner_finance_legacy_router
 from app.routers.partner_legal import router as partner_legal_router
+from app.routers.partner_management import router as partner_management_router
 from app.routers.document_templates import router as document_templates_router
 from app.routers.legal_gate import router as legal_gate_router
 from app.routers.client.marketplace_recommendations import router as marketplace_recommendations_router
@@ -579,6 +581,7 @@ safe_include_router(core_prefixed_router, client_router)
 safe_include_router(core_prefixed_router, client_auth_gateway_router)
 safe_include_router(core_prefixed_router, admin_auth_gateway_router)
 safe_include_router(core_prefixed_router, admin_auth_gateway_v1_router)
+safe_include_router(core_prefixed_router, admin_partners_router)
 safe_include_router(core_prefixed_router, partner_auth_gateway_router)
 safe_include_router(core_prefixed_router, portal_me_router)
 safe_include_router(core_prefixed_router, client_me_router)
@@ -596,6 +599,7 @@ safe_include_router(core_prefixed_router, partner_core_router)
 safe_include_router(core_prefixed_router, partner_finance_legacy_router)
 safe_include_router(core_prefixed_router, partner_finance_router)
 safe_include_router(core_prefixed_router, partner_legal_router)
+safe_include_router(core_prefixed_router, partner_management_router)
 safe_include_router(core_prefixed_router, partner_marketplace_router)
 safe_include_router(core_prefixed_router, partner_marketplace_services_router)
 safe_include_router(core_prefixed_router, partner_marketplace_offers_router)

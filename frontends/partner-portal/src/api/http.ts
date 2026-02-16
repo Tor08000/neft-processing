@@ -220,7 +220,7 @@ export async function request<T>(
   }
   if (!response.ok) {
     const text = await readResponseText();
-    let payload: { error?: string; message?: string; request_id?: string; details?: unknown } | null = null;
+    let payload: { error?: string; message?: string; detail?: string; request_id?: string; details?: unknown } | null = null;
     if (isJson && text) {
       try {
         payload = JSON.parse(text) as { error?: string; message?: string; request_id?: string; details?: unknown };
@@ -234,7 +234,10 @@ export async function request<T>(
         : response.status === 502 || response.status === 503
           ? "Сервис временно недоступен"
           : `Request failed with status ${response.status}`;
-    const message = payload?.message ?? payload?.error ?? (text || fallbackMessage);
+    const partnerNotLinked = payload?.detail === "partner_not_linked";
+    const message = partnerNotLinked
+      ? "Партнёр не привязан. Обратитесь к администратору."
+      : payload?.message ?? payload?.error ?? payload?.detail ?? (text || fallbackMessage);
     logDemoStatus(url, response.status);
     throw new ApiError(
       message,
@@ -330,7 +333,7 @@ export async function requestWithMeta<T>(
   }
   if (!response.ok) {
     const text = await readResponseText();
-    let payload: { error?: string; message?: string; request_id?: string; details?: unknown } | null = null;
+    let payload: { error?: string; message?: string; detail?: string; request_id?: string; details?: unknown } | null = null;
     if (isJson && text) {
       try {
         payload = JSON.parse(text) as { error?: string; message?: string; request_id?: string; details?: unknown };
@@ -344,7 +347,10 @@ export async function requestWithMeta<T>(
         : response.status === 502 || response.status === 503
           ? "Сервис временно недоступен"
           : `Request failed with status ${response.status}`;
-    const message = payload?.message ?? payload?.error ?? (text || fallbackMessage);
+    const partnerNotLinked = payload?.detail === "partner_not_linked";
+    const message = partnerNotLinked
+      ? "Партнёр не привязан. Обратитесь к администратору."
+      : payload?.message ?? payload?.error ?? payload?.detail ?? (text || fallbackMessage);
     logDemoStatus(url, response.status);
     throw new ApiError(
       message,

@@ -57,7 +57,7 @@ def update_partner(partner_id: str, body: PartnerUpdate, db: Session = Depends(g
     return partner
 
 
-@router.delete("/{partner_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{partner_id}", status_code=status.HTTP_200_OK)
 def disable_partner(partner_id: str, db: Session = Depends(get_db)) -> None:
     partner = db.query(Partner).filter(Partner.id == partner_id).first()
     if partner is None:

@@ -49,3 +49,31 @@ jobs:
           fi
       - name: Alembic upgrade head
         run: docker compose -f docker-compose.yml -f docker-compose.smoke.yml --profile smoke run --rm --entrypoint "" core-api alembic -c app/alembic.ini upgrade head
+
+
+  processing-core-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run processing-core tests
+        run: docker compose run --rm --entrypoint "" core-api pytest -q platform/processing-core/app/tests/test_partner_management_v1.py
+
+  partner-portal-build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontends/partner-portal
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm ci
+      - run: npm run build
+
+  e2e-gateway-partner-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Gateway partner smoke
+        run: scripts/ci/e2e_partner_smoke.sh
