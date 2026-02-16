@@ -13,6 +13,7 @@ from sqlalchemy import (
     UniqueConstraint,
     JSON,
     Text,
+    text,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
@@ -138,6 +139,8 @@ class ClientInvitation(Base):
     __table_args__ = (
         Index("ix_client_invitations_client_status", "client_id", "status"),
         Index("ix_client_invitations_email", "email"),
+        Index("ix_client_invitations_email_lower", text("lower(email)")),
+        Index("ix_client_invitations_expires_at", "expires_at"),
         UniqueConstraint("token_hash", name="uq_client_invitations_token_hash"),
     )
 

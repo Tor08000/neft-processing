@@ -77,8 +77,18 @@ export function toggleClientFeature(user: AuthSession | null, featureKey: string
 }
 
 
-export function fetchClientInvitations(user: AuthSession | null): Promise<ClientInvitationsResponse> {
-  return request<ClientInvitationsResponse>("/client/users/invitations", { method: "GET" }, withToken(user));
+export function fetchClientInvitations(
+  user: AuthSession | null,
+  params?: { status?: string; q?: string; sort?: string; limit?: number; offset?: number },
+): Promise<ClientInvitationsResponse> {
+  const search = new URLSearchParams();
+  if (params?.status) search.set("status", params.status);
+  if (params?.q) search.set("q", params.q);
+  if (params?.sort) search.set("sort", params.sort);
+  if (params?.limit !== undefined) search.set("limit", String(params.limit));
+  if (params?.offset !== undefined) search.set("offset", String(params.offset));
+  const suffix = search.toString() ? `?${search.toString()}` : "";
+  return request<ClientInvitationsResponse>(`/client/users/invitations${suffix}`, { method: "GET" }, withToken(user));
 }
 
 export function resendClientInvitation(user: AuthSession | null, invitationId: string, expiresInDays = 7) {
