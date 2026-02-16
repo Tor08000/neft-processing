@@ -78,6 +78,20 @@ class NotificationSendResponse(BaseModel):
     mode: str
 
 
+
+
+class NotifyEmailSendRequest(BaseModel):
+    to: str
+    subject: str
+    html: str | None = None
+    text: str | None = None
+    meta: dict = Field(default_factory=dict)
+
+
+class NotifyEmailSendResponse(BaseModel):
+    status: str
+    message_id: str
+
 class WebhookOwner(BaseModel):
     type: str
     id: str
@@ -226,6 +240,8 @@ __all__ = [
     "EdoStubStatusResponse",
     "NotificationSendRequest",
     "NotificationSendResponse",
+    "NotifyEmailSendRequest",
+    "NotifyEmailSendResponse",
     "WebhookDeliveryResponse",
     "WebhookEndpointCreate",
     "WebhookEndpointResponse",

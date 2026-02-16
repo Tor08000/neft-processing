@@ -84,8 +84,8 @@ def test_revoke_and_resend_and_permissions(monkeypatch) -> None:
 
         outbox_events = session.query(NotificationOutbox).filter(NotificationOutbox.aggregate_id == invitation_id).all()
         event_types = {item.event_type for item in outbox_events}
-        assert "client_invitation_created" in event_types
-        assert "client_invitation_resent" in event_types
+        assert "INVITATION_CREATED" in event_types
+        assert "INVITATION_RESENT" in event_types
 
         forbidden = api_client.post(
             f"{base}/client/users/invitations/{invitation_id}/resend",
@@ -119,7 +119,7 @@ def test_revoke_and_resend_and_permissions(monkeypatch) -> None:
 
         outbox_events = session.query(NotificationOutbox).filter(NotificationOutbox.aggregate_id == invitation_id).all()
         event_types = {item.event_type for item in outbox_events}
-        assert "client_invitation_revoked" in event_types
+        assert "INVITATION_REVOKED" in event_types
 
         invitations_resp = api_client.get(f"{base}/client/users/invitations", headers={"Authorization": f"Bearer {owner_token}"})
         assert invitations_resp.status_code == 200
