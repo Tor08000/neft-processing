@@ -6,6 +6,7 @@ import { CopyChip } from "../components/common/CopyChip";
 import { Toast } from "../components/Toast/Toast";
 import { useToast } from "../components/Toast/useToast";
 import { AppLogo } from "@shared/brand/components";
+import { buildSsoStartUrl, listSsoIdps, type SSOIdPItem } from "../api/auth";
 
 export function LoginPage() {
   const { login, error, user } = useAuth();
@@ -19,6 +20,8 @@ export function LoginPage() {
   const [signupNotice, setSignupNotice] = useState<string | null>(null);
   const [fieldError, setFieldError] = useState<string | null>(null);
   const [capsLockOn, setCapsLockOn] = useState(false);
+  const [tenantId, setTenantId] = useState("00000000-0000-0000-0000-000000000000");
+  const [ssoProviders, setSsoProviders] = useState<SSOIdPItem[]>([]);
   const { toast, showToast } = useToast();
   const emailRef = useRef<HTMLInputElement | null>(null);
   const errorRef = useRef<HTMLDivElement | null>(null);
@@ -83,6 +86,26 @@ export function LoginPage() {
     }
   }, [portalState]);
 
+
+
+  useEffect(() => {
+    let cancelled = false;
+    listSsoIdps(tenantId)
+      .then((response) => {
+        if (!cancelled) {
+          setSsoProviders(response.idps ?? []);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setSsoProviders([]);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [tenantId]);
+
   const selfSignupLabel = "Регистрация";
 
   return (
@@ -127,6 +150,19 @@ export function LoginPage() {
             {signupNotice}
           </div>
         ) : null}
+        <label htmlFor="client-tenant">
+          Tenant ID
+          <input
+            id="client-tenant"
+            className="neft-input neft-focus-ring"
+            type="text"
+            value={tenantId}
+            onChange={(e) => setTenantId(e.target.value)}
+            placeholder="00000000-0000-0000-0000-000000000000"
+            disabled={isSubmitting || Boolean(user)}
+          />
+        </label>
+
         <label htmlFor="client-email">
           Email
           <input
@@ -177,6 +213,15 @@ export function LoginPage() {
         >
           Забыли пароль
         </button>
+        {ssoProviders.map((idp) => (
+          <a
+            key={idp.provider_key}
+            className="neft-button neft-btn-secondary login-secondary-action"
+            href={buildSsoStartUrl(tenantId, idp.provider_key, `${window.location.origin}/login`)}
+          >
+            {idp.display_name}
+          </a>
+        ))}
       </form>
       <Toast toast={toast} />
     </div>

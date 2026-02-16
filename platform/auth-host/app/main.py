@@ -8,6 +8,8 @@ from fastapi.openapi.docs import get_swagger_ui_html
 from app.adapters.oauth_providers import oidc_client
 from app.api.routes.admin_users import router as admin_users_router
 from app.api.routes.auth import router as auth_router
+from app.api.routes.sso import router as sso_router
+from app.api.routes.admin_sso import router as admin_sso_router
 from app.api.routes.health import router as health_router
 from app.api.routes.processing import router as processing_router
 from app.bootstrap import bootstrap_required_users
@@ -46,17 +48,23 @@ API_PREFIX_AUTH = _normalize_prefix(os.getenv("API_PREFIX_AUTH", DEFAULT_API_PRE
 
 app.include_router(health_router, prefix=LEGACY_API_PREFIX)
 app.include_router(auth_router, prefix=LEGACY_API_PREFIX)
+app.include_router(sso_router, prefix=LEGACY_API_PREFIX)
+app.include_router(admin_sso_router, prefix=LEGACY_API_PREFIX)
 app.include_router(admin_users_router, prefix=LEGACY_API_PREFIX)
 app.include_router(processing_router, prefix=LEGACY_API_PREFIX)
 
 app.include_router(health_router, prefix=API_PREFIX_AUTH)
 app.include_router(auth_router, prefix=API_PREFIX_AUTH)
+app.include_router(sso_router, prefix=API_PREFIX_AUTH)
+app.include_router(admin_sso_router, prefix=API_PREFIX_AUTH)
 app.include_router(admin_users_router, prefix=API_PREFIX_AUTH)
 app.include_router(processing_router, prefix=API_PREFIX_AUTH)
 
 api_prefixed_router = APIRouter(prefix="/api/auth")
 api_prefixed_router.include_router(health_router)
 api_prefixed_router.include_router(auth_router)
+api_prefixed_router.include_router(sso_router)
+api_prefixed_router.include_router(admin_sso_router)
 api_prefixed_router.include_router(admin_users_router)
 api_prefixed_router.include_router(processing_router)
 

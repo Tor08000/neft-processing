@@ -73,3 +73,25 @@ export async function register(payload: RegisterPayload): Promise<RegisterRespon
   };
   return request<RegisterResponse>("/signup", { method: "POST", body: JSON.stringify(normalizedPayload) }, { base: "auth" });
 }
+
+
+export interface SSOIdPItem {
+  provider_key: string;
+  display_name: string;
+  issuer_url: string;
+  enabled: boolean;
+}
+
+export interface SSOIdPListResponse {
+  tenant_id: string;
+  portal: string;
+  idps: SSOIdPItem[];
+}
+
+export async function listSsoIdps(tenantId: string): Promise<SSOIdPListResponse> {
+  return request<SSOIdPListResponse>(`/sso/idps?tenant_id=${encodeURIComponent(tenantId)}&portal=client`, { method: "GET" }, { base: "auth" });
+}
+
+export function buildSsoStartUrl(tenantId: string, providerKey: string, redirectUri: string): string {
+  return `${AUTH_API_BASE}/sso/oidc/start?tenant_id=${encodeURIComponent(tenantId)}&provider_key=${encodeURIComponent(providerKey)}&portal=client&redirect_uri=${encodeURIComponent(redirectUri)}`;
+}
