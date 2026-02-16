@@ -116,6 +116,7 @@ shared/
 ## 7) Актуальные ссылки
 
 - Readiness map: `docs/as-is/NEFT_PLATFORM_READINESS_MAP.md`
+- Текущий выверенный статус готовности: `docs/as-is/NEFT_ASIS_Readiness_Current.md`
 - Evidence index: `docs/as-is/VERIFY_EVIDENCE_INDEX.md`
 - Latest checks snapshot: `docs/as-is/STATUS_SNAPSHOT_LATEST.md`
 - Runtime snapshot: `docs/as-is/STATUS_SNAPSHOT_RUNTIME_LATEST.md`
