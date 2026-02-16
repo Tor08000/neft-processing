@@ -23,6 +23,7 @@ from app.domains.client.onboarding.service import (
     ensure_submit_allowed,
     validate_patch_fields,
 )
+from app.routers.client_onboarding_documents_v1 import router as client_onboarding_documents_v1_router
 
 router = APIRouter(prefix="/onboarding", tags=["client-onboarding"])
 _security = HTTPBearer(auto_error=False)
@@ -116,3 +117,6 @@ def get_my_onboarding_application(
     if application is None:
         raise HTTPException(status_code=404, detail={"reason_code": "application_not_found"})
     return OnboardingApplicationResponse.model_validate(application)
+
+
+router.include_router(client_onboarding_documents_v1_router)

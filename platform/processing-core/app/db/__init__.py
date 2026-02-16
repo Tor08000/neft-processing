@@ -183,6 +183,7 @@ def init_db() -> None:
     from app.models.ledger_entry import LedgerEntry  # noqa: F401
     from app.models.posting_batch import PostingBatch  # noqa: F401
     from app.domains.client.onboarding.models import ClientOnboardingApplication  # noqa: F401
+    from app.domains.client.onboarding.documents.models import ClientDocument  # noqa: F401
 
     # Для тестов и in-memory SQLite создаём таблицы автоматически.
     if os.getenv("NEFT_AUTO_CREATE_SCHEMA") == "true":
