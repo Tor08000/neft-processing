@@ -10,6 +10,7 @@ import { AccessGate } from "./components/AccessGate";
 import { LoginPage } from "./pages/LoginPage";
 import { SignupPage } from "./pages/SignupPage";
 import { OnboardingPage } from "./pages/OnboardingPage";
+import { OnboardingSelfRegistrationPage } from "./pages/OnboardingSelfRegistrationPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
 import { UnauthorizedPage } from "./pages/UnauthorizedPage";
 import { OverviewPage } from "./pages/OverviewPage";
@@ -142,6 +143,9 @@ export function App({ initialSession = null }: AppProps) {
             <Route path="/client/login" element={<Navigate to="/login" replace />} />
             <Route path="/client/signup" element={<Navigate to="/register" replace />} />
             <Route path="/unauthorized" element={<UnauthorizedPage />} />
+            <Route path="/client/onboarding/start" element={<OnboardingSelfRegistrationPage mode="start" />} />
+            <Route path="/client/onboarding/form" element={<OnboardingSelfRegistrationPage mode="form" />} />
+            <Route path="/client/onboarding/status" element={<OnboardingSelfRegistrationPage mode="status" />} />
             <Route element={<ProtectedRoute />}>
               <Route path="/client/dashboard" element={<Navigate to="/dashboard" replace />} />
               <Route path="/client/connect" element={<Navigate to="/onboarding" replace />} />

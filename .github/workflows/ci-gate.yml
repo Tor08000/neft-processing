@@ -62,6 +62,9 @@ jobs:
       - name: Processing-core client v1 me unit
         run: pytest -q platform/processing-core/app/tests/test_client_v1_me.py
 
+      - name: Processing-core client onboarding v1 unit
+        run: pytest -q platform/processing-core/app/tests/test_client_onboarding_v1.py
+
   migrations:
     name: Migrations
     runs-on: ubuntu-latest
@@ -110,6 +113,9 @@ jobs:
 
       - name: Gateway e2e smoke
         run: scripts/ci/gate_e2e_smoke.sh
+
+      - name: Client onboarding smoke
+        run: scripts/ci/smoke_client_onboarding.sh
 
       - name: Playwright smoke
         run: scripts/ci/gate_playwright_smoke.sh
