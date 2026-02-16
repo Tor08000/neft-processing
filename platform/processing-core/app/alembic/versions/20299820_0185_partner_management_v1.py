@@ -34,8 +34,31 @@ def _json_type(bind):
     return sa.JSON()
 
 
+def _partner_id_fk_type(bind) -> sa.types.TypeEngine:
+    if bind.dialect.name != "postgresql":
+        return sa.Text()
+
+    partner_id_type = bind.execute(
+        sa.text(
+            """
+            SELECT data_type
+            FROM information_schema.columns
+            WHERE table_schema = :schema
+              AND table_name = 'partners'
+              AND column_name = 'id'
+            """
+        ),
+        {"schema": DB_SCHEMA},
+    ).scalar_one_or_none()
+
+    if partner_id_type == "uuid":
+        return GUID()
+    return sa.Text()
+
+
 def upgrade() -> None:
     bind = op.get_bind()
+    partner_fk_type = _partner_id_fk_type(bind)
 
     if not column_exists(bind, "partners", "code", schema=DB_SCHEMA):
         op.add_column("partners", sa.Column("code", sa.Text(), nullable=True), schema=DB_SCHEMA)
@@ -84,7 +107,7 @@ def upgrade() -> None:
         bind,
         "partner_locations",
         sa.Column("id", GUID(), primary_key=True),
-        sa.Column("partner_id", GUID(), sa.ForeignKey(f"{DB_SCHEMA}.partners.id", ondelete="CASCADE"), nullable=False),
+        sa.Column("partner_id", partner_fk_type, sa.ForeignKey(f"{DB_SCHEMA}.partners.id", ondelete="CASCADE"), nullable=False),
         sa.Column("external_id", sa.Text(), nullable=True),
         sa.Column("code", sa.Text(), nullable=True),
         sa.Column("title", sa.Text(), nullable=False),
