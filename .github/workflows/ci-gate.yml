@@ -74,6 +74,15 @@ jobs:
       - name: Processing-core client doc signing unit
         run: pytest -q platform/processing-core/app/tests/test_client_doc_signing.py
 
+      - name: Processing-core client docflow timeline unit
+        run: pytest -q platform/processing-core/app/tests/test_client_docflow_timeline.py
+
+      - name: Processing-core client docflow packages unit
+        run: pytest -q platform/processing-core/app/tests/test_client_docflow_packages.py
+
+      - name: Processing-core client docflow notifications unit
+        run: pytest -q platform/processing-core/app/tests/test_client_notifications.py
+
   migrations:
     name: Migrations
     runs-on: ubuntu-latest
@@ -123,6 +132,8 @@ jobs:
           CLIENT_SIGN_MODE: otp
           OTP_PROVIDER: stub
           OTP_PROVIDER_STUB_ECHO_CODE: '1'
+          NOTIFY_EMAIL_ENABLED: '0'
+          EMAIL_PROVIDER: stub
         run: scripts/ci/gate_compose_up.sh
 
       - name: Gateway e2e smoke
@@ -142,6 +153,9 @@ jobs:
 
       - name: Client onboarding review smoke
         run: scripts/ci/smoke_onboarding_review_flow.sh
+
+      - name: Client docflow smoke
+        run: scripts/ci/smoke_client_docflow.sh
 
       - name: Playwright smoke
         run: scripts/ci/gate_playwright_smoke.sh

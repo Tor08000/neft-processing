@@ -9,6 +9,7 @@ from datetime import datetime, timedelta, timezone
 from fastapi import HTTPException
 
 from app.domains.client.generated_docs.models import ClientGeneratedDocument, GeneratedDocStatus
+from app.domains.client.docflow.notifications import ClientDocflowNotificationsService
 from app.domains.client.generated_docs.repo import ClientGeneratedDocumentsRepository
 from app.domains.client.signing.otp import generate_otp_code, hash_otp_code, verify_otp_code
 from app.domains.client.signing.repo import ClientSigningRepository
@@ -149,6 +150,26 @@ class ClientDocumentSigningService:
             user_agent=user_agent,
             meta_json={"request_id": request_id, "signature_hash": signature_hash},
         )
+        self.sign_repo.create_audit_event(
+            client_id=doc.client_id,
+            application_id=doc.client_application_id,
+            doc_id=str(doc.id),
+            event_type="DOC_EFFECTIVE",
+            actor_user_id=user_id,
+            actor_type="CLIENT_USER",
+            ip=ip,
+            user_agent=user_agent,
+            meta_json={"request_id": request_id},
+        )
+        if doc.client_id:
+            ClientDocflowNotificationsService(self.sign_repo.db).create(
+                client_id=str(doc.client_id),
+                user_id=user_id,
+                title="Документ подписан",
+                body="Вы успешно подписали документ.",
+                event_type="DOC_SIGNED_BY_CLIENT",
+                meta_json={"doc_id": str(doc.id)},
+            )
         return doc
 
     def checkbox_sign(self, *, doc: ClientGeneratedDocument, user_id: str, consent: bool, ip: str | None, user_agent: str | None) -> ClientGeneratedDocument:
@@ -173,6 +194,26 @@ class ClientDocumentSigningService:
             user_agent=user_agent,
             meta_json={"signature_hash": signature_hash, "sign_method": "CHECKBOX"},
         )
+        self.sign_repo.create_audit_event(
+            client_id=doc.client_id,
+            application_id=doc.client_application_id,
+            doc_id=str(doc.id),
+            event_type="DOC_EFFECTIVE",
+            actor_user_id=user_id,
+            actor_type="CLIENT_USER",
+            ip=ip,
+            user_agent=user_agent,
+            meta_json={"sign_method": "CHECKBOX"},
+        )
+        if doc.client_id:
+            ClientDocflowNotificationsService(self.sign_repo.db).create(
+                client_id=str(doc.client_id),
+                user_id=user_id,
+                title="Документ подписан",
+                body="Вы успешно подписали документ.",
+                event_type="DOC_SIGNED_BY_CLIENT",
+                meta_json={"doc_id": str(doc.id)},
+            )
         return doc
 
     def _validate_doc_ready_for_signing(self, doc: ClientGeneratedDocument) -> None:

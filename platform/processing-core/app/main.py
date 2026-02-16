@@ -63,6 +63,7 @@ from app.routers.client_portal_v1 import router as client_portal_v1_router
 from app.routers.client_v1 import router as client_v1_router
 from app.routers.client_logistics import router as client_logistics_router
 from app.routers.client_notifications import router as client_notifications_router
+from app.routers.client_docflow import router as client_docflow_router
 from app.routers.legal import router as legal_router
 from app.routers.notifications import router as notifications_router
 from app.routers.client_vehicles import router as client_vehicles_router
@@ -441,6 +442,7 @@ if INCLUDE_CUSTOM_CORE_PREFIX:
     safe_include_router(app, client_portal_router, prefix=API_PREFIX_CORE)
     safe_include_router(app, client_onboarding_router, prefix=API_PREFIX_CORE)
     safe_include_router(app, client_onboarding_status_v1_router, prefix=API_PREFIX_CORE)
+    safe_include_router(app, client_docflow_router, prefix=API_PREFIX_CORE)
     safe_include_router(app, admin_onboarding_review_v1_router, prefix=API_PREFIX_CORE)
     safe_include_router(app, client_portal_v1_router, prefix=API_PREFIX_CORE)
     safe_include_router(app, client_logistics_router, prefix=API_PREFIX_CORE)
@@ -604,6 +606,7 @@ safe_include_router(core_prefixed_router, fleet_router)
 safe_include_router(core_prefixed_router, client_portal_router)
 safe_include_router(core_prefixed_router, client_onboarding_router)
 safe_include_router(core_prefixed_router, client_onboarding_status_v1_router)
+safe_include_router(core_prefixed_router, client_docflow_router)
 safe_include_router(core_prefixed_router, admin_onboarding_review_v1_router)
 safe_include_router(core_prefixed_router, client_vehicles_router)
 safe_include_router(core_prefixed_router, client_documents_router)
