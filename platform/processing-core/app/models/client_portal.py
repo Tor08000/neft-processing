@@ -2,6 +2,7 @@ from enum import Enum
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     Column,
     DateTime,
     ForeignKey,
@@ -30,7 +31,7 @@ class ClientCard(Base):
         nullable=False,
         index=True,
     )
-    card_id = Column(String, nullable=False, index=True)
+    card_id = Column(String, ForeignKey("cards.id", ondelete="CASCADE"), nullable=False, index=True)
     pan_masked = Column(String, nullable=True)
     status = Column(String, nullable=False, server_default="ACTIVE")
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
@@ -99,10 +100,11 @@ class CardLimit(Base):
 
     id = Column(GUID(), primary_key=True, default=new_uuid_str)
     client_id = Column(GUID(), ForeignKey("clients.id"), nullable=False, index=True)
-    card_id = Column(String, nullable=False, index=True)
+    card_id = Column(String, ForeignKey("cards.id", ondelete="CASCADE"), nullable=False, index=True)
     limit_type = Column(String, nullable=False)
     amount = Column(Numeric, nullable=False)
     currency = Column(String(3), nullable=False, server_default="RUB")
+    active = Column(Boolean, nullable=False, server_default="true")
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
@@ -184,6 +186,7 @@ class NotificationOutbox(Base):
 
 class LimitTemplate(Base):
     __tablename__ = "limit_templates"
+    __table_args__ = (UniqueConstraint("client_id", "name", name="uq_limit_templates_client_name"),)
 
     id = Column(GUID(), primary_key=True, default=new_uuid_str)
     client_id = Column(GUID(), ForeignKey("clients.id"), nullable=False, index=True)
@@ -191,4 +194,6 @@ class LimitTemplate(Base):
     description = Column(String(512), nullable=True)
     limits = Column(JSON, nullable=False)
     status = Column(String(32), nullable=False, server_default="ACTIVE")
+    is_default = Column(Boolean, nullable=False, server_default="false")
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)

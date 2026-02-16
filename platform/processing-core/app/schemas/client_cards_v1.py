@@ -11,6 +11,7 @@ class CardLimitOut(BaseModel):
     limit_type: str
     amount: float
     currency: str
+    active: bool = True
 
 
 class CardOut(BaseModel):
@@ -19,6 +20,8 @@ class CardOut(BaseModel):
     id: str
     status: str
     pan_masked: str | None = None
+    masked_pan: str | None = None
+    issued_at: datetime | None = None
     limits: list[CardLimitOut] = Field(default_factory=list)
 
 
@@ -26,12 +29,23 @@ class CardListResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     items: list[CardOut]
+    templates: list["CardTemplateSummary"] = Field(default_factory=list)
+
+
+class CardTemplateSummary(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    name: str
+    is_default: bool = False
 
 
 class CardCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     pan_masked: str | None = None
+    label: str | None = None
+    template_id: str | None = None
 
 
 class CardUpdateRequest(BaseModel):
@@ -46,6 +60,12 @@ class CardLimitRequest(BaseModel):
     limit_type: str
     amount: float
     currency: str = "RUB"
+
+
+class CardLimitsUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    limits: list[CardLimitRequest]
 
 
 class CardAccessOut(BaseModel):

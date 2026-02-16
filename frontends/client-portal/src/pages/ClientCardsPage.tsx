@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   blockCard,
+  createCard,
   bulkApplyLimitTemplate,
   bulkBlockCards,
   bulkGrantCardAccess,
@@ -50,6 +51,8 @@ export function ClientCardsPage() {
   const [selectedDriverId, setSelectedDriverId] = useState<string>("");
   const [selectedScope, setSelectedScope] = useState<string>(DEFAULT_SCOPE);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
+  const [newCardLabel, setNewCardLabel] = useState<string>("");
+  const [showCreateCard, setShowCreateCard] = useState(false);
   const { toast, showToast } = useToast();
 
   const canManageCards = hasAnyRole(user, ["CLIENT_OWNER", "CLIENT_ADMIN", "CLIENT_FLEET_MANAGER"]);
@@ -61,6 +64,9 @@ export function ClientCardsPage() {
       .then((data) => {
         if (!mounted) return;
         setCards(data.items);
+        if (data.templates?.length) {
+          setTemplates(data.templates.map((item) => ({ id: item.id, name: item.name, description: null, status: item.is_default ? "ACTIVE" : "DRAFT", limits: [] } as LimitTemplate)));
+        }
       })
       .catch((err: unknown) => {
         if (err instanceof ApiError) {
@@ -235,6 +241,19 @@ export function ClientCardsPage() {
     }
   };
 
+  const handleCreateCard = async () => {
+    try {
+      const created = await createCard({ label: newCardLabel || "**** 0000", template_id: selectedTemplateId || null }, user);
+      setCards((prev) => [created, ...prev]);
+      setShowCreateCard(false);
+      setNewCardLabel("");
+      showToast({ kind: "success", text: "Карта выпущена" });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Не удалось выпустить карту";
+      setError({ message });
+    }
+  };
+
   if (isLoading) {
     return <AppLoadingState label="Загружаем карты..." />;
   }
@@ -250,7 +269,28 @@ export function ClientCardsPage() {
   }
 
   if (cards.length === 0) {
-    return <AppEmptyState title="Карт нет" description="Нет карт — выпустить первую карту." />;
+    return (
+      <div className="card">
+        <AppEmptyState title="Карт нет" description="Нет карт — выпустить первую карту." />
+        {canManageCards ? (
+          <div style={{ marginTop: 12 }}>
+            <button type="button" onClick={() => setShowCreateCard((prev) => !prev)}>Выпустить карту</button>
+            {showCreateCard ? (
+              <div style={{ marginTop: 8, display: "grid", gap: 8, maxWidth: 420 }}>
+                <input value={newCardLabel} onChange={(event) => setNewCardLabel(event.target.value)} placeholder="Метка карты" />
+                <select value={selectedTemplateId} onChange={(event) => setSelectedTemplateId(event.target.value)}>
+                  <option value="">Шаблон по умолчанию</option>
+                  {templates.map((template) => (
+                    <option key={template.id} value={template.id}>{template.name}</option>
+                  ))}
+                </select>
+                <button type="button" onClick={handleCreateCard}>Создать</button>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+    );
   }
 
   const previewCards = selectedCards.slice(0, MAX_PREVIEW);
@@ -258,6 +298,23 @@ export function ClientCardsPage() {
 
   return (
     <div className="card">
+      {canManageCards ? (
+        <div style={{ marginBottom: 12 }}>
+          <button type="button" onClick={() => setShowCreateCard((prev) => !prev)}>Выпустить карту</button>
+          {showCreateCard ? (
+            <div style={{ marginTop: 8, display: "grid", gap: 8, maxWidth: 420 }}>
+              <input value={newCardLabel} onChange={(event) => setNewCardLabel(event.target.value)} placeholder="Метка карты" />
+              <select value={selectedTemplateId} onChange={(event) => setSelectedTemplateId(event.target.value)}>
+                <option value="">Шаблон по умолчанию</option>
+                {templates.map((template) => (
+                  <option key={template.id} value={template.id}>{template.name}</option>
+                ))}
+              </select>
+              <button type="button" onClick={handleCreateCard}>Создать</button>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
       <div className="card__header">
         <div>
           <h2>Карты</h2>
