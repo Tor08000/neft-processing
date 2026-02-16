@@ -38,10 +38,10 @@ def _partner_id_fk_type(bind) -> sa.types.TypeEngine:
     if bind.dialect.name != "postgresql":
         return sa.Text()
 
-    partner_id_type = bind.execute(
+    partner_id_meta = bind.execute(
         sa.text(
             """
-            SELECT data_type
+            SELECT data_type, character_maximum_length
             FROM information_schema.columns
             WHERE table_schema = :schema
               AND table_name = 'partners'
@@ -49,10 +49,16 @@ def _partner_id_fk_type(bind) -> sa.types.TypeEngine:
             """
         ),
         {"schema": DB_SCHEMA},
-    ).scalar_one_or_none()
+    ).one_or_none()
 
-    if partner_id_type == "uuid":
+    if partner_id_meta is None:
+        return sa.Text()
+
+    data_type, max_length = partner_id_meta
+    if data_type == "uuid":
         return GUID()
+    if max_length is not None:
+        return sa.String(length=max_length)
     return sa.Text()
 
 
@@ -144,7 +150,7 @@ def upgrade() -> None:
         bind,
         "partner_user_roles",
         sa.Column("id", GUID(), primary_key=True),
-        sa.Column("partner_id", GUID(), sa.ForeignKey(f"{DB_SCHEMA}.partners.id", ondelete="CASCADE"), nullable=False),
+        sa.Column("partner_id", partner_fk_type, sa.ForeignKey(f"{DB_SCHEMA}.partners.id", ondelete="CASCADE"), nullable=False),
         sa.Column("user_id", sa.Text(), nullable=False),
         sa.Column("roles", _json_type(bind), nullable=False, server_default=sa.text("'[]'")),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
@@ -157,7 +163,7 @@ def upgrade() -> None:
         bind,
         "partner_terms",
         sa.Column("id", GUID(), primary_key=True),
-        sa.Column("partner_id", GUID(), sa.ForeignKey(f"{DB_SCHEMA}.partners.id", ondelete="CASCADE"), nullable=False),
+        sa.Column("partner_id", partner_fk_type, sa.ForeignKey(f"{DB_SCHEMA}.partners.id", ondelete="CASCADE"), nullable=False),
         sa.Column("version", sa.Integer(), nullable=False, server_default=sa.text("1")),
         sa.Column("terms", _json_type(bind), nullable=False, server_default=sa.text("'{}'")),
         sa.Column("status", sa.Text(), nullable=False, server_default=sa.text("'DRAFT'")),

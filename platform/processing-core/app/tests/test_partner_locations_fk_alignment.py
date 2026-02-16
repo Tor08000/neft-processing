@@ -23,7 +23,7 @@ def _make_alembic_config(db_url: str) -> Config:
 
 
 @pytest.mark.integration
-def test_partner_locations_fk_matches_partners_id_type_for_legacy_schema(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_partner_fk_columns_match_partners_id_type_for_legacy_schema(monkeypatch: pytest.MonkeyPatch) -> None:
     schema = f"processing_core_partner_fk_{uuid4().hex[:8]}"
     db_url = get_database_url()
     monkeypatch.setenv("NEFT_DB_SCHEMA", schema)
@@ -66,7 +66,19 @@ def test_partner_locations_fk_matches_partners_id_type_for_legacy_schema(monkeyp
             ),
             {"schema": schema},
         ).scalar_one()
-        fk_exists = connection.execute(
+        user_roles_partner_id_type = connection.execute(
+            sa.text(
+                """
+                SELECT data_type
+                FROM information_schema.columns
+                WHERE table_schema = :schema
+                  AND table_name = 'partner_user_roles'
+                  AND column_name = 'partner_id'
+                """
+            ),
+            {"schema": schema},
+        ).scalar_one()
+        location_fk_exists = connection.execute(
             sa.text(
                 """
                 SELECT 1
@@ -81,6 +93,23 @@ def test_partner_locations_fk_matches_partners_id_type_for_legacy_schema(monkeyp
             ),
             {"schema": schema},
         ).scalar_one_or_none()
+        user_roles_fk_exists = connection.execute(
+            sa.text(
+                """
+                SELECT 1
+                FROM pg_constraint c
+                JOIN pg_class t ON t.oid = c.conrelid
+                JOIN pg_namespace ns ON ns.oid = t.relnamespace
+                WHERE ns.nspname = :schema
+                  AND t.relname = 'partner_user_roles'
+                  AND c.contype = 'f'
+                  AND c.conname = 'partner_user_roles_partner_id_fkey'
+                """
+            ),
+            {"schema": schema},
+        ).scalar_one_or_none()
 
     assert location_partner_id_type == partner_id_type
-    assert fk_exists == 1
+    assert user_roles_partner_id_type == partner_id_type
+    assert location_fk_exists == 1
+    assert user_roles_fk_exists == 1
