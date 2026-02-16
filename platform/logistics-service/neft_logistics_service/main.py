@@ -4,7 +4,7 @@ import logging
 import time
 from typing import Callable
 
-from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi import FastAPI, Header, HTTPException, Request, Response
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
 
 from neft_logistics_service.compute.deviation import compute_deviation
@@ -19,10 +19,15 @@ from neft_logistics_service.schemas import (
     ExplainRequest,
     ExplainResponse,
 )
+from neft_logistics_service.schemas.fleet import FleetListRequest, FleetListResponse, FleetUpsertRequest, FleetUpsertResponse
+from neft_logistics_service.schemas.fuel import FuelConsumptionRequest, FuelConsumptionResponse
+from neft_logistics_service.schemas.trips import TripCreateRequest, TripCreateResponse, TripStatusResponse
 from neft_logistics_service.settings import get_settings
+from neft_logistics_service.storage.idempotency import IdempotencyStore, hash_payload
 
 settings = get_settings()
 logger = logging.getLogger(__name__)
+idempotency_store = IdempotencyStore(settings.idempotency_db_path)
 
 app = FastAPI(title="Logistics Service", version=settings.service_version)
 
@@ -139,3 +144,79 @@ def explain_endpoint(payload: ExplainRequest) -> ExplainResponse:
         )
         return ExplainResponse(explain=explain)
     raise HTTPException(status_code=400, detail="unsupported_explain_kind")
+
+
+@app.post("/v1/fleet/list", response_model=FleetListResponse)
+def fleet_list_endpoint(payload: FleetListRequest) -> FleetListResponse:
+    provider = get_provider(settings.provider)
+    return provider.fleet_list(payload)
+
+
+@app.post("/v1/fleet/upsert", response_model=FleetUpsertResponse)
+def fleet_upsert_endpoint(payload: FleetUpsertRequest, idempotency_key: str | None = Header(default=None, alias="Idempotency-Key")) -> FleetUpsertResponse:
+    provider = get_provider(settings.provider)
+    if not idempotency_key:
+        response = provider.fleet_upsert(payload)
+        response.idempotency_status = "new"
+        return response
+
+    scope = "fleet_upsert"
+    req_hash = hash_payload(payload.model_dump(mode="json"))
+    existing = idempotency_store.get(scope, idempotency_key)
+    if existing:
+        if existing.status == "processing":
+            raise HTTPException(status_code=409, detail="idempotency_processing")
+        if existing.response_body is not None:
+            replay = dict(existing.response_body)
+            replay["idempotency_key"] = idempotency_key
+            replay["idempotency_status"] = "replayed"
+            return FleetUpsertResponse(**replay)
+    if not idempotency_store.start_processing(scope, idempotency_key, req_hash):
+        raise HTTPException(status_code=409, detail="idempotency_processing")
+    response = provider.fleet_upsert(payload)
+    body = response.model_dump(mode="json")
+    idempotency_store.finalize(scope, idempotency_key, "success", 200, body)
+    response.idempotency_key = idempotency_key
+    response.idempotency_status = "new"
+    return response
+
+
+@app.post("/v1/trips/create", response_model=TripCreateResponse)
+def trip_create_endpoint(payload: TripCreateRequest, idempotency_key: str | None = Header(default=None, alias="Idempotency-Key")) -> TripCreateResponse:
+    provider = get_provider(settings.provider)
+    if not idempotency_key:
+        response = provider.trip_create(payload)
+        response.idempotency_status = "new"
+        return response
+
+    scope = "trip_create"
+    req_hash = hash_payload(payload.model_dump(mode="json"))
+    existing = idempotency_store.get(scope, idempotency_key)
+    if existing:
+        if existing.status == "processing":
+            raise HTTPException(status_code=409, detail="idempotency_processing")
+        if existing.response_body is not None:
+            replay = dict(existing.response_body)
+            replay["idempotency_key"] = idempotency_key
+            replay["idempotency_status"] = "replayed"
+            return TripCreateResponse(**replay)
+    if not idempotency_store.start_processing(scope, idempotency_key, req_hash):
+        raise HTTPException(status_code=409, detail="idempotency_processing")
+    response = provider.trip_create(payload)
+    body = response.model_dump(mode="json")
+    idempotency_store.finalize(scope, idempotency_key, "success", 200, body)
+    response.idempotency_key = idempotency_key
+    response.idempotency_status = "new"
+    return response
+
+
+@app.get("/v1/trips/{trip_id}/status", response_model=TripStatusResponse)
+def trip_status_endpoint(trip_id: str) -> TripStatusResponse:
+    provider = get_provider(settings.provider)
+    return provider.trip_get_status(trip_id)
+
+
+@app.post("/v1/fuel/consumption", response_model=FuelConsumptionResponse)
+def fuel_consumption_endpoint(payload: FuelConsumptionRequest) -> FuelConsumptionResponse:
+    provider = get_provider(settings.provider)
+    return provider.fuel_get_consumption(payload)

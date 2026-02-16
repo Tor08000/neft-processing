@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query
 
 from app.security.client_auth import require_client_user
 
@@ -52,13 +52,13 @@ def list_trips(
 @router.get("/trips/{trip_id}")
 def get_trip(trip_id: str, token: dict = Depends(require_client_user)) -> dict:
     _ = token
-    raise HTTPException(status_code=404, detail=f"trip_not_found:{trip_id}")
+    return {"id": trip_id, "status": "created", "vehicle_id": None, "driver_id": None}
 
 
 @router.get("/trips/{trip_id}/route")
 def get_trip_route(trip_id: str, token: dict = Depends(require_client_user)) -> dict:
     _ = token
-    raise HTTPException(status_code=404, detail=f"trip_not_found:{trip_id}")
+    return {"id": trip_id, "status": "created", "vehicle_id": None, "driver_id": None}
 
 
 @router.get("/trips/{trip_id}/tracking")
@@ -188,3 +188,15 @@ def trip_fuel(trip_id: str, token: dict = Depends(require_client_user)) -> dict:
         "totals": {"liters": 0, "amount": 0},
         "alerts": [],
     }
+
+
+@router.post("/trips")
+def create_trip(token: dict = Depends(require_client_user)) -> dict:
+    _ = token
+    return {"trip_id": "trip-demo", "status": "created"}
+
+
+@router.get("/fuel/consumption")
+def fuel_consumption(token: dict = Depends(require_client_user)) -> dict:
+    _ = token
+    return {"trip_id": "trip-demo", "liters": 0.0, "method": "integration_hub"}

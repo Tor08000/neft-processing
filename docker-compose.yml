@@ -439,7 +439,7 @@ services:
       USE_MOCK_LOGISTICS: ${USE_MOCK_LOGISTICS:-0}
       SERVICE_NAME: logistics-service
       SERVICE_VERSION: v0
-      LOGISTICS_PROVIDER: ${LOGISTICS_PROVIDER:-osrm}
+      LOGISTICS_PROVIDER: ${LOGISTICS_PROVIDER:-integration_hub}
     expose:
       - "8000"
     healthcheck:
