@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 from datetime import datetime, timedelta, timezone
 
@@ -11,6 +12,8 @@ from app.domains.client.onboarding.models import OnboardingApplicationStatus
 from app.domains.client.onboarding.review.policy import can_approve
 from app.domains.client.onboarding.review.repo import OnboardingReviewRepository
 
+logger = logging.getLogger(__name__)
+
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
@@ -18,6 +21,21 @@ def _now() -> datetime:
 
 def _as_user_id(admin_user: dict) -> str:
     return str(admin_user.get("user_id") or admin_user.get("sub") or "admin")
+
+
+def _emit_onboarding_event(
+    *, event_type: str, application_id: str, admin_user: dict, client_id: str | None = None, user_id: str | None = None
+) -> None:
+    logger.info(
+        "onboarding_event",
+        extra={
+            "event_type": event_type,
+            "application_id": application_id,
+            "admin_user_id": _as_user_id(admin_user),
+            "client_id": client_id,
+            "user_id": user_id,
+        },
+    )
 
 
 def start_review(repo: OnboardingReviewRepository, application_id: str, admin_user: dict):
@@ -64,6 +82,8 @@ def approve_application(repo: OnboardingReviewRepository, application_id: str, a
     application = repo.get_application(application_id)
     if application is None:
         raise HTTPException(status_code=404, detail={"reason_code": "application_not_found"})
+    if application.status == OnboardingApplicationStatus.APPROVED.value:
+        raise HTTPException(status_code=409, detail={"reason_code": "application_already_approved"})
     if application.status not in {OnboardingApplicationStatus.IN_REVIEW.value, OnboardingApplicationStatus.SUBMITTED.value}:
         raise HTTPException(status_code=409, detail={"reason_code": "invalid_status_transition"})
 
@@ -75,25 +95,60 @@ def approve_application(repo: OnboardingReviewRepository, application_id: str, a
             payload["missing_doc_types"] = policy_result.missing_doc_types
         raise HTTPException(status_code=409, detail=payload)
 
-    client = repo.get_client_by_inn(application.inn or "") if application.inn else None
-    if client is None:
-        client = repo.create_client(
-            company_name=application.company_name or "Client",
-            inn=application.inn or "",
-            ogrn=application.ogrn,
-        )
+    if not application.company_name:
+        raise HTTPException(status_code=400, detail={"reason_code": "company_name_required"})
+    if not application.inn:
+        raise HTTPException(status_code=400, detail={"reason_code": "inn_required"})
+    if not application.org_type:
+        raise HTTPException(status_code=400, detail={"reason_code": "org_type_required"})
+
+    client = repo.get_client_by_inn(application.inn)
+    if client is not None:
+        raise HTTPException(status_code=409, detail={"reason_code": "client_already_exists"})
+
+    client = repo.create_client(
+        company_name=application.company_name,
+        inn=application.inn,
+        ogrn=application.ogrn,
+    )
 
     applicant_user_id = application.created_by_user_id or f"onboarding:{application.email}"
+    repo.ensure_client_user_membership(client_id=str(client.id), user_id=str(applicant_user_id), status="ACTIVE")
     repo.ensure_client_user_role(client_id=str(client.id), user_id=str(applicant_user_id), role="CLIENT_OWNER")
 
     application.client_id = str(client.id)
     application.status = OnboardingApplicationStatus.APPROVED.value
     application.decision_reason = comment
+    now = _now()
     application.reviewed_by_user_id = _as_user_id(admin_user)
-    application.reviewed_at = _now()
-    application.approved_at = _now()
+    application.approved_by_user_id = _as_user_id(admin_user)
+    application.reviewed_at = now
+    application.approved_at = now
     application.rejected_at = None
-    application.updated_at = _now()
+    application.updated_at = now
+
+    _emit_onboarding_event(
+        event_type="APPLICATION_APPROVED",
+        application_id=str(application.id),
+        admin_user=admin_user,
+        client_id=str(client.id),
+        user_id=str(applicant_user_id),
+    )
+    _emit_onboarding_event(
+        event_type="CLIENT_CREATED",
+        application_id=str(application.id),
+        admin_user=admin_user,
+        client_id=str(client.id),
+        user_id=str(applicant_user_id),
+    )
+    _emit_onboarding_event(
+        event_type="CLIENT_OWNER_ASSIGNED",
+        application_id=str(application.id),
+        admin_user=admin_user,
+        client_id=str(client.id),
+        user_id=str(applicant_user_id),
+    )
+
     return repo.save(application)
 
 
@@ -101,6 +156,8 @@ def reject_application(repo: OnboardingReviewRepository, application_id: str, ad
     application = repo.get_application(application_id)
     if application is None:
         raise HTTPException(status_code=404, detail={"reason_code": "application_not_found"})
+    if application.status == OnboardingApplicationStatus.APPROVED.value:
+        raise HTTPException(status_code=409, detail={"reason_code": "application_already_approved"})
     if application.status not in {OnboardingApplicationStatus.IN_REVIEW.value, OnboardingApplicationStatus.SUBMITTED.value}:
         raise HTTPException(status_code=409, detail={"reason_code": "invalid_status_transition"})
     if not reason.strip():

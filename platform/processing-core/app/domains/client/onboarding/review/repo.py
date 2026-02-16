@@ -11,7 +11,7 @@ from uuid import uuid4
 from app.domains.client.onboarding.documents.models import ClientDocument
 from app.domains.client.onboarding.models import ClientOnboardingApplication
 from app.models.client import Client
-from app.models.client_portal import ClientUserRole
+from app.models.client_portal import ClientUser, ClientUserRole
 
 
 @dataclass(slots=True)
@@ -63,16 +63,29 @@ class OnboardingReviewRepository:
         client = Client(
             id=uuid4(),
             name=company_name,
+            legal_name=company_name,
             inn=inn,
+            ogrn=ogrn,
             status="ACTIVE",
             created_at=datetime.now(timezone.utc),
         )
         if ogrn:
             client.external_id = ogrn
         self.db.add(client)
-        self.db.commit()
-        self.db.refresh(client)
+        self.db.flush()
         return client
+
+    def ensure_client_user_membership(self, *, client_id: str, user_id: str, status: str = "ACTIVE") -> ClientUser:
+        stmt = select(ClientUser).where(ClientUser.client_id == client_id, ClientUser.user_id == user_id).limit(1)
+        existing = self.db.execute(stmt).scalar_one_or_none()
+        if existing:
+            existing.status = status
+            self.db.add(existing)
+            return existing
+
+        item = ClientUser(id=new_uuid_str(), client_id=client_id, user_id=user_id, status=status)
+        self.db.add(item)
+        return item
 
     def ensure_client_user_role(self, *, client_id: str, user_id: str, role: str = "CLIENT_OWNER") -> ClientUserRole:
         stmt = select(ClientUserRole).where(ClientUserRole.client_id == client_id, ClientUserRole.user_id == user_id).limit(1)
@@ -82,12 +95,8 @@ class OnboardingReviewRepository:
             current_roles.add(role)
             existing.roles = ",".join(sorted(current_roles))
             self.db.add(existing)
-            self.db.commit()
-            self.db.refresh(existing)
             return existing
 
         item = ClientUserRole(id=new_uuid_str(), client_id=client_id, user_id=user_id, roles=role)
         self.db.add(item)
-        self.db.commit()
-        self.db.refresh(item)
         return item

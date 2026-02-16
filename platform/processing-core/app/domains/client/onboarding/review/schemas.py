@@ -42,3 +42,9 @@ class ClientDecisionResponse(BaseModel):
 class IssueClientTokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
+
+
+class AdminApproveApplicationResponse(BaseModel):
+    application_id: str
+    status: str
+    client_id: str

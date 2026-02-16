@@ -260,7 +260,7 @@ def _map_client_to_portal_org(
             crm_client = db.query(CRMClient).filter(CRMClient.id == str(client.id)).one_or_none()
         except Exception:
             crm_client = None
-    name = client.name or profile.get("name")
+    name = client.legal_name or client.name or profile.get("name")
     inn = client.inn or profile.get("inn")
     status = str(client.status) if client.status is not None else None
     if onboarding_profile is not None or onboarding_org_type is not None or onboarding_status is not None:

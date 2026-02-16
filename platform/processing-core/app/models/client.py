@@ -15,12 +15,15 @@ class Client(Base):
 
     # Человекочитаемое имя клиента (компания/физлицо)
     name = Column(String, nullable=False)
+    legal_name = Column(String, nullable=True)
 
     # Внешний идентификатор (например, ID в твоей CRM или код клиента)
     external_id = Column(String, nullable=True, unique=True)
 
     # Регистрационные данные клиента
     inn = Column(String, nullable=True)
+    ogrn = Column(String, nullable=True)
+    org_type = Column(String, nullable=True)
 
     # Контактные данные для клиентского портала
     email = Column(String, nullable=True, unique=True)
@@ -34,3 +37,4 @@ class Client(Base):
 
     # Когда клиент был создан
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
