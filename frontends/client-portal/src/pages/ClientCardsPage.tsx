@@ -90,7 +90,7 @@ export function ClientCardsPage() {
     if (!canManageCards) return;
     fetchClientUsers(user)
       .then((response) => {
-        setDrivers((response.items ?? []).filter((item) => item.role === "DRIVER" || item.role === "CLIENT_USER"));
+        setDrivers((response.items ?? []).filter((item) => (item.roles ?? []).some((role) => role === "CLIENT_VIEWER" || role === "CLIENT_USER" || role === "DRIVER")));
       })
       .catch(() => {
         setDrivers([]);
@@ -439,8 +439,8 @@ export function ClientCardsPage() {
           <select value={selectedDriverId} onChange={(event) => setSelectedDriverId(event.target.value)}>
             <option value="">Выберите пользователя</option>
             {drivers.map((driver) => (
-              <option key={driver.id} value={driver.id}>
-                {driver.email}
+              <option key={driver.user_id} value={driver.user_id}>
+                {driver.email ?? driver.user_id}
               </option>
             ))}
           </select>
@@ -470,8 +470,8 @@ export function ClientCardsPage() {
           <select value={selectedDriverId} onChange={(event) => setSelectedDriverId(event.target.value)}>
             <option value="">Выберите пользователя</option>
             {drivers.map((driver) => (
-              <option key={driver.id} value={driver.id}>
-                {driver.email}
+              <option key={driver.user_id} value={driver.user_id}>
+                {driver.email ?? driver.user_id}
               </option>
             ))}
           </select>

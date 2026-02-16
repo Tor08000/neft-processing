@@ -68,17 +68,33 @@ class ClientUserInviteRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     email: str
-    role: str
+    roles: list[str] = Field(default_factory=list)
+
+
+class ClientInvitationOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    invitation_id: str
+    email: str
+    status: str
+    expires_at: datetime
+    token: str | None = None
+
+
+class ClientUserRolesUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    roles: list[str]
 
 
 class ClientUserSummary(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    id: str
-    email: str
-    role: str
+    user_id: str
+    email: str | None = None
+    full_name: str | None = None
     status: str | None = None
-    last_login: str | None = None
+    roles: list[str] = Field(default_factory=list)
 
 
 class ClientUsersResponse(BaseModel):

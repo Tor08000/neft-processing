@@ -2,6 +2,7 @@ import { request, requestWithMeta } from "./http";
 import type { AuthSession } from "./types";
 import type {
   ClientFeaturesResponse,
+  ClientInvitationResponse,
   ClientLimitsResponse,
   ClientServicesResponse,
   ClientUsersResponse,
@@ -31,7 +32,7 @@ export function fetchClientUsers(user: AuthSession | null): Promise<ClientUsersR
 }
 
 export function createClientUser(user: AuthSession | null, payload: CreateClientUserPayload) {
-  return requestWithMeta(
+  return requestWithMeta<ClientInvitationResponse>(
     "/client/users/invite",
     { method: "POST", body: JSON.stringify(payload) },
     withToken(user),
@@ -41,7 +42,7 @@ export function createClientUser(user: AuthSession | null, payload: CreateClient
 export function updateClientUserRole(user: AuthSession | null, userId: string, payload: UpdateClientUserPayload) {
   return requestWithMeta(
     `/client/users/${userId}/roles`,
-    { method: "PATCH", body: JSON.stringify(payload) },
+    { method: "POST", body: JSON.stringify(payload) },
     withToken(user),
   );
 }
