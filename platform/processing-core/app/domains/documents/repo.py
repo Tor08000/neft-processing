@@ -44,12 +44,7 @@ class DocumentsRepository:
         total_query = self.db.query(func.count()).select_from(grouped.subquery())
         total = int(total_query.scalar() or 0)
 
-        items = (
-            grouped.order_by(desc(Document.created_at))
-            .offset(offset)
-            .limit(limit)
-            .all()
-        )
+        items = grouped.order_by(desc(Document.created_at)).offset(offset).limit(limit).all()
         return items, total
 
     def get_document(self, *, client_id: str, document_id: str) -> Document | None:
@@ -60,6 +55,20 @@ class DocumentsRepository:
             .one_or_none()
         )
 
+    def create_document(self, **kwargs) -> Document:
+        item = Document(**kwargs)
+        self.db.add(item)
+        self.db.commit()
+        self.db.refresh(item)
+        return item
+
+    def create_document_file(self, **kwargs) -> DocumentFile:
+        item = DocumentFile(**kwargs)
+        self.db.add(item)
+        self.db.commit()
+        self.db.refresh(item)
+        return item
+
     def list_document_files(self, *, document_id: str) -> list[DocumentFile]:
         return (
             self.db.query(DocumentFile)
@@ -67,3 +76,13 @@ class DocumentsRepository:
             .order_by(DocumentFile.created_at.desc())
             .all()
         )
+
+    def get_file_with_document_for_client(self, *, client_id: str, file_id: str) -> tuple[DocumentFile, Document] | None:
+        row = (
+            self.db.query(DocumentFile, Document)
+            .join(Document, Document.id == DocumentFile.document_id)
+            .filter(DocumentFile.id == file_id)
+            .filter(Document.client_id == client_id)
+            .one_or_none()
+        )
+        return row

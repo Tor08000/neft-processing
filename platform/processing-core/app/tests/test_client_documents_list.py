@@ -49,7 +49,6 @@ class FakeDocumentsService:
                     files=[
                         DocumentFileOut(
                             id="f1",
-                            storage_key="k",
                             filename="doc.pdf",
                             mime="application/pdf",
                             size=1,

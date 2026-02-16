@@ -3,12 +3,17 @@ from __future__ import annotations
 from datetime import date, datetime
 from decimal import Decimal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+
+
+class DocumentCreateIn(BaseModel):
+    title: str = Field(min_length=3, max_length=200)
+    doc_type: str | None = None
+    description: str | None = Field(default=None, max_length=2000)
 
 
 class DocumentFileOut(BaseModel):
     id: str
-    storage_key: str
     filename: str
     mime: str
     size: int
@@ -38,12 +43,13 @@ class DocumentsListResponse(BaseModel):
     offset: int
 
 
-class DocumentDetailsResponse(BaseModel):
+class DocumentOut(BaseModel):
     id: str
     client_id: str
     direction: str
     title: str
     doc_type: str | None = None
+    description: str | None = None
     status: str
     counterparty_name: str | None = None
     counterparty_inn: str | None = None
@@ -54,3 +60,7 @@ class DocumentDetailsResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     files: list[DocumentFileOut]
+
+
+class DocumentDetailsResponse(DocumentOut):
+    pass
