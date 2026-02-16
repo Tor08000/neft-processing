@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { listClientDocuments, type ClientDocumentsDirection } from "../api/client/documents";
+import { createOutboundDocument, listClientDocuments, type ClientDocumentsDirection } from "../api/client/documents";
 import { ApiError, UnauthorizedError } from "../api/http";
 import { useAuth } from "../auth/AuthContext";
 
@@ -19,6 +19,10 @@ export function DocumentsPage() {
   const [data, setData] = useState({ items: [], total: 0, limit: PAGE_LIMIT, offset: 0 } as Awaited<
     ReturnType<typeof listClientDocuments>
   >);
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [title, setTitle] = useState("");
+  const [docType, setDocType] = useState("ACT");
+  const [description, setDescription] = useState("");
 
   useEffect(() => {
     let active = true;
@@ -52,6 +56,16 @@ export function DocumentsPage() {
   const hasPrev = offset > 0;
   const hasNext = useMemo(() => offset + PAGE_LIMIT < data.total, [data.total, offset]);
 
+  const handleCreate = async (event: FormEvent) => {
+    event.preventDefault();
+    const created = await createOutboundDocument(
+      { title, doc_type: docType || undefined, description: description || undefined },
+      user,
+    );
+    setIsCreateOpen(false);
+    navigate(`/client/documents/${created.id}`);
+  };
+
   return (
     <div className="card">
       <h2>Документы</h2>
@@ -62,10 +76,25 @@ export function DocumentsPage() {
         <button type="button" className={direction === "outbound" ? "btn" : "ghost"} onClick={() => { setDirection("outbound"); setOffset(0); }}>
           Исходящие
         </button>
+        {direction === "outbound" ? <button type="button" onClick={() => setIsCreateOpen((v) => !v)}>Создать документ</button> : null}
       </div>
 
+      {isCreateOpen ? (
+        <form onSubmit={handleCreate} style={{ marginBottom: 12, display: "grid", gap: 8 }}>
+          <input value={title} minLength={3} maxLength={200} required onChange={(e) => setTitle(e.target.value)} placeholder="Название" />
+          <select value={docType} onChange={(e) => setDocType(e.target.value)}>
+            <option value="ACT">ACT</option>
+            <option value="INVOICE">INVOICE</option>
+            <option value="LETTER">LETTER</option>
+            <option value="OTHER">OTHER</option>
+          </select>
+          <textarea value={description} maxLength={2000} onChange={(e) => setDescription(e.target.value)} placeholder="Описание" />
+          <button type="submit">Создать</button>
+        </form>
+      ) : null}
+
       <div className="filters" style={{ marginBottom: 12 }}>
-        <input value={q} onChange={(e) => { setQ(e.target.value); setOffset(0); }} placeholder="Поиск по названию/номеру/контрагенту" />
+        <input value={q} onChange={(e) => { setQ(e.target.value); setOffset(0); }} placeholder="Поиск" />
         <select value={status} onChange={(e) => { setStatus(e.target.value); setOffset(0); }}>
           <option value="">Все статусы</option>
           <option value="DRAFT">DRAFT</option>
@@ -77,19 +106,7 @@ export function DocumentsPage() {
         </select>
       </div>
 
-      {error?.status === 403 && error.code === "client_not_bound" ? (
-        <div className="card">Аккаунт клиента не активирован</div>
-      ) : null}
-      {error?.status && error.status >= 500 ? <div className="card">Не удалось загрузить документы.</div> : null}
-
       {isLoading ? <p>Загрузка…</p> : null}
-
-      {!isLoading && !error?.status && data.items.length === 0 ? (
-        <div className="card">
-          <h3>Документов пока нет</h3>
-          <p className="muted">Когда появятся входящие или исходящие документы, вы увидите их здесь.</p>
-        </div>
-      ) : null}
 
       {!isLoading && data.items.length > 0 ? (
         <table>
@@ -98,21 +115,15 @@ export function DocumentsPage() {
               <th>Название</th>
               <th>Тип</th>
               <th>Статус</th>
-              <th>Контрагент</th>
-              <th>Номер</th>
-              <th>Дата</th>
               <th>Файлов</th>
             </tr>
           </thead>
           <tbody>
             {data.items.map((item) => (
-              <tr key={item.id}>
+              <tr key={item.id} onClick={() => navigate(`/client/documents/${item.id}`)} style={{ cursor: "pointer" }}>
                 <td>{item.title}</td>
                 <td>{item.doc_type ?? "—"}</td>
                 <td>{item.status}</td>
-                <td>{item.counterparty_name ?? "—"}</td>
-                <td>{item.number ?? "—"}</td>
-                <td>{item.date ?? "—"}</td>
                 <td>{item.files_count}</td>
               </tr>
             ))}

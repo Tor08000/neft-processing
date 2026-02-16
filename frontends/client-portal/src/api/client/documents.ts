@@ -18,6 +18,28 @@ export type ClientDocumentListItem = {
   files_count: number;
 };
 
+export type ClientDocumentFile = {
+  id: string;
+  filename: string;
+  mime: string;
+  size: number;
+  sha256: string | null;
+  created_at: string;
+};
+
+export type ClientDocumentDetails = {
+  id: string;
+  client_id: string;
+  direction: string;
+  title: string;
+  doc_type: string | null;
+  description: string | null;
+  status: string;
+  created_at: string;
+  updated_at: string;
+  files: ClientDocumentFile[];
+};
+
 export type ClientDocumentsListResponse = {
   items: ClientDocumentListItem[];
   total: number;
@@ -47,4 +69,41 @@ export function listClientDocuments(
   query.set("offset", String(params.offset ?? 0));
   query.set("sort", "created_at_desc");
   return request<ClientDocumentsListResponse>(`/client/documents?${query.toString()}`, { method: "GET" }, withToken(user));
+}
+
+export function createOutboundDocument(
+  payload: { title: string; doc_type?: string; description?: string },
+  user: AuthSession | null,
+): Promise<ClientDocumentDetails> {
+  return request<ClientDocumentDetails>("/client/documents", { method: "POST", body: JSON.stringify(payload) }, withToken(user));
+}
+
+export function getClientDocument(documentId: string, user: AuthSession | null): Promise<ClientDocumentDetails> {
+  return request<ClientDocumentDetails>(`/client/documents/${documentId}`, { method: "GET" }, withToken(user));
+}
+
+export function uploadClientDocumentFile(documentId: string, file: File, user: AuthSession | null): Promise<ClientDocumentFile> {
+  const body = new FormData();
+  body.append("file", file);
+  return request<ClientDocumentFile>(`/client/documents/${documentId}/upload`, { method: "POST", body }, withToken(user));
+}
+
+export async function downloadClientDocumentFile(fileId: string, user: AuthSession | null): Promise<void> {
+  const token = withToken(user);
+  const headers: Record<string, string> = {};
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const response = await fetch(`/api/core/client/documents/files/${fileId}/download`, { method: "GET", headers });
+  if (!response.ok) {
+    throw new Error(`download_failed_${response.status}`);
+  }
+  const blob = await response.blob();
+  const disposition = response.headers.get("content-disposition") || "";
+  const match = disposition.match(/filename="([^"]+)"/i);
+  const filename = match?.[1] ?? "document";
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
 }

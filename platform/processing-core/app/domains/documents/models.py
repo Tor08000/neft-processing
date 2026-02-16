@@ -36,6 +36,7 @@ class Document(Base):
     direction: Mapped[str] = mapped_column(String(16), nullable=False)
     title: Mapped[str] = mapped_column(Text, nullable=False)
     doc_type: Mapped[str | None] = mapped_column(Text, nullable=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String(32), nullable=False)
     counterparty_name: Mapped[str | None] = mapped_column(Text, nullable=True)
     counterparty_inn: Mapped[str | None] = mapped_column(Text, nullable=True)
