@@ -8,6 +8,7 @@ from neft_shared.logging_setup import get_logger
 
 from uuid import uuid4
 
+from app.services.session_status import ensure_session_active
 from app.services.jwt_support import (
     DEFAULT_JWKS_URL,
     DEFAULT_PUBLIC_KEY_URL,
@@ -207,6 +208,7 @@ def verify_partner_token(token: str = Depends(_get_bearer_token)) -> dict:
             )
 
     _reject_wrong_portal(token, claims=payload)
+    ensure_session_active(payload)
 
     roles = payload.get("roles") or []
     if isinstance(roles, str):

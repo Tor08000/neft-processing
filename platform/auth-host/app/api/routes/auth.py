@@ -28,6 +28,9 @@ from app.schemas.auth import (
     RevokeUserTokensRequest,
     RevokeTenantTokensRequest,
     VerifyResponse,
+    LogoutAllRequest,
+    ForceLogoutRequest,
+    SessionStatusResponse,
 )
 from app.security import (
     create_access_token,
@@ -47,6 +50,13 @@ CORE_DB_SCHEMA = os.getenv("NEFT_DB_SCHEMA", "processing_core")
 
 def _hash_refresh_token(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def _request_ip(request: Request) -> str | None:
+    forwarded = (request.headers.get("x-forwarded-for") or "").strip()
+    if forwarded:
+        return forwarded.split(",", 1)[0].strip()
+    return request.client.host if request.client else None
 
 
 def _device_key(request: Request) -> str:
@@ -84,17 +94,45 @@ def _create_refresh_token(*, user_id: str, tenant_id: str, device_key: str, prev
     return token, jti, exp
 
 
-async def _persist_refresh_token(*, user_id: str, tenant_id: str, refresh_token: str, expires_at: datetime, device_key: str, rotated_from: str | None = None) -> None:
+async def _persist_refresh_token(*, session_id: str, refresh_token: str, expires_at: datetime, rotated_from_id: str | None = None) -> str:
     token_hash = _hash_refresh_token(refresh_token)
+    token_id = str(uuid4())
     async with get_conn() as (conn, cur):
         await cur.execute(
             """
-            INSERT INTO refresh_tokens (user_id, tenant_id, token_hash, expires_at, rotated_from, device_key)
-            VALUES (%s, %s, %s, %s, %s, %s)
+            INSERT INTO refresh_tokens (id, session_id, token_hash, expires_at, rotated_from_id, created_at)
+            VALUES (%s, %s, %s, %s, %s, now())
             """,
-            (user_id, tenant_id, token_hash, expires_at, rotated_from, device_key),
+            (token_id, session_id, token_hash, expires_at, rotated_from_id),
         )
         await conn.commit()
+    return token_id
+
+
+async def _create_session(*, user_id: str, tenant_id: str, portal: str, request: Request) -> str:
+    session_id = str(uuid4())
+    async with get_conn() as (conn, cur):
+        await cur.execute(
+            """
+            INSERT INTO auth_sessions (id, user_id, tenant_id, portal, created_at, last_seen_at, ip, user_agent)
+            VALUES (%s, %s, %s, %s, now(), now(), %s, %s)
+            """,
+            (session_id, user_id, tenant_id, portal, _request_ip(request), request.headers.get("user-agent")),
+        )
+        await conn.commit()
+    return session_id
+
+
+async def _revoke_session(*, sid: str, reason: str | None = None) -> None:
+    async with get_conn() as (conn, cur):
+        await cur.execute(
+            "UPDATE auth_sessions SET revoked_at=now(), revocation_reason=COALESCE(%s, revocation_reason) WHERE id=%s AND revoked_at IS NULL",
+            (reason, sid),
+        )
+        await cur.execute("UPDATE refresh_tokens SET revoked_at=now() WHERE session_id=%s AND revoked_at IS NULL", (sid,))
+        await conn.commit()
+
+
 
 
 
@@ -443,6 +481,16 @@ async def register(request: Request, payload: RegisterRequest) -> SignupResponse
     issuer, audience = _portal_token_config("client")
     tenant_token_version = await _get_tenant_token_version(user.tenant_id)
     try:
+        session_id = await _create_session(
+            user_id=str(user.id),
+            tenant_id=str(user.tenant_id),
+            portal=portal,
+            request=request,
+        )
+    except Exception:
+        logger.warning("auth session persistence skipped")
+        session_id = str(uuid4())
+    try:
         token = create_access_token(
             user.email,
             roles=roles,
@@ -455,6 +503,7 @@ async def register(request: Request, payload: RegisterRequest) -> SignupResponse
             tenant_id=user.tenant_id,
             token_version=user.token_version,
             tenant_token_version=tenant_token_version,
+            session_id=session_id,
         )
     except InvalidRSAKeyError:
         logger.error("RSA keys unavailable during signup", extra={"email": payload.email})
@@ -546,6 +595,16 @@ async def login(request: Request, payload: LoginRequest) -> TokenResponse:
             org_id = settings.demo_org_id
     tenant_token_version = await _get_tenant_token_version(user.tenant_id)
     try:
+        session_id = await _create_session(
+            user_id=str(user.id),
+            tenant_id=str(user.tenant_id),
+            portal=portal,
+            request=request,
+        )
+    except Exception:
+        logger.warning("auth session persistence skipped")
+        session_id = str(uuid4())
+    try:
         token = create_access_token(
             user_email,
             roles=roles,
@@ -559,23 +618,22 @@ async def login(request: Request, payload: LoginRequest) -> TokenResponse:
             tenant_id=user.tenant_id,
             token_version=user.token_version,
             tenant_token_version=tenant_token_version,
+            session_id=session_id,
         )
     except InvalidRSAKeyError:
         logger.error("RSA keys unavailable during login", extra={"login": login_identifier})
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="rsa_keys_unavailable")
 
-    refresh_token, refresh_jti, refresh_exp = _create_refresh_token(
+    refresh_token, _refresh_jti, refresh_exp = _create_refresh_token(
         user_id=str(user.id),
         tenant_id=str(user.tenant_id),
         device_key=_device_key(request),
     )
     try:
         await _persist_refresh_token(
-            user_id=str(user.id),
-            tenant_id=str(user.tenant_id),
+            session_id=session_id,
             refresh_token=refresh_token,
             expires_at=refresh_exp,
-            device_key=_device_key(request),
         )
     except Exception:
         logger.warning("refresh token persistence skipped")
@@ -653,6 +711,16 @@ async def oauth_callback(request: Request, code: str, state: str) -> TokenRespon
             org_id = settings.demo_org_id
 
     tenant_token_version = await _get_tenant_token_version(user.tenant_id)
+    try:
+        session_id = await _create_session(
+            user_id=str(user.id),
+            tenant_id=str(user.tenant_id),
+            portal=portal,
+            request=request,
+        )
+    except Exception:
+        logger.warning("auth session persistence skipped")
+        session_id = str(uuid4())
     token = create_access_token(
         user.id,
         roles=roles,
@@ -667,19 +735,18 @@ async def oauth_callback(request: Request, code: str, state: str) -> TokenRespon
         tenant_id=user.tenant_id,
         token_version=user.token_version,
         tenant_token_version=tenant_token_version,
+        session_id=session_id,
     )
-    refresh_token, refresh_jti, refresh_exp = _create_refresh_token(
+    refresh_token, _refresh_jti, refresh_exp = _create_refresh_token(
         user_id=str(user.id),
         tenant_id=str(user.tenant_id),
         device_key=_device_key(request),
     )
     try:
         await _persist_refresh_token(
-            user_id=str(user.id),
-            tenant_id=str(user.tenant_id),
+            session_id=session_id,
             refresh_token=refresh_token,
             expires_at=refresh_exp,
-            device_key=_device_key(request),
         )
     except Exception:
         logger.warning("refresh token persistence skipped")
@@ -716,35 +783,31 @@ async def verify_token(
 
 @router.post("/refresh", response_model=TokenResponse)
 async def refresh_tokens(request: Request, payload: RefreshRequest) -> TokenResponse:
-    token_payload = _decode_refresh_token(payload.refresh_token)
+    _decode_refresh_token(payload.refresh_token)
     token_hash = _hash_refresh_token(payload.refresh_token)
     device_key = _device_key(request)
 
     async with get_conn() as (conn, cur):
         await cur.execute(
             """
-            SELECT id, user_id, tenant_id, expires_at, revoked, used_at, rotated_from, device_key
-            FROM refresh_tokens
-            WHERE token_hash=%s
+            SELECT rt.id, rt.session_id, rt.expires_at, rt.revoked_at, s.revoked_at AS session_revoked_at,
+                   s.revocation_reason, s.user_id, s.tenant_id, s.portal
+            FROM refresh_tokens rt
+            JOIN auth_sessions s ON s.id = rt.session_id
+            WHERE rt.token_hash=%s
             LIMIT 1
             """,
             (token_hash,),
         )
         row = await cur.fetchone()
         if not row:
-            logger.info("refresh failed", extra={"event_type": "refresh_failed"})
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid_refresh_token")
-        if row["revoked"] or row["used_at"] is not None or row["expires_at"] < datetime.now(tz=timezone.utc):
-            await cur.execute("UPDATE refresh_tokens SET revoked=TRUE WHERE user_id=%s AND tenant_id=%s", (row["user_id"], row["tenant_id"]))
-            await conn.commit()
-            logger.warning("refresh reuse", extra={"event_type": "refresh_reuse", "tenant_id": row["tenant_id"], "user_id": row["user_id"]})
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="refresh_reused")
-        if row.get("device_key") and row["device_key"] != device_key:
-            await cur.execute("UPDATE refresh_tokens SET revoked=TRUE WHERE id=%s", (row["id"],))
-            await conn.commit()
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="device_mismatch")
 
-        await cur.execute("UPDATE refresh_tokens SET revoked=TRUE, used_at=now() WHERE id=%s", (row["id"],))
+        now = datetime.now(tz=timezone.utc)
+        if row["revoked_at"] is not None or row["expires_at"] < now:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="refresh_reused")
+        if row["session_revoked_at"] is not None:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="session_revoked")
 
         await cur.execute(
             "SELECT id, tenant_id, email, username, full_name, password_hash, is_active, status, token_version, created_at FROM users WHERE id=%s",
@@ -752,46 +815,44 @@ async def refresh_tokens(request: Request, payload: RefreshRequest) -> TokenResp
         )
         user_row = await cur.fetchone()
         if not user_row:
-            await conn.commit()
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="user_not_found")
-        user = User.from_row(user_row)
-        if user.status == "blocked" or not user.is_active:
-            await cur.execute("UPDATE refresh_tokens SET revoked=TRUE WHERE user_id=%s AND tenant_id=%s", (row["user_id"], row["tenant_id"]))
-            await conn.commit()
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="user_blocked")
 
+        user = User.from_row(user_row)
         roles = await _get_roles_for_user(user.id)
         tenant_token_version = await _get_tenant_token_version(user.tenant_id)
-        issuer, audience = _portal_token_config("client")
+        issuer, audience = _portal_token_config(row["portal"] or "client")
         access_token = create_access_token(
             user.email,
             roles=roles,
-            subject_type="client_user",
+            subject_type="client_user" if (row["portal"] or "client") == "client" else "user",
             user_id=user.id,
-            portal="client",
+            portal=row["portal"] or "client",
             issuer=issuer,
             audience=audience,
             email=user.email,
             tenant_id=user.tenant_id,
             token_version=user.token_version,
             tenant_token_version=tenant_token_version,
+            session_id=row["session_id"],
         )
+
         new_refresh, _new_jti, new_exp = _create_refresh_token(
             user_id=user.id,
             tenant_id=str(row["tenant_id"]),
             device_key=device_key,
-            prev_jti=token_payload.get("jti"),
         )
+
+        await cur.execute("UPDATE refresh_tokens SET revoked_at=now() WHERE id=%s", (row["id"],))
         await cur.execute(
             """
-            INSERT INTO refresh_tokens (user_id, tenant_id, token_hash, expires_at, rotated_from, device_key)
-            VALUES (%s, %s, %s, %s, %s, %s)
+            INSERT INTO refresh_tokens (id, session_id, token_hash, expires_at, rotated_from_id, created_at)
+            VALUES (%s, %s, %s, %s, %s, now())
             """,
-            (user.id, row["tenant_id"], _hash_refresh_token(new_refresh), new_exp, row["id"], device_key),
+            (str(uuid4()), row["session_id"], _hash_refresh_token(new_refresh), new_exp, row["id"]),
         )
+        await cur.execute("UPDATE auth_sessions SET last_seen_at=now() WHERE id=%s", (row["session_id"],))
         await conn.commit()
 
-    logger.info("refresh rotation", extra={"event_type": "refresh_rotation", "tenant_id": user.tenant_id, "user_id": user.id})
     return TokenResponse(
         access_token=access_token,
         refresh_token=new_refresh,
@@ -803,6 +864,125 @@ async def refresh_tokens(request: Request, payload: RefreshRequest) -> TokenResp
     )
 
 
+
+
+@router.post("/logout")
+async def logout(
+    request: Request,
+    credentials: HTTPAuthorizationCredentials | None = Depends(security_scheme),
+) -> dict:
+    if credentials is None or credentials.scheme.lower() != "bearer" or not credentials.credentials:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="not_authenticated")
+
+    portal = _resolve_portal(request.headers.get("X-Portal")) or "client"
+    issuer, audience = _portal_token_config(portal)
+    payload = decode_access_token(credentials.credentials, issuer=issuer, audience=audience)
+    sid = payload.get("sid")
+    if not sid:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid_token")
+
+    await _revoke_session(sid=str(sid), reason="logout")
+    return {"status": "ok"}
+
+
+@router.post("/logout-all")
+async def logout_all(
+    request: Request,
+    payload: LogoutAllRequest,
+    credentials: HTTPAuthorizationCredentials | None = Depends(security_scheme),
+) -> dict:
+    if credentials is None or credentials.scheme.lower() != "bearer" or not credentials.credentials:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="not_authenticated")
+
+    portal = _resolve_portal(request.headers.get("X-Portal")) or "client"
+    issuer, audience = _portal_token_config(portal)
+    claims = decode_access_token(credentials.credentials, issuer=issuer, audience=audience)
+    user_id = claims.get("user_id")
+    tenant_id = payload.tenant_id or claims.get("tenant_id")
+    if not user_id or not tenant_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="invalid_context")
+
+    async with get_conn() as (conn, cur):
+        await cur.execute(
+            """
+            UPDATE auth_sessions
+            SET revoked_at=now(), revocation_reason='logout_all'
+            WHERE user_id=%s AND tenant_id=%s AND revoked_at IS NULL
+            """,
+            (user_id, tenant_id),
+        )
+        await cur.execute(
+            """
+            UPDATE refresh_tokens rt
+            SET revoked_at=now()
+            WHERE rt.session_id IN (
+              SELECT id FROM auth_sessions WHERE user_id=%s AND tenant_id=%s
+            ) AND rt.revoked_at IS NULL
+            """,
+            (user_id, tenant_id),
+        )
+        await conn.commit()
+    return {"status": "ok"}
+
+
+@router.post("/admin/users/{user_id}/force-logout")
+async def force_logout_user(
+    user_id: str,
+    payload: ForceLogoutRequest,
+    request: Request,
+    credentials: HTTPAuthorizationCredentials | None = Depends(security_scheme),
+) -> dict:
+    if credentials is None or credentials.scheme.lower() != "bearer" or not credentials.credentials:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="not_authenticated")
+
+    portal = _resolve_portal(request.headers.get("X-Portal")) or "admin"
+    issuer, audience = _portal_token_config(portal)
+    claims = decode_access_token(credentials.credentials, issuer=issuer, audience=audience)
+    roles = {str(role).upper() for role in (claims.get("roles") or [])}
+    if "ADMIN" not in roles and "PLATFORM_ADMIN" not in roles:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
+
+    async with get_conn() as (conn, cur):
+        if payload.all_sessions:
+            await cur.execute(
+                """
+                UPDATE auth_sessions
+                SET revoked_at=now(), revocation_reason=%s
+                WHERE user_id=%s AND tenant_id=%s AND revoked_at IS NULL
+                """,
+                (payload.reason or "forced_logout", user_id, payload.tenant_id),
+            )
+            await cur.execute(
+                """
+                UPDATE refresh_tokens rt
+                SET revoked_at=now()
+                WHERE rt.session_id IN (
+                  SELECT id FROM auth_sessions WHERE user_id=%s AND tenant_id=%s
+                ) AND rt.revoked_at IS NULL
+                """,
+                (user_id, payload.tenant_id),
+            )
+        await conn.commit()
+
+    return {"status": "ok"}
+
+
+@router.get("/sessions/{sid}/status", response_model=SessionStatusResponse)
+async def session_status(sid: str) -> SessionStatusResponse:
+    async with get_conn() as (_conn, cur):
+        await cur.execute(
+            "SELECT id, revoked_at, revocation_reason FROM auth_sessions WHERE id=%s LIMIT 1",
+            (sid,),
+        )
+        row = await cur.fetchone()
+    if not row:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="session_not_found")
+    return SessionStatusResponse(
+        sid=row["id"],
+        active=row["revoked_at"] is None,
+        revoked_at=row["revoked_at"],
+        reason=row["revocation_reason"],
+    )
 @router.post("/admin/revoke-user")
 async def revoke_user_tokens(payload: RevokeUserTokensRequest) -> dict:
     async with get_conn() as (conn, cur):
@@ -868,6 +1048,13 @@ async def auth_me(
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="token_revoked")
         if not tenant_row or int(tenant_row["token_version"]) != tenant_token_version:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="token_revoked")
+    sid = payload.get("sid")
+    if sid:
+        async with get_conn() as (_conn, cur):
+            await cur.execute("SELECT revoked_at FROM auth_sessions WHERE id=%s", (sid,))
+            session_row = await cur.fetchone()
+        if not session_row or session_row["revoked_at"] is not None:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="session_revoked")
     return AuthMeResponse(
         email=email,
         roles=roles,

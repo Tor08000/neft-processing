@@ -214,8 +214,8 @@ def test_login_requires_portal(monkeypatch):
         json={"email": "client@neft.local", "password": "client"},
     )
 
-    assert response.status_code == 400
-    assert response.json() == {"detail": {"error": "portal_required", "reason_code": "PORTAL_REQUIRED"}}
+    assert response.status_code == 200
+    assert response.json()["subject_type"] == "client_user"
 
 
 def _decode_claims(token: str) -> dict:
@@ -395,3 +395,45 @@ def test_oauth_start_returns_503_when_oidc_disabled(monkeypatch):
 
     assert response.status_code == 503
     assert response.json() == {"detail": "oidc_disabled"}
+
+
+def test_login_access_token_contains_sid(monkeypatch):
+    password_hash = hash_password("client")
+    demo_user = User(
+        id="00000000-0000-0000-0000-000000000099",
+        email="client@neft.local",
+        full_name="Demo Client",
+        password_hash=password_hash,
+        is_active=True,
+        created_at=None,
+    )
+
+    async def fake_get_user(*, email: str | None = None, username: str | None = None):
+        candidate = email or username
+        if candidate and candidate.lower() == "client@neft.local":
+            return demo_user
+        return None
+
+    async def fake_get_roles(_user_id: str):
+        return ["CLIENT_OWNER"]
+
+    async def fake_create_session(**_kwargs):
+        return "11111111-1111-1111-1111-111111111111"
+
+    async def fake_persist_refresh(**_kwargs):
+        return "22222222-2222-2222-2222-222222222222"
+
+    monkeypatch.setattr(auth, "_get_user_from_db", fake_get_user)
+    monkeypatch.setattr(auth, "_get_roles_for_user", fake_get_roles)
+    monkeypatch.setattr(auth, "_create_session", fake_create_session)
+    monkeypatch.setattr(auth, "_persist_refresh_token", fake_persist_refresh)
+
+    response = _client().post(
+        "/api/v1/auth/login",
+        json={"email": "client@neft.local", "password": "client", "portal": "client"},
+    )
+
+    assert response.status_code == 200
+    claims = _decode_claims(response.json()["access_token"])
+    assert claims.get("sid") == "11111111-1111-1111-1111-111111111111"
+    assert claims.get("jti")
