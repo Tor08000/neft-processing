@@ -29,6 +29,7 @@ import { FinanceExportsPage } from "./pages/FinanceExportsPage";
 import { FinanceExportDetailsPage } from "./pages/FinanceExportDetailsPage";
 import { ReconciliationRequestsPage } from "./pages/ReconciliationRequestsPage";
 import { ClientDocumentsPage } from "./pages/ClientDocumentsPage";
+import { DocumentsPage } from "./pages/DocumentsPage";
 import { ClientDocumentDetailsPage } from "./pages/ClientDocumentDetailsPage";
 import { ClientDocsListPage } from "./pages/ClientDocsListPage";
 import { ExplainPage } from "./pages/ExplainPage";
@@ -372,7 +373,7 @@ export function App({ initialSession = null }: AppProps) {
                 <Route path="/finance/invoices/:id" element={<ClientInvoiceDetailsPage />} />
                 <Route path="/finance/invoices/:id/messages" element={<ClientInvoiceDetailsPage />} />
                 <Route path="/finance/documents" element={<Navigate to="/client/documents" replace />} />
-                <Route path="/client/documents" element={<ClientDocumentsPage />} />
+                <Route path="/client/documents" element={<DocumentsPage />} />
                 <Route path="/client/documents/:id" element={<ClientDocumentDetailsPage />} />
                 <Route
                   path="/client/docs/contracts"
