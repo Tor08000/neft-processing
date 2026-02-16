@@ -1,6 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { ApiError, fetchMe, HtmlResponseError, login, UnauthorizedError, ValidationError } from "../api/auth";
-import { fetchClientMe } from "../api/clientPortal";
+import { getClientMe } from "../api/client";
 import type { AuthSession } from "../api/types";
 
 interface AuthContextValue {
@@ -99,8 +99,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialSes
         const profile = await fetchMe(stored.token);
         let timezone: string | null | undefined = stored.timezone;
         try {
-          const clientProfile = await fetchClientMe(stored);
-          timezone = clientProfile.user.timezone ?? null;
+          await getClientMe(stored);
         } catch (err) {
           console.warn("Не удалось загрузить timezone клиента", err);
         }
@@ -160,8 +159,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialSes
       const profile = await fetchMe(session.token);
       let timezone: string | null | undefined = session.timezone;
       try {
-        const clientProfile = await fetchClientMe(session);
-        timezone = clientProfile.user.timezone ?? null;
+        await getClientMe(session);
       } catch (err) {
         console.warn("Не удалось загрузить timezone клиента", err);
       }

@@ -34,7 +34,7 @@ admin_token=$(login "${ADMIN_LOGIN:-admin@example.com}" "${ADMIN_PASSWORD:-chang
 assert_ok "$admin_token" "/api/core/admin/me"
 
 client_token=$(login "${CLIENT_LOGIN:-client@neft.local}" "${CLIENT_PASSWORD:-client}" "client")
-assert_ok "$client_token" "/api/core/client/me"
+assert_ok "$client_token" "/api/core/client/v1/me"
 
 partner_token=$(login "${PARTNER_LOGIN:-partner@neft.local}" "${PARTNER_PASSWORD:-partner}" "partner")
 assert_ok "$partner_token" "/api/core/partner/me"
