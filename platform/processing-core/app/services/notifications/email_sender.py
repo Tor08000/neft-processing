@@ -7,6 +7,8 @@ from email.message import EmailMessage
 from email.utils import make_msgid
 from typing import Mapping
 
+import requests
+
 logger = logging.getLogger(__name__)
 
 
@@ -35,6 +37,40 @@ class ConsoleEmailSender(EmailSender):
     ) -> str | None:
         logger.info("Email to %s: %s\n%s", to, subject, text or html or "")
         return None
+
+
+class IntegrationHubEmailSender(EmailSender):
+    def __init__(self) -> None:
+        self.base_url = os.getenv("INTEGRATION_HUB_URL", "http://integration-hub:8080").rstrip("/")
+        self.internal_token = os.getenv("INTEGRATION_HUB_INTERNAL_TOKEN", "")
+
+    def send(
+        self,
+        *,
+        to: str,
+        subject: str,
+        html: str | None,
+        text: str | None,
+        headers: Mapping[str, str] | None = None,
+    ) -> str | None:
+        endpoint = f"{self.base_url}/api/int/notify/email/send"
+        req_headers = {"Content-Type": "application/json"}
+        if self.internal_token:
+            req_headers["Authorization"] = f"Bearer {self.internal_token}"
+        payload = {
+            "to": to,
+            "subject": subject,
+            "html": html,
+            "text": text,
+            "meta": dict(headers or {}),
+        }
+        response = requests.post(endpoint, json=payload, headers=req_headers, timeout=10)
+        if response.status_code >= 500:
+            raise RuntimeError(f"email_provider_error_{response.status_code}")
+        if response.status_code >= 400:
+            raise ValueError(f"email_request_invalid_{response.status_code}")
+        body = response.json()
+        return body.get("message_id")
 
 
 class SmtpEmailSender(EmailSender):
@@ -84,4 +120,4 @@ class SmtpEmailSender(EmailSender):
         return message_id
 
 
-__all__ = ["ConsoleEmailSender", "EmailSender", "SmtpEmailSender"]
+__all__ = ["ConsoleEmailSender", "EmailSender", "IntegrationHubEmailSender", "SmtpEmailSender"]

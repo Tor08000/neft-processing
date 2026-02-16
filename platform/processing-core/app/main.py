@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import requests
 from uuid import uuid4
 from datetime import datetime, timezone
 from collections import defaultdict
@@ -211,6 +212,26 @@ logger.info(
 )
 
 
+
+def _email_required_in_env() -> bool:
+    raw = os.getenv("EMAIL_NOTIFICATIONS_ENABLED")
+    if raw is None:
+        return settings.APP_ENV.lower() == "prod"
+    return raw.strip().lower() in {"1", "true", "yes"}
+
+
+def _validate_email_provider_startup() -> None:
+    if settings.APP_ENV.lower() != "prod" or os.getenv("APP_ENV", "").lower() != "prod" or not _email_required_in_env():
+        return
+    base_url = os.getenv("INTEGRATION_HUB_URL", "http://integration-hub:8080").rstrip("/")
+    try:
+        response = requests.get(f"{base_url}/health", timeout=3)
+    except Exception as exc:  # noqa: BLE001
+        raise RuntimeError("integration_hub_unreachable_for_email") from exc
+    if response.status_code >= 500:
+        raise RuntimeError("integration_hub_unhealthy_for_email")
+
+
 # -----------------------------------------------------------------------------
 # Pydantic-модели
 # -----------------------------------------------------------------------------
@@ -227,6 +248,7 @@ class HealthResponse(BaseModel):
 # -----------------------------------------------------------------------------
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    _validate_email_provider_startup()
     init_db()
     db = get_sessionmaker()()
     try:

@@ -1,6 +1,11 @@
 from __future__ import annotations
 
 import logging
+import os
+import re
+import smtplib
+from email.message import EmailMessage
+from email.utils import formataddr, make_msgid
 from typing import Callable
 from uuid import uuid4
 
@@ -22,6 +27,8 @@ from neft_integration_hub.schemas import (
     DispatchResponse,
     NotificationSendRequest,
     NotificationSendResponse,
+    NotifyEmailSendRequest,
+    NotifyEmailSendResponse,
     EdoDocumentResponse,
     EdoStubSendRequest,
     EdoStubSendResponse,
@@ -108,6 +115,8 @@ def startup() -> None:
     init_db()
     if settings.notifications_mode == "real" and not settings.notifications_email_provider:
         raise RuntimeError("notifications_real_mode_requires_provider")
+    if settings.app_env == "prod" and settings.email_provider_mode == "mock" and os.getenv("APP_ENV") == "prod":
+        raise RuntimeError("prod_requires_real_email_provider")
     logger.info(
         "running in %s mode",
         settings.app_env.upper(),
@@ -227,6 +236,54 @@ def send_notification(payload: NotificationSendRequest, request: Request) -> Not
         extra={"request_id": request_id, "channel": payload.channel, "template": payload.template, "to": payload.to},
     )
     return NotificationSendResponse(status="accepted", mode="real")
+
+
+def _validate_email(email: str) -> bool:
+    return bool(re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email))
+
+
+def _send_smtp_email(payload: NotifyEmailSendRequest) -> str:
+    if not settings.smtp_host:
+        raise RuntimeError("smtp_host_missing")
+    message = EmailMessage()
+    message_id = make_msgid(domain="neft.local")
+    message["Message-ID"] = message_id
+    message["From"] = formataddr((settings.smtp_from_name, settings.smtp_from_email))
+    message["To"] = payload.to
+    message["Subject"] = payload.subject
+    message.set_content(payload.text or "")
+    if payload.html:
+        message.add_alternative(payload.html, subtype="html")
+
+    with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=10) as smtp:
+        if settings.smtp_tls:
+            smtp.starttls()
+        if settings.smtp_user and settings.smtp_password:
+            smtp.login(settings.smtp_user, settings.smtp_password)
+        smtp.send_message(message)
+    return f"smtp:{message_id}"
+
+
+@app.post("/api/int/notify/email/send", response_model=NotifyEmailSendResponse)
+def send_email(payload: NotifyEmailSendRequest) -> NotifyEmailSendResponse:
+    if not _validate_email(payload.to):
+        raise HTTPException(status_code=400, detail="invalid_email")
+
+    if settings.email_provider_mode == "mock":
+        logger.info("notify.email.mock", extra={"to": payload.to, "subject": payload.subject, "meta": payload.meta})
+        return NotifyEmailSendResponse(status="sent", message_id=f"mock:{uuid4()}")
+
+    if settings.email_provider_mode != "smtp":
+        raise HTTPException(status_code=503, detail="provider_unavailable")
+
+    try:
+        message_id = _send_smtp_email(payload)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail="provider_unavailable") from exc
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail="unexpected") from exc
+
+    return NotifyEmailSendResponse(status="sent", message_id=message_id)
 
 
 @app.post("/v1/edo/dispatch", response_model=DispatchResponse)

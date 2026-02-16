@@ -156,6 +156,7 @@ class ClientInvitation(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     accepted_at = Column(DateTime(timezone=True), nullable=True)
     accepted_by_user_id = Column(String(64), nullable=True)
+    used_at = Column(DateTime(timezone=True), nullable=True)
     revoked_at = Column(DateTime(timezone=True), nullable=True)
     revoked_by_user_id = Column(String(64), nullable=True)
     revocation_reason = Column(Text, nullable=True)
@@ -185,6 +186,28 @@ class NotificationOutbox(Base):
     last_error = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+
+
+class InvitationEmailDelivery(Base):
+    __tablename__ = "invitation_email_deliveries"
+    __table_args__ = (
+        Index("ix_invitation_email_deliveries_invitation_id", "invitation_id"),
+        Index("ix_invitation_email_deliveries_status", "status"),
+    )
+
+    id = Column(GUID(), primary_key=True, default=new_uuid_str)
+    invitation_id = Column(GUID(), ForeignKey("client_invitations.id"), nullable=False)
+    channel = Column(String(16), nullable=False, server_default="EMAIL")
+    provider = Column(Text, nullable=False, server_default="integration-hub")
+    to_email = Column(Text, nullable=False)
+    template = Column(Text, nullable=False)
+    subject = Column(Text, nullable=False)
+    message_id = Column(Text, nullable=True)
+    status = Column(String(16), nullable=False, server_default="QUEUED")
+    error_code = Column(Text, nullable=True)
+    error_message = Column(Text, nullable=True)
+    attempt = Column(Integer, nullable=False, server_default="1")
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
 
 class LimitTemplate(Base):

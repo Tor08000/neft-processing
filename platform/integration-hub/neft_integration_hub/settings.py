@@ -58,6 +58,15 @@ class Settings:
     notifications_mode: str = os.getenv("NOTIFICATIONS_MODE", "mock").lower()
     notifications_email_provider: str = os.getenv("NOTIFICATIONS_EMAIL_PROVIDER", "")
 
+    email_provider_mode: str = os.getenv("EMAIL_PROVIDER_MODE", "mock").lower()
+    smtp_host: str = os.getenv("SMTP_HOST", "")
+    smtp_port: int = int(os.getenv("SMTP_PORT", "587"))
+    smtp_user: str = os.getenv("SMTP_USER", "")
+    smtp_password: str = os.getenv("SMTP_PASSWORD", "")
+    smtp_from_email: str = os.getenv("SMTP_FROM_EMAIL", "no-reply@neft.local")
+    smtp_from_name: str = os.getenv("SMTP_FROM_NAME", "NEFT")
+    smtp_tls: bool = _env_bool("SMTP_TLS", "1")
+
 
 _settings: Settings | None = None
 

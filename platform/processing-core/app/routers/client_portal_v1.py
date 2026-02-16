@@ -5,10 +5,10 @@ import logging
 import math
 import os
 import secrets
+from hashlib import sha256
 from typing import Any
 from datetime import date, datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
-from hashlib import sha256
 from io import StringIO
 from pathlib import Path
 from uuid import UUID, uuid4
@@ -250,6 +250,8 @@ from app.services.billing_payment_intakes import (
     list_invoice_payment_intakes,
 )
 from app.services.client_invitation_notifications import enqueue_client_invitation_notification
+from app.services.invitations.invitation_tokens import generate_invitation_token, hash_invitation_token, invite_expiration
+from app.services.notifications.email_sender import ConsoleEmailSender, IntegrationHubEmailSender
 from app.services.client_notifications import (
     ClientNotificationSeverity,
     create_notification,
@@ -2758,7 +2760,7 @@ def create_export_job(
         format=payload.format,
         filters_json=filters,
         status=ExportJobStatus.QUEUED,
-        expires_at=datetime.now(timezone.utc) + timedelta(days=7),
+        expires_at=invite_expiration(),
     )
     db.add(job)
     db.flush()
@@ -5995,10 +5997,18 @@ def list_users(
 
 
 def _build_invitation_token() -> tuple[str, str]:
-    token_raw = secrets.token_urlsafe(32)
-    pepper = os.getenv("CLIENT_INVITATION_TOKEN_PEPPER", "")
-    token_hash = sha256(f"{token_raw}{pepper}".encode("utf-8")).hexdigest()
-    return token_raw, token_hash
+    return generate_invitation_token()
+
+
+def _email_notifications_enabled() -> bool:
+    raw = os.getenv("EMAIL_NOTIFICATIONS_ENABLED")
+    if raw is None:
+        return os.getenv("APP_ENV", "dev").lower() == "prod"
+    return raw.strip().lower() in {"1", "true", "yes"}
+
+
+def _invite_base_url() -> str:
+    return os.getenv("PUBLIC_APP_BASE_URL", os.getenv("GATEWAY_PUBLIC_BASE_URL", "http://localhost:8080")).rstrip("/")
 
 
 def _enqueue_invitation_event(
@@ -6008,7 +6018,7 @@ def _enqueue_invitation_event(
     event_type: str,
     token_raw: str | None = None,
 ) -> None:
-    base_url = os.getenv("GATEWAY_PUBLIC_BASE_URL", "http://localhost:8080")
+    base_url = _invite_base_url()
     payload: dict[str, Any] = {
         "channel": "email",
         "template": "client_invitation",
@@ -6026,6 +6036,79 @@ def _enqueue_invitation_event(
         invitation_id=str(invitation.id),
         client_id=str(invitation.client_id),
         payload=payload,
+    )
+
+
+def _deliver_invitation_email(db: Session, *, invitation: ClientInvitation, token_raw: str, event_type: str) -> None:
+    from app.models.client_portal import InvitationEmailDelivery
+
+    base_url = _invite_base_url()
+    accept_url = f"{base_url}/client/invitations/accept?token={token_raw}"
+    subject = "Приглашение в кабинет клиента NEFT"
+    text = (
+        "Вас пригласили в кабинет клиента NEFT.\n\n"
+        f"Перейдите по ссылке: {accept_url}\n"
+        f"Срок действия ссылки: {invitation.expires_at.isoformat()}\n\n"
+        "Если вы не запрашивали приглашение, проигнорируйте это письмо."
+    )
+    html = (
+        "<html><body><p>Вас пригласили в кабинет клиента NEFT.</p>"
+        f"<p><a href=\"{accept_url}\">Принять приглашение</a></p>"
+        f"<p>Срок действия ссылки: {invitation.expires_at.isoformat()}</p>"
+        "<p>Если вы не запрашивали приглашение, проигнорируйте это письмо.</p></body></html>"
+    )
+
+    if not _email_notifications_enabled():
+        ConsoleEmailSender().send(to=invitation.email, subject=subject, html=html, text=text, headers={"template": "client_invite_v1"})
+        delivery = InvitationEmailDelivery(
+            invitation_id=str(invitation.id),
+            channel="EMAIL",
+            provider="console",
+            to_email=invitation.email,
+            template="client_invite_v1",
+            subject=subject,
+            status="QUEUED",
+            attempt=1,
+        )
+        db.add(delivery)
+        _enqueue_invitation_event(db, invitation=invitation, event_type="INVITATION_EMAIL_SENT")
+        return
+
+    status = "SENT"
+    message_id = None
+    error_code = None
+    error_message = None
+    try:
+        message_id = IntegrationHubEmailSender().send(
+            to=invitation.email,
+            subject=subject,
+            html=html,
+            text=text,
+            headers={"template": "client_invite_v1", "invitation_id": str(invitation.id), "event_type": event_type},
+        )
+    except Exception as exc:  # noqa: BLE001
+        status = "FAILED"
+        error_code = "send_error"
+        error_message = str(exc)
+
+    delivery = InvitationEmailDelivery(
+        invitation_id=str(invitation.id),
+        channel="EMAIL",
+        provider="integration-hub",
+        to_email=invitation.email,
+        template="client_invite_v1",
+        subject=subject,
+        message_id=message_id,
+        status=status,
+        error_code=error_code,
+        error_message=error_message,
+        attempt=int(invitation.resent_count or 0) + 1,
+    )
+    db.add(delivery)
+    _enqueue_invitation_event(
+        db,
+        invitation=invitation,
+        event_type="INVITATION_EMAIL_SENT" if status == "SENT" else "INVITATION_EMAIL_FAILED",
     )
 
 
@@ -6085,11 +6168,12 @@ def invite_user(
         last_send_status="NEW",
         roles=_normalize_client_roles(payload.roles),
         token_hash=token_hash,
-        expires_at=datetime.now(timezone.utc) + timedelta(days=7),
+        expires_at=invite_expiration(),
         status="PENDING",
     )
     db.add(invitation)
-    _enqueue_invitation_event(db, invitation=invitation, event_type="client_invitation_created", token_raw=token_raw)
+    _enqueue_invitation_event(db, invitation=invitation, event_type="INVITATION_CREATED", token_raw=token_raw)
+    _deliver_invitation_email(db, invitation=invitation, token_raw=token_raw, event_type="INVITATION_CREATED")
     db.commit()
     db.refresh(invitation)
 
@@ -6197,7 +6281,7 @@ def revoke_user_invitation(
     invitation.revocation_reason = payload.reason if payload else None
     invitation.updated_at = datetime.now(timezone.utc)
 
-    _enqueue_invitation_event(db, invitation=invitation, event_type="client_invitation_revoked")
+    _enqueue_invitation_event(db, invitation=invitation, event_type="INVITATION_REVOKED")
     if request is not None:
         _audit_event(
             db,
@@ -6243,17 +6327,17 @@ def resend_user_invitation(
     if invitation.last_sent_at and (now - invitation.last_sent_at) < timedelta(minutes=throttle_minutes):
         raise HTTPException(status_code=429, detail="invite_resend_throttled")
 
-    expires_days = min(max(int(payload.expires_in_days if payload else 7), 1), 30)
     token_raw, token_hash = _build_invitation_token()
     invitation.token_hash = token_hash
-    invitation.expires_at = now + timedelta(days=expires_days)
+    invitation.expires_at = invite_expiration(now)
     invitation.resent_count = int(invitation.resent_count or 0) + 1
     invitation.last_sent_at = now
     invitation.last_send_status = "NEW"
     invitation.last_send_error = None
     invitation.updated_at = datetime.now(timezone.utc)
 
-    _enqueue_invitation_event(db, invitation=invitation, event_type="client_invitation_resent", token_raw=token_raw)
+    _enqueue_invitation_event(db, invitation=invitation, event_type="INVITATION_RESENT", token_raw=token_raw)
+    _deliver_invitation_email(db, invitation=invitation, token_raw=token_raw, event_type="INVITATION_RESENT")
     if request is not None:
         _audit_event(
             db,
