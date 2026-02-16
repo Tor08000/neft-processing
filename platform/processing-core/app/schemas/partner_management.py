@@ -18,6 +18,11 @@ class PartnerOut(BaseModel):
     contacts: dict[str, Any] = Field(default_factory=dict)
 
 
+class PartnerMeOut(BaseModel):
+    partner: PartnerOut
+    my_roles: list[str] = Field(default_factory=list)
+
+
 class PartnerCreate(BaseModel):
     code: str
     legal_name: str
@@ -81,6 +86,12 @@ class PartnerUserRoleCreate(BaseModel):
     roles: list[str] = Field(default_factory=list)
 
 
+class PartnerUserRoleSelfCreate(BaseModel):
+    user_id: str | None = None
+    email: str | None = None
+    roles: list[str] = Field(default_factory=list)
+
+
 class PartnerUserRoleOut(BaseModel):
     user_id: str
     roles: list[str] = Field(default_factory=list)
@@ -98,3 +109,10 @@ class PartnerTermsOut(BaseModel):
     version: int
     terms: dict[str, Any] = Field(default_factory=dict)
     status: str
+
+
+class PartnerListOut(BaseModel):
+    items: list[PartnerOut]
+    page: int
+    page_size: int
+    total: int

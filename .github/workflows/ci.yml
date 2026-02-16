@@ -56,7 +56,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Run processing-core tests
-        run: docker compose run --rm --entrypoint "" core-api pytest -q platform/processing-core/app/tests/test_partner_management_v1.py
+        run: |
+          docker compose run --rm --entrypoint "" core-api pytest -q \
+            platform/processing-core/app/tests/test_partner_admin_api.py \
+            platform/processing-core/app/tests/test_partner_portal_api.py \
+            platform/processing-core/app/tests/test_partner_migration_smoke.py
 
   partner-portal-build:
     runs-on: ubuntu-latest
@@ -69,6 +73,7 @@ jobs:
         with:
           node-version: 20
       - run: npm ci
+      - run: npm run typecheck
       - run: npm run build
 
   e2e-gateway-partner-smoke:

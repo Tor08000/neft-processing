@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import or_
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.db import get_db
@@ -10,6 +10,7 @@ from app.models.partner import Partner
 from app.models.partner_management import PartnerTerms, PartnerUserRole
 from app.schemas.partner_management import (
     PartnerCreate,
+    PartnerListOut,
     PartnerOut,
     PartnerUpdate,
     PartnerUserRoleCreate,
@@ -21,9 +22,6 @@ router = APIRouter(prefix="/partners", tags=["admin-partners-v1"])
 
 @router.post("", response_model=PartnerOut, status_code=201)
 def create_partner(payload: PartnerCreate, db: Session = Depends(get_db)):
-    owner_user_id = payload.owner_user_id or payload.owner_user_email
-    if not owner_user_id:
-        raise HTTPException(status_code=400, detail="owner_user_required")
     if db.query(Partner).filter(Partner.code == payload.code).first():
         raise HTTPException(status_code=409, detail="partner_code_exists")
 
@@ -45,36 +43,54 @@ def create_partner(payload: PartnerCreate, db: Session = Depends(get_db)):
             partner_id=partner.id,
             version=1,
             status="DRAFT",
-            terms={"commission": {}, "settlement_delay_days": None, "limits": {}, "sla": {}},
+            terms={},
         )
     )
-    db.add(
-        PartnerUserRole(
-            id=new_uuid_str(),
-            partner_id=partner.id,
-            user_id=owner_user_id,
-            roles=["PARTNER_OWNER"],
-        )
-    )
+
+    owner_user_id = payload.owner_user_id or payload.owner_user_email
+    if owner_user_id:
+        row = db.query(PartnerUserRole).filter(PartnerUserRole.partner_id == partner.id, PartnerUserRole.user_id == owner_user_id).first()
+        if row:
+            current_roles = set(row.roles or [])
+            current_roles.add("PARTNER_OWNER")
+            row.roles = sorted(current_roles)
+        else:
+            row = PartnerUserRole(
+                id=new_uuid_str(),
+                partner_id=partner.id,
+                user_id=owner_user_id,
+                roles=["PARTNER_OWNER"],
+            )
+        db.add(row)
+
     db.commit()
     db.refresh(partner)
     return PartnerOut.model_validate(partner, from_attributes=True)
 
 
-@router.get("", response_model=list[PartnerOut])
+@router.get("", response_model=PartnerListOut)
 def list_partners(
     status: str | None = Query(None),
     q: str | None = Query(None),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=200),
     db: Session = Depends(get_db),
-) -> list[PartnerOut]:
+) -> PartnerListOut:
     query = db.query(Partner)
     if status:
         query = query.filter(Partner.status == status)
     if q:
         like = f"%{q}%"
         query = query.filter(or_(Partner.code.ilike(like), Partner.legal_name.ilike(like), Partner.brand_name.ilike(like)))
-    rows = query.order_by(Partner.created_at.desc()).all()
-    return [PartnerOut.model_validate(row, from_attributes=True) for row in rows]
+
+    total = query.with_entities(func.count(Partner.id)).scalar() or 0
+    rows = query.order_by(Partner.created_at.desc()).offset((page - 1) * page_size).limit(page_size).all()
+    return PartnerListOut(
+        items=[PartnerOut.model_validate(row, from_attributes=True) for row in rows],
+        page=page,
+        page_size=page_size,
+        total=total,
+    )
 
 
 @router.get("/{partner_id}", response_model=PartnerOut)

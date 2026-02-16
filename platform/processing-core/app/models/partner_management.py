@@ -59,6 +59,7 @@ class PartnerTerms(Base):
 
     __table_args__ = (
         UniqueConstraint("partner_id", "version", name="uq_partner_terms_partner_version"),
+        Index("ix_partner_terms_partner_status", "partner_id", "status"),
         CheckConstraint("status IN ('DRAFT','ACTIVE','ARCHIVED')", name="ck_partner_terms_status_v1"),
     )
 

@@ -79,7 +79,7 @@ def test_partner_me_returns_partner_for_linked_user() -> None:
 
     me = client.get("/api/core/partner/me")
     assert me.status_code == 200
-    assert me.json()["code"] == "partner-001"
+    assert me.json()["partner"]["code"] == "partner-001"
 
 
 def test_partner_locations_crud() -> None:

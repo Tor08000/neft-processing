@@ -30,7 +30,7 @@ class Partner(Base):
 
     __table_args__ = (
         CheckConstraint(
-            "partner_type IN ('FUEL_NETWORK','SERVICE_PROVIDER','EDO_PROVIDER','LOGISTICS_PROVIDER','OTHER')",
+            "partner_type IN ('FUEL_NETWORK','MERCHANT','SERVICE_PROVIDER','EDO_PROVIDER','LOGISTICS_PROVIDER','OTHER')",
             name="ck_partners_partner_type_v1",
         ),
         CheckConstraint("status IN ('ACTIVE','INACTIVE','PENDING')", name="ck_partners_status_v1"),

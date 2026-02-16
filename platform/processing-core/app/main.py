@@ -86,7 +86,7 @@ from app.routers.subscriptions_v1 import router as subscriptions_router
 from app.routers.explain_v2 import router as explain_v2_router
 from app.routers.cases import router as cases_router
 from app.routers.integrations.edo_sbis import router as edo_sbis_router
-from app.services.bootstrap import ensure_default_refs, ensure_demo_client
+from app.services.bootstrap import ensure_default_refs, ensure_demo_client, ensure_demo_partner
 from app.services.accounting_export.metrics import metrics as accounting_export_metrics
 from app.services.billing_metrics import metrics as billing_metrics
 from app.services.payout_metrics import metrics as payout_metrics
@@ -229,6 +229,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             ensure_demo_client(db)
         except Exception:  # pragma: no cover - keep startup alive in dev
             logger.exception("ensure_demo_client failed", extra={"service": SERVICE_NAME})
+        try:
+            ensure_demo_partner(db)
+        except Exception:  # pragma: no cover - keep startup alive in dev
+            logger.exception("ensure_demo_partner failed", extra={"service": SERVICE_NAME})
     finally:
         db.close()
     register_shadow_hook()

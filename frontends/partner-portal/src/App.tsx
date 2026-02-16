@@ -38,6 +38,10 @@ import { MarketplaceProfilePage } from "./pages/MarketplaceProfilePage";
 import { MarketplaceProductsPage } from "./pages/MarketplaceProductsPage";
 import { MarketplaceOffersPage } from "./pages/MarketplaceOffersPage";
 import { LegalPage } from "./pages/LegalPage";
+import { PartnerProfileV1Page } from "./pages/PartnerProfileV1Page";
+import { PartnerLocationsV1Page } from "./pages/PartnerLocationsV1Page";
+import { PartnerUsersV1Page } from "./pages/PartnerUsersV1Page";
+import { PartnerTermsV1Page } from "./pages/PartnerTermsV1Page";
 
 interface AppProps {
   initialSession?: AuthSession | null;
@@ -131,6 +135,10 @@ export function App({ initialSession = null }: AppProps) {
                 <Route path="/support/requests/:id" element={<SupportRequestDetailsPage />} />
                 <Route path="/settings" element={<SettingsPage />} />
                 <Route path="/legal" element={<LegalPage />} />
+                <Route path="/partner/profile" element={<PartnerProfileV1Page />} />
+                <Route path="/partner/locations" element={<PartnerLocationsV1Page />} />
+                <Route path="/partner/users" element={<PartnerUsersV1Page />} />
+                <Route path="/partner/terms" element={<PartnerTermsV1Page />} />
               </Route>
             </Route>
             <Route path="*" element={<NotFoundPage />} />

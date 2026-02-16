@@ -11,9 +11,12 @@ from app.schemas.partner_management import (
     PartnerLocationCreate,
     PartnerLocationOut,
     PartnerLocationUpdate,
+    PartnerMeOut,
     PartnerMePatch,
     PartnerOut,
     PartnerTermsOut,
+    PartnerUserRoleOut,
+    PartnerUserRoleSelfCreate,
 )
 
 router = APIRouter(prefix="/partner", tags=["partner-management-v1"])
@@ -26,14 +29,21 @@ def _user_id_from_token(token: dict) -> str:
     return user_id
 
 
-def get_current_partner(
+def get_current_partner_link(
     token: dict = Depends(partner_portal_user),
     db: Session = Depends(get_db),
-) -> Partner:
+) -> PartnerUserRole:
     user_id = _user_id_from_token(token)
     link = db.query(PartnerUserRole).filter(PartnerUserRole.user_id == user_id).first()
     if not link:
         raise HTTPException(status_code=403, detail="partner_not_linked")
+    return link
+
+
+def get_current_partner(
+    link: PartnerUserRole = Depends(get_current_partner_link),
+    db: Session = Depends(get_db),
+) -> Partner:
     partner = db.get(Partner, link.partner_id)
     if not partner:
         raise HTTPException(status_code=403, detail="partner_not_linked")
@@ -42,9 +52,21 @@ def get_current_partner(
     return partner
 
 
-@router.get("/me", response_model=PartnerOut)
-def partner_me(partner: Partner = Depends(get_current_partner)) -> PartnerOut:
-    return PartnerOut.model_validate(partner, from_attributes=True)
+def _ensure_owner(link: PartnerUserRole) -> None:
+    roles = set(link.roles or [])
+    if "PARTNER_OWNER" not in roles:
+        raise HTTPException(status_code=403, detail="forbidden")
+
+
+@router.get("/me", response_model=PartnerMeOut)
+def partner_me(
+    partner: Partner = Depends(get_current_partner),
+    link: PartnerUserRole = Depends(get_current_partner_link),
+) -> PartnerMeOut:
+    return PartnerMeOut(
+        partner=PartnerOut.model_validate(partner, from_attributes=True),
+        my_roles=list(link.roles or []),
+    )
 
 
 @router.patch("/me", response_model=PartnerOut)
@@ -117,6 +139,53 @@ def delete_location(
     db.commit()
     db.refresh(row)
     return PartnerLocationOut.model_validate(row, from_attributes=True)
+
+
+@router.get("/users", response_model=list[PartnerUserRoleOut])
+def list_my_partner_users(
+    partner: Partner = Depends(get_current_partner),
+    db: Session = Depends(get_db),
+) -> list[PartnerUserRoleOut]:
+    rows = db.query(PartnerUserRole).filter(PartnerUserRole.partner_id == partner.id).all()
+    return [PartnerUserRoleOut(user_id=str(row.user_id), roles=list(row.roles or []), created_at=row.created_at) for row in rows]
+
+
+@router.post("/users", response_model=PartnerUserRoleOut, status_code=201)
+def add_my_partner_user(
+    payload: PartnerUserRoleSelfCreate,
+    partner: Partner = Depends(get_current_partner),
+    link: PartnerUserRole = Depends(get_current_partner_link),
+    db: Session = Depends(get_db),
+) -> PartnerUserRoleOut:
+    _ensure_owner(link)
+    user_id = payload.user_id or payload.email
+    if not user_id:
+        raise HTTPException(status_code=400, detail="user_id_required")
+    row = db.query(PartnerUserRole).filter(PartnerUserRole.partner_id == partner.id, PartnerUserRole.user_id == user_id).first()
+    if row:
+        row.roles = payload.roles
+    else:
+        row = PartnerUserRole(partner_id=partner.id, user_id=user_id, roles=payload.roles)
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return PartnerUserRoleOut(user_id=str(row.user_id), roles=list(row.roles or []), created_at=row.created_at)
+
+
+@router.delete("/users/{user_id}", status_code=200)
+def delete_my_partner_user(
+    user_id: str,
+    partner: Partner = Depends(get_current_partner),
+    link: PartnerUserRole = Depends(get_current_partner_link),
+    db: Session = Depends(get_db),
+) -> None:
+    _ensure_owner(link)
+    row = db.query(PartnerUserRole).filter(PartnerUserRole.partner_id == partner.id, PartnerUserRole.user_id == user_id).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="partner_user_not_found")
+    db.delete(row)
+    db.commit()
+    return None
 
 
 @router.get("/terms", response_model=PartnerTermsOut)

@@ -67,6 +67,10 @@ export function Layout() {
     { to: "/payouts", label: t("nav.payouts"), icon: <Wallet size={18} />, capability: "PARTNER_PAYOUT_REQUEST" },
     { to: "/documents", label: t("nav.documents"), icon: <FileText size={18} />, capability: "PARTNER_DOCUMENTS_LIST" },
     { to: "/legal", label: t("nav.legal"), icon: <Package size={18} /> },
+    { to: "/partner/profile", label: "Профиль партнёра", icon: <Briefcase size={18} /> },
+    { to: "/partner/locations", label: "Точки/АЗС", icon: <Package size={18} /> },
+    { to: "/partner/users", label: "Пользователи", icon: <FileText size={18} /> },
+    { to: "/partner/terms", label: "Условия", icon: <FileText size={18} /> },
   ];
 
   const navItems = NAV_ITEMS.map((item) => {

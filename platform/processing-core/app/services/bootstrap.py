@@ -294,3 +294,86 @@ def ensure_demo_client(db: Session | None = None) -> None:
     finally:
         if not session_provided:
             db.close()
+
+
+def ensure_demo_partner(db: Session | None = None) -> None:
+    logger = logging.getLogger(__name__)
+    if not _is_dev_env():
+        return
+
+    session_provided = db is not None
+    session_factory = get_sessionmaker()
+    db = db or session_factory()
+
+    try:
+        conn = db.connection()
+        tables = conn.execute(
+            text(
+                """
+                SELECT table_name
+                FROM information_schema.tables
+                WHERE table_schema = :schema
+                """
+            ),
+            {"schema": DB_SCHEMA},
+        ).fetchall()
+        table_names = {row[0] for row in tables}
+        required = {"partners", "partner_user_roles", "partner_locations", "users"}
+        if not required.issubset(table_names):
+            return
+
+        partner_row = conn.execute(
+            text(f"SELECT id FROM {DB_SCHEMA}.partners WHERE code = 'demo-partner' LIMIT 1")
+        ).mappings().first()
+        if partner_row:
+            partner_id = partner_row["id"]
+        else:
+            partner_id = conn.execute(
+                text(
+                    f"""
+                    INSERT INTO {DB_SCHEMA}.partners (id, code, legal_name, partner_type, status, contacts)
+                    VALUES (gen_random_uuid(), 'demo-partner', 'Demo Partner', 'OTHER', 'ACTIVE', '{{}}'::jsonb)
+                    RETURNING id
+                    """
+                )
+            ).scalar_one()
+
+        user_row = conn.execute(
+            text(f"SELECT id FROM {DB_SCHEMA}.users WHERE email = :email LIMIT 1"),
+            {"email": "partner@neft.local"},
+        ).mappings().first()
+        if user_row:
+            conn.execute(
+                text(
+                    f"""
+                    INSERT INTO {DB_SCHEMA}.partner_user_roles (id, partner_id, user_id, roles)
+                    VALUES (gen_random_uuid(), :partner_id, :user_id, '["PARTNER_OWNER"]'::jsonb)
+                    ON CONFLICT (partner_id, user_id)
+                    DO UPDATE SET roles = excluded.roles
+                    """
+                ),
+                {"partner_id": partner_id, "user_id": str(user_row["id"])},
+            )
+
+        conn.execute(
+            text(
+                f"""
+                INSERT INTO {DB_SCHEMA}.partner_locations
+                    (id, partner_id, external_id, code, title, address, city, region, status)
+                SELECT gen_random_uuid(), :partner_id, 'demo-location-1', 'demo-1',
+                       'Demo Location', 'Demo Address', 'Moscow', 'Moscow', 'ACTIVE'
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM {DB_SCHEMA}.partner_locations
+                    WHERE partner_id = :partner_id AND external_id = 'demo-location-1'
+                )
+                """
+            ),
+            {"partner_id": partner_id},
+        )
+        db.commit()
+    except SQLAlchemyError as exc:  # pragma: no cover
+        db.rollback()
+        logger.warning("Skipping demo partner bootstrap: database unavailable or schema missing (%s)", exc)
+    finally:
+        if not session_provided:
+            db.close()
