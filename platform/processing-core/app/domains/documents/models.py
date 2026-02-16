@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import enum
 
-from sqlalchemy import BigInteger, Date, DateTime, ForeignKey, Index, Numeric, String, Text, UniqueConstraint, func
+from sqlalchemy import JSON, BigInteger, Date, DateTime, ForeignKey, Index, Numeric, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
@@ -16,6 +16,7 @@ class DocumentDirection(str, enum.Enum):
 
 class DocumentStatus(str, enum.Enum):
     DRAFT = "DRAFT"
+    READY_TO_SEND = "READY_TO_SEND"
     SENT = "SENT"
     RECEIVED = "RECEIVED"
     SIGNED = "SIGNED"
@@ -70,3 +71,24 @@ class DocumentFile(Base):
     created_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
     document: Mapped[Document] = relationship(back_populates="files")
+
+
+class DocumentTimelineEvent(Base):
+    __tablename__ = "document_timeline_events"
+    __table_args__ = (
+        Index("idx_doc_timeline_doc_id_created_at", "document_id", "created_at"),
+        Index("idx_doc_timeline_client_id_created_at", "client_id", "created_at"),
+        {"extend_existing": True},
+    )
+
+    id: Mapped[str] = mapped_column(GUID(), primary_key=True)
+    document_id: Mapped[str] = mapped_column(GUID(), ForeignKey("documents.id", ondelete="CASCADE"), nullable=False)
+    client_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    event_type: Mapped[str] = mapped_column(Text, nullable=False)
+    message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    meta: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    actor_type: Mapped[str] = mapped_column(String(16), nullable=False)
+    actor_user_id: Mapped[str | None] = mapped_column(GUID(), nullable=True)
+    ip: Mapped[str | None] = mapped_column(String(45), nullable=True)
+    user_agent: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())

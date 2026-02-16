@@ -3,6 +3,8 @@ import type { AuthSession } from "../types";
 
 export type ClientDocumentsDirection = "inbound" | "outbound";
 
+export type ClientDocumentStatus = "DRAFT" | "READY_TO_SEND" | string;
+
 export type ClientDocumentListItem = {
   id: string;
   direction: string;
@@ -34,10 +36,20 @@ export type ClientDocumentDetails = {
   title: string;
   doc_type: string | null;
   description: string | null;
-  status: string;
+  status: ClientDocumentStatus;
   created_at: string;
   updated_at: string;
   files: ClientDocumentFile[];
+};
+
+export type ClientDocumentTimelineEvent = {
+  id: string;
+  event_type: "DOCUMENT_CREATED" | "FILE_UPLOADED" | "STATUS_CHANGED" | string;
+  message: string | null;
+  meta: Record<string, unknown>;
+  actor_type: "USER" | "SYSTEM" | string;
+  actor_user_id: string | null;
+  created_at: string;
 };
 
 export type ClientDocumentsListResponse = {
@@ -80,6 +92,14 @@ export function createOutboundDocument(
 
 export function getClientDocument(documentId: string, user: AuthSession | null): Promise<ClientDocumentDetails> {
   return request<ClientDocumentDetails>(`/client/documents/${documentId}`, { method: "GET" }, withToken(user));
+}
+
+export function submitClientDocument(documentId: string, user: AuthSession | null): Promise<ClientDocumentDetails> {
+  return request<ClientDocumentDetails>(`/client/documents/${documentId}/submit`, { method: "POST" }, withToken(user));
+}
+
+export function getClientDocumentTimeline(documentId: string, user: AuthSession | null): Promise<ClientDocumentTimelineEvent[]> {
+  return request<ClientDocumentTimelineEvent[]>(`/client/documents/${documentId}/timeline`, { method: "GET" }, withToken(user));
 }
 
 export function uploadClientDocumentFile(documentId: string, file: File, user: AuthSession | null): Promise<ClientDocumentFile> {

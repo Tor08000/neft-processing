@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
@@ -11,6 +11,8 @@ from app.domains.documents.repo import DocumentsRepository
 from app.domains.documents.schemas import DocumentCreateIn, DocumentDetailsResponse, DocumentFileOut, DocumentOut, DocumentsListResponse
 from app.domains.documents.service import DocumentsService
 from app.domains.documents.storage import DocumentsStorage
+from app.domains.documents.timeline_schemas import TimelineEventOut
+from app.domains.documents.timeline_service import TimelineRequestContext
 
 router = APIRouter(prefix="/api/core/client/documents", tags=["client-documents"])
 
@@ -24,6 +26,13 @@ def _client_id_from_token(token: dict) -> str:
 
 def _service(db: Session = Depends(get_db)) -> DocumentsService:
     return DocumentsService(repo=DocumentsRepository(db=db), storage=DocumentsStorage.from_env())
+
+
+def _timeline_request_context(request: Request) -> TimelineRequestContext:
+    return TimelineRequestContext(
+        ip=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+    )
 
 
 @router.get("", response_model=DocumentsListResponse)
@@ -57,20 +66,57 @@ def list_client_documents(
 @router.post("", response_model=DocumentOut, status_code=201)
 def create_client_outbound_document(
     payload: DocumentCreateIn,
+    request: Request | None = None,
     token: dict = Depends(client_portal_user),
     svc: DocumentsService = Depends(_service),
 ) -> DocumentOut:
-    return svc.create_outbound_draft(client_id=_client_id_from_token(token), data=payload)
+    return svc.create_outbound_draft(
+        client_id=_client_id_from_token(token),
+        data=payload,
+        actor_user_id=token.get("user_id") or token.get("sub"),
+        request_context=_timeline_request_context(request) if request else None,
+    )
 
 
 @router.post("/{document_id}/upload", response_model=DocumentFileOut, status_code=201)
 async def upload_document_file(
     document_id: str,
     file: UploadFile = File(...),
+    request: Request | None = None,
     token: dict = Depends(client_portal_user),
     svc: DocumentsService = Depends(_service),
 ) -> DocumentFileOut:
-    return await svc.attach_file(client_id=_client_id_from_token(token), document_id=document_id, upload_file=file)
+    return await svc.attach_file(
+        client_id=_client_id_from_token(token),
+        document_id=document_id,
+        upload_file=file,
+        actor_user_id=token.get("user_id") or token.get("sub"),
+        request_context=_timeline_request_context(request) if request else None,
+    )
+
+
+@router.post("/{document_id}/submit", response_model=DocumentOut)
+def submit_client_document(
+    document_id: str,
+    request: Request,
+    token: dict = Depends(client_portal_user),
+    svc: DocumentsService = Depends(_service),
+) -> DocumentOut:
+    return svc.submit_ready_to_send(
+        client_id=_client_id_from_token(token),
+        document_id=document_id,
+        actor_user_id=token.get("user_id") or token.get("sub"),
+        request_context=_timeline_request_context(request),
+    )
+
+
+@router.get("/{document_id}/timeline", response_model=list[TimelineEventOut])
+def get_client_document_timeline(
+    document_id: str,
+    token: dict = Depends(client_portal_user),
+    svc: DocumentsService = Depends(_service),
+) -> list[TimelineEventOut]:
+    return svc.list_timeline_events(client_id=_client_id_from_token(token), document_id=document_id)
 
 
 @router.get("/{document_id}", response_model=DocumentDetailsResponse)
