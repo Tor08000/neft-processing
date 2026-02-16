@@ -117,6 +117,9 @@ jobs:
       - name: Client onboarding smoke
         run: scripts/ci/smoke_client_onboarding.sh
 
+      - name: Client onboarding documents smoke
+        run: scripts/ci/smoke_client_onboarding_documents.sh
+
       - name: Playwright smoke
         run: scripts/ci/gate_playwright_smoke.sh
 

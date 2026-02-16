@@ -10,7 +10,29 @@ import {
   updateApplication,
   type OnboardingApplication,
 } from "../api/onboarding";
+import {
+  downloadOnboardingDocument,
+  listOnboardingDocuments,
+  uploadOnboardingDocument,
+  type OnboardingDocStatus,
+  type OnboardingDocType,
+  type OnboardingDocumentItem,
+} from "../api/onboardingDocuments";
 import { ApiError } from "../api/http";
+
+const REQUIRED_DOC_TYPES: { type: OnboardingDocType; label: string }[] = [
+  { type: "CHARTER", label: "Устав" },
+  { type: "EGRUL", label: "Выписка ЕГРЮЛ/ЕГРИП" },
+  { type: "PASSPORT", label: "Паспорт/данные представителя" },
+  { type: "POWER_OF_ATTORNEY", label: "Доверенность" },
+  { type: "BANK_DETAILS", label: "Банковские реквизиты" },
+];
+
+function statusLabel(status: OnboardingDocStatus): string {
+  if (status === "UPLOADED") return "Загружено";
+  if (status === "VERIFIED") return "Принято";
+  return "Отклонено";
+}
 
 export function OnboardingSelfRegistrationPage({ mode }: { mode: "start" | "form" | "status" }) {
   const navigate = useNavigate();
@@ -21,6 +43,8 @@ export function OnboardingSelfRegistrationPage({ mode }: { mode: "start" | "form
   const [phone, setPhone] = useState("");
   const [ogrn, setOgrn] = useState("");
   const [application, setApplication] = useState<OnboardingApplication | null>(null);
+  const [documents, setDocuments] = useState<OnboardingDocumentItem[]>([]);
+  const [uploadingType, setUploadingType] = useState<OnboardingDocType | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -37,13 +61,15 @@ export function OnboardingSelfRegistrationPage({ mode }: { mode: "start" | "form
       setOrgType(app.org_type ?? "");
       setPhone(app.phone ?? "");
       setOgrn(app.ogrn ?? "");
+      const docs = await listOnboardingDocuments(session.appId);
+      setDocuments(docs);
     } catch (e) {
       if (e instanceof ApiError && (e.status === 401 || e.status === 403)) {
         clearOnboardingSession();
-        setError("Сессия заявки истекла, создайте новую заявку.");
+        setError("Сессия заявки устарела, начните заново");
         return;
       }
-      throw e;
+      setError(e instanceof Error ? e.message : "Не удалось загрузить данные заявки");
     }
   };
 
@@ -106,6 +132,24 @@ export function OnboardingSelfRegistrationPage({ mode }: { mode: "start" | "form
     }
   };
 
+  const onUpload = async (docType: OnboardingDocType, file?: File | null) => {
+    if (!session.appId || !file) return;
+    setUploadingType(docType);
+    setError(null);
+    try {
+      await uploadOnboardingDocument(session.appId, docType, file);
+      const docs = await listOnboardingDocuments(session.appId);
+      setDocuments(docs);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Не удалось загрузить документ");
+    } finally {
+      setUploadingType(null);
+    }
+  };
+
+  const latestForType = (docType: OnboardingDocType): OnboardingDocumentItem | undefined =>
+    documents.find((item) => item.doc_type === docType);
+
   if (mode === "start") {
     return (
       <main style={{ maxWidth: 640, margin: "40px auto", padding: 16 }}>
@@ -128,7 +172,7 @@ export function OnboardingSelfRegistrationPage({ mode }: { mode: "start" | "form
 
   if (mode === "form") {
     return (
-      <main style={{ maxWidth: 640, margin: "40px auto", padding: 16 }}>
+      <main style={{ maxWidth: 760, margin: "40px auto", padding: 16 }}>
         <h1>Анкета заявки</h1>
         <p>Application ID: {session.appId ?? "—"}</p>
         <label>Название компании<input value={companyName} onChange={(e) => setCompanyName(e.target.value)} /></label>
@@ -136,6 +180,36 @@ export function OnboardingSelfRegistrationPage({ mode }: { mode: "start" | "form
         <label>Орг. форма<input value={orgType} onChange={(e) => setOrgType(e.target.value)} /></label>
         <label>Телефон<input value={phone} onChange={(e) => setPhone(e.target.value)} /></label>
         <label>ОГРН (опц.)<input value={ogrn} onChange={(e) => setOgrn(e.target.value)} /></label>
+        <section style={{ marginTop: 20 }}>
+          <h2>Документы</h2>
+          {REQUIRED_DOC_TYPES.map((doc) => {
+            const item = latestForType(doc.type);
+            return (
+              <div key={doc.type} style={{ display: "grid", gridTemplateColumns: "1fr auto auto", gap: 12, alignItems: "center", marginBottom: 8 }}>
+                <div>
+                  <div>{doc.label}</div>
+                  <div style={{ color: "#666", fontSize: 13 }}>
+                    {item ? `${statusLabel(item.status)}${item.status === "REJECTED" && item.rejection_reason ? `: ${item.rejection_reason}` : ""}` : "Не загружено"}
+                  </div>
+                </div>
+                {item ? (
+                  <button type="button" onClick={() => void downloadOnboardingDocument(item.id, item.filename)}>
+                    Скачать
+                  </button>
+                ) : null}
+                <label>
+                  <span style={{ marginRight: 8 }}>{uploadingType === doc.type ? "Загрузка..." : "Загрузить"}</span>
+                  <input
+                    type="file"
+                    style={{ display: "inline-block" }}
+                    onChange={(e) => void onUpload(doc.type, e.target.files?.[0])}
+                    disabled={uploadingType === doc.type}
+                  />
+                </label>
+              </div>
+            );
+          })}
+        </section>
         <div style={{ marginTop: 12, display: "flex", gap: 8 }}>
           <button disabled={busy} type="button" onClick={() => void onSave()}>
             Сохранить
