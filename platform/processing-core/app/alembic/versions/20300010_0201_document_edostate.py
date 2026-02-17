@@ -22,13 +22,32 @@ depends_on = None
 SCHEMA = resolve_db_schema().schema
 
 
+def _documents_id_column_type(bind) -> sa.types.TypeEngine:
+    inspector = sa.inspect(bind)
+    columns = inspector.get_columns("documents", schema=SCHEMA)
+    document_id_column = next((column for column in columns if column.get("name") == "id"), None)
+    if document_id_column is None:
+        raise RuntimeError("documents.id column was not found")
+
+    column_type = document_id_column.get("type")
+    if isinstance(column_type, sa.Text):
+        return sa.Text()
+    if isinstance(column_type, sa.String):
+        return sa.String(length=column_type.length)
+
+    raise RuntimeError(f"Unsupported documents.id type: {column_type}")
+
+
 def upgrade() -> None:
     bind = op.get_bind()
+    documents_fk = f"{SCHEMA}.documents.id" if SCHEMA else "documents.id"
+    document_id_type = _documents_id_column_type(bind)
+
     create_table_if_not_exists(
         bind,
         "document_edostate",
         sa.Column("id", postgresql.UUID(as_uuid=False), primary_key=True, nullable=False),
-        sa.Column("document_id", postgresql.UUID(as_uuid=False), sa.ForeignKey("documents.id", ondelete="CASCADE"), nullable=False),
+        sa.Column("document_id", document_id_type, sa.ForeignKey(documents_fk, ondelete="CASCADE"), nullable=False),
         sa.Column("client_id", sa.String(length=64), nullable=False),
         sa.Column("provider", sa.Text(), nullable=True),
         sa.Column("provider_mode", sa.String(length=16), nullable=False, server_default=sa.text("'real'")),
@@ -46,6 +65,9 @@ def upgrade() -> None:
         sa.UniqueConstraint("document_id", name="uq_document_edostate_document_id"),
         schema=SCHEMA,
     )
+    create_index_if_not_exists(bind, "ix_document_edostate_document_id", "document_edostate", ["document_id"], schema=SCHEMA)
+    create_index_if_not_exists(bind, "ix_document_edostate_client_id", "document_edostate", ["client_id"], schema=SCHEMA)
+    create_index_if_not_exists(bind, "ix_document_edostate_updated_at", "document_edostate", ["updated_at"], schema=SCHEMA)
     create_index_if_not_exists(bind, "idx_document_edostate_next_poll_at", "document_edostate", ["next_poll_at"], schema=SCHEMA)
     create_index_if_not_exists(bind, "idx_document_edostate_client_id_status", "document_edostate", ["client_id", "edo_status"], schema=SCHEMA)
 
