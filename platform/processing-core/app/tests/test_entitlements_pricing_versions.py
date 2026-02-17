@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 from app.db import Base, SessionLocal, engine
 from app.main import app
 from app.models.client import Client
-from app.models.client_portal import ClientCard
+from app.models.client_cards import ClientCard
 from app.models.pricing import PriceSchedule, PriceScheduleStatus, PriceVersion, PriceVersionItem, PriceVersionStatus
 from app.models.subscriptions_v1 import (
     ClientSubscription,

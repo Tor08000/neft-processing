@@ -12,7 +12,7 @@ from fastapi import HTTPException
 from sqlalchemy import func, inspect
 from sqlalchemy.orm import Session
 
-from app.models.client_portal import ClientCard
+from app.models.client_cards import ClientCard
 from app.models.pricing import PriceVersionItem
 from app.models.subscriptions_v1 import ClientSubscription, SubscriptionPlan, SubscriptionPlanLimit, SubscriptionPlanModule
 from app.db.schema import DB_SCHEMA
