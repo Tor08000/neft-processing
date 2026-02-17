@@ -55,8 +55,8 @@ def create_admin_inbound_document(
 @router.post("/documents/{document_id}/files", response_model=DocumentFileOut)
 async def upload_admin_inbound_document_file(
     document_id: str,
+    request: Request,
     file: UploadFile = File(...),
-    request: Request | None = None,
     token: dict = Depends(require_admin_user),
     svc: DocumentsService = Depends(_service),
 ) -> DocumentFileOut:
@@ -65,5 +65,5 @@ async def upload_admin_inbound_document_file(
         document_id=document_id,
         upload_file=file,
         actor_user_id=token.get("user_id") or token.get("sub"),
-        request_context=_timeline_request_context(request) if request else None,
+        request_context=_timeline_request_context(request),
     )

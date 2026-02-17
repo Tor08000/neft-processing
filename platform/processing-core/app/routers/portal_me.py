@@ -16,11 +16,9 @@ logger = logging.getLogger(__name__)
 
 @router.get("/me", response_model=PortalMeResponse)
 def get_portal_me(
+    request: Request,
     principal: Principal = Depends(get_principal),
     db: Session = Depends(get_db),
-    request: Request = None,
 ) -> PortalMeResponse:
-    request_id = None
-    if request is not None:
-        request_id = request.headers.get("x-request-id") or request.headers.get("x-correlation-id")
+    request_id = request.headers.get("x-request-id") or request.headers.get("x-correlation-id")
     return build_portal_me(db, token=principal.raw_claims, request_id=request_id)
