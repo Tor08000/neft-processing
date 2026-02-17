@@ -11,6 +11,9 @@ from app.security import hash_password
 
 logger = logging.getLogger(__name__)
 
+DEFAULT_TENANT_CODE = "neft"
+DEFAULT_TENANT_NAME = "NEFT Platform"
+
 def _env_or_default(key: str, default: str, *, fallback_keys: Iterable[str] = ()) -> str:
     for candidate in (key, *fallback_keys):
         value = os.getenv(candidate)
@@ -37,6 +40,52 @@ def _parse_roles(raw_value: str | None, default: list[str]) -> list[str]:
     if raw_value is None or raw_value.strip() == "":
         return default
     return [role.strip() for role in raw_value.split(",") if role.strip()]
+
+
+def _parse_uuid(raw_value: str | None) -> UUID | None:
+    if raw_value is None or str(raw_value).strip() == "":
+        return None
+    try:
+        return UUID(str(raw_value).strip())
+    except Exception as exc:
+        raise ValueError(f"Invalid tenant UUID value: {raw_value}") from exc
+
+
+async def resolve_default_tenant_id(cur) -> UUID:  # noqa: ANN001
+    await cur.execute("SELECT to_regclass('public.tenants') AS reg")
+    tenant_table = await cur.fetchone()
+    if not tenant_table or not tenant_table.get("reg"):
+        raise RuntimeError("auth bootstrap requires public.tenants table when users.tenant_id is NOT NULL")
+
+    requested_tenant_id = _parse_uuid(
+        _env_or_default(
+            "AUTH_DEFAULT_TENANT_ID",
+            "",
+            fallback_keys=("NEFT_TENANT_ID", "TENANT_ID"),
+        )
+    )
+    if requested_tenant_id is not None:
+        await cur.execute("SELECT id FROM tenants WHERE id = %s LIMIT 1", (requested_tenant_id,))
+        existing = await cur.fetchone()
+        if not existing:
+            raise RuntimeError(f"Configured default tenant id {requested_tenant_id} not found in tenants table")
+        return requested_tenant_id
+
+    tenant_code = _env_or_default("AUTH_DEFAULT_TENANT_CODE", DEFAULT_TENANT_CODE).strip().lower() or DEFAULT_TENANT_CODE
+    tenant_name = _env_or_default("AUTH_DEFAULT_TENANT_NAME", DEFAULT_TENANT_NAME).strip() or DEFAULT_TENANT_NAME
+    await cur.execute(
+        """
+        INSERT INTO tenants (code, name)
+        VALUES (%s, %s)
+        ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name
+        RETURNING id
+        """,
+        (tenant_code, tenant_name),
+    )
+    row = await cur.fetchone()
+    if not row or not row.get("id"):
+        raise RuntimeError(f"Unable to resolve default tenant for code={tenant_code}")
+    return UUID(str(row["id"]))
 
 
 @dataclass(frozen=True)
@@ -136,6 +185,7 @@ async def ensure_user(
     sync_roles: bool,
     reset_password_once: bool = False,
     bootstrap_password_version: int = 0,
+    tenant_id: UUID | None = None,
 ) -> str:
     normalized_email = demo_user.email.strip().lower()
     normalized_username = demo_user.username.strip().lower() if demo_user.username else None
@@ -143,15 +193,22 @@ async def ensure_user(
     demo_user_id = demo_user.preferred_id or uuid4()
 
     async with get_conn() as (conn, cur):
+        resolved_tenant_id = tenant_id or await resolve_default_tenant_id(cur)
         await cur.execute(
             """
-            SELECT id, email, username, full_name, password_hash, is_active, bootstrap_password_version
+            SELECT id, email, username, full_name, password_hash, is_active, bootstrap_password_version, tenant_id
             FROM users
             WHERE lower(email) = lower(%s)
             """,
             (normalized_email,),
         )
         existing_user = await cur.fetchone()
+
+        if existing_user and UUID(str(existing_user.get("tenant_id"))) != resolved_tenant_id:
+            raise RuntimeError(
+                f"User {normalized_email} exists in tenant {existing_user.get('tenant_id')} "
+                f"but bootstrap requires tenant {resolved_tenant_id}"
+            )
 
         password_reset = False
         roles_changed = False
@@ -168,11 +225,19 @@ async def ensure_user(
             insert_version = target_version if reset_password_once and force_password else 0
             await cur.execute(
                 """
-                INSERT INTO users (id, email, username, full_name, password_hash, is_active, bootstrap_password_version)
-                VALUES (%s, %s, %s, %s, %s, TRUE, %s)
-                ON CONFLICT (email) DO NOTHING
+                INSERT INTO users (id, tenant_id, email, username, full_name, password_hash, is_active, bootstrap_password_version)
+                VALUES (%s, %s, %s, %s, %s, %s, TRUE, %s)
+                ON CONFLICT DO NOTHING
                 """,
-                (user_id, normalized_email, normalized_username, demo_user.full_name, password_hash, insert_version),
+                (
+                    user_id,
+                    resolved_tenant_id,
+                    normalized_email,
+                    normalized_username,
+                    demo_user.full_name,
+                    password_hash,
+                    insert_version,
+                ),
             )
             password_reset = True
             full_name_updated = bool(demo_user.full_name)
