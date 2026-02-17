@@ -33,6 +33,8 @@ export NEFT_DB_SCHEMA="processing_core"
 
 check_single_head "alembic.ini" "platform/auth-host" "auth-host"
 (cd platform/auth-host && alembic -c alembic.ini upgrade head)
+(cd platform/auth-host && alembic -c alembic.ini upgrade head)
 
 check_single_head "app/alembic.ini" "platform/processing-core" "processing-core"
+(cd platform/processing-core && alembic -c app/alembic.ini upgrade head)
 (cd platform/processing-core && alembic -c app/alembic.ini upgrade head)
