@@ -20,20 +20,22 @@ class ClientDocflowNotificationsService:
         client_id: str,
         user_id: str | None,
         title: str,
-        body: str,
-        event_type: str,
-        meta_json: dict | None = None,
-        channel: str = "IN_APP",
+        message: str,
+        kind: str,
+        payload: dict | None = None,
+        severity: str = "INFO",
+        dedupe_key: str | None = None,
     ) -> ClientDocflowNotification:
         item = ClientDocflowNotification(
             id=new_uuid_str(),
             client_id=client_id,
             user_id=user_id,
             title=title,
-            body=body,
-            event_type=event_type,
-            channel=channel,
-            meta_json=meta_json or {},
+            message=message,
+            kind=kind,
+            payload=payload or {},
+            severity=severity,
+            dedupe_key=dedupe_key,
         )
         self.db.add(item)
         self.db.commit()
@@ -50,7 +52,7 @@ class ClientDocflowNotificationsService:
     def unread_count(self, *, client_id: str, user_id: str | None) -> int:
         stmt = select(func.count(ClientDocflowNotification.id)).where(
             ClientDocflowNotification.client_id == client_id,
-            ClientDocflowNotification.read_at.is_(None),
+            ClientDocflowNotification.is_read.is_(False),
         )
         if user_id:
             stmt = stmt.where((ClientDocflowNotification.user_id.is_(None)) | (ClientDocflowNotification.user_id == user_id))
@@ -66,7 +68,8 @@ class ClientDocflowNotificationsService:
         item = self.db.execute(stmt).scalar_one_or_none()
         if item is None:
             return None
-        if item.read_at is None:
+        if not item.is_read:
+            item.is_read = True
             item.read_at = datetime.now(timezone.utc)
             self.db.add(item)
             self.db.commit()

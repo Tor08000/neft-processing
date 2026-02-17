@@ -11,7 +11,10 @@ import {
   type OnboardingApplication,
 } from "../api/onboarding";
 import {
+  createDocumentsPackage,
+  downloadDocumentsPackage,
   downloadGeneratedOnboardingDocument,
+  getDocumentsPackageStatus,
   downloadOnboardingDocument,
   generateOnboardingDocuments,
   listGeneratedOnboardingDocuments,
@@ -52,6 +55,8 @@ export function OnboardingSelfRegistrationPage({ mode }: { mode: "start" | "form
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [generatedDocs, setGeneratedDocs] = useState<GeneratedOnboardingDocumentItem[]>([]);
+  const [selectedDocIds, setSelectedDocIds] = useState<string[]>([]);
+  const [packageStatus, setPackageStatus] = useState<string | null>(null);
 
   const session = useMemo(() => getOnboardingSession(), []);
 
@@ -164,6 +169,45 @@ export function OnboardingSelfRegistrationPage({ mode }: { mode: "start" | "form
     if (kind === "SERVICE_AGREEMENT") return "Договор услуг";
     if (kind === "DPA") return "DPA / 152-ФЗ";
     return kind;
+  };
+
+
+  const toggleDocSelection = (id: string) => {
+    setSelectedDocIds((prev) => (prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id].slice(0, 50)));
+  };
+
+  const downloadPackage = async () => {
+    if (selectedDocIds.length === 0) {
+      setError("Выберите документы для выгрузки");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    setPackageStatus("CREATING");
+    try {
+      const created = await createDocumentsPackage(selectedDocIds);
+      let attempts = 0;
+      while (attempts < 12) {
+        const status = await getDocumentsPackageStatus(created.package_id);
+        setPackageStatus(status.status);
+        if (status.status === "READY") {
+          await downloadDocumentsPackage(created.package_id);
+          setPackageStatus("READY");
+          break;
+        }
+        if (status.status === "FAILED") {
+          throw new Error("Не удалось собрать пакет");
+        }
+        attempts += 1;
+        const delayMs = Math.min(5000, 2000 + attempts * 300);
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Не удалось скачать пакет");
+      setPackageStatus("FAILED");
+    } finally {
+      setBusy(false);
+    }
   };
 
   const generateDocs = async () => {
@@ -280,6 +324,7 @@ export function OnboardingSelfRegistrationPage({ mode }: { mode: "start" | "form
         <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
           {generatedDocs.map((item) => (
             <div key={item.id} style={{ display: "flex", gap: 12, alignItems: "center" }}>
+              <input type="checkbox" checked={selectedDocIds.includes(item.id)} onChange={() => toggleDocSelection(item.id)} />
               <span>{docKindLabel(item.doc_kind)} v{item.version}</span>
               <span style={{ color: "#666" }}>{item.status}</span>
               <button type="button" onClick={() => void downloadGeneratedOnboardingDocument(item.id, item.filename)}>
@@ -288,6 +333,13 @@ export function OnboardingSelfRegistrationPage({ mode }: { mode: "start" | "form
             </div>
           ))}
           {generatedDocs.length === 0 ? <span style={{ color: "#666" }}>Документы ещё не сформированы</span> : null}
+        </div>
+        <div style={{ marginTop: 12, display: "flex", gap: 8, alignItems: "center" }}>
+          <button type="button" disabled={busy || selectedDocIds.length === 0} onClick={() => void downloadPackage()}>
+            Скачать пакет
+          </button>
+          {packageStatus === "CREATING" ? <span style={{ color: "#666" }}>Сборка пакета…</span> : null}
+          {packageStatus === "READY" ? <span style={{ color: "green" }}>Пакет готов</span> : null}
         </div>
       </section>
       {error ? <p>{error}</p> : null}

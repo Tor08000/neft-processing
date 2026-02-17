@@ -37,16 +37,33 @@ class PackageOut(BaseModel):
     created_at: datetime
 
 
+class CreateDocumentsPackageRequest(BaseModel):
+    ids: list[str] = Field(default_factory=list)
+
+
+class CreateDocumentsPackageResponse(BaseModel):
+    package_id: str
+    status: str
+
+
+class DocumentsPackageStatusResponse(BaseModel):
+    package_id: str
+    status: str
+    download_url: str | None = None
+
+
 class PackagesResponse(BaseModel):
     items: list[PackageOut]
 
 
 class NotificationOut(BaseModel):
     id: str
-    channel: str
+    kind: str
     title: str
-    body: str
-    event_type: str
+    message: str
+    payload: dict = Field(default_factory=dict)
+    severity: str
+    is_read: bool
     read_at: datetime | None
     created_at: datetime
 

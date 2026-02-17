@@ -9,7 +9,10 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.domains.client.docflow.schemas import (
+    CreateDocumentsPackageRequest,
+    CreateDocumentsPackageResponse,
     CreatePackageRequest,
+    DocumentsPackageStatusResponse,
     NotificationOut,
     NotificationsResponse,
     PackageOut,
@@ -115,10 +118,10 @@ def create_package(
     svc.notifications.create(
         client_id=str(token_payload.get("client_id") or token_payload.get("app_id")),
         user_id=_user_id(token_payload),
-        event_type="PACKAGE_READY",
+        kind="PACKAGE_READY",
         title="Пакет документов готов",
-        body=f"Пакет {package.filename or package.id} готов к скачиванию",
-        meta_json={"package_id": package.id},
+        message=f"Пакет {package.filename or package.id} готов к скачиванию",
+        payload={"package_id": package.id},
     )
     return PackageOut.model_validate(package, from_attributes=True)
 
@@ -154,6 +157,62 @@ def download_package(
     stream = svc.packages.storage.get_object_stream("client-generated-documents", package.storage_key)
     headers = {"Content-Disposition": f'attachment; filename="{package.filename or "package.zip"}"'}
     return StreamingResponse(stream, media_type="application/zip", headers=headers)
+
+
+@router.post("/documents/package", response_model=CreateDocumentsPackageResponse, status_code=202)
+def create_documents_package(
+    payload: CreateDocumentsPackageRequest,
+    token_payload: dict = Depends(_token_payload),
+    svc: ClientDocflowService = Depends(_docflow),
+) -> CreateDocumentsPackageResponse:
+    client_id = str(token_payload.get("client_id") or token_payload.get("app_id"))
+    package = svc.packages.create_documents_package(
+        client_id=client_id,
+        created_by_user_id=_user_id(token_payload),
+        doc_ids=payload.ids,
+    )
+    try:
+        from app.tasks.document_packages import build_document_package
+
+        build_document_package.delay(package.id)
+    except Exception:
+        svc.packages.build_package(package.id)
+        svc.notifications.create(
+            client_id=client_id,
+            user_id=_user_id(token_payload),
+            kind="PACKAGE_READY",
+            title="Пакет документов готов",
+            message=f"Пакет {package.id} готов к скачиванию",
+            payload={"package_id": package.id},
+            dedupe_key=f"package-ready:{package.id}",
+        )
+    return CreateDocumentsPackageResponse(package_id=package.id, status="CREATING")
+
+
+@router.get("/documents/package/{package_id}", response_model=DocumentsPackageStatusResponse)
+def get_documents_package_status(
+    package_id: str,
+    token_payload: dict = Depends(_token_payload),
+    svc: ClientDocflowService = Depends(_docflow),
+) -> DocumentsPackageStatusResponse:
+    package = svc.packages.get_package(package_id)
+    if package is None:
+        raise HTTPException(status_code=404, detail={"reason_code": "package_not_found"})
+    if str(package.client_id) != str(token_payload.get("client_id") or token_payload.get("app_id")):
+        raise HTTPException(status_code=403, detail={"reason_code": "package_forbidden"})
+    url = None
+    if package.status == "READY":
+        url = f"/api/core/client/documents/package/{package_id}/download"
+    return DocumentsPackageStatusResponse(package_id=package_id, status=package.status, download_url=url)
+
+
+@router.get("/documents/package/{package_id}/download")
+def download_documents_package(
+    package_id: str,
+    token_payload: dict = Depends(_token_payload),
+    svc: ClientDocflowService = Depends(_docflow),
+):
+    return download_package(package_id=package_id, token_payload=token_payload, svc=svc)
 
 
 @router.get("/docflow/notifications", response_model=NotificationsResponse)
