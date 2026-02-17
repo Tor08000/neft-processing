@@ -13,7 +13,7 @@ import {
   type BulkCardsResponse,
 } from "../api/cards";
 import { fetchClientUsers } from "../api/controls";
-import { fetchLimitTemplates, type LimitTemplate } from "../api/limitTemplates";
+import { fetchLimitTemplates, type LimitTemplate, type LimitTemplateDTO } from "../api/limitTemplates";
 import { ApiError } from "../api/http";
 import { useAuth } from "../auth/AuthContext";
 import { ConfirmActionModal } from "../components/ConfirmActionModal";
@@ -27,6 +27,12 @@ import { StatusPage } from "../components/StatusPage";
 
 const DEFAULT_SCOPE = "USE";
 const MAX_PREVIEW = 5;
+
+const toLimitTemplate = (dto: LimitTemplateDTO, orgId: string): LimitTemplate => ({
+  ...dto,
+  org_id: orgId,
+  created_at: new Date().toISOString(),
+});
 
 type BulkAction = "block" | "unblock" | "grant" | "revoke" | "apply";
 
@@ -65,7 +71,20 @@ export function ClientCardsPage() {
         if (!mounted) return;
         setCards(data.items);
         if (data.templates?.length) {
-          setTemplates(data.templates.map((item) => ({ id: item.id, name: item.name, description: null, status: item.is_default ? "ACTIVE" : "DRAFT", limits: [] } as LimitTemplate)));
+          setTemplates(
+            data.templates.map((item) =>
+              toLimitTemplate(
+                {
+                  id: item.id,
+                  name: item.name,
+                  description: null,
+                  status: item.is_default ? "ACTIVE" : "DRAFT",
+                  limits: [],
+                },
+                user?.clientId ?? "",
+              ),
+            ),
+          );
         }
       })
       .catch((err: unknown) => {

@@ -9,11 +9,19 @@ export type LimitTemplateLimit = {
   window: string;
 };
 
+export type LimitTemplateDTO = {
+  id: string;
+  name: string;
+  description: string | null;
+  status: string;
+  limits: LimitTemplateLimit[];
+};
+
 export type LimitTemplate = {
   id: string;
   org_id: string;
   name: string;
-  description?: string | null;
+  description: string | null;
   limits: LimitTemplateLimit[];
   status: string;
   created_at: string;
