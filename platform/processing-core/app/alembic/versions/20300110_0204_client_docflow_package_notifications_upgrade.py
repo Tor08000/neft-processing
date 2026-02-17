@@ -76,6 +76,23 @@ def index_exists(schema: str, table_name: str, index_name: str) -> bool:
     return bool(result.scalar())
 
 
+def get_column_data_type(schema: str, table_name: str, column_name: str) -> str | None:
+    bind = op.get_bind()
+    result = bind.execute(
+        sa.text(
+            """
+            SELECT data_type
+            FROM information_schema.columns
+            WHERE table_schema = :schema
+              AND table_name = :table_name
+              AND column_name = :column_name
+            """
+        ),
+        {"schema": schema, "table_name": table_name, "column_name": column_name},
+    )
+    return result.scalar()
+
+
 def upgrade() -> None:
     if not column_exists(DB_SCHEMA, "client_document_packages", "sha256"):
         op.add_column("client_document_packages", sa.Column("sha256", sa.Text(), nullable=True), schema=DB_SCHEMA)
@@ -107,7 +124,26 @@ def upgrade() -> None:
 
     op.execute(f"UPDATE {DB_SCHEMA}.client_docflow_notifications SET kind = coalesce(event_type, 'DOC_STATUS_CHANGED')")
     op.execute(f"UPDATE {DB_SCHEMA}.client_docflow_notifications SET message = coalesce(body, title)")
-    op.execute(f"UPDATE {DB_SCHEMA}.client_docflow_notifications SET payload = coalesce(meta_json, '{{}}'::json)")
+    payload_exists = column_exists(DB_SCHEMA, "client_docflow_notifications", "payload")
+    meta_json_exists = column_exists(DB_SCHEMA, "client_docflow_notifications", "meta_json")
+    payload_data_type = get_column_data_type(DB_SCHEMA, "client_docflow_notifications", "payload") if payload_exists else None
+
+    if payload_exists and payload_data_type == "json":
+        if meta_json_exists:
+            op.execute(
+                f"UPDATE {DB_SCHEMA}.client_docflow_notifications "
+                "SET payload = coalesce(meta_json::json, '{}'::json)"
+            )
+        else:
+            op.execute(f"UPDATE {DB_SCHEMA}.client_docflow_notifications SET payload = coalesce(payload, '{{}}'::json)")
+    elif payload_exists:
+        if meta_json_exists:
+            op.execute(
+                f"UPDATE {DB_SCHEMA}.client_docflow_notifications "
+                "SET payload = coalesce(meta_json::jsonb, '{}'::jsonb)"
+            )
+        else:
+            op.execute(f"UPDATE {DB_SCHEMA}.client_docflow_notifications SET payload = coalesce(payload, '{{}}'::jsonb)")
     op.execute(f"UPDATE {DB_SCHEMA}.client_docflow_notifications SET is_read = (read_at is not null)")
 
     op.alter_column("client_docflow_notifications", "kind", nullable=False, schema=DB_SCHEMA)
