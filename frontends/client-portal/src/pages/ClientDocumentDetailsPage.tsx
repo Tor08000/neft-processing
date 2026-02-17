@@ -7,11 +7,14 @@ import {
   getClientDocumentEdoState,
   getClientDocumentTimeline,
   sendClientDocument,
+  signClientDocument,
+  listClientDocumentSignatures,
   submitClientDocument,
   uploadClientDocumentFile,
   type ClientDocumentDetails,
   type ClientDocumentEdoState,
   type ClientDocumentTimelineEvent,
+  type ClientDocumentSignature,
 } from "../api/client/documents";
 import { ApiError } from "../api/http";
 import { useAuth } from "../auth/AuthContext";
@@ -35,6 +38,11 @@ export function ClientDocumentDetailsPage() {
   const [submitting, setSubmitting] = useState(false);
   const [timeline, setTimeline] = useState<ClientDocumentTimelineEvent[]>([]);
   const [edoState, setEdoState] = useState<ClientDocumentEdoState | null>(null);
+  const [signatures, setSignatures] = useState<ClientDocumentSignature[]>([]);
+  const [signing, setSigning] = useState(false);
+  const [confirmChecked, setConfirmChecked] = useState(false);
+  const [signerFullName, setSignerFullName] = useState("");
+  const [signerPosition, setSignerPosition] = useState("");
   const [sendingToEdo, setSendingToEdo] = useState(false);
   const [activeTab, setActiveTab] = useState<"files" | "history">("files");
   const { toast, showToast } = useToast();
@@ -42,11 +50,17 @@ export function ClientDocumentDetailsPage() {
   useEffect(() => {
     if (!id) return;
     setLoading(true);
-    Promise.all([getClientDocument(id, user), getClientDocumentTimeline(id, user), getClientDocumentEdoState(id, user)])
-      .then(([d, events, edo]) => {
+    Promise.all([
+      getClientDocument(id, user),
+      getClientDocumentTimeline(id, user),
+      getClientDocumentEdoState(id, user),
+      listClientDocumentSignatures(id, user),
+    ])
+      .then(([d, events, edo, signs]) => {
         setDocument(d);
         setTimeline(events);
         setEdoState(edo);
+        setSignatures(signs);
         setErrorCode(null);
       })
       .catch((err: unknown) => {
@@ -119,7 +133,54 @@ export function ClientDocumentDetailsPage() {
     }
   };
 
-  const statusLabel = document.status === "READY_TO_SEND" ? "Готов к отправке" : "Черновик";
+
+  const onSign = async () => {
+    if (!id) return;
+    setSigning(true);
+    try {
+      await signClientDocument(
+        id,
+        {
+          consent_text_version: "v1",
+          checkbox_confirmed: confirmChecked,
+          signer_full_name: signerFullName || undefined,
+          signer_position: signerPosition || undefined,
+        },
+        user,
+      );
+      const [updated, events, signs] = await Promise.all([
+        getClientDocument(id, user),
+        getClientDocumentTimeline(id, user),
+        listClientDocumentSignatures(id, user),
+      ]);
+      setDocument(updated);
+      setTimeline(events);
+      setSignatures(signs);
+      showToast({ kind: "success", text: "Документ подписан" });
+    } catch (err) {
+      if (err instanceof ApiError) {
+        if (err.status === 409 && err.detail === "DOC_NOT_READY_TO_SIGN") {
+          showToast({ kind: "error", text: "Документ ещё не готов к подписи" });
+        } else if (err.status === 409 && err.detail === "SIGN_NOT_ALLOWED_FOR_OUTBOUND") {
+          showToast({ kind: "error", text: "Подписание доступно только для входящих документов" });
+        } else {
+          showToast({ kind: "error", text: "Не удалось подписать документ" });
+        }
+      }
+    } finally {
+      setSigning(false);
+    }
+  };
+
+  const currentStatus = document?.status;
+  const statusLabel =
+    currentStatus === "READY_TO_SEND"
+      ? "Готов к отправке"
+      : currentStatus === "READY_TO_SIGN"
+        ? "Готов к подписи"
+        : currentStatus === "SIGNED_CLIENT" || currentStatus === "CLOSED"
+          ? "Подписан"
+          : "Черновик";
 
   const onSendToEdo = async () => {
     if (!id) return;
@@ -144,7 +205,9 @@ export function ClientDocumentDetailsPage() {
     }
   };
 
-  const canSubmit = document.direction === "OUTBOUND" && document.status === "DRAFT";
+  const canSubmit = document?.direction === "OUTBOUND" && document?.status === "DRAFT";
+  const canSign = document?.direction === "INBOUND" && document?.status === "READY_TO_SIGN";
+  const isSigned = document?.status === "SIGNED_CLIENT" || document?.status === "CLOSED";
 
   const describeEvent = (event: ClientDocumentTimelineEvent): string => {
     if (event.event_type === "DOCUMENT_CREATED") return "Документ создан";
@@ -152,6 +215,7 @@ export function ClientDocumentDetailsPage() {
     if (event.event_type === "STATUS_CHANGED") {
       return `Статус изменён: ${String(event.meta.from ?? "—")} → ${String(event.meta.to ?? "—")}`;
     }
+    if (event.event_type === "SIGNED_CLIENT") return "Документ подписан клиентом";
     return event.event_type;
   };
 
@@ -187,6 +251,41 @@ export function ClientDocumentDetailsPage() {
       ) : null}
 
 
+
+      {canSign ? (
+        <div style={{ margin: "12px 0", border: "1px solid #e5e7eb", borderRadius: 8, padding: 12 }}>
+          <h3>Подпись</h3>
+          <label style={{ display: "block", marginBottom: 8 }}>
+            <input type="checkbox" checked={confirmChecked} onChange={(e) => setConfirmChecked(e.target.checked)} />
+            {" "}Подтверждаю, что ознакомился и принимаю условия документа
+          </label>
+          <input
+            placeholder="ФИО"
+            value={signerFullName}
+            onChange={(e) => setSignerFullName(e.target.value)}
+            style={{ marginBottom: 8, width: "100%" }}
+          />
+          <input
+            placeholder="Должность (опционально)"
+            value={signerPosition}
+            onChange={(e) => setSignerPosition(e.target.value)}
+            style={{ marginBottom: 8, width: "100%" }}
+          />
+          <button type="button" disabled={!confirmChecked || signing} onClick={() => void onSign()}>
+            {signing ? "Подписание…" : "Подписать"}
+          </button>
+        </div>
+      ) : null}
+
+      {isSigned ? (
+        <div style={{ margin: "12px 0" }}>
+          <strong>Подписано</strong>
+          <div className="muted small">
+            {signatures[0]?.signed_at ? new Date(signatures[0].signed_at).toLocaleString() : "—"}
+            {signatures[0]?.signer_user_id ? ` · ${signatures[0].signer_user_id}` : ""}
+          </div>
+        </div>
+      ) : null}
 
       {document.direction === "OUTBOUND" ? (
         <div style={{ margin: "12px 0" }}>

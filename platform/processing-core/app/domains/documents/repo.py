@@ -3,9 +3,17 @@ from __future__ import annotations
 from datetime import datetime
 
 from sqlalchemy import desc, func, or_
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.domains.documents.models import Document, DocumentDirection, DocumentEdoState, DocumentFile, DocumentTimelineEvent
+from app.domains.documents.models import (
+    Document,
+    DocumentDirection,
+    DocumentEdoState,
+    DocumentFile,
+    DocumentSignature,
+    DocumentTimelineEvent,
+)
 
 
 class DocumentsRepository:
@@ -95,6 +103,53 @@ class DocumentsRepository:
             .one_or_none()
         )
         return row
+
+
+    def get_signature_for_user(
+        self, *, document_id: str, signer_user_id: str, signature_method: str = "SIMPLE"
+    ) -> DocumentSignature | None:
+        return (
+            self.db.query(DocumentSignature)
+            .filter(DocumentSignature.document_id == document_id)
+            .filter(DocumentSignature.signer_user_id == signer_user_id)
+            .filter(DocumentSignature.signature_method == signature_method)
+            .one_or_none()
+        )
+
+    def list_signatures(self, *, document_id: str) -> list[DocumentSignature]:
+        return (
+            self.db.query(DocumentSignature)
+            .filter(DocumentSignature.document_id == document_id)
+            .order_by(DocumentSignature.signed_at.desc())
+            .all()
+        )
+
+    def create_signature(self, **kwargs) -> DocumentSignature:
+        item = DocumentSignature(**kwargs)
+        self.db.add(item)
+        try:
+            self.db.commit()
+        except IntegrityError:
+            self.db.rollback()
+            existing = self.get_signature_for_user(
+                document_id=str(kwargs.get("document_id")),
+                signer_user_id=str(kwargs.get("signer_user_id")),
+                signature_method=str(kwargs.get("signature_method") or "SIMPLE"),
+            )
+            if existing is None:
+                raise
+            return existing
+        self.db.refresh(item)
+        return item
+
+    def mark_document_signed_by_client(self, *, document: Document, signer_user_id: str, signed_at: datetime, status: str) -> Document:
+        document.signed_by_client_at = signed_at
+        document.signed_by_client_user_id = signer_user_id
+        document.status = status
+        self.db.add(document)
+        self.db.commit()
+        self.db.refresh(document)
+        return document
 
     def create_timeline_event(self, **kwargs) -> DocumentTimelineEvent:
         item = DocumentTimelineEvent(**kwargs)

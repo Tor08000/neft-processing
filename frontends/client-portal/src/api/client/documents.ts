@@ -3,7 +3,7 @@ import type { AuthSession } from "../types";
 
 export type ClientDocumentsDirection = "inbound" | "outbound";
 
-export type ClientDocumentStatus = "DRAFT" | "READY_TO_SEND" | string;
+export type ClientDocumentStatus = "DRAFT" | "READY_TO_SEND" | "READY_TO_SIGN" | "SIGNED_CLIENT" | "CLOSED" | string;
 
 export type ClientDocumentListItem = {
   id: string;
@@ -39,10 +39,43 @@ export type ClientDocumentDetails = {
   status: ClientDocumentStatus;
   created_at: string;
   updated_at: string;
+  signed_by_client_at?: string | null;
+  signed_by_client_user_id?: string | null;
   files: ClientDocumentFile[];
 };
 
 
+
+
+export type ClientDocumentSignPayload = {
+  consent_text_version: string;
+  checkbox_confirmed: boolean;
+  signer_full_name?: string;
+  signer_position?: string;
+};
+
+export type ClientDocumentSignResult = {
+  document_id: string;
+  status: string;
+  signed_by_client_at: string | null;
+  signature_id: string;
+  document_hash_sha256: string;
+};
+
+export type ClientDocumentSignature = {
+  id: string;
+  document_id: string;
+  signer_user_id: string;
+  signer_type: string;
+  signature_method: string;
+  consent_text_version: string;
+  document_hash_sha256: string;
+  signed_at: string;
+  ip: string | null;
+  user_agent: string | null;
+  payload: Record<string, unknown> | null;
+  created_at: string;
+};
 
 export type ClientDocumentEdoState = {
   id: string;
@@ -156,4 +189,17 @@ export function sendClientDocument(documentId: string, user: AuthSession | null)
 
 export function getClientDocumentEdoState(documentId: string, user: AuthSession | null): Promise<ClientDocumentEdoState | null> {
   return request<ClientDocumentEdoState | null>(`/client/documents/${documentId}/edo`, { method: "GET" }, withToken(user));
+}
+
+
+export function signClientDocument(
+  documentId: string,
+  payload: ClientDocumentSignPayload,
+  user: AuthSession | null,
+): Promise<ClientDocumentSignResult> {
+  return request<ClientDocumentSignResult>(`/client/documents/${documentId}/sign`, { method: "POST", body: JSON.stringify(payload) }, withToken(user));
+}
+
+export function listClientDocumentSignatures(documentId: string, user: AuthSession | null): Promise<ClientDocumentSignature[]> {
+  return request<ClientDocumentSignature[]>(`/client/documents/${documentId}/signatures`, { method: "GET" }, withToken(user));
 }

@@ -8,7 +8,7 @@ from uuid import uuid4
 
 from fastapi import HTTPException, UploadFile
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from app.domains.documents.models import (
     Document,
@@ -26,6 +26,9 @@ from app.domains.documents.schemas import (
     DocumentListItem,
     DocumentOut,
     DocumentsListResponse,
+    DocumentSignIn,
+    DocumentSignResult,
+    DocumentSignatureOut,
 )
 from app.domains.documents.timeline_schemas import TimelineEventOut
 from app.domains.documents.timeline_service import (
@@ -292,6 +295,17 @@ class DocumentsService:
             actor_user_id=actor_user_id,
             request_context=request_context,
         )
+        if document.status != DocumentStatus.READY_TO_SIGN.value:
+            previous_status = document.status
+            self.repo.update_document_status(document=document, status=DocumentStatus.READY_TO_SIGN.value)
+            self.timeline.append_event(
+                document,
+                event_type=TimelineEventType.STATUS_CHANGED,
+                meta={"from": previous_status, "to": DocumentStatus.READY_TO_SIGN.value},
+                actor_type=TimelineActorType.SYSTEM,
+                actor_user_id=actor_user_id,
+                request_context=request_context,
+            )
         return self._to_file_out(item)
 
     def submit_ready_to_send(
@@ -326,6 +340,119 @@ class DocumentsService:
             request_context=request_context,
         )
         return self._to_document_out(updated, files)
+
+    def sign_inbound_document(
+        self,
+        *,
+        client_id: str,
+        document_id: str,
+        signer_user_id: str,
+        payload: DocumentSignIn,
+        request_context: TimelineRequestContext | None = None,
+    ) -> DocumentSignResult:
+        document = self.repo.get_document(client_id=client_id, document_id=document_id)
+        if document is None:
+            raise HTTPException(status_code=403, detail="forbidden")
+        if document.direction != DocumentDirection.INBOUND.value:
+            raise HTTPException(status_code=409, detail="SIGN_NOT_ALLOWED_FOR_OUTBOUND")
+        if document.status not in {DocumentStatus.READY_TO_SIGN.value, DocumentStatus.SIGNED_CLIENT.value, DocumentStatus.CLOSED.value}:
+            raise HTTPException(status_code=409, detail="DOC_NOT_READY_TO_SIGN")
+        if not payload.checkbox_confirmed:
+            raise HTTPException(status_code=400, detail="CHECKBOX_CONFIRMATION_REQUIRED")
+
+        existing = self.repo.get_signature_for_user(document_id=document_id, signer_user_id=signer_user_id, signature_method="SIMPLE")
+        if existing is not None:
+            return DocumentSignResult(
+                document_id=str(document.id),
+                status=document.status,
+                signed_by_client_at=document.signed_by_client_at,
+                signature_id=str(existing.id),
+                document_hash_sha256=existing.document_hash_sha256,
+            )
+
+        files = self.repo.list_document_files(document_id=document_id)
+        if not files:
+            raise HTTPException(status_code=409, detail="DOC_FILE_MISSING")
+        primary_file = files[0]
+        if self.storage is None:
+            raise RuntimeError("documents_storage_not_configured")
+        try:
+            stream = self.storage.get_object_stream(primary_file.storage_key)
+            file_bytes = stream.read()
+        except Exception as exc:
+            raise HTTPException(status_code=409, detail="DOC_FILE_MISSING") from exc
+        if not file_bytes:
+            raise HTTPException(status_code=409, detail="DOC_FILE_MISSING")
+
+        digest = hashlib.sha256(file_bytes).hexdigest()
+        signed_at = datetime.now(timezone.utc)
+        signature = self.repo.create_signature(
+            id=str(uuid4()),
+            document_id=document_id,
+            client_id=client_id,
+            signer_user_id=signer_user_id,
+            signer_type="CLIENT_USER",
+            signature_method="SIMPLE",
+            consent_text_version=payload.consent_text_version,
+            document_hash_sha256=digest,
+            signed_at=signed_at,
+            ip=request_context.ip if request_context else None,
+            user_agent=request_context.user_agent if request_context else None,
+            payload={
+                "checkbox": payload.checkbox_confirmed,
+                "full_name": payload.signer_full_name,
+                "position": payload.signer_position,
+            },
+        )
+
+        updated = self.repo.mark_document_signed_by_client(
+            document=document,
+            signer_user_id=signer_user_id,
+            signed_at=signed_at,
+            status=DocumentStatus.SIGNED_CLIENT.value,
+        )
+        self.timeline.append_event(
+            updated,
+            event_type=TimelineEventType.SIGNED_CLIENT,
+            meta={
+                "signature_id": str(signature.id),
+                "document_hash_sha256": digest,
+                "consent_text_version": payload.consent_text_version,
+            },
+            actor_type=TimelineActorType.USER,
+            actor_user_id=signer_user_id,
+            request_context=request_context,
+        )
+        return DocumentSignResult(
+            document_id=str(updated.id),
+            status=updated.status,
+            signed_by_client_at=updated.signed_by_client_at,
+            signature_id=str(signature.id),
+            document_hash_sha256=digest,
+        )
+
+    def list_document_signatures(self, *, client_id: str, document_id: str) -> list[DocumentSignatureOut]:
+        document = self.repo.get_document(client_id=client_id, document_id=document_id)
+        if document is None:
+            raise HTTPException(status_code=404, detail="document_not_found")
+        items = self.repo.list_signatures(document_id=document_id)
+        return [
+            DocumentSignatureOut(
+                id=str(item.id),
+                document_id=str(item.document_id),
+                signer_user_id=str(item.signer_user_id),
+                signer_type=item.signer_type,
+                signature_method=item.signature_method,
+                consent_text_version=item.consent_text_version,
+                document_hash_sha256=item.document_hash_sha256,
+                signed_at=item.signed_at,
+                ip=item.ip,
+                user_agent=item.user_agent,
+                payload=item.payload,
+                created_at=item.created_at,
+            )
+            for item in items
+        ]
 
     def list_timeline_events(self, *, client_id: str, document_id: str) -> list[TimelineEventOut]:
         document = self.repo.get_document(client_id=client_id, document_id=document_id)
@@ -403,5 +530,7 @@ class DocumentsService:
             currency=document.currency,
             created_at=document.created_at,
             updated_at=document.updated_at,
+            signed_by_client_at=document.signed_by_client_at,
+            signed_by_client_user_id=str(document.signed_by_client_user_id) if document.signed_by_client_user_id else None,
             files=[self._to_file_out(item) for item in files],
         )
