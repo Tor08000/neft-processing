@@ -96,7 +96,7 @@ def _ensure_client_context(principal: Principal) -> str:
 def _enforce_fleet_write_access(
     *,
     db: Session,
-    request: Request | None,
+    request: Request,
     principal: Principal,
 ) -> None:
     enforce_entitlement(

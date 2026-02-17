@@ -99,9 +99,7 @@ def _first_column(*columns):
     return None
 
 
-def _correlation_id(request: Request | None) -> str | None:
-    if not request:
-        return None
+def _correlation_id(request: Request) -> str | None:
     return request.headers.get("x-request-id") or request.headers.get("x-correlation-id")
 
 

@@ -6,7 +6,7 @@ import math
 import os
 import secrets
 from hashlib import sha256
-from typing import Any
+from typing import Any, Optional
 from datetime import date, datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
 from io import StringIO
@@ -6254,8 +6254,8 @@ def list_user_invitations(
 @router.post("/users/invitations/{invitation_id}/revoke", response_model=ClientInvitationActionResponse)
 def revoke_user_invitation(
     invitation_id: str,
-    payload: ClientInvitationRevokeRequest | None = None,
-    request: Request | None = None,
+    request: Request,
+    payload: Optional[ClientInvitationRevokeRequest] = None,
     token: dict = Depends(client_auth.require_onboarding_user),
     db: Session = Depends(get_db),
 ) -> ClientInvitationActionResponse:
@@ -6279,19 +6279,18 @@ def revoke_user_invitation(
     invitation.updated_at = datetime.now(timezone.utc)
 
     _enqueue_invitation_event(db, invitation=invitation, event_type="INVITATION_REVOKED")
-    if request is not None:
-        _audit_event(
-            db,
-            request=request,
-            token=token,
-            event_type="invitation_revoke",
-            entity_type="client_invitation",
-            entity_id=str(invitation.id),
-            before={"status": "PENDING"},
-            after={"status": "REVOKED"},
-            action="revoke_invitation",
-            reason=payload.reason if payload else None,
-        )
+    _audit_event(
+        db,
+        request=request,
+        token=token,
+        event_type="invitation_revoke",
+        entity_type="client_invitation",
+        entity_id=str(invitation.id),
+        before={"status": "PENDING"},
+        after={"status": "REVOKED"},
+        action="revoke_invitation",
+        reason=payload.reason if payload else None,
+    )
     db.commit()
     return ClientInvitationActionResponse(status="REVOKED")
 
@@ -6299,8 +6298,8 @@ def revoke_user_invitation(
 @router.post("/users/invitations/{invitation_id}/resend", response_model=ClientInvitationActionResponse)
 def resend_user_invitation(
     invitation_id: str,
-    payload: ClientInvitationResendRequest | None = None,
-    request: Request | None = None,
+    request: Request,
+    payload: Optional[ClientInvitationResendRequest] = None,
     token: dict = Depends(client_auth.require_onboarding_user),
     db: Session = Depends(get_db),
 ) -> ClientInvitationActionResponse:
@@ -6335,18 +6334,17 @@ def resend_user_invitation(
 
     _enqueue_invitation_event(db, invitation=invitation, event_type="INVITATION_RESENT", token_raw=token_raw)
     _deliver_invitation_email(db, invitation=invitation, token_raw=token_raw, event_type="INVITATION_RESENT")
-    if request is not None:
-        _audit_event(
-            db,
-            request=request,
-            token=token,
-            event_type="invitation_resend",
-            entity_type="client_invitation",
-            entity_id=str(invitation.id),
-            before={"resent_count": int(invitation.resent_count or 0) - 1},
-            after={"resent_count": int(invitation.resent_count or 0)},
-            action="resend_invitation",
-        )
+    _audit_event(
+        db,
+        request=request,
+        token=token,
+        event_type="invitation_resend",
+        entity_type="client_invitation",
+        entity_id=str(invitation.id),
+        before={"resent_count": int(invitation.resent_count or 0) - 1},
+        after={"resent_count": int(invitation.resent_count or 0)},
+        action="resend_invitation",
+    )
     db.commit()
     return ClientInvitationActionResponse(status="PENDING", expires_at=invitation.expires_at, resent_count=int(invitation.resent_count or 0))
 
