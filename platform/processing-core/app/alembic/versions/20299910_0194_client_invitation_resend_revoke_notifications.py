@@ -23,6 +23,10 @@ def _has_column(inspector: sa.Inspector, table: str, column: str) -> bool:
     return any(item["name"] == column for item in inspector.get_columns(table, schema=DB_SCHEMA))
 
 
+def _notification_outbox_has_aggregate_columns(inspector: sa.Inspector) -> bool:
+    return _has_column(inspector, "notification_outbox", "aggregate_type") and _has_column(inspector, "notification_outbox", "aggregate_id")
+
+
 def upgrade() -> None:
     bind = op.get_bind()
     inspector = sa.inspect(bind)
@@ -70,7 +74,7 @@ def upgrade() -> None:
         sa.Column("id", GUID(), primary_key=True),
         sa.Column("event_type", sa.Text(), nullable=False),
         sa.Column("aggregate_type", sa.Text(), nullable=False, server_default="client_invitation"),
-        sa.Column("aggregate_id", GUID(), nullable=False),
+        sa.Column("aggregate_id", sa.Text(), nullable=False),
         sa.Column("tenant_client_id", GUID(), nullable=True),
         sa.Column("payload", sa.JSON(), nullable=False, server_default=sa.text("'{}'::jsonb")),
         sa.Column("status", sa.String(length=16), nullable=False, server_default="NEW"),
@@ -81,8 +85,40 @@ def upgrade() -> None:
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
         schema=DB_SCHEMA,
     )
+
+    inspector = sa.inspect(bind)
+    if not _notification_outbox_has_aggregate_columns(inspector):
+        if not _has_column(inspector, "notification_outbox", "aggregate_type"):
+            op.add_column("notification_outbox", sa.Column("aggregate_type", sa.Text(), nullable=True), schema=DB_SCHEMA)
+        if not _has_column(inspector, "notification_outbox", "aggregate_id"):
+            op.add_column("notification_outbox", sa.Column("aggregate_id", sa.Text(), nullable=True), schema=DB_SCHEMA)
+
+        op.execute(
+            sa.text(
+                f"""
+                UPDATE {DB_SCHEMA}.notification_outbox
+                SET aggregate_type = COALESCE(aggregate_type, subject_type::text, 'notification')
+                WHERE aggregate_type IS NULL
+                """
+            )
+        )
+        op.execute(
+            sa.text(
+                f"""
+                UPDATE {DB_SCHEMA}.notification_outbox
+                SET aggregate_id = COALESCE(aggregate_id, subject_id, id::text)
+                WHERE aggregate_id IS NULL
+                """
+            )
+        )
+
+        op.alter_column("notification_outbox", "aggregate_type", nullable=False, schema=DB_SCHEMA)
+        op.alter_column("notification_outbox", "aggregate_id", nullable=False, schema=DB_SCHEMA)
+
     create_index_if_not_exists(bind, "ix_notification_outbox_status_retry", "notification_outbox", ["status", "next_attempt_at"], schema=DB_SCHEMA)
-    create_index_if_not_exists(bind, "ix_notification_outbox_aggregate", "notification_outbox", ["aggregate_type", "aggregate_id"], schema=DB_SCHEMA)
+    inspector = sa.inspect(bind)
+    if _notification_outbox_has_aggregate_columns(inspector):
+        create_index_if_not_exists(bind, "ix_notification_outbox_aggregate", "notification_outbox", ["aggregate_type", "aggregate_id"], schema=DB_SCHEMA)
 
 
 def downgrade() -> None:
