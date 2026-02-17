@@ -72,12 +72,45 @@ class DocumentOut(BaseModel):
     currency: str | None = None
     created_at: dt.datetime
     updated_at: dt.datetime
+    signed_by_client_at: dt.datetime | None = None
+    signed_by_client_user_id: str | None = None
     files: list[DocumentFileOut]
 
 
 class DocumentDetailsResponse(DocumentOut):
     pass
 
+
+
+
+class DocumentSignIn(BaseModel):
+    consent_text_version: str = Field(min_length=1, max_length=32)
+    checkbox_confirmed: bool
+    signer_full_name: str | None = Field(default=None, max_length=255)
+    signer_position: str | None = Field(default=None, max_length=255)
+
+
+class DocumentSignatureOut(BaseModel):
+    id: str
+    document_id: str
+    signer_user_id: str
+    signer_type: str
+    signature_method: str
+    consent_text_version: str
+    document_hash_sha256: str
+    signed_at: dt.datetime
+    ip: str | None = None
+    user_agent: str | None = None
+    payload: dict | None = None
+    created_at: dt.datetime
+
+
+class DocumentSignResult(BaseModel):
+    document_id: str
+    status: str
+    signed_by_client_at: dt.datetime | None = None
+    signature_id: str
+    document_hash_sha256: str
 
 class EdoStateOut(BaseModel):
     id: str

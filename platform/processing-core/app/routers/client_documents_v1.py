@@ -16,6 +16,9 @@ from app.domains.documents.schemas import (
     DocumentDetailsResponse,
     DocumentFileOut,
     DocumentOut,
+    DocumentSignIn,
+    DocumentSignResult,
+    DocumentSignatureOut,
     DocumentsListResponse,
     EdoStateOut,
 )
@@ -149,6 +152,36 @@ def submit_client_document(
         request_context=_timeline_request_context(request),
     )
 
+
+
+
+@router.post("/{document_id}/sign", response_model=DocumentSignResult)
+def sign_client_document(
+    document_id: str,
+    payload: DocumentSignIn,
+    request: Request,
+    token: dict = Depends(client_portal_user),
+    svc: DocumentsService = Depends(_service),
+) -> DocumentSignResult:
+    signer_user_id = token.get("user_id") or token.get("sub")
+    if not signer_user_id:
+        raise HTTPException(status_code=403, detail="forbidden")
+    return svc.sign_inbound_document(
+        client_id=_client_id_from_token(token),
+        document_id=document_id,
+        signer_user_id=str(signer_user_id),
+        payload=payload,
+        request_context=_timeline_request_context(request),
+    )
+
+
+@router.get("/{document_id}/signatures", response_model=list[DocumentSignatureOut])
+def get_client_document_signatures(
+    document_id: str,
+    token: dict = Depends(client_portal_user),
+    svc: DocumentsService = Depends(_service),
+) -> list[DocumentSignatureOut]:
+    return svc.list_document_signatures(client_id=_client_id_from_token(token), document_id=document_id)
 
 @router.get("/{document_id}/timeline", response_model=list[TimelineEventOut])
 def get_client_document_timeline(

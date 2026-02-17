@@ -23,6 +23,9 @@ class DocumentStatus(str, enum.Enum):
     REJECTED = "REJECTED"
     CANCELLED = "CANCELLED"
     DELIVERED = "DELIVERED"
+    READY_TO_SIGN = "READY_TO_SIGN"
+    SIGNED_CLIENT = "SIGNED_CLIENT"
+    CLOSED = "CLOSED"
 
 
 class DocumentSenderType(str, enum.Enum):
@@ -72,9 +75,12 @@ class Document(Base):
     updated_at: Mapped[DateTime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
     )
+    signed_by_client_at: Mapped[DateTime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    signed_by_client_user_id: Mapped[str | None] = mapped_column(GUID(), nullable=True)
 
     files: Mapped[list["DocumentFile"]] = relationship(back_populates="document")
     edo_state: Mapped["DocumentEdoState | None"] = relationship(back_populates="document", uselist=False)
+    signatures: Mapped[list["DocumentSignature"]] = relationship(back_populates="document")
 
 
 class DocumentFile(Base):
@@ -147,3 +153,32 @@ class DocumentEdoState(Base):
     )
 
     document: Mapped[Document] = relationship(back_populates="edo_state")
+
+
+class DocumentSignature(Base):
+    __tablename__ = "document_signatures"
+    __table_args__ = (
+        UniqueConstraint("document_id", "signer_user_id", "signature_method", name="uq_doc_signature_per_user_method"),
+        Index("ix_document_signatures_client_id", "client_id"),
+        Index("ix_document_signatures_document_id", "document_id"),
+        {"extend_existing": True},
+    )
+
+    id: Mapped[str] = mapped_column(GUID(), primary_key=True)
+    document_id: Mapped[str] = mapped_column(GUID(), ForeignKey("documents.id", ondelete="CASCADE"), nullable=False)
+    client_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    signer_user_id: Mapped[str] = mapped_column(GUID(), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    signer_type: Mapped[str] = mapped_column(Text, nullable=False, default="CLIENT_USER")
+    signature_method: Mapped[str] = mapped_column(String(16), nullable=False, default="SIMPLE")
+    consent_text_version: Mapped[str] = mapped_column(Text, nullable=False)
+    document_hash_sha256: Mapped[str] = mapped_column(Text, nullable=False)
+    signed_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True), nullable=False)
+    ip: Mapped[str | None] = mapped_column(Text, nullable=True)
+    user_agent: Mapped[str | None] = mapped_column(Text, nullable=True)
+    payload: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[DateTime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+    document: Mapped[Document] = relationship(back_populates="signatures")
