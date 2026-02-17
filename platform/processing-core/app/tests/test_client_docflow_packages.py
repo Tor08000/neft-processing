@@ -61,7 +61,7 @@ def _move_to_in_review(app_id: str) -> None:
         session.close()
 
 
-def _prepare_signed_doc(api_client: TestClient, app_id: str, token: str) -> None:
+def _prepare_signed_doc(api_client: TestClient, app_id: str, token: str) -> str:
     _move_to_in_review(app_id)
     api_client.post(f"/api/core/client/v1/onboarding/applications/{app_id}/generate-docs", headers={"Authorization": f"Bearer {token}"})
     docs = api_client.get(
@@ -79,55 +79,55 @@ def _prepare_signed_doc(api_client: TestClient, app_id: str, token: str) -> None
         headers={"Authorization": f"Bearer {token}"},
         json={"request_id": req["request_id"], "otp_code": req["otp_code"]},
     )
+    return doc_id
 
 
 def test_create_and_download_package(monkeypatch) -> None:
     _setup_env(monkeypatch)
     with TestClient(app) as api_client:
         app_id, token = _create(api_client)
-        _prepare_signed_doc(api_client, app_id, token)
+        doc_id = _prepare_signed_doc(api_client, app_id, token)
 
         created = api_client.post(
-            "/api/core/client/docflow/packages",
+            "/api/core/client/documents/package",
             headers={"Authorization": f"Bearer {token}"},
-            json={"application_id": app_id},
+            json={"ids": [doc_id]},
         )
-        assert created.status_code == 200
-        package_id = created.json()["id"]
-        assert created.json()["status"] == "READY"
+        assert created.status_code == 202
+        package_id = created.json()["package_id"]
 
-        listed = api_client.get(
-            "/api/core/client/docflow/packages",
+        status = api_client.get(
+            f"/api/core/client/documents/package/{package_id}",
             headers={"Authorization": f"Bearer {token}"},
         )
-        assert listed.status_code == 200
-        assert any(item["id"] == package_id for item in listed.json()["items"])
+        assert status.status_code == 200
+        assert status.json()["status"] in ("CREATING", "READY")
 
         downloaded = api_client.get(
-            f"/api/core/client/docflow/packages/{package_id}/download",
+            f"/api/core/client/documents/package/{package_id}/download",
             headers={"Authorization": f"Bearer {token}"},
         )
         assert downloaded.status_code == 200
         archive = zipfile.ZipFile(io.BytesIO(downloaded.content))
         names = set(archive.namelist())
-        assert "manifest.json" in names
-        assert any(name.endswith("_signed.pdf") for name in names)
+        assert any(name.startswith("outbound/") for name in names)
+        assert any(name.startswith("signatures/") for name in names)
 
 
 def test_cannot_download_foreign_package(monkeypatch) -> None:
     _setup_env(monkeypatch)
     with TestClient(app) as api_client:
         app_id, token = _create(api_client)
-        _prepare_signed_doc(api_client, app_id, token)
+        doc_id = _prepare_signed_doc(api_client, app_id, token)
         package_id = api_client.post(
-            "/api/core/client/docflow/packages",
+            "/api/core/client/documents/package",
             headers={"Authorization": f"Bearer {token}"},
-            json={"application_id": app_id},
-        ).json()["id"]
+            json={"ids": [doc_id]},
+        ).json()["package_id"]
 
         _, token_other = _create(api_client)
         forbidden = api_client.get(
-            f"/api/core/client/docflow/packages/{package_id}/download",
+            f"/api/core/client/documents/package/{package_id}/download",
             headers={"Authorization": f"Bearer {token_other}"},
         )
         assert forbidden.status_code == 403

@@ -177,3 +177,69 @@ export async function downloadGeneratedOnboardingDocument(docId: string, filenam
     return handleAuthError(error);
   }
 }
+
+
+export interface DocumentsPackageCreateResponse {
+  package_id: string;
+  status: "CREATING" | "READY" | "FAILED";
+}
+
+export interface DocumentsPackageStatusResponse {
+  package_id: string;
+  status: "CREATING" | "READY" | "FAILED";
+  download_url?: string | null;
+}
+
+export async function createDocumentsPackage(ids: string[]): Promise<DocumentsPackageCreateResponse> {
+  const token = onboardingToken();
+  try {
+    return await request<DocumentsPackageCreateResponse>(
+      `${ONBOARDING_DOCS_BASE}/documents/package`,
+      { method: "POST", headers: authHeaders(token), body: JSON.stringify({ ids }) },
+      { base: "core", token },
+    );
+  } catch (error) {
+    return handleAuthError(error);
+  }
+}
+
+export async function getDocumentsPackageStatus(packageId: string): Promise<DocumentsPackageStatusResponse> {
+  const token = onboardingToken();
+  try {
+    return await request<DocumentsPackageStatusResponse>(
+      `${ONBOARDING_DOCS_BASE}/documents/package/${packageId}`,
+      { method: "GET", headers: authHeaders(token) },
+      { base: "core", token },
+    );
+  } catch (error) {
+    return handleAuthError(error);
+  }
+}
+
+export async function downloadDocumentsPackage(packageId: string): Promise<void> {
+  const token = onboardingToken();
+  try {
+    const response = await fetch(`/api/core${ONBOARDING_DOCS_BASE}/documents/package/${packageId}/download`, {
+      method: "GET",
+      headers: authHeaders(token),
+    });
+    if (response.status === 401 || response.status === 403) {
+      clearOnboardingSession();
+      throw new Error("Сессия заявки устарела, начните заново");
+    }
+    if (!response.ok) {
+      throw new Error("Не удалось скачать пакет");
+    }
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `documents-package-${packageId}.zip`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
+  } catch (error) {
+    return handleAuthError(error);
+  }
+}

@@ -32,63 +32,84 @@ class ClientDocflowPackagesService:
         doc_ids: list[str] | None = None,
         package_kind: str = "ONBOARDING_SIGNED_SET",
     ) -> ClientDocumentPackage:
+        selected_ids = doc_ids or [
+            str(row.id)
+            for row in self.db.execute(
+                select(ClientGeneratedDocument.id).where(
+                    ClientGeneratedDocument.client_id == client_id,
+                    ClientGeneratedDocument.status == "SIGNED_BY_CLIENT",
+                )
+            ).scalars().all()
+        ]
+        package = self.create_documents_package(client_id=client_id, created_by_user_id=created_by_user_id, doc_ids=selected_ids)
+        return self.build_package(package.id)
+
+    def create_documents_package(
+        self,
+        *,
+        client_id: str,
+        created_by_user_id: str | None,
+        doc_ids: list[str],
+    ) -> ClientDocumentPackage:
+        docs = self._select_docs(client_id=client_id, doc_ids=doc_ids)
+        if len(docs) != len(set(doc_ids)):
+            raise HTTPException(status_code=403, detail={"reason_code": "document_forbidden"})
+
         package = ClientDocumentPackage(
             id=new_uuid_str(),
             client_id=client_id,
-            application_id=application_id,
-            package_kind=package_kind,
-            status="BUILDING",
+            application_id=None,
+            package_kind="DOCUMENTS_EXPORT",
+            status="CREATING",
             created_by_user_id=created_by_user_id,
         )
         self.db.add(package)
         self.db.commit()
         self.db.refresh(package)
 
+        for doc in docs:
+            self.db.add(
+                ClientDocumentPackageItem(
+                    id=new_uuid_str(),
+                    package_id=package.id,
+                    doc_id=str(doc.id),
+                    source_kind="GENERATED_DOC",
+                    storage_key=doc.storage_key,
+                    filename=doc.filename,
+                    mime=doc.mime,
+                    checksum_sha256=doc.checksum_sha256,
+                )
+            )
+        self.db.commit()
+        return package
+
+    def build_package(self, package_id: str) -> ClientDocumentPackage:
+        package = self.get_package(package_id)
+        if package is None:
+            raise HTTPException(status_code=404, detail={"reason_code": "package_not_found"})
+        items = list(
+            self.db.execute(select(ClientDocumentPackageItem).where(ClientDocumentPackageItem.package_id == package_id)).scalars().all()
+        )
         try:
-            docs = self._select_docs(client_id=client_id, application_id=application_id, doc_ids=doc_ids)
-            if not docs:
-                raise HTTPException(status_code=400, detail={"reason_code": "no_signed_documents"})
-            zip_payload, manifest = self._build_zip(docs)
-            checksum = hashlib.sha256(zip_payload).hexdigest()
-            key = f"client-doc-packages/{client_id}/{package.id}.zip"
+            zip_payload, checksum = self._build_zip(items)
+            key = f"client-doc-packages/{package.client_id}/{package.id}.zip"
             self.storage.ensure_bucket("client-generated-documents")
             self.storage.put_object("client-generated-documents", key, zip_payload, "application/zip")
             package.storage_key = key
-            package.filename = f"signed-documents-{package.id}.zip"
+            package.filename = f"documents-package-{package.id}.zip"
             package.size = len(zip_payload)
             package.checksum_sha256 = checksum
+            package.sha256 = checksum
             package.status = "READY"
+            package.error_code = None
             package.updated_at = datetime.now(timezone.utc)
             self.db.add(package)
-            for idx, item in enumerate(manifest["documents"], start=1):
-                self.db.add(
-                    ClientDocumentPackageItem(
-                        id=new_uuid_str(),
-                        package_id=package.id,
-                        doc_id=item["doc_id"],
-                        source_kind="GENERATED_DOC",
-                        storage_key=item["storage_key"],
-                        filename=f"{idx:02d}_{item['filename']}",
-                        mime="application/pdf",
-                        checksum_sha256=item.get("checksum_sha256"),
-                    )
-                )
             self.db.commit()
             self.db.refresh(package)
-            ClientSigningRepository(self.db).create_audit_event(
-                client_id=client_id,
-                application_id=application_id,
-                doc_id=None,
-                event_type="PACKAGE_READY",
-                actor_user_id=created_by_user_id,
-                actor_type="CLIENT_USER",
-                ip=None,
-                user_agent=None,
-                meta_json={"package_id": package.id, "package_kind": package_kind},
-            )
             return package
         except Exception:
             package.status = "FAILED"
+            package.error_code = "package_build_failed"
             self.db.add(package)
             self.db.commit()
             raise
@@ -103,41 +124,29 @@ class ClientDocflowPackagesService:
     def get_package(self, package_id: str) -> ClientDocumentPackage | None:
         return self.db.get(ClientDocumentPackage, package_id)
 
-    def _select_docs(self, *, client_id: str, application_id: str | None, doc_ids: list[str] | None) -> list[ClientGeneratedDocument]:
+    def _select_docs(self, *, client_id: str, doc_ids: list[str]) -> list[ClientGeneratedDocument]:
+        if not doc_ids:
+            raise HTTPException(status_code=400, detail={"reason_code": "empty_ids"})
         stmt = select(ClientGeneratedDocument).where(
             ClientGeneratedDocument.client_id == client_id,
-            ClientGeneratedDocument.status == "SIGNED_BY_CLIENT",
+            ClientGeneratedDocument.id.in_(doc_ids),
         )
-        if application_id:
-            stmt = stmt.where(ClientGeneratedDocument.client_application_id == application_id)
-        docs = list(self.db.execute(stmt.order_by(ClientGeneratedDocument.created_at.asc())).scalars().all())
-        if doc_ids:
-            allowed = set(doc_ids)
-            docs = [item for item in docs if str(item.id) in allowed]
-        return docs
+        return list(self.db.execute(stmt).scalars().all())
 
-    def _build_zip(self, docs: list[ClientGeneratedDocument]) -> tuple[bytes, dict]:
-        manifest_docs: list[dict] = []
+    def _build_zip(self, items: list[ClientDocumentPackageItem]) -> tuple[bytes, str]:
         output = io.BytesIO()
         with zipfile.ZipFile(output, mode="w", compression=zipfile.ZIP_DEFLATED) as archive:
-            for idx, doc in enumerate(docs, start=1):
-                stream = self.storage.get_object_stream("client-generated-documents", doc.storage_key)
+            for item in items:
+                stream = self.storage.get_object_stream("client-generated-documents", item.storage_key)
                 payload = stream.read()
-                filename = f"{idx:02d}_{doc.doc_kind}_v{doc.version}_signed.pdf"
+                doc_kind = "DOC"
+                doc_title = (item.filename or "document").replace(".pdf", "")
+                prefix = "outbound"
+                filename = f"{prefix}/{datetime.now(timezone.utc).date()}_{doc_kind}_{doc_title}_{str(item.doc_id)[:8]}.pdf"
                 archive.writestr(filename, payload)
-                manifest_docs.append(
-                    {
-                        "doc_id": str(doc.id),
-                        "doc_kind": doc.doc_kind,
-                        "version": doc.version,
-                        "status": doc.status,
-                        "storage_key": doc.storage_key,
-                        "filename": filename,
-                        "checksum_sha256": doc.checksum_sha256,
-                        "signed_at": doc.client_signed_at.isoformat() if doc.client_signed_at else None,
-                        "sign_method": doc.client_sign_method,
-                    }
+                archive.writestr(
+                    f"signatures/{item.doc_id}.json",
+                    json.dumps({"doc_id": item.doc_id, "checksum": item.checksum_sha256}, ensure_ascii=False),
                 )
-            manifest = {"documents": manifest_docs, "generated_at": datetime.now(timezone.utc).isoformat()}
-            archive.writestr("manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2).encode("utf-8"))
-        return output.getvalue(), manifest
+        raw = output.getvalue()
+        return raw, hashlib.sha256(raw).hexdigest()
