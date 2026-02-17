@@ -4,7 +4,7 @@ from fastapi.testclient import TestClient
 
 from app.db import get_sessionmaker
 from app.main import app
-from app.models.client_portal import ClientInvitation, NotificationOutbox
+from app.models.client_invitations import ClientInvitation, NotificationOutbox
 from app.tests.test_admin_onboarding_approve import _InMemoryStorage, _base_prefix, _create_and_submit_application, _jwt
 
 

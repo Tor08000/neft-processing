@@ -9,7 +9,7 @@ from sqlalchemy import and_, cast, func, or_, String
 from sqlalchemy.orm import Session
 
 from app.models.card import Card
-from app.models.client_portal import ClientUserRole
+from app.models.client_user_roles import ClientUserRole
 from app.models.documents import Document, DocumentFile, DocumentFileType, DocumentStatus, DocumentType
 from app.models.export_jobs import ExportJobReportType
 from app.models.fleet import ClientEmployee, FleetDriver

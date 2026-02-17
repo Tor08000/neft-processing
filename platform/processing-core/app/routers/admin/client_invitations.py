@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.api.dependencies.admin import require_admin_user
 from app.db import get_db
-from app.models.client_portal import ClientInvitation
+from app.models.client_invitations import ClientInvitation
 from app.schemas.client_portal_v1 import ClientInvitationActionResponse, ClientInvitationsResponse, ClientInvitationSummary
 
 router = APIRouter(prefix="/clients", tags=["admin"])

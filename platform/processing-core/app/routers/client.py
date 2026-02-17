@@ -8,7 +8,8 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.models.client_portal import ClientLimit, ClientOperation
+from app.models.client_limits import ClientLimit
+from app.models.client_operations import ClientOperation
 from app.schemas.client_portal import (
     ClientOperation as ClientOperationSchema,
     ClientOperationsResponse,

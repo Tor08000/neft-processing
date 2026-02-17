@@ -6,7 +6,8 @@ from uuid import uuid4
 from sqlalchemy.orm import Session
 
 from app.models.card import Card
-from app.models.client_portal import CardLimit, LimitTemplate
+from app.models.card_limits import CardLimit
+from app.models.limit_templates import LimitTemplate
 
 
 class CardsRepository:
