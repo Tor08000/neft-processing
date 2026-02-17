@@ -7,6 +7,7 @@ pytest.importorskip("neft_integration_hub")
 
 import neft_integration_hub.main as main_module
 
+
 def test_notifications_send_mock_mode(monkeypatch):
     object.__setattr__(main_module.settings, "notifications_mode", "mock")
     object.__setattr__(main_module.settings, "notifications_email_provider", "")
@@ -26,6 +27,7 @@ def test_notifications_send_mock_mode(monkeypatch):
 
 
 def test_notifications_send_real_mode(monkeypatch):
+    monkeypatch.setenv("APP_ENV", "prod")
     object.__setattr__(main_module.settings, "notifications_mode", "real")
     object.__setattr__(main_module.settings, "notifications_email_provider", "smtp")
 
@@ -43,9 +45,17 @@ def test_notifications_send_real_mode(monkeypatch):
         assert resp.json()["mode"] == "real"
 
 
-def test_real_mode_without_provider_fails_startup():
+def test_real_mode_without_provider_does_not_crash_startup(monkeypatch):
+    monkeypatch.setenv("APP_ENV", "prod")
     object.__setattr__(main_module.settings, "notifications_mode", "real")
     object.__setattr__(main_module.settings, "notifications_email_provider", "")
+    object.__setattr__(main_module.settings, "email_provider_mode", "mock")
+    object.__setattr__(main_module.settings, "app_env", "prod")
 
-    with pytest.raises(RuntimeError, match="notifications_real_mode_requires_provider"):
-        main_module.startup()
+    main_module.startup()
+
+    with TestClient(main_module.app) as client:
+        health = client.get("/health")
+
+    assert health.status_code == 200
+    assert health.json()["email_provider"] == "disabled"

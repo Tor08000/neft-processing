@@ -116,13 +116,39 @@ EDO_FAILURES_TOTAL = Counter(
 INTEGRATION_HUB_UP.set(1)
 
 
+def _email_provider_enabled() -> bool:
+    if settings.email_provider_mode == "mock":
+        return settings.app_env != "prod" or os.getenv("APP_ENV") != "prod"
+    if settings.email_provider_mode == "smtp":
+        return bool(settings.smtp_host)
+    return False
+
+
+def _ensure_email_provider_or_503() -> None:
+    if not getattr(app.state, "email_provider_enabled", True):
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "error": "email_provider_not_configured",
+                "detail": "Email provider is disabled or not configured for this environment",
+            },
+        )
+
+
 @app.on_event("startup")
 def startup() -> None:
     init_db()
     if settings.notifications_mode == "real" and not settings.notifications_email_provider:
-        raise RuntimeError("notifications_real_mode_requires_provider")
-    if settings.app_env == "prod" and settings.email_provider_mode == "mock" and os.getenv("APP_ENV") == "prod":
-        raise RuntimeError("prod_requires_real_email_provider")
+        logger.warning("notifications_real_mode_requires_provider")
+
+    app.state.email_provider_enabled = _email_provider_enabled()
+    if not app.state.email_provider_enabled:
+        logger.error(
+            "email provider disabled: app_env=%s email_provider_mode=%s",
+            settings.app_env,
+            settings.email_provider_mode,
+        )
+
     logger.info(
         "running in %s mode",
         settings.app_env.upper(),
@@ -168,7 +194,13 @@ async def metrics_middleware(request: Request, call_next: Callable[[Request], Re
 
 @app.get("/health")
 def health() -> dict:
-    return {"status": "ok", "service": SERVICE_NAME, "version": SERVICE_VERSION}
+    email_provider_enabled = bool(getattr(app.state, "email_provider_enabled", True))
+    return {
+        "status": "ok",
+        "service": SERVICE_NAME,
+        "version": SERVICE_VERSION,
+        "email_provider": "enabled" if email_provider_enabled else "disabled",
+    }
 
 
 @app.get("/metrics", include_in_schema=False)
@@ -278,7 +310,8 @@ def send_notification(payload: NotificationSendRequest, request: Request) -> Not
         return NotificationSendResponse(status="accepted", mode="mock")
 
     if payload.channel.lower() == "email" and not settings.notifications_email_provider:
-        raise HTTPException(status_code=500, detail="email_provider_not_configured")
+        _ensure_email_provider_or_503()
+        raise HTTPException(status_code=503, detail={"error": "email_provider_not_configured", "detail": "Notifications email provider is not configured"})
 
     logger.info(
         "notifications.real",
@@ -315,6 +348,8 @@ def _send_smtp_email(payload: NotifyEmailSendRequest) -> str:
 
 @app.post("/api/int/notify/email/send", response_model=NotifyEmailSendResponse)
 def send_email(payload: NotifyEmailSendRequest) -> NotifyEmailSendResponse:
+    _ensure_email_provider_or_503()
+
     if not _validate_email(payload.to):
         raise HTTPException(status_code=400, detail="invalid_email")
 
