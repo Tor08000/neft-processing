@@ -17,6 +17,7 @@ from alembic_helpers import (
     create_index_if_not_exists,
     create_table_if_not_exists,
     index_exists,
+    table_exists,
 )
 from db.schema import resolve_db_schema
 
@@ -48,12 +49,14 @@ def upgrade() -> None:
     bind = op.get_bind()
     documents_fk = f"{SCHEMA}.documents.id" if SCHEMA else "documents.id"
     document_id_type = _documents_id_column_type(bind)
+    client_id_type = sa.String(length=64)
+
     create_table_if_not_exists(
         bind,
         "document_signatures",
         sa.Column("id", postgresql.UUID(as_uuid=False), primary_key=True, nullable=False),
         sa.Column("document_id", document_id_type, sa.ForeignKey(documents_fk, ondelete="CASCADE"), nullable=False),
-        sa.Column("client_id", sa.String(length=64), nullable=False),
+        sa.Column("client_id", client_id_type, nullable=False),
         sa.Column("signer_user_id", postgresql.UUID(as_uuid=False), sa.ForeignKey("users.id", ondelete="CASCADE"), nullable=False),
         sa.Column("signer_type", sa.Text(), nullable=False, server_default=sa.text("'CLIENT_USER'")),
         sa.Column("signature_method", sa.String(length=16), nullable=False, server_default=sa.text("'SIMPLE'")),
@@ -68,7 +71,19 @@ def upgrade() -> None:
         sa.UniqueConstraint("document_id", "signer_user_id", "signature_method", name="uq_doc_signature_per_user_method"),
         schema=SCHEMA,
     )
-    create_index_if_not_exists(bind, "ix_document_signatures_client_id", "document_signatures", ["client_id"], schema=SCHEMA)
+
+    if table_exists(bind, "document_signatures", schema=SCHEMA) and not column_exists(
+        bind, "document_signatures", "client_id", schema=SCHEMA
+    ):
+        op.add_column(
+            "document_signatures",
+            sa.Column("client_id", client_id_type, nullable=False, server_default=sa.text("''")),
+            schema=SCHEMA,
+        )
+        op.alter_column("document_signatures", "client_id", server_default=None, schema=SCHEMA)
+
+    if column_exists(bind, "document_signatures", "client_id", schema=SCHEMA):
+        create_index_if_not_exists(bind, "ix_document_signatures_client_id", "document_signatures", ["client_id"], schema=SCHEMA)
     create_index_if_not_exists(bind, "ix_document_signatures_document_id", "document_signatures", ["document_id"], schema=SCHEMA)
 
     if not column_exists(bind, "documents", "signed_by_client_at", schema=SCHEMA):
