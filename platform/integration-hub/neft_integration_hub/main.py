@@ -7,6 +7,7 @@ import smtplib
 from email.message import EmailMessage
 from email.utils import formataddr, make_msgid
 from typing import Callable
+import time
 from uuid import uuid4
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response
@@ -23,6 +24,8 @@ from neft_integration_hub.metrics import (
 )
 from neft_integration_hub.models import EdoDocument, EdoStubDocument, EdoStubStatus, WebhookAlert, WebhookAlertType, WebhookEndpoint
 from neft_integration_hub.schemas import (
+    OtpSendRequest,
+    OtpSendResponse,
     DispatchRequest,
     DispatchResponse,
     NotificationSendRequest,
@@ -220,6 +223,49 @@ async def _handle_webhook_intake(
 
 
 
+
+
+
+_OTP_IDEMPOTENCY: dict[str, tuple[float, dict]] = {}
+
+
+def _cleanup_otp_idempotency(ttl_seconds: int = 1800) -> None:
+    now = time.time()
+    for key, (ts, _) in list(_OTP_IDEMPOTENCY.items()):
+        if now - ts > ttl_seconds:
+            _OTP_IDEMPOTENCY.pop(key, None)
+
+
+def _validate_otp_destination(channel: str, destination: str) -> bool:
+    if channel == "sms":
+        return bool(re.match(r"^\+?[0-9]{10,15}$", destination))
+    if channel == "telegram":
+        return bool(destination.strip())
+    return False
+
+
+@app.post("/api/int/v1/otp/send", response_model=OtpSendResponse)
+def send_otp(payload: OtpSendRequest, x_internal_token: str | None = Header(default=None, alias="X-Internal-Token")) -> OtpSendResponse:
+    if settings.internal_token and x_internal_token != settings.internal_token:
+        raise HTTPException(status_code=401, detail="invalid_internal_token")
+    _cleanup_otp_idempotency()
+    channel = payload.channel.lower()
+    if not _validate_otp_destination(channel, payload.destination):
+        raise HTTPException(status_code=422, detail={"error_code": "invalid_destination", "message": "Invalid OTP destination"})
+
+    cached = _OTP_IDEMPOTENCY.get(payload.idempotency_key)
+    if cached is not None:
+        return OtpSendResponse(**cached[1])
+
+    if settings.otp_provider_mode == "prod":
+        if channel == "sms" and not settings.otp_sms_provider:
+            raise HTTPException(status_code=503, detail={"error_code": "provider_unavailable", "message": "SMS provider is not configured"})
+        if channel == "telegram" and settings.otp_telegram_provider == "bot" and not settings.otp_tg_bot_token:
+            raise HTTPException(status_code=503, detail={"error_code": "provider_unavailable", "message": "Telegram provider is not configured"})
+
+    result = {"provider_message_id": str(uuid4()), "status": "sent"}
+    _OTP_IDEMPOTENCY[payload.idempotency_key] = (time.time(), result)
+    return OtpSendResponse(**result)
 
 @app.post("/api/int/v1/notifications/send", response_model=NotificationSendResponse)
 def send_notification(payload: NotificationSendRequest, request: Request) -> NotificationSendResponse:

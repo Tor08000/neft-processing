@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import and_, select
+from sqlalchemy import and_, func, select
 from sqlalchemy.orm import Session
 
 from app.db.types import new_uuid_str
-from app.domains.client.signing.models import ClientAuditEvent, ClientDocSignRequest
+from app.domains.client.signing.models import ClientAuditEvent, ClientDocSignRequest, OtpChallenge
 
 
 @dataclass(slots=True)
@@ -20,33 +20,14 @@ class ClientSigningRepository:
         )
         return self.db.execute(stmt).scalar_one_or_none()
 
-    def create_sign_request(
-        self,
-        *,
-        doc_id: str,
-        user_id: str,
-        phone: str,
-        otp_hash: str,
-        expires_at: datetime,
-        max_attempts: int,
-        request_ip: str | None,
-        request_user_agent: str | None,
-    ) -> ClientDocSignRequest:
+    def create_sign_request(self, *, doc_id: str, user_id: str, phone: str, otp_hash: str, expires_at: datetime, max_attempts: int, request_ip: str | None, request_user_agent: str | None) -> ClientDocSignRequest:
         pending = self.get_pending_request_for_doc(doc_id)
         if pending is not None:
             pending.status = "CANCELLED"
             self.db.add(pending)
         obj = ClientDocSignRequest(
-            id=new_uuid_str(),
-            doc_id=doc_id,
-            user_id=user_id,
-            phone=phone,
-            otp_hash=otp_hash,
-            expires_at=expires_at,
-            max_attempts=max_attempts,
-            status="PENDING",
-            request_ip=request_ip,
-            request_user_agent=request_user_agent,
+            id=new_uuid_str(), doc_id=doc_id, user_id=user_id, phone=phone, otp_hash=otp_hash,
+            expires_at=expires_at, max_attempts=max_attempts, status="PENDING", request_ip=request_ip, request_user_agent=request_user_agent,
         )
         self.db.add(obj)
         self.db.commit()
@@ -80,30 +61,40 @@ class ClientSigningRepository:
         self.db.refresh(req)
         return req
 
-    def create_audit_event(
-        self,
-        *,
-        client_id: str | None,
-        application_id: str | None,
-        doc_id: str | None,
-        event_type: str,
-        actor_user_id: str | None,
-        actor_type: str | None,
-        ip: str | None,
-        user_agent: str | None,
-        meta_json: dict,
-    ) -> ClientAuditEvent:
+    def get_active_challenge(self, *, document_id: str, user_id: str) -> OtpChallenge | None:
+        stmt = select(OtpChallenge).where(
+            OtpChallenge.document_id == document_id,
+            OtpChallenge.user_id == user_id,
+            OtpChallenge.status.in_(("PENDING", "SENT", "CONFIRMED")),
+        ).order_by(OtpChallenge.created_at.desc())
+        return self.db.execute(stmt).scalar_one_or_none()
+
+    def count_recent_starts(self, *, user_id: str, window_seconds: int) -> int:
+        since = datetime.now(timezone.utc) - timedelta(seconds=window_seconds)
+        stmt = select(func.count(OtpChallenge.id)).where(OtpChallenge.user_id == user_id, OtpChallenge.created_at >= since)
+        return int(self.db.execute(stmt).scalar_one() or 0)
+
+    def create_otp_challenge(self, **kwargs) -> OtpChallenge:
+        obj = OtpChallenge(id=new_uuid_str(), **kwargs)
+        self.db.add(obj)
+        self.db.commit()
+        self.db.refresh(obj)
+        return obj
+
+    def save_challenge(self, challenge: OtpChallenge) -> OtpChallenge:
+        self.db.add(challenge)
+        self.db.commit()
+        self.db.refresh(challenge)
+        return challenge
+
+    def get_challenge(self, challenge_id: str) -> OtpChallenge | None:
+        return self.db.get(OtpChallenge, challenge_id)
+
+    def create_audit_event(self, *, client_id: str | None, application_id: str | None, doc_id: str | None, event_type: str, actor_user_id: str | None, actor_type: str | None, ip: str | None, user_agent: str | None, meta_json: dict) -> ClientAuditEvent:
         obj = ClientAuditEvent(
-            id=new_uuid_str(),
-            client_id=client_id,
-            application_id=application_id,
-            doc_id=doc_id,
-            event_type=event_type,
-            actor_user_id=actor_user_id,
-            actor_type=actor_type,
-            ip=ip,
-            user_agent=user_agent,
-            meta_json=meta_json,
+            id=new_uuid_str(), client_id=client_id, application_id=application_id, doc_id=doc_id,
+            event_type=event_type, actor_user_id=actor_user_id, actor_type=actor_type,
+            ip=ip, user_agent=user_agent, meta_json=meta_json,
         )
         self.db.add(obj)
         self.db.commit()

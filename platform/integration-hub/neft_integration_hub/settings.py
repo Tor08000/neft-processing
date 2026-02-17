@@ -55,6 +55,12 @@ class Settings:
     edo_stub_signed_after_seconds: int = int(os.getenv("EDO_STUB_SIGNED_AFTER_SECONDS", "60"))
     internal_token: str = os.getenv("INTEGRATION_HUB_INTERNAL_TOKEN", "")
 
+
+    otp_provider_mode: str = os.getenv("OTP_PROVIDER_MODE", "prod").lower()
+    otp_sms_provider: str = os.getenv("OTP_SMS_PROVIDER", "")
+    otp_telegram_provider: str = os.getenv("OTP_TELEGRAM_PROVIDER", "bot")
+    otp_sender_name: str = os.getenv("OTP_SENDER_NAME", "NEFT")
+    otp_tg_bot_token: str = os.getenv("OTP_TG_BOT_TOKEN", "")
     notifications_mode: str = os.getenv("NOTIFICATIONS_MODE", "mock").lower()
     notifications_email_provider: str = os.getenv("NOTIFICATIONS_EMAIL_PROVIDER", "")
 
