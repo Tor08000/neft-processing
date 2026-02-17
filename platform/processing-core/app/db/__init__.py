@@ -6,7 +6,7 @@ from typing import Generator
 from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine
 from sqlalchemy.engine.url import make_url
-from sqlalchemy.orm import Session, declarative_base, sessionmaker
+from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from neft_shared.settings import get_settings
@@ -50,8 +50,7 @@ except Exception as exc:  # noqa: BLE001 - explicit startup failure
     ) from exc
 
 
-# База для декларативных моделей
-Base = declarative_base()
+from .base import Base
 
 
 def make_engine_kwargs(
@@ -156,42 +155,9 @@ def init_db() -> None:
     — не создаём таблицы напрямую (используем только Alembic миграции)
     """
 
-    # Импорт нужен только для регистрации моделей, переменные не используются
-    from app.models.operation import Operation  # noqa: F401
-    from app.models.merchant import Merchant  # noqa: F401
-    from app.models.terminal import Terminal  # noqa: F401
-    from app.models.card import Card  # noqa: F401
-    from app.models.partner import Partner  # noqa: F401
-    from app.models.limit_rule import LimitRule  # noqa: F401
-    from app.models.groups import (  # noqa: F401
-        CardGroup,
-        CardGroupMember,
-        ClientGroup,
-        ClientGroupMember,
-    )
-    from app.models.risk_rule import (  # noqa: F401
-        RiskRule,
-        RiskRuleAudit,
-        RiskRuleVersion,
-    )
-    from app.models.risk_decision import RiskDecision  # noqa: F401
-    from app.models.risk_policy import RiskPolicy  # noqa: F401
-    from app.models.risk_threshold import RiskThreshold  # noqa: F401
-    from app.models.risk_threshold_set import RiskThresholdSet  # noqa: F401
-    from app.models.risk_training_snapshot import RiskTrainingSnapshot  # noqa: F401
-    from app.models.account import Account, AccountBalance  # noqa: F401
-    from app.models.ledger_entry import LedgerEntry  # noqa: F401
-    from app.models.posting_batch import PostingBatch  # noqa: F401
-    from app.domains.client.onboarding.models import ClientOnboardingApplication  # noqa: F401
-    from app.domains.client.onboarding.documents.models import ClientDocument  # noqa: F401
-    from app.domains.client.generated_docs.models import ClientGeneratedDocument  # noqa: F401
-    from app.models.client_user_roles import ClientUserRole  # noqa: F401
-    from app.models.client_users import ClientUser  # noqa: F401
-    from app.domains.client.docflow.models import (
-        ClientDocumentPackage,
-        ClientDocumentPackageItem,
-        ClientDocflowNotification,
-    )  # noqa: F401
+    from app.models.registry import import_all_models
+
+    import_all_models()
 
     # Для тестов и in-memory SQLite создаём таблицы автоматически.
     if os.getenv("NEFT_AUTO_CREATE_SCHEMA") == "true":
