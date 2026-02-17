@@ -38,3 +38,21 @@ check_single_head "alembic.ini" "platform/auth-host" "auth-host"
 check_single_head "app/alembic.ini" "platform/processing-core" "processing-core"
 (cd platform/processing-core && alembic -c app/alembic.ini upgrade head)
 (cd platform/processing-core && alembic -c app/alembic.ini upgrade head)
+
+# PR-CORE-MIG-0204 gate: pre-existing/partial schema state must not break upgrade.
+(cd platform/processing-core && alembic -c app/alembic.ini downgrade 20299880_0191_client_docflow_packages_notifications)
+python - <<'PY2'
+import os
+import psycopg
+
+dsn = os.environ["DATABASE_URL"]
+schema = os.environ.get("NEFT_DB_SCHEMA", "processing_core")
+with psycopg.connect(dsn) as conn:
+    with conn.cursor() as cur:
+        cur.execute(
+            f"ALTER TABLE {schema}.client_document_packages ADD COLUMN IF NOT EXISTS sha256 text"
+        )
+    conn.commit()
+PY2
+(cd platform/processing-core && alembic -c app/alembic.ini upgrade head)
+(cd platform/processing-core && alembic -c app/alembic.ini upgrade head)
