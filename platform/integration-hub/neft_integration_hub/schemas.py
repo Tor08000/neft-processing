@@ -104,6 +104,20 @@ class EdoIntStatusResponse(BaseModel):
     provider_status_raw: dict = Field(default_factory=dict)
     updated_at: datetime
 
+
+
+class OtpSendRequest(BaseModel):
+    channel: str
+    destination: str
+    message: str
+    idempotency_key: str
+    meta: dict = Field(default_factory=dict)
+
+
+class OtpSendResponse(BaseModel):
+    provider_message_id: str
+    status: str
+
 class NotificationSendRequest(BaseModel):
     channel: str
     template: str

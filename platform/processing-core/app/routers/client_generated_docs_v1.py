@@ -129,7 +129,7 @@ def download_generated_document(
     return StreamingResponse(stream, media_type=document.mime, headers=headers)
 
 
-@router.post("/generated-docs/{doc_id}/sign/request", response_model=SignRequestResponse)
+@router.post("/generated-docs/{doc_id}/sign/otp/start", response_model=SignRequestResponse)
 def request_doc_sign_otp(
     doc_id: str,
     payload: SignRequestPayload,
@@ -151,22 +151,19 @@ def request_doc_sign_otp(
     if mode == "checkbox":
         raise HTTPException(status_code=409, detail={"reason_code": "use_checkbox_sign_endpoint"})
 
-    phone = payload.phone
-    if not phone:
-        raise HTTPException(status_code=400, detail={"reason_code": "phone_required"})
-
     result = sign_svc.request_otp(
         doc=doc,
         user_id=_token_user_id(token_payload),
-        phone=phone,
-        consent=payload.consent,
+        channel=payload.channel,
+        destination=payload.destination,
+        token_iat=token_payload.get("iat"),
         ip=request.client.host if request.client else None,
         user_agent=request.headers.get("user-agent"),
     )
     return SignRequestResponse(**result)
 
 
-@router.post("/generated-docs/{doc_id}/sign/confirm", response_model=SignedDocumentResponse)
+@router.post("/generated-docs/{doc_id}/sign/otp/confirm", response_model=SignedDocumentResponse)
 def confirm_doc_sign_otp(
     doc_id: str,
     payload: SignConfirmPayload,
@@ -185,12 +182,15 @@ def confirm_doc_sign_otp(
     signed_doc = sign_svc.confirm_otp(
         doc=doc,
         user_id=_token_user_id(token_payload),
-        request_id=payload.request_id,
-        otp_code=payload.otp_code,
+        challenge_id=payload.challenge_id,
+        otp_code=payload.code,
         ip=request.client.host if request.client else None,
         user_agent=request.headers.get("user-agent"),
     )
-    return SignedDocumentResponse(doc=GeneratedDocumentItem.model_validate(signed_doc))
+    return SignedDocumentResponse(
+        doc=GeneratedDocumentItem.model_validate(signed_doc),
+        otp={"challenge_id": payload.challenge_id},
+    )
 
 
 @router.post("/generated-docs/{doc_id}/sign", response_model=SignedDocumentResponse)

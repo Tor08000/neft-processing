@@ -8,20 +8,22 @@ from app.domains.client.generated_docs.schemas import GeneratedDocumentItem
 
 
 class SignRequestPayload(BaseModel):
-    phone: str | None = None
     channel: str | None = None
-    consent: bool
+    destination: str
 
 
 class SignRequestResponse(BaseModel):
-    request_id: str
+    challenge_id: str
     expires_at: datetime
+    resend_available_at: datetime
+    channel: str
+    masked_destination: str
     otp_code: str | None = None
 
 
 class SignConfirmPayload(BaseModel):
-    request_id: str
-    otp_code: str
+    challenge_id: str
+    code: str
 
 
 class CheckboxSignPayload(BaseModel):
@@ -32,3 +34,4 @@ class SignedDocumentResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     doc: GeneratedDocumentItem
+    otp: dict | None = None
