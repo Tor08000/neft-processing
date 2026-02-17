@@ -16,7 +16,7 @@ from app.models.client_onboarding import ClientOnboarding, ClientOnboardingContr
 from app.models.crm import CRMClient
 from app.models.partner import Partner
 from app.models.fleet import ClientEmployee
-from app.models.client_portal import ClientUserRole
+from app.models.client_user_roles import ClientUserRole
 from app.models.legal_acceptance import LegalAcceptance, LegalSubjectType
 from app.models.subscriptions_v1 import SubscriptionPlan
 from app.schemas.portal_me import (

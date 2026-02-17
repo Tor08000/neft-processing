@@ -10,7 +10,7 @@ from app.models.audit_log import AuditLog
 from app.models.card import Card
 from app.models.client import Client
 from app.models.client_onboarding import ClientOnboarding, ClientOnboardingContract
-from app.models.client_portal import ClientOperation
+from app.models.client_operations import ClientOperation
 
 
 @pytest.fixture(autouse=True)

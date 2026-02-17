@@ -7,7 +7,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.db import Base
-from app.models.client_portal import NotificationOutbox
+from app.models.notification_outbox import NotificationOutbox
 from app.services.client_invitation_notifications import process_notification_outbox
 
 

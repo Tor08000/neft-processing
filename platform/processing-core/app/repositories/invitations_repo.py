@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from sqlalchemy.orm import Session
 
-from app.models.client_portal import ClientInvitation
+from app.models.client_invitations import ClientInvitation
 
 
 class InvitationsRepo:

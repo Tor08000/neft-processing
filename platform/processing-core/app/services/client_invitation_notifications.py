@@ -8,7 +8,7 @@ import requests
 from prometheus_client import Counter, Gauge
 from sqlalchemy.orm import Session
 
-from app.models.client_portal import NotificationOutbox
+from app.models.notification_outbox import NotificationOutbox
 
 logger = logging.getLogger(__name__)
 

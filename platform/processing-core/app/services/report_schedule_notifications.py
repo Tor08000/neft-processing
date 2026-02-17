@@ -4,7 +4,7 @@ from sqlalchemy import or_
 
 from app.models.crm import CRMClient
 
-from app.models.client_portal import ClientUserRole
+from app.models.client_user_roles import ClientUserRole
 from app.models.export_jobs import ExportJob
 from app.models.fleet import ClientEmployee
 from app.models.report_schedules import ReportSchedule

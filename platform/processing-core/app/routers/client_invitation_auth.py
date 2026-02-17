@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.models.client_portal import ClientInvitation
+from app.models.client_invitations import ClientInvitation
 from app.services.invitations.invitation_tokens import hash_invitation_token
 
 router = APIRouter(prefix="/auth/invitations", tags=["auth"])

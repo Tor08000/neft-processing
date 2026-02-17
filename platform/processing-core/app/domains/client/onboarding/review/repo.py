@@ -11,7 +11,8 @@ from uuid import uuid4
 from app.domains.client.onboarding.documents.models import ClientDocument
 from app.domains.client.onboarding.models import ClientOnboardingApplication
 from app.models.client import Client
-from app.models.client_portal import ClientUser, ClientUserRole
+from app.models.client_users import ClientUser
+from app.models.client_user_roles import ClientUserRole
 
 
 @dataclass(slots=True)

@@ -24,15 +24,12 @@ from app.db.schema import DB_SCHEMA
 from app.models.client import Client
 from app.models.crm import CRMClient
 from app.models.client_onboarding import ClientOnboarding, ClientOnboardingContract
-from app.models.client_portal import (
-    CardAccess,
-    CardAccessScope,
-    CardLimit,
-    ClientInvitation,
-    ClientOperation,
-    ClientUserRole,
-    LimitTemplate,
-)
+from app.models.card_access import CardAccess, CardAccessScope
+from app.models.card_limits import CardLimit
+from app.models.client_invitations import ClientInvitation
+from app.models.client_operations import ClientOperation
+from app.models.client_user_roles import ClientUserRole
+from app.models.limit_templates import LimitTemplate
 
 from app.models.export_jobs import ExportJob, ExportJobFormat, ExportJobReportType, ExportJobStatus
 from app.models.report_schedules import ReportSchedule, ReportScheduleKind, ReportScheduleStatus
@@ -6040,7 +6037,7 @@ def _enqueue_invitation_event(
 
 
 def _deliver_invitation_email(db: Session, *, invitation: ClientInvitation, token_raw: str, event_type: str) -> None:
-    from app.models.client_portal import InvitationEmailDelivery
+    from app.models.invitation_email_deliveries import InvitationEmailDelivery
 
     base_url = _invite_base_url()
     accept_url = f"{base_url}/client/invitations/accept?token={token_raw}"
