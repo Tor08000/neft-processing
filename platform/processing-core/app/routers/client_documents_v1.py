@@ -109,7 +109,7 @@ def list_client_documents(
 @router.post("", response_model=DocumentOut, status_code=201)
 def create_client_outbound_document(
     payload: DocumentCreateIn,
-    request: Request | None = None,
+    request: Request,
     token: dict = Depends(client_portal_user),
     svc: DocumentsService = Depends(_service),
 ) -> DocumentOut:
@@ -117,15 +117,15 @@ def create_client_outbound_document(
         client_id=_client_id_from_token(token),
         data=payload,
         actor_user_id=token.get("user_id") or token.get("sub"),
-        request_context=_timeline_request_context(request) if request else None,
+        request_context=_timeline_request_context(request),
     )
 
 
 @router.post("/{document_id}/upload", response_model=DocumentFileOut, status_code=201)
 async def upload_document_file(
     document_id: str,
+    request: Request,
     file: UploadFile = File(...),
-    request: Request | None = None,
     token: dict = Depends(client_portal_user),
     svc: DocumentsService = Depends(_service),
 ) -> DocumentFileOut:
@@ -134,7 +134,7 @@ async def upload_document_file(
         document_id=document_id,
         upload_file=file,
         actor_user_id=token.get("user_id") or token.get("sub"),
-        request_context=_timeline_request_context(request) if request else None,
+        request_context=_timeline_request_context(request),
     )
 
 
