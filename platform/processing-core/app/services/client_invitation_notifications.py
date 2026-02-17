@@ -5,17 +5,53 @@ import os
 from datetime import datetime, timedelta, timezone
 
 import requests
-from prometheus_client import Counter, Gauge
 from sqlalchemy.orm import Session
 
 from app.models.notification_outbox import NotificationOutbox
 
 logger = logging.getLogger(__name__)
 
-OUTBOX_SENT_TOTAL = Counter("notification_outbox_sent_total", "Notification outbox sent total")
-OUTBOX_ATTEMPTS_TOTAL = Counter("notification_send_attempts_total", "Notification send attempts total")
-OUTBOX_PENDING = Gauge("notification_outbox_pending", "Notification outbox pending")
-OUTBOX_FAILED = Gauge("notification_outbox_failed", "Notification outbox failed")
+
+class _NoopMetric:
+    def inc(self, value: float = 1) -> None:
+        return None
+
+    def set(self, value: float) -> None:
+        return None
+
+
+_METRICS: tuple[object, object, object, object] | None = None
+
+
+def _metrics_enabled() -> bool:
+    return os.getenv("METRICS_ENABLED", "1").strip().lower() not in {"0", "false", "off", "no"}
+
+
+def get_metrics() -> tuple[object, object, object, object]:
+    global _METRICS
+    if _METRICS is not None:
+        return _METRICS
+
+    if not _metrics_enabled():
+        noop = _NoopMetric()
+        _METRICS = (noop, noop, noop, noop)
+        return _METRICS
+
+    try:
+        from prometheus_client import Counter, Gauge
+    except ModuleNotFoundError:
+        logger.warning("prometheus_client is unavailable, metrics are disabled")
+        noop = _NoopMetric()
+        _METRICS = (noop, noop, noop, noop)
+        return _METRICS
+
+    _METRICS = (
+        Counter("notification_outbox_sent_total", "Notification outbox sent total"),
+        Counter("notification_send_attempts_total", "Notification send attempts total"),
+        Gauge("notification_outbox_pending", "Notification outbox pending"),
+        Gauge("notification_outbox_failed", "Notification outbox failed"),
+    )
+    return _METRICS
 
 
 def _backoff(attempts: int) -> timedelta:
@@ -44,6 +80,8 @@ def enqueue_client_invitation_notification(db: Session, *, event_type: str, invi
 
 
 def process_notification_outbox(db: Session, *, limit: int = 50) -> int:
+    outbox_sent_total, outbox_attempts_total, outbox_pending, outbox_failed = get_metrics()
+
     now = datetime.now(timezone.utc)
     rows = (
         db.query(NotificationOutbox)
@@ -59,7 +97,7 @@ def process_notification_outbox(db: Session, *, limit: int = 50) -> int:
 
     sent = 0
     for item in rows:
-        OUTBOX_ATTEMPTS_TOTAL.inc()
+        outbox_attempts_total.inc()
         item.attempts = int(item.attempts or 0) + 1
         item.updated_at = now
         try:
@@ -70,7 +108,7 @@ def process_notification_outbox(db: Session, *, limit: int = 50) -> int:
             if 200 <= resp.status_code < 300:
                 item.status = "SENT"
                 item.last_error = None
-                OUTBOX_SENT_TOTAL.inc()
+                outbox_sent_total.inc()
                 sent += 1
             else:
                 raise RuntimeError(f"hub_status_{resp.status_code}")
@@ -84,8 +122,8 @@ def process_notification_outbox(db: Session, *, limit: int = 50) -> int:
 
     pending = db.query(NotificationOutbox).filter(NotificationOutbox.status == "NEW").count()
     failed = db.query(NotificationOutbox).filter(NotificationOutbox.status == "FAILED").count()
-    OUTBOX_PENDING.set(pending)
-    OUTBOX_FAILED.set(failed)
+    outbox_pending.set(pending)
+    outbox_failed.set(failed)
     db.flush()
     return sent
 
