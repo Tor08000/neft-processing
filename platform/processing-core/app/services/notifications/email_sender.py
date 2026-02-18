@@ -60,7 +60,7 @@ class IntegrationHubEmailSender(EmailSender):
             logger.info("email_sender.integration_hub_skipped", extra={"mode": self.mode})
             return None
         if is_email_degraded():
-            raise RuntimeError("HUB_UNAVAILABLE")
+            raise RuntimeError("email_provider_unavailable")
 
         endpoint = f"{self.base_url}/api/int/notify/email/send"
         req_headers = {"Content-Type": "application/json"}

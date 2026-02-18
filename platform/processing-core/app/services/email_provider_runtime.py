@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from datetime import datetime, timezone
 
 
 @dataclass(frozen=True)
@@ -57,6 +58,8 @@ def load_email_provider_startup_config(environ: dict[str, str] | None = None) ->
 
 
 _EMAIL_DEGRADED = False
+_EMAIL_PROVIDER_FAILURES = 0
+_EMAIL_PROVIDER_LAST_SUCCESS_AT: datetime | None = None
 
 
 def set_email_degraded(value: bool) -> None:
@@ -68,11 +71,36 @@ def is_email_degraded() -> bool:
     return _EMAIL_DEGRADED
 
 
+def mark_email_provider_check_failure() -> int:
+    global _EMAIL_PROVIDER_FAILURES
+    _EMAIL_PROVIDER_FAILURES += 1
+    return _EMAIL_PROVIDER_FAILURES
+
+
+def get_email_provider_failures() -> int:
+    return _EMAIL_PROVIDER_FAILURES
+
+
+def mark_email_provider_check_success(at: datetime | None = None) -> datetime:
+    global _EMAIL_PROVIDER_LAST_SUCCESS_AT
+    success_at = at or datetime.now(timezone.utc)
+    _EMAIL_PROVIDER_LAST_SUCCESS_AT = success_at
+    return success_at
+
+
+def get_email_provider_last_success_at() -> datetime | None:
+    return _EMAIL_PROVIDER_LAST_SUCCESS_AT
+
+
 __all__ = [
     "EmailProviderStartupConfig",
     "get_email_provider_mode",
     "get_email_startup_strict",
+    "get_email_provider_failures",
+    "get_email_provider_last_success_at",
     "is_email_degraded",
     "load_email_provider_startup_config",
+    "mark_email_provider_check_failure",
+    "mark_email_provider_check_success",
     "set_email_degraded",
 ]
