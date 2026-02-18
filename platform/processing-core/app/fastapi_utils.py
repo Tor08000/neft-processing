@@ -109,9 +109,14 @@ def safe_include_router(
                 f"(first: {existing_source}, second: {incoming_source})"
             )
         message = "\n".join(lines)
-        if os.getenv("NEFT_STRICT_ROUTES", "").lower() in {"1", "true", "yes"}:
+        mode = os.getenv("ROUTER_DUPLICATES_MODE", "").strip().lower()
+        if mode not in {"error", "warn", "ignore"}:
+            mode = "error" if os.getenv("APP_ENV", "dev").lower() == "prod" else "warn"
+
+        if mode == "error":
             raise RuntimeError(message)
-        logger.warning(message)
+        if mode == "warn":
+            logger.warning(message)
         return
 
     target.include_router(router, prefix=_normalize_prefix(prefix), **kwargs)

@@ -8,6 +8,7 @@ import requests
 from sqlalchemy.orm import Session
 
 from app.models.notification_outbox import NotificationOutbox
+from app.services.email_provider_runtime import get_email_provider_mode, is_email_degraded
 
 logger = logging.getLogger(__name__)
 
@@ -95,11 +96,24 @@ def process_notification_outbox(db: Session, *, limit: int = 50) -> int:
     internal_token = os.getenv("INTEGRATION_HUB_INTERNAL_TOKEN", "")
     endpoint = f"{base_url.rstrip('/')}/api/int/v1/notifications/send"
 
+    mode = get_email_provider_mode()
     sent = 0
     for item in rows:
+        item.updated_at = now
+        if mode != "integration_hub":
+            item.status = "SENT"
+            item.last_error = None
+            outbox_sent_total.inc()
+            sent += 1
+            continue
+        if is_email_degraded():
+            item.status = "NEW"
+            item.last_error = "HUB_UNAVAILABLE"
+            item.next_attempt_at = now + _backoff(max(1, int(item.attempts or 0)))
+            continue
+
         outbox_attempts_total.inc()
         item.attempts = int(item.attempts or 0) + 1
-        item.updated_at = now
         try:
             headers = {"Content-Type": "application/json"}
             if internal_token:

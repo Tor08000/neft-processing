@@ -127,6 +127,10 @@ from app.services.limits import (
 )
 from app.services.posting_metrics import metrics as posting_metrics
 from app.services.risk_adapter import metrics as risk_metrics
+from app.services.email_provider_runtime import (
+    load_email_provider_startup_config,
+    set_email_degraded,
+)
 from app.services.risk_v5.hook import register_shadow_hook
 from app.services.risk_v5.metrics import metrics as risk_v5_metrics
 from app.services.mor_metrics import metrics as mor_metrics
@@ -215,23 +219,57 @@ logger.info(
 
 
 
-def _email_required_in_env() -> bool:
-    raw = os.getenv("EMAIL_NOTIFICATIONS_ENABLED")
-    if raw is None:
-        return settings.APP_ENV.lower() == "prod"
-    return raw.strip().lower() in {"1", "true", "yes"}
-
-
 def _validate_email_provider_startup() -> None:
-    if settings.APP_ENV.lower() != "prod" or os.getenv("APP_ENV", "").lower() != "prod" or not _email_required_in_env():
+    config = load_email_provider_startup_config()
+    logger.info(
+        "email_provider.startup_check",
+        extra={
+            "mode": config.mode,
+            "strict": config.strict,
+            "integration_hub_url": config.integration_hub_url,
+            "timeout_seconds": config.timeout_seconds,
+            "retries": config.retries,
+        },
+    )
+    if config.mode == "disabled":
+        set_email_degraded(False)
+        logger.info("email_provider.startup_skipped_disabled")
         return
-    base_url = os.getenv("INTEGRATION_HUB_URL", "http://integration-hub:8080").rstrip("/")
-    try:
-        response = requests.get(f"{base_url}/health", timeout=3)
-    except Exception as exc:  # noqa: BLE001
-        raise RuntimeError("integration_hub_unreachable_for_email") from exc
-    if response.status_code >= 500:
-        raise RuntimeError("integration_hub_unhealthy_for_email")
+    if config.mode == "stub":
+        set_email_degraded(False)
+        logger.info("email_provider.startup_skipped_stub")
+        return
+
+    last_error: Exception | None = None
+    last_status_code: int | None = None
+    for attempt in range(1, config.retries + 1):
+        try:
+            response = requests.get(f"{config.integration_hub_url}/health", timeout=config.timeout_seconds)
+            last_status_code = response.status_code
+            if 200 <= response.status_code < 300:
+                set_email_degraded(False)
+                logger.info(
+                    "email_provider.healthcheck_ok",
+                    extra={"status_code": response.status_code, "attempt": attempt},
+                )
+                return
+            last_error = RuntimeError(f"integration_hub_health_status_{response.status_code}")
+        except Exception as exc:  # noqa: BLE001
+            last_error = exc
+
+    if config.strict:
+        raise RuntimeError("integration_hub_unreachable_for_email") from last_error
+    set_email_degraded(True)
+    logger.warning(
+        "email_provider.degraded",
+        extra={
+            "mode": config.mode,
+            "strict": config.strict,
+            "integration_hub_url": config.integration_hub_url,
+            "status_code": last_status_code,
+            "error": str(last_error) if last_error else "unknown",
+        },
+    )
 
 
 # -----------------------------------------------------------------------------
@@ -543,7 +581,7 @@ safe_include_router(app, admin_documents_v1_router)
 if INCLUDE_CORE_PREFIX_ROUTES:
     safe_include_router(app, document_templates_router, prefix=API_PREFIX_CORE)
 if INCLUDE_CORE_PREFIX_ROUTES:
-    safe_include_router(app, legal_gate_router, prefix=API_PREFIX_CORE)
+    safe_include_router(app, legal_gate_router, prefix=f"{API_PREFIX_CORE}/admin")
 safe_include_router(app, internal_fleet_router)
 safe_include_router(app, internal_fuel_providers_router)
 safe_include_router(app, internal_fuel_stations_router)

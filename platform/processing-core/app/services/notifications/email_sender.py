@@ -9,6 +9,8 @@ from typing import Mapping
 
 import requests
 
+from app.services.email_provider_runtime import get_email_provider_mode, is_email_degraded
+
 logger = logging.getLogger(__name__)
 
 
@@ -41,6 +43,7 @@ class ConsoleEmailSender(EmailSender):
 
 class IntegrationHubEmailSender(EmailSender):
     def __init__(self) -> None:
+        self.mode = get_email_provider_mode()
         self.base_url = os.getenv("INTEGRATION_HUB_URL", "http://integration-hub:8080").rstrip("/")
         self.internal_token = os.getenv("INTEGRATION_HUB_INTERNAL_TOKEN", "")
 
@@ -53,6 +56,12 @@ class IntegrationHubEmailSender(EmailSender):
         text: str | None,
         headers: Mapping[str, str] | None = None,
     ) -> str | None:
+        if self.mode != "integration_hub":
+            logger.info("email_sender.integration_hub_skipped", extra={"mode": self.mode})
+            return None
+        if is_email_degraded():
+            raise RuntimeError("HUB_UNAVAILABLE")
+
         endpoint = f"{self.base_url}/api/int/notify/email/send"
         req_headers = {"Content-Type": "application/json"}
         if self.internal_token:
