@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import asyncio
 import os
 import requests
 from uuid import uuid4
 from datetime import datetime, timezone
 from collections import defaultdict
 from contextlib import asynccontextmanager
+import contextlib
 from typing import Any, AsyncIterator
 
 from fastapi import APIRouter, Body, Depends, FastAPI, HTTPException, Request
@@ -128,7 +130,12 @@ from app.services.limits import (
 from app.services.posting_metrics import metrics as posting_metrics
 from app.services.risk_adapter import metrics as risk_metrics
 from app.services.email_provider_runtime import (
+    get_email_provider_failures,
+    get_email_provider_last_success_at,
+    is_email_degraded,
     load_email_provider_startup_config,
+    mark_email_provider_check_failure,
+    mark_email_provider_check_success,
     set_email_degraded,
 )
 from app.services.risk_v5.hook import register_shadow_hook
@@ -219,6 +226,15 @@ logger.info(
 
 
 
+def _check_email_provider_health(config) -> bool:
+    response = requests.get(f"{config.integration_hub_url}/health", timeout=config.timeout_seconds)
+    if 200 <= response.status_code < 300:
+        set_email_degraded(False)
+        mark_email_provider_check_success()
+        return True
+    raise RuntimeError(f"integration_hub_health_status_{response.status_code}")
+
+
 def _validate_email_provider_startup() -> None:
     config = load_email_provider_startup_config()
     logger.info(
@@ -231,45 +247,82 @@ def _validate_email_provider_startup() -> None:
             "retries": config.retries,
         },
     )
-    if config.mode == "disabled":
+    if config.mode in {"disabled", "stub"}:
         set_email_degraded(False)
-        logger.info("email_provider.startup_skipped_disabled")
-        return
-    if config.mode == "stub":
-        set_email_degraded(False)
-        logger.info("email_provider.startup_skipped_stub")
+        if config.mode == "disabled":
+            logger.info("email_provider.startup_skipped_disabled")
+        else:
+            logger.info("email_provider.startup_skipped_stub")
         return
 
     last_error: Exception | None = None
-    last_status_code: int | None = None
     for attempt in range(1, config.retries + 1):
         try:
-            response = requests.get(f"{config.integration_hub_url}/health", timeout=config.timeout_seconds)
-            last_status_code = response.status_code
-            if 200 <= response.status_code < 300:
-                set_email_degraded(False)
+            if _check_email_provider_health(config):
                 logger.info(
                     "email_provider.healthcheck_ok",
-                    extra={"status_code": response.status_code, "attempt": attempt},
+                    extra={"attempt": attempt, "mode": config.mode},
                 )
                 return
-            last_error = RuntimeError(f"integration_hub_health_status_{response.status_code}")
         except Exception as exc:  # noqa: BLE001
             last_error = exc
+            failures = mark_email_provider_check_failure()
+            logger.warning(
+                "email_provider_unreachable",
+                extra={
+                    "base_url": config.integration_hub_url,
+                    "timeout": config.timeout_seconds,
+                    "mode": config.mode,
+                    "attempt": attempt,
+                    "failures_total": failures,
+                    "error": str(exc),
+                },
+            )
 
-    if config.strict:
-        raise RuntimeError("integration_hub_unreachable_for_email") from last_error
     set_email_degraded(True)
-    logger.warning(
-        "email_provider.degraded",
-        extra={
-            "mode": config.mode,
-            "strict": config.strict,
-            "integration_hub_url": config.integration_hub_url,
-            "status_code": last_status_code,
-            "error": str(last_error) if last_error else "unknown",
-        },
-    )
+    if config.strict:
+        logger.warning(
+            "email_provider.strict_mode_degraded",
+            extra={
+                "base_url": config.integration_hub_url,
+                "timeout": config.timeout_seconds,
+                "mode": config.mode,
+                "error": str(last_error) if last_error else "unknown",
+            },
+        )
+
+
+async def _email_provider_recovery_loop(app: FastAPI) -> None:
+    interval_seconds = max(2, int(os.getenv("EMAIL_PROVIDER_RECHECK_SECONDS", "15")))
+    while True:
+        await asyncio.sleep(interval_seconds)
+        config = load_email_provider_startup_config()
+        if config.mode != "integration_hub":
+            continue
+        if not is_email_degraded():
+            continue
+        try:
+            _check_email_provider_health(config)
+            logger.info(
+                "email_provider_recovered",
+                extra={
+                    "base_url": config.integration_hub_url,
+                    "timeout": config.timeout_seconds,
+                    "mode": config.mode,
+                },
+            )
+        except Exception as exc:  # noqa: BLE001
+            failures = mark_email_provider_check_failure()
+            logger.warning(
+                "email_provider_unreachable",
+                extra={
+                    "base_url": config.integration_hub_url,
+                    "timeout": config.timeout_seconds,
+                    "mode": config.mode,
+                    "failures_total": failures,
+                    "error": str(exc),
+                },
+            )
 
 
 # -----------------------------------------------------------------------------
@@ -279,6 +332,9 @@ class HealthResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     status: str = "ok"
+    email_provider: str | None = None
+    email_provider_failures: int | None = None
+    email_provider_last_success_at: datetime | None = None
     audit_signing: str | None = None
     audit_signing_mode: str | None = None
 
@@ -289,6 +345,8 @@ class HealthResponse(BaseModel):
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     _validate_email_provider_startup()
+    recovery_task = asyncio.create_task(_email_provider_recovery_loop(app))
+    app.state.email_provider_recovery_task = recovery_task
     init_db()
     db = get_sessionmaker()()
     try:
@@ -313,7 +371,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             raise RuntimeError("Audit signing self-check failed")
     set_audit_signing_health(signing_status)
     logger.info("core-api startup complete")
-    yield
+    try:
+        yield
+    finally:
+        recovery_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await recovery_task
 
 
 app = FastAPI(
@@ -1512,7 +1575,18 @@ def metric_alias() -> str:  # pragma: no cover - compatibility alias
 # -----------------------------------------------------------------------------
 @app.get("/health", response_model=HealthResponse, response_model_exclude_none=True)
 def health() -> HealthResponse:
-    return HealthResponse(status="ok")
+    degraded = is_email_degraded()
+    return HealthResponse(
+        status="ok",
+        email_provider="degraded" if degraded else "ok",
+        email_provider_failures=get_email_provider_failures(),
+        email_provider_last_success_at=get_email_provider_last_success_at(),
+    )
+
+
+@app.get("/ready", response_model=HealthResponse, response_model_exclude_none=True)
+def ready() -> HealthResponse:
+    return health()
 
 
 @app.get("/health/db", response_model=HealthResponse, response_model_exclude_none=True)
@@ -1554,6 +1628,13 @@ core_prefixed_router.add_api_route(
 core_prefixed_router.add_api_route(
     "/health/celery",
     health_celery,
+    response_model=HealthResponse,
+    response_model_exclude_none=True,
+    methods=["GET"],
+)
+core_prefixed_router.add_api_route(
+    "/ready",
+    ready,
     response_model=HealthResponse,
     response_model_exclude_none=True,
     methods=["GET"],

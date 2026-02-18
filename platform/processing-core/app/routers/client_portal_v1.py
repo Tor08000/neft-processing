@@ -6084,9 +6084,9 @@ def _deliver_invitation_email(db: Session, *, invitation: ClientInvitation, toke
             headers={"template": "client_invite_v1", "invitation_id": str(invitation.id), "event_type": event_type},
         )
     except Exception as exc:  # noqa: BLE001
-        if str(exc) == "HUB_UNAVAILABLE":
+        if str(exc) == "email_provider_unavailable":
             status = "QUEUED"
-            error_code = "HUB_UNAVAILABLE"
+            error_code = "email_provider_unavailable"
         else:
             status = "FAILED"
             error_code = "send_error"
