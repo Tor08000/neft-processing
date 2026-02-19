@@ -316,25 +316,37 @@ fi
 echo "[entrypoint] parsed heads: [$(printf "%s\n" "$expected_heads" | tr '\n' ' ')]"
 
 echo "[entrypoint] pre-migration cleanup: schema_resolved=${schema_resolved} search_path=${schema_resolved},public"
-echo "[entrypoint] dropping orphan types/domains (pre-migration cleanup)"
 if [ -z "$DATABASE_URL" ]; then
     echo "[entrypoint] DATABASE_URL is not set for orphan cleanup" >&2
     exit 1
 fi
-cleanup_dry_run="${ORPHAN_CLEANUP_DRY_RUN:-0}"
-echo "[entrypoint] orphan cleanup dry-run=${cleanup_dry_run}"
+
+cleanup_mode="${NEFT_ORPHAN_CLEANUP_MODE:-off}"
+case "$cleanup_mode" in
+    off|dry-run|drop)
+        ;;
+    *)
+        echo "[entrypoint] invalid NEFT_ORPHAN_CLEANUP_MODE='$cleanup_mode' (expected: off|dry-run|drop)" >&2
+        exit 1
+        ;;
+esac
+
+echo "[entrypoint] orphan cleanup mode=${cleanup_mode}"
+echo "[entrypoint] orphan cleanup policy: enums are always protected during pre-migration cleanup"
 psql "$PSQL_URL" -v ON_ERROR_STOP=1 <<EOF
 DO \$\$
 DECLARE r record;
 DECLARE has_table boolean;
 DECLARE used_by_column boolean;
+DECLARE has_dependents boolean;
 DECLARE total int := 0;
 DECLARE eligible int := 0;
 DECLARE dropped int := 0;
 DECLARE skipped int := 0;
 DECLARE skip_reason text;
 DECLARE skipped_reasons jsonb := '{}'::jsonb;
-DECLARE dry_run boolean := ${cleanup_dry_run};
+DECLARE cleanup_mode text := '${cleanup_mode}';
+DECLARE allow_drop boolean := cleanup_mode = 'drop';
 BEGIN
   FOR r IN (
     SELECT n.nspname AS schema_name,
@@ -369,7 +381,20 @@ BEGIN
       CONTINUE;
     END IF;
 
-    IF r.type_kind NOT IN ('d', 'e') THEN
+    IF r.type_kind = 'e' THEN
+      skip_reason := 'enum protected in pre-migration cleanup';
+      skipped := skipped + 1;
+      skipped_reasons := jsonb_set(
+        skipped_reasons,
+        ARRAY[skip_reason],
+        to_jsonb(COALESCE((skipped_reasons ->> skip_reason)::int, 0) + 1),
+        true
+      );
+      RAISE NOTICE 'orphan cleanup skip: schema=% type=% typtype=% reason=%', r.schema_name, r.type_name, r.type_kind, skip_reason;
+      CONTINUE;
+    END IF;
+
+    IF r.type_kind NOT IN ('d') THEN
       skip_reason := format('unsupported typtype=%s', r.type_kind);
       skipped := skipped + 1;
       skipped_reasons := jsonb_set(
@@ -405,9 +430,16 @@ BEGIN
       CONTINUE;
     END IF;
 
-    eligible := eligible + 1;
-    IF dry_run THEN
-      skip_reason := 'dry-run';
+    SELECT EXISTS (
+      SELECT 1
+      FROM pg_depend d
+      WHERE d.refobjid = r.type_oid
+        AND d.deptype IN ('n', 'a', 'i')
+        AND d.classid <> 'pg_type'::regclass
+    ) INTO has_dependents;
+
+    IF has_dependents THEN
+      skip_reason := 'type has dependents';
       skipped := skipped + 1;
       skipped_reasons := jsonb_set(
         skipped_reasons,
@@ -415,7 +447,21 @@ BEGIN
         to_jsonb(COALESCE((skipped_reasons ->> skip_reason)::int, 0) + 1),
         true
       );
-      RAISE NOTICE 'orphan cleanup dry-run drop: schema=% type=% typtype=%', r.schema_name, r.type_name, r.type_kind;
+      RAISE NOTICE 'orphan cleanup skip: schema=% type=% typtype=% reason=%', r.schema_name, r.type_name, r.type_kind, skip_reason;
+      CONTINUE;
+    END IF;
+
+    eligible := eligible + 1;
+    IF NOT allow_drop THEN
+      skip_reason := format('mode=%s', cleanup_mode);
+      skipped := skipped + 1;
+      skipped_reasons := jsonb_set(
+        skipped_reasons,
+        ARRAY[skip_reason],
+        to_jsonb(COALESCE((skipped_reasons ->> skip_reason)::int, 0) + 1),
+        true
+      );
+      RAISE NOTICE 'orphan cleanup candidate: schema=% type=% typtype=%', r.schema_name, r.type_name, r.type_kind;
     ELSE
       BEGIN
         IF r.type_kind = 'd' THEN
@@ -441,6 +487,10 @@ BEGIN
 
   RAISE NOTICE 'pre-migration cleanup: orphan types/domains found_total %, eligible_to_drop %, dropped %, skipped_with_reason %, skip_reasons %',
     total, eligible, dropped, skipped, skipped_reasons;
+
+  IF allow_drop AND dropped > 0 THEN
+    RAISE EXCEPTION 'cleanup dropped % types/domains, unsafe; rerun with NEFT_ORPHAN_CLEANUP_MODE=off', dropped;
+  END IF;
 END
 \$\$;
 EOF
