@@ -8,7 +8,9 @@ from __future__ import annotations
 
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy.exc import ProgrammingError
 from sqlalchemy.dialects import postgresql
+from psycopg import errors as psycopg_errors
 
 from alembic_helpers import column_exists, constraint_exists, ensure_pg_enum, table_exists
 from db.schema import resolve_db_schema
@@ -17,8 +19,38 @@ SCHEMA = resolve_db_schema().schema
 
 
 def _add_column_if_missing(bind, table_name: str, column: sa.Column) -> None:
-    if not column_exists(bind, table_name, column.name, schema=SCHEMA):
+    exists = bind.execute(
+        sa.text(
+            """
+            SELECT 1
+            FROM pg_attribute attr
+            JOIN pg_class cls ON cls.oid = attr.attrelid
+            JOIN pg_namespace ns ON ns.oid = cls.relnamespace
+            WHERE ns.nspname = :schema
+              AND cls.relname = :table_name
+              AND attr.attname = :column_name
+              AND attr.attnum > 0
+              AND NOT attr.attisdropped
+            LIMIT 1
+            """
+        ),
+        {
+            "schema": SCHEMA,
+            "table_name": table_name,
+            "column_name": column.name,
+        },
+    ).first()
+    if exists is not None:
+        return
+
+    try:
         op.add_column(table_name, column, schema=SCHEMA)
+    except (psycopg_errors.DuplicateColumn, ProgrammingError) as exc:
+        sqlstate = getattr(getattr(exc, "orig", None), "sqlstate", None)
+        message = str(getattr(exc, "orig", exc)).lower()
+        if isinstance(exc, psycopg_errors.DuplicateColumn) or sqlstate == "42701" or "duplicate column" in message:
+            return
+        raise
 
 
 def _drop_column_if_exists(bind, table_name: str, column_name: str) -> None:
