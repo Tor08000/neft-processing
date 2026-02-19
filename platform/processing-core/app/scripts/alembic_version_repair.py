@@ -4,6 +4,7 @@ import os
 
 import sqlalchemy as sa
 from alembic.config import Config
+from alembic.runtime.migration import MigrationContext
 from alembic.script import ScriptDirectory
 
 
@@ -104,6 +105,36 @@ def ensure_alembic_version_consistency() -> None:
 
     engine = sa.create_engine(database_url)
     quoted_schema = schema.replace('"', '""')
+
+    def _read_sql_rows(connection: sa.Connection) -> list[str]:
+        return connection.execute(
+            sa.text(
+                f'SELECT version_num FROM "{quoted_schema}".alembic_version_core ORDER BY version_num'
+            )
+        ).scalars().all()
+
+    def _read_alembic_ctx_heads(connection: sa.Connection) -> list[str]:
+        context = MigrationContext.configure(
+            connection,
+            opts={"version_table": "alembic_version_core", "version_table_schema": schema},
+        )
+        return sorted(context.get_current_heads())
+
+    def _log_state(
+        db_rows: list[str],
+        alembic_ctx_heads: list[str],
+        lineage_ok: bool | None,
+        decision: str,
+    ) -> None:
+        print(f"[entrypoint] db version rows (sql) = {db_rows}", flush=True)
+        print(f"[entrypoint] alembic context current_heads = {alembic_ctx_heads}", flush=True)
+        print(f"[entrypoint] script heads = {heads}", flush=True)
+        print(
+            f"[entrypoint] lineage check = {'OK' if lineage_ok else 'FAIL' if lineage_ok is False else 'N/A'}",
+            flush=True,
+        )
+        print(f"[entrypoint] decision = {decision}", flush=True)
+
     try:
         with engine.begin() as connection:
             connection.execute(sa.text(f'CREATE SCHEMA IF NOT EXISTS "{quoted_schema}"'))
@@ -111,75 +142,89 @@ def ensure_alembic_version_consistency() -> None:
                 sa.text(
                     f'''
                     CREATE TABLE IF NOT EXISTS "{quoted_schema}".alembic_version_core (
-                        version_num VARCHAR(256) NOT NULL PRIMARY KEY
+                        version_num VARCHAR(128) NOT NULL PRIMARY KEY
                     )
                     '''
                 )
             )
 
-            db_revisions = connection.execute(
-                sa.text(
-                    f'SELECT version_num FROM "{quoted_schema}".alembic_version_core ORDER BY version_num'
+        with engine.connect() as connection:
+            db_revisions = _read_sql_rows(connection)
+            alembic_ctx_heads = _read_alembic_ctx_heads(connection)
+
+        print(f"[entrypoint] alembic_version_core rows: {db_revisions}", flush=True)
+
+        if db_revisions != alembic_ctx_heads:
+            if not auto_repair:
+                _log_state(db_revisions, alembic_ctx_heads, None, "FAIL")
+                raise RuntimeError(
+                    "alembic_version_table_mismatch: "
+                    f"db_rows={db_revisions} alembic_ctx_heads={alembic_ctx_heads} "
+                    f"version_table_schema={schema}"
                 )
-            ).scalars().all()
+            repair_revisions = alembic_ctx_heads or heads
+            with engine.begin() as connection:
+                _replace_versions(connection, schema, repair_revisions)
+            with engine.connect() as connection:
+                after_repair_heads = _read_alembic_ctx_heads(connection)
+            _log_state(db_revisions, alembic_ctx_heads, None, "STAMP_HEAD")
+            print(f"[entrypoint] after repair alembic context current_heads = {after_repair_heads}", flush=True)
+            return
 
-            print(f"[entrypoint] alembic_version_core rows: {db_revisions}", flush=True)
-
-            if not db_revisions:
-                revisions_to_insert = bases or heads[:1]
-                if not bases:
-                    print(
-                        "[entrypoint] warning: no base revisions detected; using first head as fallback",
-                        flush=True,
-                    )
+        if not db_revisions:
+            if not auto_repair:
+                _log_state(db_revisions, alembic_ctx_heads, None, "FAIL")
+                raise RuntimeError(f"empty {schema}.alembic_version_core while ALEMBIC_AUTO_REPAIR=0")
+            revisions_to_insert = bases or heads[:1]
+            with engine.begin() as connection:
                 if revisions_to_insert:
                     _replace_versions(connection, schema, revisions_to_insert)
-                print(
-                    f"[entrypoint] auto-repair action: INSERT_BASE revisions={revisions_to_insert}",
-                    flush=True,
-                )
-                return
+            with engine.connect() as connection:
+                after_repair_heads = _read_alembic_ctx_heads(connection)
+            _log_state(db_revisions, alembic_ctx_heads, None, "INSERT_BASE")
+            print(f"[entrypoint] after repair alembic context current_heads = {after_repair_heads}", flush=True)
+            return
 
-            invalid_revisions = [
-                revision for revision in db_revisions if script.get_revision(revision) is None
-            ]
-            if invalid_revisions:
-                if not auto_repair:
-                    raise RuntimeError(
-                        "[entrypoint] auto-repair action: FAIL_INVALID_REV "
-                        f"invalid revisions in {schema}.alembic_version_core: {invalid_revisions}. "
-                        "Set ALEMBIC_AUTO_REPAIR=1 to repair automatically in non-prod environments."
-                    )
+        invalid_revisions = [
+            revision for revision in db_revisions if script.get_revision(revision) is None
+        ]
+        if invalid_revisions:
+            if not auto_repair:
+                _log_state(db_revisions, alembic_ctx_heads, False, "FAIL")
+                raise RuntimeError(
+                    "[entrypoint] auto-repair action: FAIL_INVALID_REV "
+                    f"invalid revisions in {schema}.alembic_version_core: {invalid_revisions}. "
+                    "Set ALEMBIC_AUTO_REPAIR=1 to repair automatically in non-prod environments."
+                )
+            with engine.begin() as connection:
                 _replace_versions(connection, schema, heads)
-                print(
-                    "[entrypoint] auto-repair action: STAMP_HEAD "
-                    f"reason=invalid_revision revisions={heads}",
-                    flush=True,
-                )
-                return
+            with engine.connect() as connection:
+                after_repair_heads = _read_alembic_ctx_heads(connection)
+            _log_state(db_revisions, alembic_ctx_heads, False, "STAMP_HEAD")
+            print(f"[entrypoint] after repair alembic context current_heads = {after_repair_heads}", flush=True)
+            return
 
-            lineage_mismatch = [
-                revision
-                for revision in db_revisions
-                if not any(_is_ancestor(script, revision, head_revision) for head_revision in heads)
-            ]
-            if lineage_mismatch:
-                if not auto_repair:
-                    raise RuntimeError(
-                        "[entrypoint] auto-repair action: FAIL_LINEAGE "
-                        f"lineage mismatch in {schema}.alembic_version_core for revisions {lineage_mismatch}. "
-                        "Set ALEMBIC_AUTO_REPAIR=1 to repair automatically in non-prod environments."
-                    )
+        lineage_mismatch = [
+            revision
+            for revision in db_revisions
+            if not any(_is_ancestor(script, revision, head_revision) for head_revision in heads)
+        ]
+        if lineage_mismatch:
+            if not auto_repair:
+                _log_state(db_revisions, alembic_ctx_heads, False, "FAIL")
+                raise RuntimeError(
+                    f"lineage mismatch: db_heads={db_revisions} script_heads={heads}. "
+                    "Set ALEMBIC_AUTO_REPAIR=1 to repair automatically in non-prod environments."
+                )
+            with engine.begin() as connection:
                 _replace_versions(connection, schema, heads)
-                print(
-                    "[entrypoint] auto-repair action: STAMP_HEAD "
-                    f"reason=lineage_mismatch revisions={heads}",
-                    flush=True,
-                )
-                print("[entrypoint] warning: alembic lineage mismatch repaired", flush=True)
-                return
+            with engine.connect() as connection:
+                after_repair_heads = _read_alembic_ctx_heads(connection)
+            _log_state(db_revisions, alembic_ctx_heads, False, "STAMP_HEAD")
+            print(f"[entrypoint] after repair alembic context current_heads = {after_repair_heads}", flush=True)
+            return
 
-            print("[entrypoint] auto-repair action: NONE", flush=True)
+        _log_state(db_revisions, alembic_ctx_heads, True, "NONE")
     finally:
         engine.dispose()
 
