@@ -1,4 +1,9 @@
 services:
+  core-api:
+    environment:
+      APP_ENV: dev
+      ALEMBIC_AUTO_REPAIR: 1
+
   logistics-service:
     environment:
       APP_ENV: dev
