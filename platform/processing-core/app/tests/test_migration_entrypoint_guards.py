@@ -164,3 +164,89 @@ def test_entrypoint_smoke_empty_schema(tmp_path):
         connectable.dispose()
 
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+@pytest.mark.skipif(
+    get_database_url().startswith("sqlite"), reason="Smoke test requires Postgres"
+)
+@pytest.mark.integration
+def test_entrypoint_default_cleanup_preserves_operationstatus_enum():
+    db_url = get_database_url()
+    connectable = ensure_connectable(db_url)
+    schema = f"entrypoint_cleanup_{uuid.uuid4().hex[:8]}"
+
+    with connectable.begin() as connection:
+        connection.exec_driver_sql(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE')
+        connection.exec_driver_sql(f'CREATE SCHEMA "{schema}"')
+        connection.exec_driver_sql(f"CREATE TYPE {schema}.operationstatus AS ENUM ('PENDING', 'DONE')")
+        connection.exec_driver_sql(
+            f"""
+            CREATE TABLE {schema}.operations (
+                id bigserial PRIMARY KEY,
+                status {schema}.operationstatus NOT NULL DEFAULT 'PENDING'
+            )
+            """
+        )
+        connection.exec_driver_sql(f"INSERT INTO {schema}.operations(status) VALUES ('PENDING')")
+
+    env = os.environ.copy()
+    env.update(
+        {
+            "DATABASE_URL": db_url,
+            "NEFT_DB_SCHEMA": schema,
+            "ALEMBIC_CONFIG": "app/alembic.ini",
+            "ENTRYPOINT_SKIP_APP": "1",
+        }
+    )
+
+    try:
+        result = subprocess.run(
+            ["sh", str(Path(__file__).parents[2] / "entrypoint.sh")],
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+
+        with connectable.begin() as connection:
+            enum_reg = connection.execute(
+                sa.text("select to_regtype(:enum_name)::text"),
+                {"enum_name": f"{schema}.operationstatus"},
+            ).scalar()
+            status_text = connection.execute(
+                sa.text(f"select status::text from {schema}.operations limit 1")
+            ).scalar()
+    finally:
+        with connectable.begin() as connection:
+            connection.exec_driver_sql(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE')
+        connectable.dispose()
+
+    output = f"{result.stdout}\n{result.stderr}"
+    assert result.returncode == 0, output
+    assert "orphan cleanup mode=off" in output
+    assert "orphan cleanup drop" not in output
+    assert enum_reg == f"{schema}.operationstatus"
+    assert status_text == "PENDING"
+
+
+@pytest.mark.skipif(
+    get_database_url().startswith("sqlite"), reason="Smoke test requires Postgres"
+)
+@pytest.mark.integration
+def test_processing_core_upgrade_head_idempotent():
+    db_url = get_database_url()
+    connectable = ensure_connectable(db_url)
+    cfg = _render_alembic_config(db_url)
+
+    try:
+        command.upgrade(cfg, "head")
+        command.upgrade(cfg, "head")
+        with connectable.connect() as connection:
+            rows = connection.execute(
+                sa.text(
+                    f'SELECT COUNT(*) FROM "{SCHEMA_RESOLUTION.schema}".alembic_version_core'
+                )
+            ).scalar_one()
+    finally:
+        connectable.dispose()
+
+    assert rows >= 1

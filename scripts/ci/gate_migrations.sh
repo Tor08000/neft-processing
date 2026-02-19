@@ -30,6 +30,7 @@ export DATABASE_URL
 export AUTH_DB_DSN="$DATABASE_URL"
 export AUTH_DB_SCHEMA="public"
 export NEFT_DB_SCHEMA="processing_core"
+export NEFT_ORPHAN_CLEANUP_MODE="off"
 
 check_single_head "alembic.ini" "platform/auth-host" "auth-host"
 (cd platform/auth-host && alembic -c alembic.ini upgrade head)
