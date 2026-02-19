@@ -120,6 +120,19 @@ PY
 ALEMBIC_CONFIG=${ALEMBIC_CONFIG:-/app/app/alembic.ini}
 MIGRATION_LOG=${MIGRATION_LOG:-/tmp/alembic_migration.log}
 
+if [ -z "${ALEMBIC_AUTO_REPAIR+x}" ]; then
+    case "${APP_ENV:-}" in
+        prod|production)
+            ALEMBIC_AUTO_REPAIR=0
+            ;;
+        *)
+            ALEMBIC_AUTO_REPAIR=1
+            ;;
+    esac
+fi
+export ALEMBIC_AUTO_REPAIR
+echo "[entrypoint] ALEMBIC_AUTO_REPAIR=${ALEMBIC_AUTO_REPAIR}"
+
 if [ ! -f "$ALEMBIC_CONFIG" ]; then
     echo "[entrypoint] missing alembic config: $ALEMBIC_CONFIG" >&2
     exit 1
@@ -495,6 +508,9 @@ END
 \$\$;
 EOF
 echo "[entrypoint] cleanup completed"
+
+echo "[entrypoint] ensuring alembic version consistency"
+python -m app.scripts.alembic_version_repair
 
 echo "[entrypoint] applying migrations via alembic ($ALEMBIC_CONFIG)"
 if ! alembic -c "$ALEMBIC_CONFIG" upgrade head >"$MIGRATION_LOG" 2>&1; then

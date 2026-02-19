@@ -256,6 +256,7 @@ services:
       - .env
     environment:
       APP_ENV: ${APP_ENV:-prod}
+      ALEMBIC_AUTO_REPAIR: ${ALEMBIC_AUTO_REPAIR:-0}
       USE_STUB_CRM: ${USE_STUB_CRM:-0}
       USE_STUB_EDO: ${USE_STUB_EDO:-0}
       USE_MOCK_LOGISTICS: ${USE_MOCK_LOGISTICS:-0}
