@@ -73,51 +73,10 @@ def _replace_versions(connection: sa.Connection, schema: str, revisions: list[st
         )
 
 
-HOME_SCHEMA_TABLES = {
-    "clients",
-    "cards",
-    "operations",
-    "documents",
-    "client_cards",
-    "client_operations",
-    "accounts",
-}
-
-
-def _read_schema_tables(connection: sa.Connection, schema: str) -> list[str]:
-    rows = connection.execute(
-        sa.text(
-            """
-            SELECT table_name
-            FROM information_schema.tables
-            WHERE table_schema = :schema
-              AND table_type = 'BASE TABLE'
-            ORDER BY table_name
-            """
-        ),
-        {"schema": schema},
-    )
-    return [row[0] for row in rows]
-
-
-def _read_clients_columns(connection: sa.Connection, schema: str) -> list[str]:
-    rows = connection.execute(
-        sa.text(
-            """
-            SELECT column_name
-            FROM information_schema.columns
-            WHERE table_schema = :schema
-              AND table_name = 'clients'
-            ORDER BY ordinal_position
-            """
-        ),
-        {"schema": schema},
-    )
-    return [row[0] for row in rows]
-
-
-def _schema_has_home_tables(schema_tables: list[str]) -> bool:
-    return any(table in HOME_SCHEMA_TABLES for table in schema_tables)
+def _format_table_preview(schema_tables: list[str], *, limit: int = 20) -> str:
+    preview = schema_tables[:limit]
+    suffix = "" if len(schema_tables) <= limit else f" ... (+{len(schema_tables) - limit} more)"
+    return f"total={len(schema_tables)} preview={preview}{suffix}"
 
 
 def ensure_alembic_version_consistency() -> None:
@@ -228,20 +187,35 @@ def ensure_alembic_version_consistency() -> None:
         if not db_revisions:
             with engine.connect() as connection:
                 schema_tables = _read_schema_tables(connection, schema)
-                home_tables_present = _schema_has_home_tables(schema_tables)
+                non_version_tables = [
+                    table_name for table_name in schema_tables if table_name != "alembic_version_core"
+                ]
+                schema_not_empty = len(non_version_tables) > 0
                 clients_columns = _read_clients_columns(connection, schema)
 
-            print(f"[entrypoint] schema tables in {schema}: {schema_tables}", flush=True)
+            print(
+                f"[entrypoint] schema tables in {schema}: {_format_table_preview(non_version_tables)}",
+                flush=True,
+            )
             print(f"[entrypoint] clients columns in {schema}: {clients_columns}", flush=True)
 
-            if home_tables_present:
+            if schema_not_empty:
                 if not reset_on_missing:
                     _log_state(db_revisions, alembic_ctx_heads, None, "FAIL_SCHEMA_NOT_EMPTY")
                     raise RuntimeError(
                         "alembic_version_missing_but_schema_not_empty: "
-                        f"schema={schema} tables={schema_tables} clients_columns={clients_columns}. "
+                        f"schema={schema} tables={non_version_tables} clients_columns={clients_columns}. "
                         "Refusing INSERT_BASE to avoid inconsistent migration lineage. "
                         "Set DB_RESET_ON_VERSION_MISSING=1 for automatic schema reset in dev environments."
+                    )
+
+                allow_reset_in_prod = _env_flag("ALLOW_SCHEMA_RESET_IN_PROD", False)
+                if _is_prod_env() and not allow_reset_in_prod:
+                    _log_state(db_revisions, alembic_ctx_heads, None, "FAIL_RESET_FORBIDDEN_IN_PROD")
+                    raise RuntimeError(
+                        "schema_reset_forbidden_in_prod: "
+                        "DB_RESET_ON_VERSION_MISSING=1 requires non-prod APP_ENV or "
+                        "ALLOW_SCHEMA_RESET_IN_PROD=1"
                     )
 
                 with engine.begin() as connection:

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import sqlalchemy as sa
 from alembic import op
+from sqlalchemy.exc import SQLAlchemyError
 
 from alembic_helpers import DB_SCHEMA, create_index_if_not_exists, create_table_if_not_exists, create_unique_index_if_not_exists
 from db.types import GUID
@@ -24,6 +25,8 @@ def _has_column(inspector, table: str, column: str) -> bool:
 
 
 def ensure_clients_status_column(bind, inspector) -> bool:
+    quoted_schema = DB_SCHEMA.replace('"', '""')
+
     if not inspector.has_table("clients", schema=DB_SCHEMA):
         print("[alembic][0192] clients table is missing; skipping status column/index", flush=True)
         return False
@@ -31,20 +34,47 @@ def ensure_clients_status_column(bind, inspector) -> bool:
     if _has_column(inspector, "clients", "status"):
         return True
 
-    op.add_column(
-        "clients",
-        sa.Column("status", sa.String(length=32), nullable=True, server_default="ACTIVE"),
-        schema=DB_SCHEMA,
-    )
-    op.execute(sa.text(f"UPDATE {DB_SCHEMA}.clients SET status = COALESCE(status, 'ACTIVE')"))
-    op.alter_column(
-        "clients",
-        "status",
-        existing_type=sa.String(length=32),
-        nullable=False,
-        server_default="ACTIVE",
-        schema=DB_SCHEMA,
-    )
+    # Source of truth: app.models.client.Client.status = String(nullable=False, server_default='ACTIVE').
+    primary_type = sa.String(length=32)
+    try:
+        op.add_column(
+            "clients",
+            sa.Column("status", primary_type, nullable=True, server_default="ACTIVE"),
+            schema=DB_SCHEMA,
+        )
+        bind.execute(
+            sa.text(
+                f'UPDATE "{quoted_schema}".clients SET status = COALESCE(status, :default_status)'
+            ),
+            {"default_status": "ACTIVE"},
+        )
+        op.alter_column(
+            "clients",
+            "status",
+            existing_type=primary_type,
+            nullable=False,
+            server_default="ACTIVE",
+            schema=DB_SCHEMA,
+        )
+    except SQLAlchemyError as exc:
+        print(
+            "[alembic][0192] WARNING: failed to add clients.status using canonical type "
+            f"String(32): {exc}. Falling back to nullable TEXT.",
+            flush=True,
+        )
+        try:
+            op.add_column(
+                "clients",
+                sa.Column("status", sa.Text(), nullable=True),
+                schema=DB_SCHEMA,
+            )
+        except SQLAlchemyError as fallback_exc:
+            print(
+                "[alembic][0192] WARNING: fallback add column clients.status TEXT failed: "
+                f"{fallback_exc}",
+                flush=True,
+            )
+            return False
 
     refreshed_inspector = sa.inspect(bind)
     if not _has_column(refreshed_inspector, "clients", "status"):
