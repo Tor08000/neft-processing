@@ -33,8 +33,15 @@ config.set_main_option("version_table_schema", schema)
 
 
 def run_migrations_offline() -> None:
-    msg = "Offline migrations are not supported; provide DATABASE_URL for online run."
-    raise RuntimeError(msg)
+    context.configure(
+        url=DATABASE_URL,
+        version_table=version_table,
+        version_table_schema=schema,
+        include_schemas=True,
+        literal_binds=True,
+    )
+    with context.begin_transaction():
+        context.run_migrations()
 
 
 def _configure(connection, command_name: str | None) -> None:
