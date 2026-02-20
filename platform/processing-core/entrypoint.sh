@@ -489,6 +489,9 @@ run_upgrade() {
     python -m app.scripts.alembic_upgrade_preflight
     echo "[entrypoint] applying migrations via alembic upgrade head ($ALEMBIC_CONFIG)"
     alembic -c "$ALEMBIC_CONFIG" upgrade head >"$MIGRATION_LOG" 2>&1
+    alembic_exit_code=$?
+    echo "[entrypoint] alembic upgrade exit_code=${alembic_exit_code}"
+    return "$alembic_exit_code"
 }
 
 set +e
@@ -514,8 +517,9 @@ set -e
 
 if [ "$migration_status" -ne 0 ]; then
     if [ "$ALEMBIC_DECISION" = "UPGRADE" ]; then
-        echo "[entrypoint] alembic upgrade failed exit_code=${migration_status}" >&2
-        tail -n 80 "$MIGRATION_LOG" >&2 || true
+        echo "[entrypoint] alembic upgrade exit_code=${migration_status}" >&2
+        echo "[entrypoint] tail -n 120 ${MIGRATION_LOG}" >&2
+        tail -n 120 "$MIGRATION_LOG" >&2 || true
     else
         echo "[entrypoint] migration validation failed; last log lines:" >&2
         tail -n 200 "$MIGRATION_LOG" >&2 || true
