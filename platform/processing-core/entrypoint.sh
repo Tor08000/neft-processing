@@ -648,18 +648,92 @@ DEV_ALLOW_VERSION_FORCE=${DEV_ALLOW_VERSION_FORCE:-0}
 echo "[entrypoint] DEV_ALLOW_STAMP=${DEV_ALLOW_STAMP} DEV_ALLOW_VERSION_FORCE=${DEV_ALLOW_VERSION_FORCE}"
 
 get_alembic_current() {
-    raw_output=$(cd /app && alembic -c /app/app/alembic.ini current 2>&1 || true)
-    printf "%s\n" "$raw_output" \
-        | awk '
-            {
-                for (i = 1; i <= NF; i++) {
-                    if ($i ~ /^[0-9]{8}_[0-9]{4}_[a-z0-9_]+$/) {
-                        print $i
-                    }
-                }
-            }
-        ' \
-        | awk '!seen[$0]++'
+    VERSION_TABLE_SCHEMA="$VERSION_TABLE_SCHEMA" VERSION_TABLE_NAME="$VERSION_TABLE_NAME" DATABASE_URL="$DATABASE_URL" python - <<'PY'
+import os
+import sys
+
+import sqlalchemy as sa
+from alembic.runtime.migration import MigrationContext
+
+database_url = os.getenv("DATABASE_URL")
+if not database_url:
+    raise RuntimeError("DATABASE_URL is not set")
+
+version_table_schema = os.getenv("VERSION_TABLE_SCHEMA", "processing_core")
+version_table_name = os.getenv("VERSION_TABLE_NAME", "alembic_version_core")
+
+engine = sa.create_engine(database_url)
+try:
+    with engine.connect() as connection:
+        context = MigrationContext.configure(
+            connection,
+            opts={
+                "version_table": version_table_name,
+                "version_table_schema": version_table_schema,
+            },
+        )
+        for revision in sorted(context.get_current_heads()):
+            print(revision)
+except Exception as exc:  # pragma: no cover - runtime diagnostics path
+    print(f"failed to read alembic current via MigrationContext: {exc}", file=sys.stderr)
+    raise
+finally:
+    engine.dispose()
+PY
+}
+
+validate_lineage_against_heads() {
+    current_revision="$1"
+    script_heads="$2"
+    CURRENT_REVISION="$current_revision" SCRIPT_HEADS="$script_heads" ALEMBIC_CONFIG="$ALEMBIC_CONFIG" python - <<'PY'
+import os
+
+from alembic.config import Config
+from alembic.script import ScriptDirectory
+
+
+def normalize_parents(down_revision: object) -> tuple[str, ...]:
+    if down_revision is None:
+        return ()
+    if isinstance(down_revision, str):
+        return (down_revision,)
+    if isinstance(down_revision, (tuple, list, set)):
+        return tuple(str(item) for item in down_revision if item)
+    return (str(down_revision),)
+
+
+def is_ancestor(script: ScriptDirectory, ancestor: str, head: str) -> bool:
+    stack = [head]
+    visited: set[str] = set()
+    while stack:
+        current = stack.pop()
+        if current == ancestor:
+            return True
+        if current in visited:
+            continue
+        visited.add(current)
+        revision = script.get_revision(current)
+        if revision is None:
+            continue
+        stack.extend(normalize_parents(revision.down_revision))
+    return False
+
+
+current_revision = os.getenv("CURRENT_REVISION", "").strip()
+heads = [line.strip() for line in os.getenv("SCRIPT_HEADS", "").splitlines() if line.strip()]
+if not current_revision:
+    raise RuntimeError("CURRENT_REVISION is empty")
+if not heads:
+    raise RuntimeError("SCRIPT_HEADS is empty")
+
+config = Config(os.getenv("ALEMBIC_CONFIG", "/app/app/alembic.ini"))
+script = ScriptDirectory.from_config(config)
+
+if any(is_ancestor(script, current_revision, head) for head in heads):
+    print(f"lineage OK: current={current_revision} heads={heads}")
+else:
+    raise RuntimeError(f"lineage mismatch: current={current_revision} is not ancestor of heads={heads}")
+PY
 }
 
 count_lines() {
@@ -750,14 +824,24 @@ fi
 
 sql_current=$(printf "%s\n" "$sql_versions" | sed '/^[[:space:]]*$/d' | tail -n 1)
 
-alembic_revisions=$(get_alembic_current)
+set +e
+alembic_revisions=$(get_alembic_current 2>/tmp/alembic_current_error.log)
+alembic_read_status=$?
+set -e
+if [ "$alembic_read_status" -ne 0 ]; then
+    echo "[entrypoint] failed to read alembic current via API; reason:" >&2
+    sed 's/^/[entrypoint]   /' /tmp/alembic_current_error.log >&2 || true
+    echo "[entrypoint] fallback: using sql_versions as alembic_current source" >&2
+    alembic_revisions="$sql_versions"
+fi
+
 alembic_rows_count=$(count_lines "$alembic_revisions")
 if [ "$alembic_rows_count" -eq 0 ]; then
-    echo "[entrypoint] no revisions in alembic current output" >&2
+    echo "[entrypoint] alembic current is empty after API read/fallback" >&2
     exit 1
 fi
 if [ "$alembic_rows_count" -gt 1 ]; then
-    echo "[entrypoint] multi-head detected in alembic current output: $(format_list "$alembic_revisions")" >&2
+    echo "[entrypoint] multi-head detected in alembic current: $(format_list "$alembic_revisions")" >&2
     exit 1
 fi
 alembic_current=$(printf "%s\n" "$alembic_revisions" | sed '/^[[:space:]]*$/d' | tail -n 1)
@@ -788,6 +872,14 @@ if [ -z "$sql_current" ]; then
         echo "[entrypoint] sql_current after stamp=${sql_current}"
     else
         echo "[entrypoint] version table mismatch: db version is empty, enable DEV_ALLOW_STAMP=1 or run reset-db" >&2
+        exit 1
+    fi
+fi
+
+if [ "$ALEMBIC_DECISION" = "SKIP" ]; then
+    echo "[entrypoint] decision=SKIP => validating lineage(current in ancestors of script heads)"
+    if ! validate_lineage_against_heads "$sql_current" "$expected_heads"; then
+        echo "[entrypoint] version table mismatch: SKIP requires lineage compatibility with script heads" >&2
         exit 1
     fi
 fi
