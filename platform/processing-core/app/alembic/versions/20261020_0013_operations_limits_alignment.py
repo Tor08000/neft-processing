@@ -6,6 +6,8 @@ Create Date: 2026-10-20 00:00:00.000000
 """
 from __future__ import annotations
 
+import logging
+
 from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.exc import ProgrammingError
@@ -16,6 +18,8 @@ from alembic_helpers import column_exists, constraint_exists, ensure_pg_enum, ta
 from db.schema import resolve_db_schema
 
 SCHEMA = resolve_db_schema().schema
+INDEX_SCHEMA = "processing_core"
+LOGGER = logging.getLogger(__name__)
 
 
 def _add_column_if_missing(bind, table_name: str, column: sa.Column) -> None:
@@ -134,25 +138,87 @@ def _create_index_if_not_exists(
     where: str | None = None,
 ) -> None:
     bind = op.get_bind()
-    if getattr(getattr(bind, "dialect", None), "name", None) == "postgresql":
-        columns_sql = ", ".join(columns)
-        unique_sql = "UNIQUE " if unique else ""
-        where_sql = f" WHERE {where}" if where else ""
-        op.execute(
-            sa.text(
-                f"CREATE {unique_sql}INDEX IF NOT EXISTS {name} "
-                f"ON {table_name} ({columns_sql}){where_sql}"
-            )
+    inspector = sa.inspect(bind)
+    table_indexes = inspector.get_indexes(table_name, schema=INDEX_SCHEMA)
+    index_exists = any(index.get("name") == name for index in table_indexes)
+
+    LOGGER.info(
+        "Index check",
+        extra={
+            "schema": INDEX_SCHEMA,
+            "table": table_name,
+            "index_name": name,
+            "columns": list(columns),
+            "exists": index_exists,
+        },
+    )
+
+    if index_exists:
+        LOGGER.info(
+            "Index already exists, skipping creation",
+            extra={
+                "schema": INDEX_SCHEMA,
+                "table": table_name,
+                "index_name": name,
+            },
         )
         return
 
-    op.create_index(name, table_name, columns, unique=unique)
+    try:
+        LOGGER.info(
+            "Creating index",
+            extra={
+                "schema": INDEX_SCHEMA,
+                "table": table_name,
+                "index_name": name,
+                "columns": list(columns),
+            },
+        )
+        op.create_index(
+            name,
+            table_name,
+            columns,
+            unique=unique,
+            schema=INDEX_SCHEMA,
+            postgresql_where=sa.text(where) if where else None,
+        )
+    except (
+        psycopg_errors.DuplicateObject,
+        psycopg_errors.DuplicateTable,
+        psycopg_errors.UniqueViolation,
+        ProgrammingError,
+    ) as exc:
+        sqlstate = getattr(getattr(exc, "orig", None), "sqlstate", None)
+        message = str(getattr(exc, "orig", exc)).lower()
+        if (
+            isinstance(
+                exc,
+                (
+                    psycopg_errors.DuplicateObject,
+                    psycopg_errors.DuplicateTable,
+                    psycopg_errors.UniqueViolation,
+                ),
+            )
+            or sqlstate in {"42710", "42P07", "23505"}
+            or "already exists" in message
+            or "duplicate key value" in message
+        ):
+            LOGGER.warning(
+                "Index create raced with concurrent process, treating as existing",
+                extra={
+                    "schema": INDEX_SCHEMA,
+                    "table": table_name,
+                    "index_name": name,
+                },
+            )
+            return
+        raise
 
 
 def _drop_index_if_exists(name: str, table_name: str) -> None:
     bind = op.get_bind()
     if getattr(getattr(bind, "dialect", None), "name", None) == "postgresql":
-        op.execute(sa.text(f"DROP INDEX IF EXISTS {name}"))
+        op.execute(sa.text(f"DROP INDEX IF EXISTS {INDEX_SCHEMA}.{name}"))
         return
 
     op.drop_index(name, table_name=table_name)
