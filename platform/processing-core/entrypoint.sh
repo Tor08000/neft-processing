@@ -486,6 +486,8 @@ PY
 fi
 
 run_upgrade() {
+    echo "[entrypoint] running pre-upgrade sanity-check"
+    python -m app.scripts.alembic_upgrade_preflight
     echo "[entrypoint] applying migrations via alembic upgrade head ($ALEMBIC_CONFIG)"
     alembic -c "$ALEMBIC_CONFIG" upgrade head >"$MIGRATION_LOG" 2>&1
 }
