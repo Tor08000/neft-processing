@@ -28,16 +28,22 @@ config.set_main_option("sqlalchemy.url", DATABASE_URL)
 schema = "processing_core"
 version_table = "alembic_version_core"
 version_column_length = 128
+target_metadata = None
 config.set_main_option("version_table", version_table)
 config.set_main_option("version_table_schema", schema)
+
+configure_kwargs = {
+    "target_metadata": target_metadata,
+    "include_schemas": True,
+    "version_table": version_table,
+    "version_table_schema": schema,
+}
 
 
 def run_migrations_offline() -> None:
     context.configure(
         url=DATABASE_URL,
-        version_table=version_table,
-        version_table_schema=schema,
-        include_schemas=True,
+        **configure_kwargs,
         literal_binds=True,
     )
     with context.begin_transaction():
@@ -50,9 +56,7 @@ def _configure(connection, command_name: str | None) -> None:
     transaction_per_migration = command_name in {"upgrade", "downgrade"}
     context.configure(
         connection=connection,
-        version_table=version_table,
-        version_table_schema=schema,
-        include_schemas=True,
+        **configure_kwargs,
         transaction_per_migration=transaction_per_migration,
     )
 
