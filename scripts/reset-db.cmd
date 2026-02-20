@@ -15,6 +15,10 @@ echo [reset-db] waiting for postgres to accept connections...
 docker compose -f %COMPOSE_FILE% exec -T postgres sh -lc "until pg_isready -U ${POSTGRES_USER:-neft} -d ${POSTGRES_DB:-neft}; do sleep 1; done"
 if errorlevel 1 exit /b 1
 
+echo [reset-db] cleaning parallel alembic version tables in public schema...
+docker compose -f %COMPOSE_FILE% exec -T postgres sh -lc "psql -U ${POSTGRES_USER:-neft} -d ${POSTGRES_DB:-neft} -v ON_ERROR_STOP=1 -c ""DO $$ DECLARE r RECORD; BEGIN FOR r IN (SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE' AND table_name LIKE 'alembic_version%' AND table_name <> 'alembic_version_core') LOOP EXECUTE format('DROP TABLE IF EXISTS public.%I', r.table_name); END LOOP; END $$;"""
+if errorlevel 1 exit /b 1
+
 echo [reset-db] starting core-api with rebuild...
 docker compose -f %COMPOSE_FILE% up -d --build core-api
 if errorlevel 1 exit /b 1
