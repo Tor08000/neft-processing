@@ -121,13 +121,62 @@ def test_version_missing_with_non_empty_schema_fails(monkeypatch):
     monkeypatch.setenv("DATABASE_URL", db_url)
     monkeypatch.setenv("NEFT_DB_SCHEMA", schema)
     monkeypatch.setenv("ALEMBIC_CONFIG", alembic_ini)
+    monkeypatch.setenv("APP_ENV", "prod")
     try:
-        with pytest.raises(RuntimeError, match="version table empty but domain tables already exist"):
+        with pytest.raises(RuntimeError, match="prod safety policy"):
             ensure_alembic_version_consistency()
     finally:
         with connectable.begin() as connection:
             connection.exec_driver_sql(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE')
         connectable.dispose()
+
+
+@pytest.mark.skipif(get_database_url().startswith("sqlite"), reason="Postgres-only test")
+def test_version_missing_with_non_empty_schema_dev_reset_selects_upgrade(monkeypatch, capsys):
+    db_url = get_database_url()
+    connectable = ensure_connectable(db_url)
+    schema = f"version_repair_reset_{uuid.uuid4().hex[:8]}"
+
+    with connectable.begin() as connection:
+        connection.exec_driver_sql(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE')
+        connection.exec_driver_sql(f'CREATE SCHEMA "{schema}"')
+        connection.exec_driver_sql(
+            f'CREATE TABLE "{schema}".alembic_version_core (version_num VARCHAR(128) PRIMARY KEY NOT NULL)'
+        )
+        connection.exec_driver_sql(
+            f'CREATE TABLE "{schema}".operations (id UUID PRIMARY KEY, operation_id VARCHAR(64) NOT NULL)'
+        )
+
+    alembic_ini = str(Path(__file__).parents[1] / "alembic.ini")
+    monkeypatch.setenv("DATABASE_URL", db_url)
+    monkeypatch.setenv("NEFT_DB_SCHEMA", schema)
+    monkeypatch.setenv("ALEMBIC_CONFIG", alembic_ini)
+    monkeypatch.setenv("APP_ENV", "dev")
+    monkeypatch.setenv("DEV_DB_RECOVERY", "reset")
+
+    try:
+        ensure_alembic_version_consistency()
+        with connectable.connect() as connection:
+            restored_tables = connection.execute(
+                sa.text(
+                    """
+                    SELECT table_name
+                    FROM information_schema.tables
+                    WHERE table_schema = :schema
+                    ORDER BY table_name
+                    """
+                ),
+                {"schema": schema},
+            ).scalars().all()
+    finally:
+        with connectable.begin() as connection:
+            connection.exec_driver_sql(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE')
+        connectable.dispose()
+
+    output = capsys.readouterr().out
+    assert "detected: version table empty + domain tables already exist" in output
+    assert "mode selected = UPGRADE" in output
+    assert restored_tables == ["alembic_version_core"]
 
 
 @pytest.mark.skipif(get_database_url().startswith("sqlite"), reason="Postgres-only test")
