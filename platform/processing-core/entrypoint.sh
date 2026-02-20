@@ -809,6 +809,12 @@ get_sql_versions() {
         | tr -d '\r' | sed '/^[[:space:]]*$/d'
 }
 
+list_alembic_version_tables() {
+    psql "$PSQL_URL" -q -v ON_ERROR_STOP=1 -tA -c \
+        "SELECT table_schema || '.' || table_name FROM information_schema.tables WHERE table_name ILIKE 'alembic%version%' ORDER BY table_schema, table_name;" \
+        | tr -d '\r' | sed '/^[[:space:]]*$/d'
+}
+
 sql_versions=$(get_sql_versions)
 sql_rows_count=$(count_lines "$sql_versions")
 sql_current=$(printf "%s\n" "$sql_versions" | sed '/^[[:space:]]*$/d' | tail -n 1)
@@ -829,6 +835,13 @@ if [ "$ALEMBIC_DECISION" = "SKIP" ]; then
 else
     if [ "$sql_rows_count" -eq 0 ]; then
         echo "[entrypoint] upgrade reported success but version table empty (${VERSION_TABLE_SCHEMA}.${VERSION_TABLE_NAME})" >&2
+        echo "[entrypoint] alembic version-like tables:" >&2
+        table_list=$(list_alembic_version_tables)
+        if [ -n "$table_list" ]; then
+            printf "%s\n" "$table_list" | sed 's/^/[entrypoint]   /' >&2
+        else
+            echo "[entrypoint]   <none>" >&2
+        fi
         exit 1
     fi
     if [ "$sql_rows_count" -ne 1 ]; then

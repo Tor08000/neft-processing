@@ -39,6 +39,16 @@ async def bootstrap_required_users(settings: Settings | None = None) -> None:
             extra={"email": demo_user.email, "status": status},
         )
 
+    credential_labels = ("admin", "client", "partner")
+    for label, demo_user in zip(credential_labels, demo_users, strict=False):
+        login_hint = demo_user.username or demo_user.email
+        logger.info(
+            "auth bootstrap demo credentials: role=%s login=%s password=%s",
+            label,
+            login_hint,
+            demo_user.password,
+        )
+
 
 async def _ensure_demo_accounts(settings: Settings) -> None:
     await bootstrap_demo_client(settings=settings)
