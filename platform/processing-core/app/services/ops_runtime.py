@@ -117,137 +117,196 @@ def build_ops_summary(db: Session) -> OpsSummaryResponse:
     now = _utc_now()
     since_1h = now - timedelta(hours=1)
     since_24h = now - timedelta(hours=24)
+    warnings: list[str] = []
 
-    export_queued = _count(
-        db.query(func.count(ExportJob.id)).filter(ExportJob.status == ExportJobStatus.QUEUED)
-    )
-    export_running = _count(
-        db.query(func.count(ExportJob.id)).filter(ExportJob.status == ExportJobStatus.RUNNING)
-    )
-    export_failed_1h = _count(
-        db.query(func.count(ExportJob.id)).filter(
-            ExportJob.status == ExportJobStatus.FAILED,
-            ExportJob.created_at >= since_1h,
-        )
-    )
+    def safe_int(name: str, fn, default: int = 0) -> int:
+        try:
+            return int(fn())
+        except Exception:
+            warnings.append(name)
+            return default
 
-    payouts_queued = _count(
-        db.query(func.count(PayoutOrder.id)).filter(PayoutOrder.status == PayoutOrderStatus.QUEUED)
+    export_queued = safe_int(
+        "exports.queue_count",
+        lambda: _count(db.query(func.count(ExportJob.id)).filter(ExportJob.status == ExportJobStatus.QUEUED)),
     )
-    payout_blocked_total = sum(mor_metrics.payout_blocked_total.values())
-
-    settlements_queued = _count(
-        db.query(func.count(SettlementPeriod.id)).filter(
-            SettlementPeriod.status == SettlementPeriodStatus.OPEN
-        )
+    export_running = safe_int(
+        "exports.running_count",
+        lambda: _count(db.query(func.count(ExportJob.id)).filter(ExportJob.status == ExportJobStatus.RUNNING)),
     )
-    settlements_finalizing = _count(
-        db.query(func.count(SettlementPeriod.id)).filter(
-            SettlementPeriod.status.in_({SettlementPeriodStatus.CALCULATED, SettlementPeriodStatus.APPROVED})
-        )
+    export_failed_1h = safe_int(
+        "exports.failed_1h_count",
+        lambda: _count(
+            db.query(func.count(ExportJob.id)).filter(
+                ExportJob.status == ExportJobStatus.FAILED,
+                ExportJob.created_at >= since_1h,
+            )
+        ),
     )
 
-    emails_queued = _count(
-        db.query(func.count(EmailOutbox.id)).filter(EmailOutbox.status == EmailOutboxStatus.QUEUED)
+    payouts_queued = safe_int(
+        "payouts.queued_count",
+        lambda: _count(db.query(func.count(PayoutOrder.id)).filter(PayoutOrder.status == PayoutOrderStatus.QUEUED)),
     )
-    emails_failed_1h = _count(
-        db.query(func.count(EmailOutbox.id)).filter(
-            EmailOutbox.status == EmailOutboxStatus.FAILED,
-            EmailOutbox.created_at >= since_1h,
-        )
+    payout_blocked_total = safe_int("mor.payout_blocked_total", lambda: sum(mor_metrics.payout_blocked_total.values()))
+
+    settlements_queued = safe_int(
+        "settlements.queued_count",
+        lambda: _count(db.query(func.count(SettlementPeriod.id)).filter(SettlementPeriod.status == SettlementPeriodStatus.OPEN)),
+    )
+    settlements_finalizing = safe_int(
+        "settlements.finalizing_count",
+        lambda: _count(
+            db.query(func.count(SettlementPeriod.id)).filter(
+                SettlementPeriod.status.in_({SettlementPeriodStatus.CALCULATED, SettlementPeriodStatus.APPROVED})
+            )
+        ),
     )
 
-    helpdesk_queued = _count(
-        db.query(func.count(HelpdeskOutbox.id)).filter(HelpdeskOutbox.status == HelpdeskOutboxStatus.QUEUED)
+    emails_queued = safe_int(
+        "emails.queued_count",
+        lambda: _count(db.query(func.count(EmailOutbox.id)).filter(EmailOutbox.status == EmailOutboxStatus.QUEUED)),
     )
-    helpdesk_failed_1h = _count(
-        db.query(func.count(HelpdeskOutbox.id)).filter(
-            HelpdeskOutbox.status == HelpdeskOutboxStatus.FAILED,
-            HelpdeskOutbox.created_at >= since_1h,
-        )
-    )
-
-    immutable_violations = mor_metrics.settlement_immutable_violation_total
-    clawback_required = mor_metrics.clawback_required_total
-    admin_overrides = mor_metrics.admin_override_total
-    payout_blocked_reasons = [
-        OpsMorTopReason(reason=reason, count=count)
-        for reason, count in sorted(
-            mor_metrics.payout_blocked_total.items(), key=lambda item: item[1], reverse=True
-        )[:5]
-    ]
-
-    overdue_orgs = _count(
-        db.query(func.count(func.distinct(Invoice.client_id))).filter(Invoice.status == InvoiceStatus.OVERDUE)
-    )
-    overdue_amount = _sum(
-        db.query(func.coalesce(func.sum(Invoice.amount_due), 0)).filter(Invoice.status == InvoiceStatus.OVERDUE)
-    )
-    dunning_sent_24h = _count(
-        db.query(func.count(BillingDunningEvent.id)).filter(
-            BillingDunningEvent.status == BillingDunningStatus.SENT,
-            BillingDunningEvent.sent_at >= since_24h,
-        )
-    )
-    auto_suspends_24h = _count(
-        db.query(func.count(BillingDunningEvent.id)).filter(
-            BillingDunningEvent.event_type == BillingDunningEventType.SUSPENDED,
-            BillingDunningEvent.sent_at >= since_24h,
-        )
+    emails_failed_1h = safe_int(
+        "emails.failed_1h_count",
+        lambda: _count(
+            db.query(func.count(EmailOutbox.id)).filter(
+                EmailOutbox.status == EmailOutboxStatus.FAILED,
+                EmailOutbox.created_at >= since_1h,
+            )
+        ),
     )
 
-    imports_24h = _count(
-        db.query(func.count(BankStatementImport.id)).filter(BankStatementImport.uploaded_at >= since_24h)
+    helpdesk_queued = safe_int(
+        "helpdesk.queued_count",
+        lambda: _count(db.query(func.count(HelpdeskOutbox.id)).filter(HelpdeskOutbox.status == HelpdeskOutboxStatus.QUEUED)),
     )
-    parse_failed_24h = _count(
-        db.query(func.count(BankStatementImport.id)).filter(
-            BankStatementImport.status == BankStatementImportStatus.FAILED,
-            BankStatementImport.uploaded_at >= since_24h,
-        )
-    )
-    unmatched_24h = _count(
-        db.query(func.count(BankStatementTransaction.id)).filter(
-            BankStatementTransaction.matched_status == BankStatementMatchStatus.UNMATCHED,
-            BankStatementTransaction.created_at >= since_24h,
-        )
-    )
-    auto_approved_24h = _count(
-        db.query(func.count(BankStatementTransaction.id)).filter(
-            BankStatementTransaction.matched_status == BankStatementMatchStatus.MATCHED,
-            BankStatementTransaction.created_at >= since_24h,
-        )
+    helpdesk_failed_1h = safe_int(
+        "helpdesk.failed_1h_count",
+        lambda: _count(
+            db.query(func.count(HelpdeskOutbox.id)).filter(
+                HelpdeskOutbox.status == HelpdeskOutboxStatus.FAILED,
+                HelpdeskOutbox.created_at >= since_1h,
+            )
+        ),
     )
 
-    export_jobs_24h = _count(
-        db.query(func.count(ExportJob.id)).filter(ExportJob.created_at >= since_24h)
+    immutable_violations = safe_int("mor.immutable_violations", lambda: mor_metrics.settlement_immutable_violation_total)
+    clawback_required = safe_int("mor.clawback_required", lambda: mor_metrics.clawback_required_total)
+    admin_overrides = safe_int("mor.admin_overrides", lambda: mor_metrics.admin_override_total)
+    try:
+        payout_blocked_top_reasons = [
+            OpsMorTopReason(reason=reason, count=count)
+            for reason, count in sorted(
+                mor_metrics.payout_blocked_total.items(), key=lambda item: item[1], reverse=True
+            )[:5]
+        ]
+    except Exception:
+        warnings.append("mor.top_reasons")
+        payout_blocked_top_reasons = []
+
+    overdue_orgs = safe_int(
+        "billing.overdue_orgs",
+        lambda: _count(db.query(func.count(func.distinct(Invoice.client_id))).filter(Invoice.status == InvoiceStatus.OVERDUE)),
     )
-    export_failed_24h = _count(
-        db.query(func.count(ExportJob.id)).filter(
-            ExportJob.status == ExportJobStatus.FAILED,
-            ExportJob.created_at >= since_24h,
-        )
+    overdue_amount = safe_int(
+        "billing.overdue_amount",
+        lambda: _sum(db.query(func.coalesce(func.sum(Invoice.amount_due), 0)).filter(Invoice.status == InvoiceStatus.OVERDUE)),
     )
-    export_avg_duration = _avg_seconds(
-        db.query(func.avg(func.extract("epoch", ExportJob.finished_at - ExportJob.started_at))).filter(
-            ExportJob.finished_at.isnot(None),
-            ExportJob.started_at.isnot(None),
-            ExportJob.finished_at >= since_24h,
-        )
+    dunning_sent_24h = safe_int(
+        "billing.dunning_sent_24h",
+        lambda: _count(
+            db.query(func.count(BillingDunningEvent.id)).filter(
+                BillingDunningEvent.status == BillingDunningStatus.SENT,
+                BillingDunningEvent.sent_at >= since_24h,
+            )
+        ),
+    )
+    auto_suspends_24h = safe_int(
+        "billing.auto_suspends_24h",
+        lambda: _count(
+            db.query(func.count(BillingDunningEvent.id)).filter(
+                BillingDunningEvent.event_type == BillingDunningEventType.SUSPENDED,
+                BillingDunningEvent.sent_at >= since_24h,
+            )
+        ),
     )
 
-    open_tickets = _count(
-        db.query(func.count(SupportTicket.id)).filter(
-            SupportTicket.status.in_({SupportTicketStatus.OPEN, SupportTicketStatus.IN_PROGRESS})
-        )
+    imports_24h = safe_int(
+        "reconciliation.imports_24h",
+        lambda: _count(db.query(func.count(BankStatementImport.id)).filter(BankStatementImport.uploaded_at >= since_24h)),
     )
-    sla_breaches_24h = _count(
-        db.query(func.count(SupportTicket.id)).filter(
-            or_(
-                SupportTicket.sla_first_response_status == SupportTicketSlaStatus.BREACHED,
-                SupportTicket.sla_resolution_status == SupportTicketSlaStatus.BREACHED,
-            ),
-            SupportTicket.updated_at >= since_24h,
-        )
+    parse_failed_24h = safe_int(
+        "reconciliation.parse_failed_24h",
+        lambda: _count(
+            db.query(func.count(BankStatementImport.id)).filter(
+                BankStatementImport.status == BankStatementImportStatus.FAILED,
+                BankStatementImport.uploaded_at >= since_24h,
+            )
+        ),
+    )
+    unmatched_24h = safe_int(
+        "reconciliation.unmatched_24h",
+        lambda: _count(
+            db.query(func.count(BankStatementTransaction.id)).filter(
+                BankStatementTransaction.matched_status == BankStatementMatchStatus.UNMATCHED,
+                BankStatementTransaction.created_at >= since_24h,
+            )
+        ),
+    )
+    auto_approved_24h = safe_int(
+        "reconciliation.auto_approved_24h",
+        lambda: _count(
+            db.query(func.count(BankStatementTransaction.id)).filter(
+                BankStatementTransaction.matched_status == BankStatementMatchStatus.MATCHED,
+                BankStatementTransaction.created_at >= since_24h,
+            )
+        ),
+    )
+
+    export_jobs_24h = safe_int(
+        "exports.jobs_24h",
+        lambda: _count(db.query(func.count(ExportJob.id)).filter(ExportJob.created_at >= since_24h)),
+    )
+    export_failed_24h = safe_int(
+        "exports.failed_24h",
+        lambda: _count(
+            db.query(func.count(ExportJob.id)).filter(
+                ExportJob.status == ExportJobStatus.FAILED,
+                ExportJob.created_at >= since_24h,
+            )
+        ),
+    )
+    export_avg_duration = safe_int(
+        "exports.avg_duration_sec",
+        lambda: _avg_seconds(
+            db.query(func.avg(func.extract("epoch", ExportJob.finished_at - ExportJob.started_at))).filter(
+                ExportJob.finished_at.isnot(None),
+                ExportJob.started_at.isnot(None),
+                ExportJob.finished_at >= since_24h,
+            )
+        ),
+    )
+
+    open_tickets = safe_int(
+        "support.open_tickets",
+        lambda: _count(
+            db.query(func.count(SupportTicket.id)).filter(
+                SupportTicket.status.in_({SupportTicketStatus.OPEN, SupportTicketStatus.IN_PROGRESS})
+            )
+        ),
+    )
+    sla_breaches_24h = safe_int(
+        "support.sla_breaches_24h",
+        lambda: _count(
+            db.query(func.count(SupportTicket.id)).filter(
+                or_(
+                    SupportTicket.sla_first_response_status == SupportTicketSlaStatus.BREACHED,
+                    SupportTicket.sla_resolution_status == SupportTicketSlaStatus.BREACHED,
+                ),
+                SupportTicket.updated_at >= since_24h,
+            )
+        ),
     )
 
     signals = _build_signals(
@@ -274,7 +333,7 @@ def build_ops_summary(db: Session) -> OpsSummaryResponse:
         mor=OpsMorSummary(
             immutable_violations_24h=immutable_violations,
             payout_blocked_total_24h=payout_blocked_total,
-            payout_blocked_top_reasons=payout_blocked_reasons,
+            payout_blocked_top_reasons=payout_blocked_top_reasons,
             clawback_required_24h=clawback_required,
             admin_overrides_24h=admin_overrides,
         ),
@@ -297,6 +356,7 @@ def build_ops_summary(db: Session) -> OpsSummaryResponse:
         ),
         support=OpsSupportSummary(open_tickets=open_tickets, sla_breaches_24h=sla_breaches_24h),
         signals=signals,
+        warnings=warnings,
     )
 
 

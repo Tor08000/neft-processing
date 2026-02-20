@@ -167,6 +167,7 @@ class OpsSummaryResponse(BaseModel):
     exports: OpsExportsSummary
     support: OpsSupportSummary
     signals: OpsSignalsSummary
+    warnings: list[str] = Field(default_factory=list)
 
 
 class OpsHealthResponse(BaseModel):

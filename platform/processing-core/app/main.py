@@ -1504,29 +1504,38 @@ def _risk_v5_metrics() -> list[str]:
 
 
 def _event_outbox_metrics() -> list[str]:
+    lines = [
+        "# HELP event_outbox_pending_total Number of pending outbox events.",
+        "# TYPE event_outbox_pending_total gauge",
+        "event_outbox_pending_total 0",
+        "# HELP event_outbox_failed_total Number of failed outbox events.",
+        "# TYPE event_outbox_failed_total gauge",
+        "event_outbox_failed_total 0",
+        "# HELP event_outbox_published_total Number of published outbox events.",
+        "# TYPE event_outbox_published_total gauge",
+        "event_outbox_published_total 0",
+        "# HELP event_outbox_retry_total Total outbox retry attempts.",
+        "# TYPE event_outbox_retry_total counter",
+        "event_outbox_retry_total 0",
+        "# HELP event_outbox_lag_seconds Max lag (seconds) for pending outbox events.",
+        "# TYPE event_outbox_lag_seconds gauge",
+        "event_outbox_lag_seconds 0",
+    ]
+
     db = get_sessionmaker()()
     try:
         snapshot = load_event_outbox_metrics(db)
+        lines[2] = f"event_outbox_pending_total {snapshot.pending_total}"
+        lines[5] = f"event_outbox_failed_total {snapshot.failed_total}"
+        lines[8] = f"event_outbox_published_total {snapshot.published_total}"
+        lines[11] = f"event_outbox_retry_total {snapshot.retry_total}"
+        lines[14] = f"event_outbox_lag_seconds {snapshot.lag_seconds}"
+    except Exception:
+        logger.exception("metrics.event_outbox_unavailable")
     finally:
         db.close()
 
-    return [
-        "# HELP event_outbox_pending_total Number of pending outbox events.",
-        "# TYPE event_outbox_pending_total gauge",
-        f"event_outbox_pending_total {snapshot.pending_total}",
-        "# HELP event_outbox_failed_total Number of failed outbox events.",
-        "# TYPE event_outbox_failed_total gauge",
-        f"event_outbox_failed_total {snapshot.failed_total}",
-        "# HELP event_outbox_published_total Number of published outbox events.",
-        "# TYPE event_outbox_published_total gauge",
-        f"event_outbox_published_total {snapshot.published_total}",
-        "# HELP event_outbox_retry_total Total outbox retry attempts.",
-        "# TYPE event_outbox_retry_total counter",
-        f"event_outbox_retry_total {snapshot.retry_total}",
-        "# HELP event_outbox_lag_seconds Max lag (seconds) for pending outbox events.",
-        "# TYPE event_outbox_lag_seconds gauge",
-        f"event_outbox_lag_seconds {snapshot.lag_seconds}",
-    ]
+    return lines
 
 
 @app.get("/metrics", response_class=PlainTextResponse)

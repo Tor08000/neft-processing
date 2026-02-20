@@ -47,7 +47,7 @@ class EdoStatus(str, enum.Enum):
     PROVIDER_UNAVAILABLE = "PROVIDER_UNAVAILABLE"
 
 
-class Document(Base):
+class ClientDocument(Base):
     __tablename__ = "documents"
     __table_args__ = (
         Index("ix_documents_client_direction_status", "client_id", "direction", "status"),
@@ -78,12 +78,12 @@ class Document(Base):
     signed_by_client_at: Mapped[DateTime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     signed_by_client_user_id: Mapped[str | None] = mapped_column(GUID(), nullable=True)
 
-    files: Mapped[list["DocumentFile"]] = relationship(back_populates="document")
-    edo_state: Mapped["DocumentEdoState | None"] = relationship(back_populates="document", uselist=False)
-    signatures: Mapped[list["DocumentSignature"]] = relationship(back_populates="document")
+    files: Mapped[list["ClientDocumentFile"]] = relationship("app.domains.documents.models.ClientDocumentFile", back_populates="document")
+    edo_state: Mapped["DocumentEdoState | None"] = relationship("app.domains.documents.models.DocumentEdoState", back_populates="document", uselist=False)
+    signatures: Mapped[list["DocumentSignature"]] = relationship("app.domains.documents.models.DocumentSignature", back_populates="document")
 
 
-class DocumentFile(Base):
+class ClientDocumentFile(Base):
     __tablename__ = "document_files"
     __table_args__ = (
         Index("ix_document_files_document_id", "document_id"),
@@ -100,7 +100,7 @@ class DocumentFile(Base):
     sha256: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
-    document: Mapped[Document] = relationship(back_populates="files")
+    document: Mapped[ClientDocument] = relationship("app.domains.documents.models.ClientDocument", back_populates="files")
 
 
 class DocumentTimelineEvent(Base):
@@ -152,7 +152,7 @@ class DocumentEdoState(Base):
         DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
     )
 
-    document: Mapped[Document] = relationship(back_populates="edo_state")
+    document: Mapped[ClientDocument] = relationship("app.domains.documents.models.ClientDocument", back_populates="edo_state")
 
 
 class DocumentSignature(Base):
@@ -181,4 +181,8 @@ class DocumentSignature(Base):
         DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
     )
 
-    document: Mapped[Document] = relationship(back_populates="signatures")
+    document: Mapped[ClientDocument] = relationship("app.domains.documents.models.ClientDocument", back_populates="signatures")
+
+
+Document = ClientDocument
+DocumentFile = ClientDocumentFile
