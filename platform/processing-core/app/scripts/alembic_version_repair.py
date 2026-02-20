@@ -191,6 +191,7 @@ def ensure_alembic_version_consistency() -> RepairDecision:
             has_domain_tables = _schema_has_domain_tables(connection, schema)
 
         print(f"[entrypoint] version_table_rows = {len(db_revisions)}", flush=True)
+        print(f"[entrypoint] sql versions = {db_revisions}", flush=True)
         print(f"[entrypoint] alembic current = {alembic_ctx_heads}", flush=True)
         print(f"[entrypoint] alembic heads = {heads}", flush=True)
         print(f"[entrypoint] schema tables = {schema_tables}", flush=True)
@@ -204,13 +205,20 @@ def ensure_alembic_version_consistency() -> RepairDecision:
             return decision
 
         if len(db_revisions) > 1:
-            if not auto_repair:
+            allow_force = _env_flag("DEV_ALLOW_VERSION_FORCE", False)
+            revisions_list = ", ".join(db_revisions)
+            if not allow_force:
                 decision = RepairDecision("FAIL", "multiple rows in version table")
                 _write_decision_artifacts(decision, schema_tables)
-                raise RuntimeError(f"expected one row in {schema}.{VERSION_TABLE_NAME}, got {len(db_revisions)}")
+                raise RuntimeError(
+                    f"expected exactly one row in {schema}.{VERSION_TABLE_NAME}, got {len(db_revisions)}: [{revisions_list}]. "
+                    "run reset-db or enable DEV_ALLOW_VERSION_FORCE=1"
+                )
+
+            keep_revision = max(db_revisions)
             with engine.begin() as connection:
-                _replace_versions(connection, schema, heads)
-            decision = RepairDecision("REPAIR", "multiple rows repaired to script head")
+                _replace_versions(connection, schema, [keep_revision])
+            decision = RepairDecision("REPAIR", f"multiple rows repaired by keeping max revision {keep_revision}")
             _write_decision_artifacts(decision, schema_tables)
             return decision
 
