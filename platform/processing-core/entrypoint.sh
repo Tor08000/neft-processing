@@ -647,41 +647,6 @@ DEV_ALLOW_STAMP=${DEV_ALLOW_STAMP:-0}
 DEV_ALLOW_VERSION_FORCE=${DEV_ALLOW_VERSION_FORCE:-0}
 echo "[entrypoint] DEV_ALLOW_STAMP=${DEV_ALLOW_STAMP} DEV_ALLOW_VERSION_FORCE=${DEV_ALLOW_VERSION_FORCE}"
 
-get_alembic_current() {
-    VERSION_TABLE_SCHEMA="$VERSION_TABLE_SCHEMA" VERSION_TABLE_NAME="$VERSION_TABLE_NAME" DATABASE_URL="$DATABASE_URL" python - <<'PY'
-import os
-import sys
-
-import sqlalchemy as sa
-from alembic.runtime.migration import MigrationContext
-
-database_url = os.getenv("DATABASE_URL")
-if not database_url:
-    raise RuntimeError("DATABASE_URL is not set")
-
-version_table_schema = os.getenv("VERSION_TABLE_SCHEMA", "processing_core")
-version_table_name = os.getenv("VERSION_TABLE_NAME", "alembic_version_core")
-
-engine = sa.create_engine(database_url)
-try:
-    with engine.connect() as connection:
-        context = MigrationContext.configure(
-            connection,
-            opts={
-                "version_table": version_table_name,
-                "version_table_schema": version_table_schema,
-            },
-        )
-        for revision in sorted(context.get_current_heads()):
-            print(revision)
-except Exception as exc:  # pragma: no cover - runtime diagnostics path
-    print(f"failed to read alembic current via MigrationContext: {exc}", file=sys.stderr)
-    raise
-finally:
-    engine.dispose()
-PY
-}
-
 validate_lineage_against_heads() {
     current_revision="$1"
     script_heads="$2"
@@ -733,6 +698,26 @@ if any(is_ancestor(script, current_revision, head) for head in heads):
     print(f"lineage OK: current={current_revision} heads={heads}")
 else:
     raise RuntimeError(f"lineage mismatch: current={current_revision} is not ancestor of heads={heads}")
+PY
+}
+
+validate_revision_is_head() {
+    current_revision="$1"
+    script_heads="$2"
+    CURRENT_REVISION="$current_revision" SCRIPT_HEADS="$script_heads" python - <<'PY'
+import os
+
+current_revision = os.getenv("CURRENT_REVISION", "").strip()
+heads = [line.strip() for line in os.getenv("SCRIPT_HEADS", "").splitlines() if line.strip()]
+if not current_revision:
+    raise RuntimeError("CURRENT_REVISION is empty")
+if not heads:
+    raise RuntimeError("SCRIPT_HEADS is empty")
+
+if current_revision in heads:
+    print(f"head OK: current={current_revision} heads={heads}")
+else:
+    raise RuntimeError(f"head mismatch: current={current_revision} is not in script heads={heads}")
 PY
 }
 
@@ -791,12 +776,6 @@ EOF
     fi
 }
 
-force_set_version() {
-    target_revision="$1"
-    psql "$PSQL_URL" -v ON_ERROR_STOP=1 -q -c \
-        "UPDATE ${VERSION_TABLE_SCHEMA}.${VERSION_TABLE_NAME} SET version_num='${target_revision}';"
-}
-
 sql_versions=$(get_sql_versions)
 sql_rows_count=$(count_lines "$sql_versions")
 echo "[entrypoint] sql_versions=$(format_list "$sql_versions")"
@@ -824,35 +803,7 @@ fi
 
 sql_current=$(printf "%s\n" "$sql_versions" | sed '/^[[:space:]]*$/d' | tail -n 1)
 
-set +e
-alembic_revisions=$(get_alembic_current 2>/tmp/alembic_current_error.log)
-alembic_read_status=$?
-set -e
-if [ "$alembic_read_status" -ne 0 ]; then
-    echo "[entrypoint] failed to read alembic current via API; reason:" >&2
-    sed 's/^/[entrypoint]   /' /tmp/alembic_current_error.log >&2 || true
-    echo "[entrypoint] fallback: using sql_versions as alembic_current source" >&2
-    alembic_revisions="$sql_versions"
-fi
-
-alembic_rows_count=$(count_lines "$alembic_revisions")
-if [ "$alembic_rows_count" -eq 0 ]; then
-    echo "[entrypoint] alembic current is empty after API read/fallback" >&2
-    exit 1
-fi
-if [ "$alembic_rows_count" -gt 1 ]; then
-    echo "[entrypoint] multi-head detected in alembic current: $(format_list "$alembic_revisions")" >&2
-    exit 1
-fi
-alembic_current=$(printf "%s\n" "$alembic_revisions" | sed '/^[[:space:]]*$/d' | tail -n 1)
-
-echo "[entrypoint] alembic_current=${alembic_current}"
 echo "[entrypoint] sql_current=${sql_current}"
-
-if [ -z "$alembic_current" ]; then
-    echo "[entrypoint] version table mismatch: failed to read alembic current" >&2
-    exit 1
-fi
 
 if [ -z "$sql_current" ]; then
     if [ "$DEV_ALLOW_STAMP" = "1" ]; then
@@ -882,30 +833,15 @@ if [ "$ALEMBIC_DECISION" = "SKIP" ]; then
         echo "[entrypoint] version table mismatch: SKIP requires lineage compatibility with script heads" >&2
         exit 1
     fi
-fi
-
-if [ "$alembic_current" != "$sql_current" ]; then
-    echo "[entrypoint] version table mismatch: alembic=${alembic_current} sql=${sql_current}" >&2
-    if [ "$DEV_ALLOW_VERSION_FORCE" = "1" ]; then
-        echo "[entrypoint] DEV_ALLOW_VERSION_FORCE=1 => forcing ${VERSION_TABLE_SCHEMA}.${VERSION_TABLE_NAME} to ${alembic_current}"
-        force_set_version "$alembic_current"
-        sql_versions=$(get_sql_versions)
-        sql_rows_count=$(count_lines "$sql_versions")
-        if [ "$sql_rows_count" -ne 1 ]; then
-            echo "[entrypoint] force completed but ${VERSION_TABLE_SCHEMA}.${VERSION_TABLE_NAME} rows_count=${sql_rows_count}, versions=$(format_list "$sql_versions")" >&2
-            exit 1
-        fi
-        sql_current=$(printf "%s\n" "$sql_versions" | tail -n 1)
-        echo "[entrypoint] sql_current after force=${sql_current}"
-    else
-        echo "[entrypoint] db version mismatch, run reset-db or enable DEV_ALLOW_VERSION_FORCE" >&2
+else
+    echo "[entrypoint] decision=${ALEMBIC_DECISION} => validating sql_current is one of script heads"
+    if ! validate_revision_is_head "$sql_current" "$expected_heads"; then
+        echo "[entrypoint] version table mismatch: ${ALEMBIC_DECISION} requires sql_current to match script head" >&2
+        echo "[entrypoint] current SQL versions: $(format_list "$sql_versions")" >&2
+        echo "[entrypoint] expected script heads: $(format_list "$expected_heads")" >&2
+        echo "[entrypoint] run reset-db or execute alembic upgrade/stamp head" >&2
         exit 1
     fi
-fi
-
-if [ "$alembic_current" != "$sql_current" ]; then
-    echo "[entrypoint] version table mismatch: alembic=${alembic_current} sql=${sql_current}" >&2
-    exit 1
 fi
 
 echo "[entrypoint] version validation OK: current=${sql_current}"
