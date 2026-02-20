@@ -39,10 +39,11 @@ configure_kwargs = {
     "version_table_schema": schema,
 }
 
-_PARALLEL_TABLE_ALLOWED = {
+_PARALLEL_TABLE_EXPLICITLY_ALLOWED = {
     (schema, version_table),
     ("processing_auth", "alembic_version_auth"),
 }
+_PARALLEL_TABLE_ALLOWED_SCHEMA_PREFIXES = ("processing_",)
 
 
 def _find_parallel_version_tables(connection) -> list[tuple[str, str]]:
@@ -53,67 +54,41 @@ def _find_parallel_version_tables(connection) -> list[tuple[str, str]]:
             FROM information_schema.tables
             WHERE table_type = 'BASE TABLE'
               AND table_name LIKE 'alembic_version%'
-              AND NOT (table_schema = :schema AND table_name = :version_table)
             ORDER BY table_schema, table_name
             """
-        ),
-        {"schema": schema, "version_table": version_table},
+        )
     ).all()
     return [(str(table_schema), str(table_name)) for table_schema, table_name in rows]
 
 
+def _is_allowlisted_other_service_table(table_schema: str, table_name: str) -> bool:
+    if (table_schema, table_name) in _PARALLEL_TABLE_EXPLICITLY_ALLOWED:
+        return True
+    return table_schema.startswith(_PARALLEL_TABLE_ALLOWED_SCHEMA_PREFIXES)
+
+
 def _forbid_parallel_version_tables(connection) -> None:
-    parallel_tables = _find_parallel_version_tables(connection)
-    conflicting_tables = [
-        (table_schema, table_name)
-        for table_schema, table_name in parallel_tables
-        if (table_schema, table_name) not in _PARALLEL_TABLE_ALLOWED
-    ]
-    if not conflicting_tables:
+    violations: list[tuple[str, str]] = []
+    for table_schema, table_name in _find_parallel_version_tables(connection):
+        if table_schema == "public":
+            violations.append((table_schema, table_name))
+            continue
+        if table_schema == schema and table_name != version_table:
+            violations.append((table_schema, table_name))
+            continue
+        if _is_allowlisted_other_service_table(table_schema, table_name):
+            continue
+
+    if not violations:
         return
 
-    app_env = os.getenv("APP_ENV", "prod").strip().lower()
-    allow_cleanup = os.getenv("ALLOW_DEV_VERSION_TABLE_CLEANUP", "0").strip().lower() in {
-        "1",
-        "true",
-        "yes",
-        "on",
-    }
-    should_auto_cleanup = app_env != "prod" or allow_cleanup
-
-    cleanup_candidates = [
-        (table_schema, table_name)
-        for table_schema, table_name in conflicting_tables
-        if table_schema == "public" and table_name.startswith("alembic_version")
-    ]
-
-    if should_auto_cleanup and cleanup_candidates:
-        for table_schema, table_name in cleanup_candidates:
-            connection.execute(text(f'DROP TABLE IF EXISTS "{table_schema}"."{table_name}"'))
-
-        parallel_tables = _find_parallel_version_tables(connection)
-        conflicting_tables = [
-            (table_schema, table_name)
-            for table_schema, table_name in parallel_tables
-            if (table_schema, table_name) not in _PARALLEL_TABLE_ALLOWED
-        ]
-        if not conflicting_tables:
-            return
-
-    table_names = ", ".join(f"{table_schema}.{table_name}" for table_schema, table_name in conflicting_tables)
-    cleanup_command = (
-        "docker compose exec -T postgres psql -U ${POSTGRES_USER:-neft} -d ${POSTGRES_DB:-neft} "
-        "-c \"DO $$ DECLARE r RECORD; BEGIN FOR r IN "
-        "(SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' "
-        "AND table_type='BASE TABLE' AND table_name LIKE 'alembic_version%') "
-        "LOOP EXECUTE format('DROP TABLE IF EXISTS public.%I', r.table_name); END LOOP; END $$;\""
-    )
+    table_names = ", ".join(f"{table_schema}.{table_name}" for table_schema, table_name in violations)
     raise RuntimeError(
-        "Detected parallel Alembic version tables that can desync migration state: "
-        f"{table_names}. Keep only {schema}.{version_table}; drop/repair extra tables in dev "
-        "or migrate their data into processing_core.alembic_version_core before rerunning upgrade. "
-        f"Quick fix command: {cleanup_command}"
+        "Detected forbidden Alembic version tables: "
+        f"{table_names}. Forbidden: any public.alembic_version% table and any "
+        f"{schema}.alembic_version% table except {schema}.{version_table}."
     )
+
 
 
 def _assert_non_empty_core_version_table_after_upgrade(connection, command_name: str) -> None:
