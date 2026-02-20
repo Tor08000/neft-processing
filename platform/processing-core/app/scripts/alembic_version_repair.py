@@ -18,18 +18,6 @@ class RepairDecision:
     reason: str
 
 
-def _env_flag(name: str, default: bool) -> bool:
-    value = os.getenv(name)
-    if value is None:
-        return default
-    return value.strip().lower() in {"1", "true", "yes", "on"}
-
-
-def _is_prod_env() -> bool:
-    app_env = (os.getenv("APP_ENV") or "").strip().lower()
-    return app_env in {"prod", "production"}
-
-
 def _normalize_parent_revisions(down_revision: object) -> tuple[str, ...]:
     if down_revision is None:
         return ()
@@ -83,7 +71,7 @@ def _read_schema_tables(connection: sa.Connection, schema: str) -> list[str]:
             """
         ),
         {"schema": schema},
-    ).scalars()
+    ).scalars().all()
     return [str(row) for row in rows]
 
 
@@ -132,8 +120,6 @@ def ensure_alembic_version_consistency() -> RepairDecision:
 
     if not database_url:
         raise RuntimeError("DATABASE_URL is not set")
-
-    strict_mode = _is_prod_env() and not _env_flag("ALEMBIC_REPAIR_ALLOW_RISKY_FALLBACK", False)
 
     config = Config(alembic_config_path)
     config.set_main_option("sqlalchemy.url", database_url)
@@ -186,10 +172,12 @@ def ensure_alembic_version_consistency() -> RepairDecision:
 
         if len(db_revisions) == 0:
             if has_domain_tables:
-                decision = RepairDecision("STAMP", "version table empty but domain tables already exist")
+                decision = RepairDecision("FAIL", "version table empty but domain tables already exist")
             else:
                 decision = RepairDecision("UPGRADE", "fresh schema and empty version table")
             _write_decision_artifacts(decision, schema_tables)
+            if decision.action == "FAIL":
+                raise RuntimeError(decision.reason)
             return decision
 
         if len(db_revisions) > 1:
@@ -225,13 +213,10 @@ def ensure_alembic_version_consistency() -> RepairDecision:
                 f"db_rows={db_revisions}, alembic_current={alembic_ctx_heads}; possible wrong schema/version table"
             )
 
-        decision = RepairDecision("SKIP", "version table is already consistent")
-        _write_decision_artifacts(decision, schema_tables)
-        return decision
-    except Exception:
-        if strict_mode:
-            raise
-        decision = RepairDecision("UPGRADE", "fallback to upgrade because repair step failed in non-strict mode")
+        if current_revision in heads:
+            decision = RepairDecision("SKIP", "version table is already at head")
+        else:
+            decision = RepairDecision("UPGRADE", "version table is consistent and behind head")
         _write_decision_artifacts(decision, schema_tables)
         return decision
     finally:

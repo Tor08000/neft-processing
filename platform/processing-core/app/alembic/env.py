@@ -7,6 +7,7 @@ from logging.config import fileConfig
 
 from alembic import context
 from sqlalchemy import engine_from_config, text
+from sqlalchemy.pool import NullPool
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 if str(BASE_DIR) not in sys.path:
@@ -104,10 +105,10 @@ def _detect_alembic_cmd() -> str:
 
 
 def run_migrations_online() -> None:
-    engine = engine_from_config(
+    connectable = engine_from_config(
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",
-        pool_pre_ping=True,
+        poolclass=NullPool,
         future=True,
         connect_args={
             "options": f"-c search_path={schema},public",
@@ -115,16 +116,15 @@ def run_migrations_online() -> None:
         },
     )
 
-    with engine.connect() as connection:
+    with connectable.connect() as connection:
         command_name = _detect_alembic_cmd()
         command_name = str(command_name).lower()
-        preflight_connection = connection.execution_options(isolation_level="AUTOCOMMIT")
         skip_preflight = command_name in {"current", "history", "heads"}
         if not skip_preflight:
-            _ensure_version_table(preflight_connection)
+            _ensure_version_table(connection)
         else:
             quoted_schema = quote_schema(schema)
-            preflight_connection.execute(text(f"CREATE SCHEMA IF NOT EXISTS {quoted_schema}"))
+            connection.execute(text(f"CREATE SCHEMA IF NOT EXISTS {quoted_schema}"))
         _configure(connection, command_name)
         if command_name in {"current", "history", "heads", "branches", "show"}:
             context.run_migrations()
@@ -132,7 +132,7 @@ def run_migrations_online() -> None:
             with context.begin_transaction():
                 context.run_migrations()
 
-    engine.dispose()
+    connectable.dispose()
 
 
 if context.is_offline_mode():

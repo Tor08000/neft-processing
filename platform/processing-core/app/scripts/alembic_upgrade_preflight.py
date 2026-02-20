@@ -62,9 +62,16 @@ def run_upgrade_preflight() -> None:
             ctx_current_rows = _read_ctx_heads(connection)
 
         sql_current = ",".join(sql_current_rows) if sql_current_rows else "<base>"
+        print(f"[entrypoint] rows_count={len(sql_current_rows)}", flush=True)
         print(f"[entrypoint] sql_current={sql_current}", flush=True)
         print(f"[entrypoint] script_heads={script_heads}", flush=True)
         print("[entrypoint] upgrade plan: from sql_current to head", flush=True)
+
+        if len(sql_current_rows) > 1:
+            raise RuntimeError(
+                "refusing upgrade: expected at most one current revision before upgrade "
+                f"(rows_count={len(sql_current_rows)}, sql_current={sql_current_rows})."
+            )
 
         if sql_current_rows != ctx_current_rows:
             raise RuntimeError(

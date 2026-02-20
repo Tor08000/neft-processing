@@ -102,7 +102,7 @@ def test_write_decision_env_uses_shell_safe_format(monkeypatch, tmp_path):
 
 
 @pytest.mark.skipif(get_database_url().startswith("sqlite"), reason="Postgres-only test")
-def test_version_missing_with_non_empty_schema_stamps_heads(monkeypatch, capsys):
+def test_version_missing_with_non_empty_schema_fails(monkeypatch):
     db_url = get_database_url()
     connectable = ensure_connectable(db_url)
     schema = f"version_repair_fail_{uuid.uuid4().hex[:8]}"
@@ -121,23 +121,13 @@ def test_version_missing_with_non_empty_schema_stamps_heads(monkeypatch, capsys)
     monkeypatch.setenv("DATABASE_URL", db_url)
     monkeypatch.setenv("NEFT_DB_SCHEMA", schema)
     monkeypatch.setenv("ALEMBIC_CONFIG", alembic_ini)
-    monkeypatch.setenv("ALEMBIC_AUTO_REPAIR", "1")
-    monkeypatch.setenv("APP_ENV", "dev")
-
     try:
-        ensure_alembic_version_consistency()
-        with connectable.connect() as connection:
-            versions = connection.execute(
-                sa.text(f'SELECT version_num FROM "{schema}".alembic_version_core ORDER BY version_num')
-            ).scalars().all()
+        with pytest.raises(RuntimeError, match="version table empty but domain tables already exist"):
+            ensure_alembic_version_consistency()
     finally:
         with connectable.begin() as connection:
             connection.exec_driver_sql(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE')
         connectable.dispose()
-
-    assert versions
-    output = capsys.readouterr().out
-    assert "mode selected = STAMP" in output
 
 
 @pytest.mark.skipif(get_database_url().startswith("sqlite"), reason="Postgres-only test")
@@ -157,8 +147,6 @@ def test_version_missing_with_empty_schema_selects_upgrade_mode(monkeypatch, cap
     monkeypatch.setenv("DATABASE_URL", db_url)
     monkeypatch.setenv("NEFT_DB_SCHEMA", schema)
     monkeypatch.setenv("ALEMBIC_CONFIG", alembic_ini)
-    monkeypatch.setenv("ALEMBIC_AUTO_REPAIR", "1")
-    monkeypatch.setenv("APP_ENV", "dev")
 
     try:
         ensure_alembic_version_consistency()
