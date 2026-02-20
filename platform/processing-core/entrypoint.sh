@@ -510,10 +510,52 @@ EOF
 echo "[entrypoint] cleanup completed"
 
 echo "[entrypoint] ensuring alembic version consistency"
+ALEMBIC_DECISION_FILE=${ALEMBIC_DECISION_FILE:-/tmp/alembic_decision.env}
+export ALEMBIC_DECISION_FILE
 python -m app.scripts.alembic_version_repair
+if [ -f "$ALEMBIC_DECISION_FILE" ]; then
+    # shellcheck disable=SC1090
+    . "$ALEMBIC_DECISION_FILE"
+fi
+ALEMBIC_DECISION=${ALEMBIC_DECISION:-UPGRADE}
+echo "[entrypoint] decision mode=${ALEMBIC_DECISION}"
 
-echo "[entrypoint] applying migrations via alembic ($ALEMBIC_CONFIG)"
-if ! alembic -c "$ALEMBIC_CONFIG" upgrade head >"$MIGRATION_LOG" 2>&1; then
+run_upgrade() {
+    echo "[entrypoint] applying migrations via alembic upgrade head ($ALEMBIC_CONFIG)"
+    alembic -c "$ALEMBIC_CONFIG" upgrade head >"$MIGRATION_LOG" 2>&1
+}
+
+run_stamp() {
+    echo "[entrypoint] applying migrations via alembic stamp head ($ALEMBIC_CONFIG)"
+    alembic -c "$ALEMBIC_CONFIG" stamp head >"$MIGRATION_LOG" 2>&1
+}
+
+set +e
+case "$ALEMBIC_DECISION" in
+    SKIP)
+        echo "[entrypoint] decision=SKIP, skipping alembic migrate action"
+        migration_status=0
+        ;;
+    UPGRADE|REPAIR)
+        run_upgrade
+        migration_status=$?
+        ;;
+    STAMP)
+        run_stamp
+        migration_status=$?
+        ;;
+    FAIL)
+        echo "[entrypoint] decision=FAIL, refusing to run alembic command" >&2
+        migration_status=1
+        ;;
+    *)
+        echo "[entrypoint] unknown decision '$ALEMBIC_DECISION', refusing startup" >&2
+        migration_status=1
+        ;;
+esac
+set -e
+
+if [ "$migration_status" -ne 0 ]; then
     echo "[entrypoint] migration validation failed; last log lines:" >&2
     tail -n 200 "$MIGRATION_LOG" >&2 || true
     echo "[entrypoint] migration validation failed; run scripts\\check_migrations.cmd" >&2

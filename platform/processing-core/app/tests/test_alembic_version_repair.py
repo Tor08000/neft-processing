@@ -82,7 +82,7 @@ def test_empty_version_table_smoke_no_nameerror(monkeypatch, capsys):
     ensure_alembic_version_consistency()
 
     output = capsys.readouterr().out
-    assert "migration mode selected: upgrade" in output
+    assert "mode selected = UPGRADE" in output
 
 
 @pytest.mark.skipif(get_database_url().startswith("sqlite"), reason="Postgres-only test")
@@ -121,7 +121,7 @@ def test_version_missing_with_non_empty_schema_stamps_heads(monkeypatch, capsys)
 
     assert versions
     output = capsys.readouterr().out
-    assert "migration mode selected: stamp" in output
+    assert "mode selected = STAMP" in output
 
 
 @pytest.mark.skipif(get_database_url().startswith("sqlite"), reason="Postgres-only test")
@@ -152,4 +152,4 @@ def test_version_missing_with_empty_schema_selects_upgrade_mode(monkeypatch, cap
         connectable.dispose()
 
     output = capsys.readouterr().out
-    assert "migration mode selected: upgrade" in output
+    assert "mode selected = UPGRADE" in output
