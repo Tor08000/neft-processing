@@ -533,25 +533,35 @@ PY
 
 echo "[entrypoint] post-migration schema repair starting..."
 echo "[entrypoint] schema_resolved=${schema_resolved}"
-post_migration_state=$(psql "$PSQL_URL" -v ON_ERROR_STOP=1 -Atc "SET search_path TO \"${schema_resolved}\",public; select current_schema(), current_setting('search_path');" | tail -n 1)
-post_migration_current_schema=$(printf '%s' "$post_migration_state" | awk -F'|' '{print $1}')
-post_migration_search_path=$(printf '%s' "$post_migration_state" | awk -F'|' '{print $2}')
-echo "[entrypoint] schema_resolved=${schema_resolved} current_schema=${post_migration_current_schema} search_path=${post_migration_search_path}"
-repair_diagnostics=$(psql "$PSQL_URL" -v ON_ERROR_STOP=1 -Atc "SET search_path TO \"${schema_resolved}\",public; select current_schema(), current_setting('search_path'), to_regclass('${schema_resolved}.operations'), to_regclass('${VERSION_TABLE_SCHEMA}.${VERSION_TABLE_NAME}'), (SELECT array_agg((n.nspname, c.relname)) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE c.relname = 'operations'), (SELECT array_agg(table_schema) FROM information_schema.tables WHERE table_name = 'operations');" | tail -n 1)
-IFS='|' read -r diag_current_schema diag_search_path processing_core_reg alembic_version_reg pg_class_hits operations_schemas <<EOF
+set +e
+repair_diagnostics=$(psql "$PSQL_URL" -v ON_ERROR_STOP=1 -Atc "select current_schema(), current_setting('search_path'), to_regclass('${schema_resolved}.operations'), to_regclass('${VERSION_TABLE_SCHEMA}.${VERSION_TABLE_NAME}'), (SELECT array_agg((n.nspname, c.relname)) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE c.relname = 'operations'), (SELECT array_agg(table_schema) FROM information_schema.tables WHERE table_name = 'operations');")
+repair_status=$?
+set -e
+
+if [ "$repair_status" -ne 0 ]; then
+    echo "[entrypoint] WARNING: schema repair diagnostics failed; continuing startup (status=$repair_status)"
+    processing_core_reg=""
+    alembic_version_reg=""
+else
+    repair_diagnostics=$(printf '%s\n' "$repair_diagnostics" | tail -n 1)
+    IFS='|' read -r diag_current_schema diag_search_path processing_core_reg alembic_version_reg pg_class_hits operations_schemas <<EOF
 $repair_diagnostics
 EOF
-echo "[entrypoint] repair diagnostics: current_schema=${diag_current_schema} search_path=${diag_search_path} ${schema_resolved}.operations=${processing_core_reg} ${VERSION_TABLE_SCHEMA}.${VERSION_TABLE_NAME}=${alembic_version_reg} pg_class_hits=${pg_class_hits} operations_schemas=${operations_schemas}"
-if [ -n "$processing_core_reg" ]; then
-    echo "[entrypoint] post-migration schema repair completed: ${schema_resolved}.operations=${processing_core_reg} ${VERSION_TABLE_SCHEMA}.${VERSION_TABLE_NAME}=${alembic_version_reg}"
-else
+    echo "[entrypoint] repair diagnostics: current_schema=${diag_current_schema} search_path=${diag_search_path} ${schema_resolved}.operations=${processing_core_reg} ${VERSION_TABLE_SCHEMA}.${VERSION_TABLE_NAME}=${alembic_version_reg} pg_class_hits=${pg_class_hits} operations_schemas=${operations_schemas}"
+fi
+
+if [ -z "$processing_core_reg" ]; then
+set +e
 psql "$PSQL_URL" -v ON_ERROR_STOP=1 <<EOF
 DO \$\$
 BEGIN
   EXECUTE format('CREATE SCHEMA IF NOT EXISTS %I', '${schema_resolved}');
 END \$\$;
 
-SET search_path TO \"${schema_resolved}\",public;
+DO \$\$
+BEGIN
+  EXECUTE format('SET search_path TO %I, public', '${schema_resolved}');
+END \$\$;
 
 DO \$\$
 BEGIN
@@ -661,11 +671,31 @@ CREATE INDEX IF NOT EXISTS ix_operations_operation_id ON "${schema_resolved}".op
 CREATE INDEX IF NOT EXISTS ix_operations_operation_type ON "${schema_resolved}".operations (operation_type);
 CREATE INDEX IF NOT EXISTS ix_operations_status ON "${schema_resolved}".operations (status);
 EOF
-repaired_state=$(psql "$PSQL_URL" -v ON_ERROR_STOP=1 -Atc "select to_regclass('${schema_resolved}.operations'), to_regclass('${VERSION_TABLE_SCHEMA}.${VERSION_TABLE_NAME}');" | tail -n 1)
+repair_apply_status=$?
+set -e
+
+if [ "$repair_apply_status" -ne 0 ]; then
+    echo "[entrypoint] WARNING: schema repair DDL failed; continuing startup in fail-open mode (status=$repair_apply_status)"
+fi
+
+set +e
+repaired_state=$(psql "$PSQL_URL" -v ON_ERROR_STOP=1 -Atc "select to_regclass('${schema_resolved}.operations'), to_regclass('${VERSION_TABLE_SCHEMA}.${VERSION_TABLE_NAME}');")
+repaired_state_status=$?
+set -e
+
+if [ "$repaired_state_status" -ne 0 ]; then
+    echo "[entrypoint] WARNING: schema repair post-check failed; continuing startup (status=$repaired_state_status)"
+    repaired_reg=""
+    repaired_alembic_reg=""
+else
+repaired_state=$(printf '%s\n' "$repaired_state" | tail -n 1)
 IFS='|' read -r repaired_reg repaired_alembic_reg <<EOF
 $repaired_state
 EOF
+fi
 echo "[entrypoint] post-migration schema repair completed: ${schema_resolved}.operations=${repaired_reg} ${VERSION_TABLE_SCHEMA}.${VERSION_TABLE_NAME}=${repaired_alembic_reg}"
+else
+    echo "[entrypoint] post-migration schema repair completed: ${schema_resolved}.operations=${processing_core_reg} ${VERSION_TABLE_SCHEMA}.${VERSION_TABLE_NAME}=${alembic_version_reg}"
 fi
 
 echo "[entrypoint] post-migration version validation starting"
