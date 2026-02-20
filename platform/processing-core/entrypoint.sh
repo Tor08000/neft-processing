@@ -648,34 +648,122 @@ DEV_ALLOW_VERSION_FORCE=${DEV_ALLOW_VERSION_FORCE:-0}
 echo "[entrypoint] DEV_ALLOW_STAMP=${DEV_ALLOW_STAMP} DEV_ALLOW_VERSION_FORCE=${DEV_ALLOW_VERSION_FORCE}"
 
 get_alembic_current() {
-    cd /app && alembic -c /app/app/alembic.ini current 2>/dev/null         | awk 'NF >= 1 && $1 ~ /^[0-9A-Za-z_]+$/ {print $1}'         | tail -n 1
+    raw_output=$(cd /app && alembic -c /app/app/alembic.ini current 2>&1 || true)
+    printf "%s\n" "$raw_output" \
+        | awk '
+            {
+                for (i = 1; i <= NF; i++) {
+                    if ($i ~ /^[0-9]{8}_[0-9]{4}_[a-z0-9_]+$/) {
+                        print $i
+                    }
+                }
+            }
+        ' \
+        | awk '!seen[$0]++'
 }
 
-get_sql_current() {
-    psql "$PSQL_URL" -q -v ON_ERROR_STOP=1 -tA -c         "SELECT version_num FROM "${VERSION_TABLE_SCHEMA}".${VERSION_TABLE_NAME} ORDER BY 1;"         | tr -d '\r' | sed '/^[[:space:]]*$/d'
+count_lines() {
+    values="$1"
+    if [ -z "$values" ]; then
+        echo "0"
+        return
+    fi
+    printf "%s\n" "$values" | sed '/^[[:space:]]*$/d' | wc -l | tr -d ' '
+}
+
+format_list() {
+    values="$1"
+    if [ -z "$values" ]; then
+        printf "[]"
+        return
+    fi
+
+    joined=$(printf "%s\n" "$values" | sed '/^[[:space:]]*$/d' | awk 'NR==1 {printf "%s", $0; next} {printf ", %s", $0}')
+    printf "[%s]" "$joined"
+}
+
+get_sql_versions() {
+    psql "$PSQL_URL" -q -v ON_ERROR_STOP=1 -tA -c \
+        "SELECT version_num FROM ${VERSION_TABLE_SCHEMA}.${VERSION_TABLE_NAME} ORDER BY version_num;" \
+        | tr -d '\r' | sed '/^[[:space:]]*$/d'
+}
+
+resolve_fallback_head() {
+    parsed_heads=$(printf "%s\n" "$expected_heads" | sed '/^[[:space:]]*$/d')
+    if [ -n "$parsed_heads" ]; then
+        printf "%s\n" "$parsed_heads" | tail -n 1
+        return
+    fi
+    printf "%s\n" "$STAMP_FALLBACK_REVISION"
+}
+
+repair_multi_row_sql_versions() {
+    fallback_head="$1"
+    echo "[entrypoint] DEV_ALLOW_VERSION_FORCE=1 => repairing ${VERSION_TABLE_SCHEMA}.${VERSION_TABLE_NAME} to a single row"
+    psql "$PSQL_URL" -v ON_ERROR_STOP=1 -q <<EOF
+WITH keep AS (
+  SELECT max(version_num) AS v FROM ${VERSION_TABLE_SCHEMA}.${VERSION_TABLE_NAME}
+)
+DELETE FROM ${VERSION_TABLE_SCHEMA}.${VERSION_TABLE_NAME}
+WHERE version_num <> (SELECT v FROM keep);
+EOF
+
+    remaining_count=$(psql "$PSQL_URL" -q -v ON_ERROR_STOP=1 -tA -c \
+        "SELECT COUNT(*) FROM ${VERSION_TABLE_SCHEMA}.${VERSION_TABLE_NAME};" | tr -d '\r' | tr -d ' ')
+    if [ "$remaining_count" = "0" ]; then
+        echo "[entrypoint] repair edge-case: no rows left, inserting fallback head=${fallback_head}"
+        psql "$PSQL_URL" -v ON_ERROR_STOP=1 -q -c \
+            "INSERT INTO ${VERSION_TABLE_SCHEMA}.${VERSION_TABLE_NAME}(version_num) VALUES ('${fallback_head}');"
+    fi
 }
 
 force_set_version() {
     target_revision="$1"
-    rows_count=$(psql "$PSQL_URL" -q -v ON_ERROR_STOP=1 -tA -c         "SELECT COUNT(*) FROM "${VERSION_TABLE_SCHEMA}".${VERSION_TABLE_NAME};" | tr -d '\r' | tr -d ' ')
-    case "$rows_count" in
-        0)
-            psql "$PSQL_URL" -v ON_ERROR_STOP=1 -c                 "INSERT INTO "${VERSION_TABLE_SCHEMA}".${VERSION_TABLE_NAME}(version_num) VALUES ('${target_revision}');"
-            ;;
-        1)
-            psql "$PSQL_URL" -v ON_ERROR_STOP=1 -c                 "UPDATE "${VERSION_TABLE_SCHEMA}".${VERSION_TABLE_NAME} SET version_num='${target_revision}';"
-            ;;
-        *)
-            echo "[entrypoint] version table mismatch: ${VERSION_TABLE_SCHEMA}.${VERSION_TABLE_NAME} has ${rows_count} rows; refusing force update" >&2
-            exit 1
-            ;;
-    esac
+    psql "$PSQL_URL" -v ON_ERROR_STOP=1 -q -c \
+        "UPDATE ${VERSION_TABLE_SCHEMA}.${VERSION_TABLE_NAME} SET version_num='${target_revision}';"
 }
 
-alembic_current=$(get_alembic_current)
-sql_current=$(get_sql_current)
-echo "[entrypoint] current from alembic: ${alembic_current}"
-echo "[entrypoint] current from SQL: ${sql_current}"
+sql_versions=$(get_sql_versions)
+sql_rows_count=$(count_lines "$sql_versions")
+echo "[entrypoint] sql_versions=$(format_list "$sql_versions")"
+echo "[entrypoint] rows_count=${sql_rows_count}"
+
+if [ "$sql_rows_count" -ne 1 ]; then
+    if [ "$DEV_ALLOW_VERSION_FORCE" = "1" ]; then
+        repair_multi_row_sql_versions "$(resolve_fallback_head)"
+        sql_versions=$(get_sql_versions)
+        sql_rows_count=$(count_lines "$sql_versions")
+        echo "[entrypoint] sql_versions after repair=$(format_list "$sql_versions")"
+        echo "[entrypoint] rows_count after repair=${sql_rows_count}"
+    else
+        echo "[entrypoint] version table mismatch: expected exactly 1 row in ${VERSION_TABLE_SCHEMA}.${VERSION_TABLE_NAME}, got ${sql_rows_count}" >&2
+        echo "[entrypoint] current SQL versions: $(format_list "$sql_versions")" >&2
+        echo "[entrypoint] run reset-db or enable DEV_ALLOW_VERSION_FORCE=1" >&2
+        exit 1
+    fi
+fi
+
+if [ "$sql_rows_count" -ne 1 ]; then
+    echo "[entrypoint] version table mismatch: failed to repair ${VERSION_TABLE_SCHEMA}.${VERSION_TABLE_NAME} to a single row" >&2
+    exit 1
+fi
+
+sql_current=$(printf "%s\n" "$sql_versions" | sed '/^[[:space:]]*$/d' | tail -n 1)
+
+alembic_revisions=$(get_alembic_current)
+alembic_rows_count=$(count_lines "$alembic_revisions")
+if [ "$alembic_rows_count" -eq 0 ]; then
+    echo "[entrypoint] no revisions in alembic current output" >&2
+    exit 1
+fi
+if [ "$alembic_rows_count" -gt 1 ]; then
+    echo "[entrypoint] multi-head detected in alembic current output: $(format_list "$alembic_revisions")" >&2
+    exit 1
+fi
+alembic_current=$(printf "%s\n" "$alembic_revisions" | sed '/^[[:space:]]*$/d' | tail -n 1)
+
+echo "[entrypoint] alembic_current=${alembic_current}"
+echo "[entrypoint] sql_current=${sql_current}"
 
 if [ -z "$alembic_current" ]; then
     echo "[entrypoint] version table mismatch: failed to read alembic current" >&2
@@ -690,8 +778,14 @@ if [ -z "$sql_current" ]; then
             tail -n 200 "$MIGRATION_LOG" >&2 || true
             exit 1
         }
-        sql_current=$(get_sql_current)
-        echo "[entrypoint] current from SQL after stamp: ${sql_current}"
+        sql_versions=$(get_sql_versions)
+        sql_rows_count=$(count_lines "$sql_versions")
+        if [ "$sql_rows_count" -ne 1 ]; then
+            echo "[entrypoint] stamp completed but ${VERSION_TABLE_SCHEMA}.${VERSION_TABLE_NAME} rows_count=${sql_rows_count}, versions=$(format_list "$sql_versions")" >&2
+            exit 1
+        fi
+        sql_current=$(printf "%s\n" "$sql_versions" | tail -n 1)
+        echo "[entrypoint] sql_current after stamp=${sql_current}"
     else
         echo "[entrypoint] version table mismatch: db version is empty, enable DEV_ALLOW_STAMP=1 or run reset-db" >&2
         exit 1
@@ -703,8 +797,14 @@ if [ "$alembic_current" != "$sql_current" ]; then
     if [ "$DEV_ALLOW_VERSION_FORCE" = "1" ]; then
         echo "[entrypoint] DEV_ALLOW_VERSION_FORCE=1 => forcing ${VERSION_TABLE_SCHEMA}.${VERSION_TABLE_NAME} to ${alembic_current}"
         force_set_version "$alembic_current"
-        sql_current=$(get_sql_current)
-        echo "[entrypoint] current from SQL after force: ${sql_current}"
+        sql_versions=$(get_sql_versions)
+        sql_rows_count=$(count_lines "$sql_versions")
+        if [ "$sql_rows_count" -ne 1 ]; then
+            echo "[entrypoint] force completed but ${VERSION_TABLE_SCHEMA}.${VERSION_TABLE_NAME} rows_count=${sql_rows_count}, versions=$(format_list "$sql_versions")" >&2
+            exit 1
+        fi
+        sql_current=$(printf "%s\n" "$sql_versions" | tail -n 1)
+        echo "[entrypoint] sql_current after force=${sql_current}"
     else
         echo "[entrypoint] db version mismatch, run reset-db or enable DEV_ALLOW_VERSION_FORCE" >&2
         exit 1
