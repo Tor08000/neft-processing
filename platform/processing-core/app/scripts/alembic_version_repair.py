@@ -71,16 +71,6 @@ def _find_base_revisions(script: ScriptDirectory) -> list[str]:
     return revisions
 
 
-def _replace_versions(connection: sa.Connection, schema: str, revisions: list[str]) -> None:
-    quoted_schema = schema.replace('"', '""')
-    connection.execute(sa.text(f'TRUNCATE TABLE "{quoted_schema}".{VERSION_TABLE_NAME}'))
-    for revision in revisions:
-        connection.execute(
-            sa.text(f'INSERT INTO "{quoted_schema}".{VERSION_TABLE_NAME}(version_num) VALUES (:revision)'),
-            {"revision": revision},
-        )
-
-
 def _read_schema_tables(connection: sa.Connection, schema: str) -> list[str]:
     rows = connection.execute(
         sa.text(
@@ -143,8 +133,6 @@ def ensure_alembic_version_consistency() -> RepairDecision:
     if not database_url:
         raise RuntimeError("DATABASE_URL is not set")
 
-    auto_repair_default = not _is_prod_env()
-    auto_repair = _env_flag("ALEMBIC_AUTO_REPAIR", auto_repair_default)
     strict_mode = _is_prod_env() and not _env_flag("ALEMBIC_REPAIR_ALLOW_RISKY_FALLBACK", False)
 
     config = Config(alembic_config_path)
@@ -205,61 +193,37 @@ def ensure_alembic_version_consistency() -> RepairDecision:
             return decision
 
         if len(db_revisions) > 1:
-            allow_force = _env_flag("DEV_ALLOW_VERSION_FORCE", False)
-            revisions_list = ", ".join(db_revisions)
-            if not allow_force:
-                decision = RepairDecision("FAIL", "multiple rows in version table")
+            if db_revisions != alembic_ctx_heads:
+                decision = RepairDecision("FAIL", "alembic context differs from version table")
                 _write_decision_artifacts(decision, schema_tables)
                 raise RuntimeError(
-                    f"expected exactly one row in {schema}.{VERSION_TABLE_NAME}, got {len(db_revisions)}: [{revisions_list}]. "
-                    "run reset-db or enable DEV_ALLOW_VERSION_FORCE=1"
+                    "alembic context mismatch. "
+                    f"db_rows={db_revisions}, alembic_current={alembic_ctx_heads}; possible wrong schema/version table"
                 )
 
-            keep_revision = max(db_revisions)
-            with engine.begin() as connection:
-                _replace_versions(connection, schema, [keep_revision])
-            decision = RepairDecision("REPAIR", f"multiple rows repaired by keeping max revision {keep_revision}")
+            decision = RepairDecision("UPGRADE", "multiple heads present; let Alembic merge them via migrations")
             _write_decision_artifacts(decision, schema_tables)
             return decision
 
         current_revision = db_revisions[0]
         if script.get_revision(current_revision) is None:
-            if not auto_repair:
-                decision = RepairDecision("FAIL", f"unknown revision in version table: {current_revision}")
-                _write_decision_artifacts(decision, schema_tables)
-                raise RuntimeError(decision.reason)
-            with engine.begin() as connection:
-                _replace_versions(connection, schema, heads)
-            decision = RepairDecision("REPAIR", "unknown revision replaced with script head")
+            decision = RepairDecision("FAIL", f"unknown revision in version table: {current_revision}")
             _write_decision_artifacts(decision, schema_tables)
-            return decision
+            raise RuntimeError(decision.reason)
 
         lineage_ok = any(_is_ancestor(script, current_revision, head_revision) for head_revision in heads)
         if not lineage_ok:
-            if not auto_repair:
-                decision = RepairDecision("FAIL", "lineage mismatch: current revision is not ancestor of head")
-                _write_decision_artifacts(decision, schema_tables)
-                raise RuntimeError(decision.reason)
-            with engine.begin() as connection:
-                _replace_versions(connection, schema, heads)
-            decision = RepairDecision("REPAIR", "lineage mismatch repaired by stamping script head")
+            decision = RepairDecision("FAIL", "lineage mismatch: current revision is not ancestor of head")
             _write_decision_artifacts(decision, schema_tables)
-            return decision
+            raise RuntimeError(decision.reason)
 
-        if db_revisions != alembic_ctx_heads and not auto_repair:
+        if db_revisions != alembic_ctx_heads:
             decision = RepairDecision("FAIL", "alembic context differs from version table")
             _write_decision_artifacts(decision, schema_tables)
             raise RuntimeError(
                 "alembic context mismatch. "
                 f"db_rows={db_revisions}, alembic_current={alembic_ctx_heads}; possible wrong schema/version table"
             )
-
-        if db_revisions != alembic_ctx_heads and auto_repair:
-            with engine.begin() as connection:
-                _replace_versions(connection, schema, alembic_ctx_heads or heads)
-            decision = RepairDecision("REPAIR", "alembic context mismatch repaired")
-            _write_decision_artifacts(decision, schema_tables)
-            return decision
 
         decision = RepairDecision("SKIP", "version table is already consistent")
         _write_decision_artifacts(decision, schema_tables)

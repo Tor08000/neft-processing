@@ -25,8 +25,8 @@ def upgrade() -> None:
 
     schema_resolution = resolve_db_schema()
     print(f"[{revision}] {schema_resolution.line()}")
-    # merge revision has no operations
+    pass
 
 
 def downgrade() -> None:
-    raise RuntimeError("Merge revision 20270215_0021_merge_heads cannot be downgraded safely")
+    pass
