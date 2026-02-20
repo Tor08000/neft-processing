@@ -11,22 +11,6 @@ VERSION_TABLE_NAME = "alembic_version_core"
 VERSION_TABLE_SCHEMA = "processing_core"
 
 
-def _env_flag(name: str, default: bool = False) -> bool:
-    value = os.getenv(name)
-    if value is None:
-        return default
-    return value.strip().lower() in {"1", "true", "yes", "on"}
-
-
-def _replace_versions(connection: sa.Connection, revisions: list[str]) -> None:
-    quoted_schema = VERSION_TABLE_SCHEMA.replace('"', '""')
-    connection.execute(sa.text(f'TRUNCATE TABLE "{quoted_schema}".{VERSION_TABLE_NAME}'))
-    for revision in revisions:
-        connection.execute(
-            sa.text(f'INSERT INTO "{quoted_schema}".{VERSION_TABLE_NAME}(version_num) VALUES (:revision)'),
-            {"revision": revision},
-        )
-
 
 def _read_version_rows(connection: sa.Connection) -> list[str]:
     quoted_schema = VERSION_TABLE_SCHEMA.replace('"', '""')
@@ -83,28 +67,10 @@ def run_upgrade_preflight() -> None:
         print("[entrypoint] upgrade plan: from sql_current to head", flush=True)
 
         if sql_current_rows != ctx_current_rows:
-            if not _env_flag("DEV_ALLOW_VERSION_FORCE", False):
-                raise RuntimeError(
-                    "refusing upgrade: alembic version mismatch before upgrade "
-                    f"(sql_current={sql_current_rows}, ctx_current={ctx_current_rows}). "
-                    "Set DEV_ALLOW_VERSION_FORCE=1 only for local/dev recovery."
-                )
-
-            with engine.begin() as connection:
-                _replace_versions(connection, sql_current_rows)
-
-            with engine.connect() as connection:
-                ctx_after_force = _read_ctx_heads(connection)
-
-            if sql_current_rows != ctx_after_force:
-                raise RuntimeError(
-                    "DEV_ALLOW_VERSION_FORCE=1 could not reconcile alembic version state "
-                    f"(sql_current={sql_current_rows}, ctx_after_force={ctx_after_force}). "
-                    "Reset DB is recommended."
-                )
-            print(
-                "[entrypoint] dev-force: reconciled alembic version table to sql_current before upgrade",
-                flush=True,
+            raise RuntimeError(
+                "refusing upgrade: alembic version mismatch before upgrade "
+                f"(sql_current={sql_current_rows}, ctx_current={ctx_current_rows}). "
+                "Reset DB or run alembic stamp manually outside migrations for recovery."
             )
     finally:
         engine.dispose()
