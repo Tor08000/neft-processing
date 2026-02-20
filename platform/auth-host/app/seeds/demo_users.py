@@ -117,8 +117,8 @@ def get_demo_users() -> list[DemoUser]:
         ["PLATFORM_ADMIN"],
     )
 
-    client_email = _require_env("NEFT_BOOTSTRAP_CLIENT_EMAIL")
-    client_password = _require_env("NEFT_BOOTSTRAP_CLIENT_PASSWORD")
+    client_email = _env_or_default("NEFT_BOOTSTRAP_CLIENT_EMAIL", "client@neft.local")
+    client_password = _env_or_default("NEFT_BOOTSTRAP_CLIENT_PASSWORD", "client123")
     client_full_name = _env_or_default(
         "NEFT_BOOTSTRAP_CLIENT_FULL_NAME",
         _env_or_default(
@@ -138,8 +138,8 @@ def get_demo_users() -> list[DemoUser]:
         ["CLIENT_OWNER"],
     )
 
-    partner_email = _require_env("NEFT_BOOTSTRAP_PARTNER_EMAIL")
-    partner_password = _require_env("NEFT_BOOTSTRAP_PARTNER_PASSWORD")
+    partner_email = _env_or_default("NEFT_BOOTSTRAP_PARTNER_EMAIL", "partner@neft.local")
+    partner_password = _env_or_default("NEFT_BOOTSTRAP_PARTNER_PASSWORD", "partner123")
     partner_full_name = _env_or_default(
         "NEFT_BOOTSTRAP_PARTNER_FULL_NAME",
         _env_or_default("PARTNER_FULL_NAME", "Demo Partner"),

@@ -118,7 +118,7 @@ class Document(Base):
     created_by_email = Column(Text, nullable=True)
     meta = Column(JSON, nullable=True)
 
-    files = relationship("DocumentFile", back_populates="document", cascade="all, delete-orphan")
+    files = relationship("app.models.documents.DocumentFile", back_populates="document", cascade="all, delete-orphan")
 
 
 class DocumentFile(Base):
@@ -138,7 +138,7 @@ class DocumentFile(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     meta = Column(JSON, nullable=True)
 
-    document = relationship("Document", back_populates="files")
+    document = relationship("app.models.documents.Document", back_populates="files")
 
 
 class ClosingPackage(Base):
