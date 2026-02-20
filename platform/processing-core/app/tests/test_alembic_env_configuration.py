@@ -28,6 +28,9 @@ class DummyResult:
     def scalar_one_or_none(self):  # noqa: D401
         return None
 
+    def scalar(self):  # noqa: D401
+        return None
+
 
 class DummyTransaction:
     def __enter__(self):
@@ -55,6 +58,9 @@ class DummyConfig:
     def __init__(self) -> None:
         self.config_file_name = None
         self.main_options: dict[str, str] = {}
+
+    def get_section(self, name: str, default=None):
+        return default or {}
 
     def get_main_option(self, name: str):
         return self.main_options.get(name)
@@ -94,7 +100,8 @@ def test_env_configures_context(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(context, "run_migrations", lambda: None, raising=False)
     monkeypatch.setattr(context, "configure", lambda **kwargs: configure_calls.update(kwargs), raising=False)
     monkeypatch.setattr(context, "begin_transaction", lambda: DummyTransaction(), raising=False)
-    monkeypatch.setattr("sqlalchemy.create_engine", lambda url, **kwargs: DummyEngine(dummy_connection), raising=False)
+    monkeypatch.setattr(sys, "argv", ["alembic", "upgrade", "head"])
+    monkeypatch.setattr("sqlalchemy.engine_from_config", lambda section, **kwargs: DummyEngine(dummy_connection), raising=False)
 
     env = importlib.import_module("app.alembic.env")
     env.run_migrations_online()

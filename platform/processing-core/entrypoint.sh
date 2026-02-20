@@ -145,7 +145,6 @@ if [ -z "$DATABASE_URL" ]; then
     exit 1
 fi
 PSQL_URL=$(printf '%s' "$DATABASE_URL" | sed 's/+psycopg//')
-STAMP_FALLBACK_REVISION="20299000_0130_merge_heads_processing_core"
 
 extract_heads() {
     printf "%s\n" "$1" | awk '$1 == "Rev:" {print $2}' | tr -d '\r' | awk 'NF' | sort -u
@@ -492,23 +491,14 @@ run_upgrade() {
     alembic -c "$ALEMBIC_CONFIG" upgrade head >"$MIGRATION_LOG" 2>&1
 }
 
-run_stamp() {
-    echo "[entrypoint] applying migrations via alembic stamp head ($ALEMBIC_CONFIG)"
-    alembic -c "$ALEMBIC_CONFIG" stamp head >"$MIGRATION_LOG" 2>&1
-}
-
 set +e
 case "$ALEMBIC_DECISION" in
     SKIP)
         echo "[entrypoint] decision=SKIP, skipping alembic migrate action"
         migration_status=0
         ;;
-    UPGRADE|REPAIR)
+    UPGRADE)
         run_upgrade
-        migration_status=$?
-        ;;
-    STAMP)
-        run_stamp
         migration_status=$?
         ;;
     FAIL)
@@ -679,9 +669,6 @@ echo "[entrypoint] post-migration schema repair completed: ${schema_resolved}.op
 fi
 
 echo "[entrypoint] post-migration version validation starting"
-DEV_ALLOW_STAMP=${DEV_ALLOW_STAMP:-0}
-DEV_ALLOW_VERSION_FORCE=${DEV_ALLOW_VERSION_FORCE:-0}
-echo "[entrypoint] DEV_ALLOW_STAMP=${DEV_ALLOW_STAMP} DEV_ALLOW_VERSION_FORCE=${DEV_ALLOW_VERSION_FORCE}"
 
 validate_lineage_against_heads() {
     current_revision="$1"
@@ -783,87 +770,18 @@ get_sql_versions() {
         | tr -d '\r' | sed '/^[[:space:]]*$/d'
 }
 
-resolve_fallback_head() {
-    parsed_heads=$(printf "%s\n" "$expected_heads" | sed '/^[[:space:]]*$/d')
-    if [ -n "$parsed_heads" ]; then
-        printf "%s\n" "$parsed_heads" | tail -n 1
-        return
-    fi
-    printf "%s\n" "$STAMP_FALLBACK_REVISION"
-}
-
-repair_multi_row_sql_versions() {
-    fallback_head="$1"
-    echo "[entrypoint] DEV_ALLOW_VERSION_FORCE=1 => repairing ${VERSION_TABLE_SCHEMA}.${VERSION_TABLE_NAME} to a single row"
-    psql "$PSQL_URL" -v ON_ERROR_STOP=1 -q <<EOF
-WITH keep AS (
-  SELECT max(version_num) AS v FROM ${VERSION_TABLE_SCHEMA}.${VERSION_TABLE_NAME}
-)
-DELETE FROM ${VERSION_TABLE_SCHEMA}.${VERSION_TABLE_NAME}
-WHERE version_num <> (SELECT v FROM keep);
-EOF
-
-    remaining_count=$(psql "$PSQL_URL" -q -v ON_ERROR_STOP=1 -tA -c \
-        "SELECT COUNT(*) FROM ${VERSION_TABLE_SCHEMA}.${VERSION_TABLE_NAME};" | tr -d '\r' | tr -d ' ')
-    if [ "$remaining_count" = "0" ]; then
-        echo "[entrypoint] repair edge-case: no rows left, inserting fallback head=${fallback_head}"
-        psql "$PSQL_URL" -v ON_ERROR_STOP=1 -q -c \
-            "INSERT INTO ${VERSION_TABLE_SCHEMA}.${VERSION_TABLE_NAME}(version_num) VALUES ('${fallback_head}');"
-    fi
-}
-
 sql_versions=$(get_sql_versions)
 sql_rows_count=$(count_lines "$sql_versions")
+sql_current=$(printf "%s\n" "$sql_versions" | sed '/^[[:space:]]*$/d' | tail -n 1)
 echo "[entrypoint] sql_versions=$(format_list "$sql_versions")"
 echo "[entrypoint] rows_count=${sql_rows_count}"
-
-if [ "$sql_rows_count" -ne 1 ]; then
-    if [ "$DEV_ALLOW_VERSION_FORCE" = "1" ]; then
-        repair_multi_row_sql_versions "$(resolve_fallback_head)"
-        sql_versions=$(get_sql_versions)
-        sql_rows_count=$(count_lines "$sql_versions")
-        echo "[entrypoint] sql_versions after repair=$(format_list "$sql_versions")"
-        echo "[entrypoint] rows_count after repair=${sql_rows_count}"
-    else
-        echo "[entrypoint] version table mismatch: expected exactly 1 row in ${VERSION_TABLE_SCHEMA}.${VERSION_TABLE_NAME}, got ${sql_rows_count}" >&2
-        echo "[entrypoint] current SQL versions: $(format_list "$sql_versions")" >&2
-        echo "[entrypoint] run reset-db or enable DEV_ALLOW_VERSION_FORCE=1" >&2
-        exit 1
-    fi
-fi
-
-if [ "$sql_rows_count" -ne 1 ]; then
-    echo "[entrypoint] version table mismatch: failed to repair ${VERSION_TABLE_SCHEMA}.${VERSION_TABLE_NAME} to a single row" >&2
-    exit 1
-fi
-
-sql_current=$(printf "%s\n" "$sql_versions" | sed '/^[[:space:]]*$/d' | tail -n 1)
-
-echo "[entrypoint] sql_current=${sql_current}"
-
-if [ -z "$sql_current" ]; then
-    if [ "$DEV_ALLOW_STAMP" = "1" ]; then
-        echo "[entrypoint] ${VERSION_TABLE_NAME} is empty, DEV_ALLOW_STAMP=1 => alembic stamp head"
-        alembic -c "$ALEMBIC_CONFIG" stamp head >"$MIGRATION_LOG" 2>&1 || {
-            echo "[entrypoint] alembic stamp failed; last log lines:" >&2
-            tail -n 200 "$MIGRATION_LOG" >&2 || true
-            exit 1
-        }
-        sql_versions=$(get_sql_versions)
-        sql_rows_count=$(count_lines "$sql_versions")
-        if [ "$sql_rows_count" -ne 1 ]; then
-            echo "[entrypoint] stamp completed but ${VERSION_TABLE_SCHEMA}.${VERSION_TABLE_NAME} rows_count=${sql_rows_count}, versions=$(format_list "$sql_versions")" >&2
-            exit 1
-        fi
-        sql_current=$(printf "%s\n" "$sql_versions" | tail -n 1)
-        echo "[entrypoint] sql_current after stamp=${sql_current}"
-    else
-        echo "[entrypoint] version table mismatch: db version is empty, enable DEV_ALLOW_STAMP=1 or run reset-db" >&2
-        exit 1
-    fi
-fi
+echo "[entrypoint] sql_current=${sql_current:-<base>}"
 
 if [ "$ALEMBIC_DECISION" = "SKIP" ]; then
+    if [ "$sql_rows_count" -ne 1 ]; then
+        echo "[entrypoint] version table mismatch: SKIP expects exactly 1 row in ${VERSION_TABLE_SCHEMA}.${VERSION_TABLE_NAME}, got ${sql_rows_count}" >&2
+        exit 1
+    fi
     echo "[entrypoint] decision=SKIP => validating lineage(current in ancestors of script heads)"
     if ! validate_lineage_against_heads "$sql_current" "$expected_heads"; then
         echo "[entrypoint] version table mismatch: SKIP requires lineage compatibility with script heads" >&2
@@ -875,7 +793,6 @@ else
         echo "[entrypoint] version table mismatch: ${ALEMBIC_DECISION} requires sql_current to match script head" >&2
         echo "[entrypoint] current SQL versions: $(format_list "$sql_versions")" >&2
         echo "[entrypoint] expected script heads: $(format_list "$expected_heads")" >&2
-        echo "[entrypoint] run reset-db or execute alembic upgrade/stamp head" >&2
         exit 1
     fi
 fi
