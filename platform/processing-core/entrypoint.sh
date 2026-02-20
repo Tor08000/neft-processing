@@ -451,6 +451,40 @@ fi
 ALEMBIC_DECISION=${ALEMBIC_MODE:-UPGRADE}
 echo "[entrypoint] decision mode=${ALEMBIC_DECISION}"
 
+if [ "$ALEMBIC_DECISION" = "SKIP" ]; then
+    PREFLIGHT_AUTH_MODE_FILE=${PREFLIGHT_AUTH_MODE_FILE:-/tmp/core_required_tables_auth_mode.txt}
+    PREFLIGHT_MISSING_FILE=${PREFLIGHT_MISSING_FILE:-/tmp/core_required_tables_missing.txt}
+    export PREFLIGHT_AUTH_MODE_FILE PREFLIGHT_MISSING_FILE
+
+    python - <<'PY'
+import os
+from pathlib import Path
+
+from app.db import DB_SCHEMA, get_engine
+from app.services.startup_validation import (
+    get_auth_host_mode,
+    validate_required_tables,
+)
+
+auth_mode = get_auth_host_mode()
+missing = validate_required_tables(get_engine(), schema=DB_SCHEMA, auth_mode=auth_mode)
+Path(os.environ["PREFLIGHT_AUTH_MODE_FILE"]).write_text(auth_mode + "\n", encoding="utf-8")
+Path(os.environ["PREFLIGHT_MISSING_FILE"]).write_text("\n".join(missing), encoding="utf-8")
+print(
+    "[entrypoint] preflight required tables check: "
+    f"auth_mode={auth_mode} missing={missing if missing else '[]'}",
+    flush=True,
+)
+PY
+
+    auth_mode_preflight=$(cat "$PREFLIGHT_AUTH_MODE_FILE" 2>/dev/null | tr -d '\r\n')
+    missing_required_tables=$(cat "$PREFLIGHT_MISSING_FILE" 2>/dev/null | sed '/^[[:space:]]*$/d' | tr '\n' ',' | sed 's/,$//')
+    if [ -n "$missing_required_tables" ]; then
+        echo "[entrypoint] missing tables detected -> overriding mode to UPGRADE (auth_mode=${auth_mode_preflight} missing=${missing_required_tables})"
+        ALEMBIC_DECISION="UPGRADE"
+    fi
+fi
+
 run_upgrade() {
     echo "[entrypoint] applying migrations via alembic upgrade head ($ALEMBIC_CONFIG)"
     alembic -c "$ALEMBIC_CONFIG" upgrade head >"$MIGRATION_LOG" 2>&1
