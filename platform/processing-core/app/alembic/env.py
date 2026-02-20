@@ -40,6 +40,36 @@ configure_kwargs = {
 }
 
 
+def _find_parallel_version_tables(connection) -> list[tuple[str, str]]:
+    rows = connection.execute(
+        text(
+            """
+            SELECT table_schema, table_name
+            FROM information_schema.tables
+            WHERE table_type = 'BASE TABLE'
+              AND table_name LIKE 'alembic_version%'
+              AND NOT (table_schema = :schema AND table_name = :version_table)
+            ORDER BY table_schema, table_name
+            """
+        ),
+        {"schema": schema, "version_table": version_table},
+    ).all()
+    return [(str(table_schema), str(table_name)) for table_schema, table_name in rows]
+
+
+def _forbid_parallel_version_tables(connection) -> None:
+    parallel_tables = _find_parallel_version_tables(connection)
+    if not parallel_tables:
+        return
+
+    table_names = ", ".join(f"{table_schema}.{table_name}" for table_schema, table_name in parallel_tables)
+    raise RuntimeError(
+        "Detected parallel Alembic version tables that can desync migration state: "
+        f"{table_names}. Keep only {schema}.{version_table}; drop/repair extra tables in dev "
+        "or migrate their data into processing_core.alembic_version_core before rerunning upgrade."
+    )
+
+
 def run_migrations_offline() -> None:
     context.configure(
         url=DATABASE_URL,
@@ -126,6 +156,7 @@ def run_migrations_online() -> None:
         skip_preflight = command_name in {"current", "history", "heads"}
         if not skip_preflight:
             _ensure_version_table(connection)
+            _forbid_parallel_version_tables(connection)
         else:
             quoted_schema = quote_schema(schema)
             connection.execute(text(f"CREATE SCHEMA IF NOT EXISTS {quoted_schema}"))

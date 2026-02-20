@@ -9,9 +9,10 @@ from alembic import context
 
 
 class DummyConnection:
-    def __init__(self) -> None:
+    def __init__(self, *, parallel_tables: list[tuple[str, str]] | None = None) -> None:
         self.dialect = SimpleNamespace(name="postgresql")
         self.executed: list[tuple[str, dict | None]] = []
+        self.parallel_tables = parallel_tables or []
 
     def __enter__(self):
         return self
@@ -20,16 +21,25 @@ class DummyConnection:
         return False
 
     def execute(self, statement, params=None):  # noqa: D401,ARG002
-        self.executed.append((str(statement), params))
+        sql = str(statement)
+        self.executed.append((sql, params))
+        if "table_name LIKE 'alembic_version%'" in sql:
+            return DummyResult(self.parallel_tables)
         return DummyResult()
 
 
 class DummyResult:
+    def __init__(self, rows=None) -> None:
+        self._rows = rows or []
+
     def scalar_one_or_none(self):  # noqa: D401
         return None
 
     def scalar(self):  # noqa: D401
         return None
+
+    def all(self):  # noqa: D401
+        return self._rows
 
 
 class DummyTransaction:
@@ -121,4 +131,23 @@ def test_env_requires_database_url(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(context, "is_offline_mode", lambda: False, raising=False)
 
     with pytest.raises(RuntimeError):
+        importlib.import_module("app.alembic.env")
+
+
+def test_env_rejects_parallel_alembic_tables(monkeypatch: pytest.MonkeyPatch):
+    target_url = "postgresql+psycopg://user:secret@db:5432/neft"
+    monkeypatch.setenv("DATABASE_URL", target_url)
+    dummy_config = DummyConfig()
+    dummy_connection = DummyConnection(parallel_tables=[("public", "alembic_version")])
+
+    monkeypatch.setattr(context, "config", dummy_config, raising=False)
+    monkeypatch.setattr(context, "is_offline_mode", lambda: False, raising=False)
+    monkeypatch.setattr(context, "get_x_argument", lambda as_dictionary=True: {})  # noqa: ARG005
+    monkeypatch.setattr(context, "run_migrations", lambda: None, raising=False)
+    monkeypatch.setattr(context, "configure", lambda **kwargs: None, raising=False)
+    monkeypatch.setattr(context, "begin_transaction", lambda: DummyTransaction(), raising=False)
+    monkeypatch.setattr(sys, "argv", ["alembic", "upgrade", "head"])
+    monkeypatch.setattr("sqlalchemy.engine_from_config", lambda section, **kwargs: DummyEngine(dummy_connection), raising=False)
+
+    with pytest.raises(RuntimeError, match="parallel Alembic version tables"):
         importlib.import_module("app.alembic.env")
