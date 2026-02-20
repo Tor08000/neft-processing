@@ -18,7 +18,7 @@ branch_labels = None
 depends_on = None
 
 
-AUTH_SCHEMA = "public"
+AUTH_SCHEMA = "processing_auth"
 VERSION_TABLE = "alembic_version_auth"
 
 
@@ -28,6 +28,13 @@ def _alter_version_num_if_table_exists(column_type: str) -> None:
             f"""
             DO $$
             BEGIN
+              CREATE SCHEMA IF NOT EXISTS {AUTH_SCHEMA};
+
+              IF to_regclass('public.{VERSION_TABLE}') IS NOT NULL
+                 AND to_regclass('{AUTH_SCHEMA}.{VERSION_TABLE}') IS NULL THEN
+                ALTER TABLE public.{VERSION_TABLE} SET SCHEMA {AUTH_SCHEMA};
+              END IF;
+
               IF to_regclass('{AUTH_SCHEMA}.{VERSION_TABLE}') IS NOT NULL THEN
                 ALTER TABLE {AUTH_SCHEMA}.{VERSION_TABLE}
                   ALTER COLUMN version_num TYPE {column_type};
