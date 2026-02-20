@@ -39,6 +39,8 @@ configure_kwargs = {
     "version_table_schema": schema,
 }
 
+_PARALLEL_TABLE_ALLOWED = {(schema, version_table)}
+
 
 def _find_parallel_version_tables(connection) -> list[tuple[str, str]]:
     rows = connection.execute(
@@ -62,11 +64,44 @@ def _forbid_parallel_version_tables(connection) -> None:
     if not parallel_tables:
         return
 
+    app_env = os.getenv("APP_ENV", "prod").strip().lower()
+    allow_cleanup = os.getenv("ALLOW_DEV_VERSION_TABLE_CLEANUP", "0").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+    should_auto_cleanup = app_env != "prod" or allow_cleanup
+
+    cleanup_candidates = [
+        (table_schema, table_name)
+        for table_schema, table_name in parallel_tables
+        if table_schema == "public"
+        and table_name.startswith("alembic_version")
+        and (table_schema, table_name) not in _PARALLEL_TABLE_ALLOWED
+    ]
+
+    if should_auto_cleanup and cleanup_candidates:
+        for table_schema, table_name in cleanup_candidates:
+            connection.execute(text(f'DROP TABLE IF EXISTS "{table_schema}"."{table_name}"'))
+
+        parallel_tables = _find_parallel_version_tables(connection)
+        if not parallel_tables:
+            return
+
     table_names = ", ".join(f"{table_schema}.{table_name}" for table_schema, table_name in parallel_tables)
+    cleanup_command = (
+        "docker compose exec -T postgres psql -U ${POSTGRES_USER:-neft} -d ${POSTGRES_DB:-neft} "
+        "-c \"DO $$ DECLARE r RECORD; BEGIN FOR r IN "
+        "(SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' "
+        "AND table_type='BASE TABLE' AND table_name LIKE 'alembic_version%') "
+        "LOOP EXECUTE format('DROP TABLE IF EXISTS public.%I', r.table_name); END LOOP; END $$;\""
+    )
     raise RuntimeError(
         "Detected parallel Alembic version tables that can desync migration state: "
         f"{table_names}. Keep only {schema}.{version_table}; drop/repair extra tables in dev "
-        "or migrate their data into processing_core.alembic_version_core before rerunning upgrade."
+        "or migrate their data into processing_core.alembic_version_core before rerunning upgrade. "
+        f"Quick fix command: {cleanup_command}"
     )
 
 
