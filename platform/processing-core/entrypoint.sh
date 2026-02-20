@@ -513,8 +513,13 @@ esac
 set -e
 
 if [ "$migration_status" -ne 0 ]; then
-    echo "[entrypoint] migration validation failed; last log lines:" >&2
-    tail -n 200 "$MIGRATION_LOG" >&2 || true
+    if [ "$ALEMBIC_DECISION" = "UPGRADE" ]; then
+        echo "[entrypoint] alembic upgrade failed exit_code=${migration_status}" >&2
+        tail -n 80 "$MIGRATION_LOG" >&2 || true
+    else
+        echo "[entrypoint] migration validation failed; last log lines:" >&2
+        tail -n 200 "$MIGRATION_LOG" >&2 || true
+    fi
     echo "[entrypoint] migration validation failed; run scripts\\check_migrations.cmd" >&2
     echo "[entrypoint] migration log saved to $MIGRATION_LOG" >&2
     if [ "${ENTRYPOINT_MIGRATION_KEEPALIVE}" = "1" ]; then
@@ -818,6 +823,14 @@ if [ "$ALEMBIC_DECISION" = "SKIP" ]; then
         exit 1
     fi
 else
+    if [ "$sql_rows_count" -eq 0 ]; then
+        echo "[entrypoint] upgrade reported success but version table empty (${VERSION_TABLE_SCHEMA}.${VERSION_TABLE_NAME})" >&2
+        exit 1
+    fi
+    if [ "$sql_rows_count" -ne 1 ]; then
+        echo "[entrypoint] version table mismatch: ${ALEMBIC_DECISION} expects exactly 1 row in ${VERSION_TABLE_SCHEMA}.${VERSION_TABLE_NAME}, got ${sql_rows_count}" >&2
+        exit 1
+    fi
     echo "[entrypoint] decision=${ALEMBIC_DECISION} => validating sql_current is one of script heads"
     if ! validate_revision_is_head "$sql_current" "$expected_heads"; then
         echo "[entrypoint] version table mismatch: ${ALEMBIC_DECISION} requires sql_current to match script head" >&2

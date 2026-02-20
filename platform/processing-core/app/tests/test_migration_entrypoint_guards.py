@@ -249,4 +249,4 @@ def test_processing_core_upgrade_head_idempotent():
     finally:
         connectable.dispose()
 
-    assert rows >= 1
+    assert rows == 1
