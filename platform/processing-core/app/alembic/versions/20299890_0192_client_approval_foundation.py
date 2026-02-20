@@ -23,6 +23,36 @@ def _has_column(inspector, table: str, column: str) -> bool:
     return any(item["name"] == column for item in inspector.get_columns(table, schema=DB_SCHEMA))
 
 
+def ensure_clients_status_column(bind, inspector) -> bool:
+    if not inspector.has_table("clients", schema=DB_SCHEMA):
+        print("[alembic][0192] clients table is missing; skipping status column/index", flush=True)
+        return False
+
+    if _has_column(inspector, "clients", "status"):
+        return True
+
+    op.add_column(
+        "clients",
+        sa.Column("status", sa.String(length=32), nullable=True, server_default="ACTIVE"),
+        schema=DB_SCHEMA,
+    )
+    op.execute(sa.text(f"UPDATE {DB_SCHEMA}.clients SET status = COALESCE(status, 'ACTIVE')"))
+    op.alter_column(
+        "clients",
+        "status",
+        existing_type=sa.String(length=32),
+        nullable=False,
+        server_default="ACTIVE",
+        schema=DB_SCHEMA,
+    )
+
+    refreshed_inspector = sa.inspect(bind)
+    if not _has_column(refreshed_inspector, "clients", "status"):
+        print("[alembic][0192] clients.status is still missing after add-column attempt", flush=True)
+        return False
+    return True
+
+
 def upgrade() -> None:
     bind = op.get_bind()
     inspector = sa.inspect(bind)
@@ -77,7 +107,11 @@ def upgrade() -> None:
             schema=DB_SCHEMA,
         )
 
-    create_index_if_not_exists(bind, "ix_clients_status", "clients", ["status"], schema=DB_SCHEMA)
+    status_exists = ensure_clients_status_column(bind, inspector)
+    if status_exists:
+        create_index_if_not_exists(bind, "ix_clients_status", "clients", ["status"], schema=DB_SCHEMA)
+    else:
+        print("[alembic][0192] skipped ix_clients_status because clients.status is missing", flush=True)
     create_unique_index_if_not_exists(bind, "uq_clients_inn", "clients", ["inn"], schema=DB_SCHEMA)
 
     inspector = sa.inspect(bind)
