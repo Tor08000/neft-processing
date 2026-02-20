@@ -85,6 +85,22 @@ def test_empty_version_table_smoke_no_nameerror(monkeypatch, capsys):
     assert "mode selected = UPGRADE" in output
 
 
+def test_write_decision_env_uses_shell_safe_format(monkeypatch, tmp_path):
+    decision_file = tmp_path / "alembic_decision.env"
+    monkeypatch.setenv("ALEMBIC_DECISION_FILE", str(decision_file))
+
+    repair_script._write_decision_artifacts(
+        repair_script.RepairDecision("UPGRADE", "fresh schema and empty version table"),
+        ["alembic_version_core"],
+    )
+
+    assert decision_file.read_text(encoding="utf-8") == (
+        "ALEMBIC_SCHEMA_TABLES=alembic_version_core\n"
+        "ALEMBIC_MODE=UPGRADE\n"
+        'ALEMBIC_REASON="fresh schema and empty version table"\n'
+    )
+
+
 @pytest.mark.skipif(get_database_url().startswith("sqlite"), reason="Postgres-only test")
 def test_version_missing_with_non_empty_schema_stamps_heads(monkeypatch, capsys):
     db_url = get_database_url()

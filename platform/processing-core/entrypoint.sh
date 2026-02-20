@@ -514,10 +514,12 @@ ALEMBIC_DECISION_FILE=${ALEMBIC_DECISION_FILE:-/tmp/alembic_decision.env}
 export ALEMBIC_DECISION_FILE
 python -m app.scripts.alembic_version_repair
 if [ -f "$ALEMBIC_DECISION_FILE" ]; then
+    set -a
     # shellcheck disable=SC1090
     . "$ALEMBIC_DECISION_FILE"
+    set +a
 fi
-ALEMBIC_DECISION=${ALEMBIC_DECISION:-UPGRADE}
+ALEMBIC_DECISION=${ALEMBIC_MODE:-UPGRADE}
 echo "[entrypoint] decision mode=${ALEMBIC_DECISION}"
 
 run_upgrade() {

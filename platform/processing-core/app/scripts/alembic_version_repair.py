@@ -112,12 +112,24 @@ def _schema_has_domain_tables(connection: sa.Connection, schema: str) -> bool:
     return bool(rows)
 
 
-def _write_decision_artifacts(decision: RepairDecision) -> None:
+def _to_shell_value(value: str) -> str:
+    if value == "":
+        return '""'
+    safe_chars = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-/:@")
+    if all(char in safe_chars for char in value):
+        return value
+    escaped = value.replace("\\", "\\\\").replace('"', '\\"')
+    return f'"{escaped}"'
+
+
+def _write_decision_artifacts(decision: RepairDecision, schema_tables: list[str]) -> None:
     decision_file = (os.getenv("ALEMBIC_DECISION_FILE") or "").strip()
     if decision_file:
+        schema_tables_value = " ".join(schema_tables)
         with open(decision_file, "w", encoding="utf-8") as handle:
-            handle.write(f"ALEMBIC_DECISION={decision.action}\n")
-            handle.write(f"ALEMBIC_DECISION_REASON={decision.reason}\n")
+            handle.write(f"ALEMBIC_SCHEMA_TABLES={_to_shell_value(schema_tables_value)}\n")
+            handle.write(f"ALEMBIC_MODE={_to_shell_value(decision.action)}\n")
+            handle.write(f"ALEMBIC_REASON={_to_shell_value(decision.reason)}\n")
 
     print(f"[entrypoint] mode selected = {decision.action}", flush=True)
     print(f"[entrypoint] mode reason = {decision.reason}", flush=True)
@@ -162,6 +174,8 @@ def ensure_alembic_version_consistency() -> RepairDecision:
         )
         return sorted(context.get_current_heads())
 
+    schema_tables: list[str] = []
+
     try:
         with engine.begin() as connection:
             connection.execute(sa.text(f'CREATE SCHEMA IF NOT EXISTS "{quoted_schema}"'))
@@ -188,47 +202,47 @@ def ensure_alembic_version_consistency() -> RepairDecision:
                 decision = RepairDecision("STAMP", "version table empty but domain tables already exist")
             else:
                 decision = RepairDecision("UPGRADE", "fresh schema and empty version table")
-            _write_decision_artifacts(decision)
+            _write_decision_artifacts(decision, schema_tables)
             return decision
 
         if len(db_revisions) > 1:
             if not auto_repair:
                 decision = RepairDecision("FAIL", "multiple rows in version table")
-                _write_decision_artifacts(decision)
+                _write_decision_artifacts(decision, schema_tables)
                 raise RuntimeError(f"expected one row in {schema}.{VERSION_TABLE_NAME}, got {len(db_revisions)}")
             with engine.begin() as connection:
                 _replace_versions(connection, schema, heads)
             decision = RepairDecision("REPAIR", "multiple rows repaired to script head")
-            _write_decision_artifacts(decision)
+            _write_decision_artifacts(decision, schema_tables)
             return decision
 
         current_revision = db_revisions[0]
         if script.get_revision(current_revision) is None:
             if not auto_repair:
                 decision = RepairDecision("FAIL", f"unknown revision in version table: {current_revision}")
-                _write_decision_artifacts(decision)
+                _write_decision_artifacts(decision, schema_tables)
                 raise RuntimeError(decision.reason)
             with engine.begin() as connection:
                 _replace_versions(connection, schema, heads)
             decision = RepairDecision("REPAIR", "unknown revision replaced with script head")
-            _write_decision_artifacts(decision)
+            _write_decision_artifacts(decision, schema_tables)
             return decision
 
         lineage_ok = any(_is_ancestor(script, current_revision, head_revision) for head_revision in heads)
         if not lineage_ok:
             if not auto_repair:
                 decision = RepairDecision("FAIL", "lineage mismatch: current revision is not ancestor of head")
-                _write_decision_artifacts(decision)
+                _write_decision_artifacts(decision, schema_tables)
                 raise RuntimeError(decision.reason)
             with engine.begin() as connection:
                 _replace_versions(connection, schema, heads)
             decision = RepairDecision("REPAIR", "lineage mismatch repaired by stamping script head")
-            _write_decision_artifacts(decision)
+            _write_decision_artifacts(decision, schema_tables)
             return decision
 
         if db_revisions != alembic_ctx_heads and not auto_repair:
             decision = RepairDecision("FAIL", "alembic context differs from version table")
-            _write_decision_artifacts(decision)
+            _write_decision_artifacts(decision, schema_tables)
             raise RuntimeError(
                 "alembic context mismatch. "
                 f"db_rows={db_revisions}, alembic_current={alembic_ctx_heads}; possible wrong schema/version table"
@@ -238,17 +252,17 @@ def ensure_alembic_version_consistency() -> RepairDecision:
             with engine.begin() as connection:
                 _replace_versions(connection, schema, alembic_ctx_heads or heads)
             decision = RepairDecision("REPAIR", "alembic context mismatch repaired")
-            _write_decision_artifacts(decision)
+            _write_decision_artifacts(decision, schema_tables)
             return decision
 
         decision = RepairDecision("SKIP", "version table is already consistent")
-        _write_decision_artifacts(decision)
+        _write_decision_artifacts(decision, schema_tables)
         return decision
     except Exception:
         if strict_mode:
             raise
         decision = RepairDecision("UPGRADE", "fallback to upgrade because repair step failed in non-strict mode")
-        _write_decision_artifacts(decision)
+        _write_decision_artifacts(decision, schema_tables)
         return decision
     finally:
         engine.dispose()
