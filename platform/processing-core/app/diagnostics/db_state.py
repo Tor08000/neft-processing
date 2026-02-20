@@ -31,6 +31,7 @@ class ConnectionInventory:
     schemas: list[str]
     tables: list[tuple[str, str]]
     alembic_versions: list[str]
+    parallel_alembic_version_tables: list[tuple[str, str]]
     schema: str
 
     def missing_tables(self, required: Iterable[str] = REQUIRED_CORE_TABLES) -> list[str]:
@@ -138,6 +139,23 @@ def collect_inventory(url: str = DATABASE_URL, schema: str = SCHEMA_RESOLUTION.s
                 )
             ]
 
+        parallel_alembic_version_tables = [
+            (row.table_schema, row.table_name)
+            for row in conn.execute(
+                text(
+                    """
+                    SELECT table_schema, table_name
+                    FROM information_schema.tables
+                    WHERE table_type = 'BASE TABLE'
+                      AND table_name LIKE 'alembic_version%'
+                      AND NOT (table_schema = :schema AND table_name = :table_name)
+                    ORDER BY 1, 2
+                    """
+                ),
+                {"schema": schema, "table_name": ALEMBIC_VERSION_TABLE},
+            )
+        ]
+
     return ConnectionInventory(
         server_addr=server_addr,
         server_port=server_port,
@@ -147,6 +165,7 @@ def collect_inventory(url: str = DATABASE_URL, schema: str = SCHEMA_RESOLUTION.s
         schemas=schemas,
         tables=tables,
         alembic_versions=alembic_versions,
+        parallel_alembic_version_tables=parallel_alembic_version_tables,
         schema=schema,
     )
 
