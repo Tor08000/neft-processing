@@ -6,6 +6,8 @@ from typing import Iterable, Sequence
 import sqlalchemy as sa
 from sqlalchemy import text
 from alembic import op
+from psycopg import errors as psycopg_errors
+from sqlalchemy.exc import ProgrammingError
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.engine import Connection
 
@@ -483,7 +485,25 @@ def create_index_if_not_exists(
     schema: str = DB_SCHEMA,
     **kwargs,
 ) -> None:
-    if index_exists(bind, index_name, schema=schema):
+    if is_postgres(bind):
+        exists = bind.execute(
+            sa.text(
+                """
+                SELECT 1
+                FROM pg_class c
+                JOIN pg_namespace n ON n.oid = c.relnamespace
+                WHERE n.nspname = :schema
+                  AND c.relname = :index_name
+                  AND c.relkind = 'i'
+                LIMIT 1
+                """
+            ),
+            {"schema": schema, "index_name": index_name},
+        ).first()
+    else:
+        exists = index_exists(bind, index_name, schema=schema)
+
+    if (exists is not None) if is_postgres(bind) else exists:
         logger.info("Index %s.%s already exists, skipping", schema, index_name)
         return
 
@@ -494,15 +514,48 @@ def create_index_if_not_exists(
         bind.exec_driver_sql(sql)
         return
 
+    columns_list = list(columns)
     try:
-        create_fn(index_name, table_name, list(columns), schema=schema, **kwargs)
-    except TypeError:
-        create_fn(index_name, table_name, list(columns), **kwargs)
+        try:
+            create_fn(index_name, table_name, columns_list, schema=schema, **kwargs)
+        except TypeError:
+            create_fn(index_name, table_name, columns_list, **kwargs)
     except NameError as exc:
         if "proxy" not in str(exc):
             raise
-        sql = f"CREATE INDEX IF NOT EXISTS {index_name} ON {schema}.{table_name} ({', '.join(columns)})"
+        sql = f"CREATE INDEX IF NOT EXISTS {index_name} ON {schema}.{table_name} ({', '.join(columns_list)})"
         bind.exec_driver_sql(sql)
+    except Exception as exc:  # pragma: no cover - exercised in tests via helper predicate
+        if _is_duplicate_index_creation_error(exc):
+            logger.info("Index %s.%s already exists, ignoring race", schema, index_name)
+            return
+        raise
+
+
+def _is_duplicate_index_creation_error(exc: Exception) -> bool:
+    duplicate_sqlstates = {"42P07", "42710"}
+    duplicate_types = (psycopg_errors.DuplicateTable, psycopg_errors.DuplicateObject)
+    if duplicate_types and isinstance(exc, duplicate_types):
+        return True
+
+    original = getattr(exc, "orig", None)
+    if duplicate_types and original is not None and isinstance(original, duplicate_types):
+        return True
+
+    if isinstance(exc, ProgrammingError):
+        sqlstate = getattr(original, "sqlstate", None)
+        if sqlstate in duplicate_sqlstates:
+            return True
+
+        pgcode = getattr(original, "pgcode", None)
+        if pgcode in duplicate_sqlstates:
+            return True
+
+        message = str(original or exc).lower()
+        if "already exists" in message and "index" in message:
+            return True
+
+    return False
 
 
 def create_unique_index_if_not_exists(
