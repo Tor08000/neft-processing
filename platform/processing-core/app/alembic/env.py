@@ -32,12 +32,7 @@ target_metadata = None
 config.set_main_option("version_table", version_table)
 config.set_main_option("version_table_schema", schema)
 
-configure_kwargs = {
-    "target_metadata": target_metadata,
-    "include_schemas": True,
-    "version_table": version_table,
-    "version_table_schema": schema,
-}
+legacy_version_table = "alembic_version"
 
 _PARALLEL_TABLE_EXPLICITLY_ALLOWED = {
     (schema, version_table),
@@ -90,6 +85,46 @@ def _forbid_parallel_version_tables(connection) -> None:
     )
 
 
+def _repair_legacy_version_table(connection) -> None:
+    quoted_schema = quote_schema(schema)
+    repair_enabled = os.getenv("ALEMBIC_AUTO_REPAIR", "1").strip().lower() not in {"0", "false", "no"}
+    if not repair_enabled:
+        return
+
+    legacy_exists = connection.execute(
+        text("SELECT to_regclass(:reg_name)"),
+        {"reg_name": f"{schema}.{legacy_version_table}"},
+    ).scalar()
+    if legacy_exists is None:
+        return
+
+    new_count = connection.execute(
+        text(f"SELECT COUNT(*) FROM {quoted_schema}.{version_table}")
+    ).scalar_one()
+    if new_count:
+        connection.execute(text(f"DROP TABLE IF EXISTS {quoted_schema}.{legacy_version_table}"))
+        return
+
+    legacy_version = connection.execute(
+        text(
+            "SELECT version_num "
+            f"FROM {quoted_schema}.{legacy_version_table} "
+            "ORDER BY version_num LIMIT 1"
+        )
+    ).scalar()
+    if legacy_version is None:
+        return
+
+    connection.execute(
+        text(
+            f"INSERT INTO {quoted_schema}.{version_table} (version_num) VALUES (:version_num) "
+            "ON CONFLICT (version_num) DO NOTHING"
+        ),
+        {"version_num": legacy_version},
+    )
+    connection.execute(text(f"ALTER TABLE {quoted_schema}.{legacy_version_table} RENAME TO alembic_version_legacy_backup"))
+
+
 
 def _assert_non_empty_core_version_table_after_upgrade(connection, command_name: str) -> None:
     if command_name != "upgrade":
@@ -128,7 +163,10 @@ def _assert_non_empty_core_version_table_after_upgrade(connection, command_name:
 def run_migrations_offline() -> None:
     context.configure(
         url=DATABASE_URL,
-        **configure_kwargs,
+        target_metadata=target_metadata,
+        include_schemas=True,
+        version_table="alembic_version_core",
+        version_table_schema="processing_core",
         literal_binds=True,
     )
     with context.begin_transaction():
@@ -141,7 +179,10 @@ def _configure(connection, command_name: str | None) -> None:
     transaction_per_migration = command_name in {"upgrade", "downgrade"}
     context.configure(
         connection=connection,
-        **configure_kwargs,
+        target_metadata=target_metadata,
+        include_schemas=True,
+        version_table="alembic_version_core",
+        version_table_schema="processing_core",
         transaction_per_migration=transaction_per_migration,
     )
 
@@ -211,6 +252,7 @@ def run_migrations_online() -> None:
         skip_preflight = command_name in {"current", "history", "heads"}
         if not skip_preflight:
             _ensure_version_table(connection)
+            _repair_legacy_version_table(connection)
             _forbid_parallel_version_tables(connection)
         else:
             quoted_schema = quote_schema(schema)
