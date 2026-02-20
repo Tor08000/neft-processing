@@ -11,8 +11,10 @@ if [ -z "$schema_resolved" ]; then
 fi
 export NEFT_DB_SCHEMA="${NEFT_DB_SCHEMA:-$schema_resolved}"
 export DB_SCHEMA="${DB_SCHEMA:-$schema_resolved}"
-export ALEMBIC_VERSION_TABLE_SCHEMA="${ALEMBIC_VERSION_TABLE_SCHEMA:-$schema_resolved}"
-echo "[entrypoint] schema_resolved=${schema_resolved}"
+VERSION_TABLE_SCHEMA="processing_core"
+VERSION_TABLE_NAME="alembic_version_core"
+export ALEMBIC_VERSION_TABLE_SCHEMA="$VERSION_TABLE_SCHEMA"
+echo "[entrypoint] schema_resolved=${schema_resolved} version_table=${VERSION_TABLE_SCHEMA}.${VERSION_TABLE_NAME}"
 
 python - <<'PY'
 import os
@@ -161,79 +163,6 @@ run_diag_cmd() {
     return $status
 }
 
-get_found_versions() {
-    psql "$PSQL_URL" -q -v ON_ERROR_STOP=1 -tA -c \
-        "SELECT version_num FROM \"${schema_resolved}\".alembic_version_core ORDER BY 1;" \
-        | tr -d '\r' | sed '/^[[:space:]]*$/d'
-}
-
-log_found_versions() {
-    found_versions="$1"
-    rows_count=$(printf "%s\n" "$found_versions" | sed '/^[[:space:]]*$/d' | wc -l | tr -d ' ')
-    echo "[entrypoint] found versions rows count: $rows_count"
-    echo "[entrypoint] found versions list: [$(printf "%s\n" "$found_versions" | tr '\n' ' ')]"
-}
-
-fallback_stamp_insert() {
-    echo "[entrypoint] stamp fallback: inserting ${STAMP_FALLBACK_REVISION} into ${schema_resolved}.alembic_version_core"
-    psql "$PSQL_URL" -v ON_ERROR_STOP=1 -c \
-        "INSERT INTO ${schema_resolved}.alembic_version_core(version_num) VALUES ('${STAMP_FALLBACK_REVISION}') ON CONFLICT DO NOTHING;"
-}
-
-run_alembic_current_verbose() {
-    echo "[entrypoint] alembic current -v"
-    run_diag_cmd sh -c "cd /app && alembic -c /app/app/alembic.ini current -v"
-}
-
-run_empty_stamp_diagnostics() {
-    run_alembic_current_verbose
-    run_diag_cmd psql "$PSQL_URL" -v ON_ERROR_STOP=1 -tA -c \
-        "SELECT to_regclass('${schema_resolved}.alembic_version');"
-    run_diag_cmd psql "$PSQL_URL" -v ON_ERROR_STOP=1 -tA -c \
-        "SELECT to_regclass('public.alembic_version');"
-
-    schema_table=$(psql "$PSQL_URL" -v ON_ERROR_STOP=1 -tA -c \
-        "SELECT to_regclass('${schema_resolved}.alembic_version');" | tail -n 1)
-    if [ -n "$schema_table" ]; then
-        run_diag_cmd psql "$PSQL_URL" -v ON_ERROR_STOP=1 -c \
-            "SELECT * FROM ${schema_resolved}.alembic_version;"
-    fi
-
-    public_table=$(psql "$PSQL_URL" -v ON_ERROR_STOP=1 -tA -c \
-        "SELECT to_regclass('public.alembic_version');" | tail -n 1)
-    if [ -n "$public_table" ]; then
-        run_diag_cmd psql "$PSQL_URL" -v ON_ERROR_STOP=1 -c \
-            "SELECT * FROM public.alembic_version;"
-    fi
-}
-
-run_alembic_stamp() {
-    head="$1"
-    stamp_log=$(mktemp)
-    set +e
-    alembic -q -c "$ALEMBIC_CONFIG" stamp "$head" >"$stamp_log" 2>&1
-    stamp_status=$?
-    set -e
-    cat "$stamp_log" >>"$MIGRATION_LOG"
-    echo "[entrypoint] alembic stamp exit code for $head: $stamp_status"
-    echo "[entrypoint] alembic stamp last 30 lines for $head:"
-    tail -n 30 "$stamp_log" | sed 's/^/[entrypoint]   /'
-    rm -f "$stamp_log"
-    return $stamp_status
-}
-
-verify_stamp_entry() {
-    head="$1"
-    stamped=$(psql "$PSQL_URL" -q -v ON_ERROR_STOP=1 -tA -c \
-        "SELECT version_num FROM \"${schema_resolved}\".alembic_version_core WHERE version_num = '${head}' LIMIT 1;")
-    stamped=$(printf "%s" "$stamped" | tr -d '\r' | sed '/^[[:space:]]*$/d')
-    if [ -z "$stamped" ]; then
-        echo "[entrypoint] alembic_version_core missing stamped head $head" >&2
-        return 1
-    fi
-    return 0
-}
-
 echo "[entrypoint] checking alembic heads via ($ALEMBIC_CONFIG)"
 heads_output=$(cd /app && alembic -c /app/app/alembic.ini heads --verbose 2>&1)
 heads_status=$?
@@ -270,13 +199,13 @@ if [ -z "$expected_heads" ]; then
     fi
 
     expected_heads=""
-    table_reg=$(psql "$PSQL_URL" -v ON_ERROR_STOP=1 -Atc "SELECT to_regclass('${schema_resolved}.alembic_version_core');" | tail -n 1)
+    table_reg=$(psql "$PSQL_URL" -v ON_ERROR_STOP=1 -Atc "SELECT to_regclass('${VERSION_TABLE_SCHEMA}.${VERSION_TABLE_NAME}');" | tail -n 1)
     if [ -n "$table_reg" ]; then
-        fallback_versions=$(psql "$PSQL_URL" -v ON_ERROR_STOP=1 -Atc "SELECT version_num FROM \"${schema_resolved}\".alembic_version_core ORDER BY 1;")
+        fallback_versions=$(psql "$PSQL_URL" -v ON_ERROR_STOP=1 -Atc "SELECT version_num FROM \"${schema_resolved}\".${VERSION_TABLE_NAME} ORDER BY 1;")
         fallback_versions=$(printf "%s\n" "$fallback_versions" | sed '/^[[:space:]]*$/d')
         if [ -n "$fallback_versions" ]; then
             expected_heads=$fallback_versions
-            echo "[entrypoint] fallback: using existing alembic_version_core rows as heads: $(printf "%s\n" "$expected_heads" | tr '\n' ' ')"
+            echo "[entrypoint] fallback: using existing ${VERSION_TABLE_NAME} rows as heads: $(printf "%s\n" "$expected_heads" | tr '\n' ' ')"
         fi
     fi
 
@@ -582,13 +511,13 @@ post_migration_state=$(psql "$PSQL_URL" -v ON_ERROR_STOP=1 -Atc "SET search_path
 post_migration_current_schema=$(printf '%s' "$post_migration_state" | awk -F'|' '{print $1}')
 post_migration_search_path=$(printf '%s' "$post_migration_state" | awk -F'|' '{print $2}')
 echo "[entrypoint] schema_resolved=${schema_resolved} current_schema=${post_migration_current_schema} search_path=${post_migration_search_path}"
-repair_diagnostics=$(psql "$PSQL_URL" -v ON_ERROR_STOP=1 -Atc "SET search_path TO \"${schema_resolved}\",public; select current_schema(), current_setting('search_path'), to_regclass('${schema_resolved}.operations'), to_regclass('${schema_resolved}.alembic_version_core'), (SELECT array_agg((n.nspname, c.relname)) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE c.relname = 'operations'), (SELECT array_agg(table_schema) FROM information_schema.tables WHERE table_name = 'operations');" | tail -n 1)
+repair_diagnostics=$(psql "$PSQL_URL" -v ON_ERROR_STOP=1 -Atc "SET search_path TO \"${schema_resolved}\",public; select current_schema(), current_setting('search_path'), to_regclass('${schema_resolved}.operations'), to_regclass('${VERSION_TABLE_SCHEMA}.${VERSION_TABLE_NAME}'), (SELECT array_agg((n.nspname, c.relname)) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE c.relname = 'operations'), (SELECT array_agg(table_schema) FROM information_schema.tables WHERE table_name = 'operations');" | tail -n 1)
 IFS='|' read -r diag_current_schema diag_search_path processing_core_reg alembic_version_reg pg_class_hits operations_schemas <<EOF
 $repair_diagnostics
 EOF
-echo "[entrypoint] repair diagnostics: current_schema=${diag_current_schema} search_path=${diag_search_path} ${schema_resolved}.operations=${processing_core_reg} ${schema_resolved}.alembic_version_core=${alembic_version_reg} pg_class_hits=${pg_class_hits} operations_schemas=${operations_schemas}"
+echo "[entrypoint] repair diagnostics: current_schema=${diag_current_schema} search_path=${diag_search_path} ${schema_resolved}.operations=${processing_core_reg} ${VERSION_TABLE_SCHEMA}.${VERSION_TABLE_NAME}=${alembic_version_reg} pg_class_hits=${pg_class_hits} operations_schemas=${operations_schemas}"
 if [ -n "$processing_core_reg" ]; then
-    echo "[entrypoint] post-migration schema repair completed: ${schema_resolved}.operations=${processing_core_reg} ${schema_resolved}.alembic_version_core=${alembic_version_reg}"
+    echo "[entrypoint] post-migration schema repair completed: ${schema_resolved}.operations=${processing_core_reg} ${VERSION_TABLE_SCHEMA}.${VERSION_TABLE_NAME}=${alembic_version_reg}"
 else
 psql "$PSQL_URL" -v ON_ERROR_STOP=1 <<EOF
 DO \$\$
@@ -706,111 +635,88 @@ CREATE INDEX IF NOT EXISTS ix_operations_operation_id ON "${schema_resolved}".op
 CREATE INDEX IF NOT EXISTS ix_operations_operation_type ON "${schema_resolved}".operations (operation_type);
 CREATE INDEX IF NOT EXISTS ix_operations_status ON "${schema_resolved}".operations (status);
 EOF
-repaired_state=$(psql "$PSQL_URL" -v ON_ERROR_STOP=1 -Atc "select to_regclass('${schema_resolved}.operations'), to_regclass('${schema_resolved}.alembic_version_core');" | tail -n 1)
+repaired_state=$(psql "$PSQL_URL" -v ON_ERROR_STOP=1 -Atc "select to_regclass('${schema_resolved}.operations'), to_regclass('${VERSION_TABLE_SCHEMA}.${VERSION_TABLE_NAME}');" | tail -n 1)
 IFS='|' read -r repaired_reg repaired_alembic_reg <<EOF
 $repaired_state
 EOF
-echo "[entrypoint] post-migration schema repair completed: ${schema_resolved}.operations=${repaired_reg} ${schema_resolved}.alembic_version_core=${repaired_alembic_reg}"
+echo "[entrypoint] post-migration schema repair completed: ${schema_resolved}.operations=${repaired_reg} ${VERSION_TABLE_SCHEMA}.${VERSION_TABLE_NAME}=${repaired_alembic_reg}"
 fi
 
 echo "[entrypoint] post-migration version validation starting"
-expected_heads_sorted=$(printf "%s\n" "$expected_heads" | sort -u)
-found_versions=$(get_found_versions)
-found_versions_sorted=$(printf "%s\n" "$found_versions" | sort -u)
-log_found_versions "$found_versions_sorted"
-if [ -z "$found_versions" ]; then
-    echo "[entrypoint] alembic_version_core empty; stamping expected heads"
-    for head in $expected_heads; do
-        if ! alembic -c "$ALEMBIC_CONFIG" history --verbose | grep -q "$head"; then
-            echo "[entrypoint] alembic history missing revision $head; refusing to stamp" >&2
-            run_diag_cmd sh -c "cd /app && alembic -c /app/app/alembic.ini heads --verbose"
-            run_diag_cmd sh -c "cd /app && alembic -c /app/app/alembic.ini history --verbose | tail -n 50"
+DEV_ALLOW_STAMP=${DEV_ALLOW_STAMP:-0}
+DEV_ALLOW_VERSION_FORCE=${DEV_ALLOW_VERSION_FORCE:-0}
+echo "[entrypoint] DEV_ALLOW_STAMP=${DEV_ALLOW_STAMP} DEV_ALLOW_VERSION_FORCE=${DEV_ALLOW_VERSION_FORCE}"
+
+get_alembic_current() {
+    cd /app && alembic -c /app/app/alembic.ini current 2>/dev/null         | awk 'NF >= 1 && $1 ~ /^[0-9A-Za-z_]+$/ {print $1}'         | tail -n 1
+}
+
+get_sql_current() {
+    psql "$PSQL_URL" -q -v ON_ERROR_STOP=1 -tA -c         "SELECT version_num FROM "${VERSION_TABLE_SCHEMA}".${VERSION_TABLE_NAME} ORDER BY 1;"         | tr -d '\r' | sed '/^[[:space:]]*$/d'
+}
+
+force_set_version() {
+    target_revision="$1"
+    rows_count=$(psql "$PSQL_URL" -q -v ON_ERROR_STOP=1 -tA -c         "SELECT COUNT(*) FROM "${VERSION_TABLE_SCHEMA}".${VERSION_TABLE_NAME};" | tr -d '\r' | tr -d ' ')
+    case "$rows_count" in
+        0)
+            psql "$PSQL_URL" -v ON_ERROR_STOP=1 -c                 "INSERT INTO "${VERSION_TABLE_SCHEMA}".${VERSION_TABLE_NAME}(version_num) VALUES ('${target_revision}');"
+            ;;
+        1)
+            psql "$PSQL_URL" -v ON_ERROR_STOP=1 -c                 "UPDATE "${VERSION_TABLE_SCHEMA}".${VERSION_TABLE_NAME} SET version_num='${target_revision}';"
+            ;;
+        *)
+            echo "[entrypoint] version table mismatch: ${VERSION_TABLE_SCHEMA}.${VERSION_TABLE_NAME} has ${rows_count} rows; refusing force update" >&2
             exit 1
-        fi
-        echo "[entrypoint] stamping alembic head $head"
-        if ! run_alembic_stamp "$head"; then
-            echo "[entrypoint] alembic stamp failed for head $head; last log lines:" >&2
+            ;;
+    esac
+}
+
+alembic_current=$(get_alembic_current)
+sql_current=$(get_sql_current)
+echo "[entrypoint] current from alembic: ${alembic_current}"
+echo "[entrypoint] current from SQL: ${sql_current}"
+
+if [ -z "$alembic_current" ]; then
+    echo "[entrypoint] version table mismatch: failed to read alembic current" >&2
+    exit 1
+fi
+
+if [ -z "$sql_current" ]; then
+    if [ "$DEV_ALLOW_STAMP" = "1" ]; then
+        echo "[entrypoint] ${VERSION_TABLE_NAME} is empty, DEV_ALLOW_STAMP=1 => alembic stamp head"
+        alembic -c "$ALEMBIC_CONFIG" stamp head >"$MIGRATION_LOG" 2>&1 || {
+            echo "[entrypoint] alembic stamp failed; last log lines:" >&2
             tail -n 200 "$MIGRATION_LOG" >&2 || true
             exit 1
-        fi
-        if ! verify_stamp_entry "$head"; then
-            run_empty_stamp_diagnostics
-            exit 1
-        fi
-    done
-    run_alembic_current_verbose
-    found_versions=$(get_found_versions)
-    found_versions_sorted=$(printf "%s\n" "$found_versions" | sort -u)
-    echo "[entrypoint] found versions after stamp:"
-    log_found_versions "$found_versions_sorted"
-    if [ -z "$found_versions" ]; then
-        fallback_stamp_insert
-        found_versions=$(get_found_versions)
-        found_versions_sorted=$(printf "%s\n" "$found_versions" | sort -u)
-        echo "[entrypoint] found versions after fallback insert:"
-        log_found_versions "$found_versions_sorted"
-    fi
-    if [ -z "$found_versions" ]; then
-        echo "[entrypoint] alembic_version_core empty after stamp; running diagnostics" >&2
-        run_empty_stamp_diagnostics
+        }
+        sql_current=$(get_sql_current)
+        echo "[entrypoint] current from SQL after stamp: ${sql_current}"
+    else
+        echo "[entrypoint] version table mismatch: db version is empty, enable DEV_ALLOW_STAMP=1 or run reset-db" >&2
+        exit 1
     fi
 fi
 
-if [ -z "$found_versions" ]; then
-    echo "[entrypoint] alembic_version_core still empty after stamp; refusing to start" >&2
+if [ "$alembic_current" != "$sql_current" ]; then
+    echo "[entrypoint] version table mismatch: alembic=${alembic_current} sql=${sql_current}" >&2
+    if [ "$DEV_ALLOW_VERSION_FORCE" = "1" ]; then
+        echo "[entrypoint] DEV_ALLOW_VERSION_FORCE=1 => forcing ${VERSION_TABLE_SCHEMA}.${VERSION_TABLE_NAME} to ${alembic_current}"
+        force_set_version "$alembic_current"
+        sql_current=$(get_sql_current)
+        echo "[entrypoint] current from SQL after force: ${sql_current}"
+    else
+        echo "[entrypoint] db version mismatch, run reset-db or enable DEV_ALLOW_VERSION_FORCE" >&2
+        exit 1
+    fi
+fi
+
+if [ "$alembic_current" != "$sql_current" ]; then
+    echo "[entrypoint] version table mismatch: alembic=${alembic_current} sql=${sql_current}" >&2
     exit 1
 fi
 
-if [ "$expected_heads_sorted" != "$found_versions_sorted" ]; then
-    echo "[entrypoint] alembic_version_core mismatch: expected=[$(printf "%s\n" "$expected_heads_sorted" | tr '\n' ' ')] found=[$(printf "%s\n" "$found_versions_sorted" | tr '\n' ' ')]" >&2
-    echo "[entrypoint] attempting to stamp expected heads after mismatch" >&2
-    for head in $expected_heads; do
-        if ! alembic -c "$ALEMBIC_CONFIG" history --verbose | grep -q "$head"; then
-            echo "[entrypoint] alembic history missing revision $head; refusing to stamp" >&2
-            run_diag_cmd sh -c "cd /app && alembic -c /app/app/alembic.ini heads --verbose"
-            run_diag_cmd sh -c "cd /app && alembic -c /app/app/alembic.ini history --verbose | tail -n 50"
-            exit 1
-        fi
-        echo "[entrypoint] stamping alembic head $head"
-        if ! run_alembic_stamp "$head"; then
-            echo "[entrypoint] alembic stamp failed for head $head; last log lines:" >&2
-            tail -n 200 "$MIGRATION_LOG" >&2 || true
-            exit 1
-        fi
-        if ! verify_stamp_entry "$head"; then
-            run_empty_stamp_diagnostics
-            exit 1
-        fi
-    done
-    run_alembic_current_verbose
-    found_versions=$(get_found_versions)
-    found_versions_sorted=$(printf "%s\n" "$found_versions" | sort -u)
-    echo "[entrypoint] found versions after mismatch stamp:"
-    log_found_versions "$found_versions_sorted"
-    if [ -z "$found_versions" ]; then
-        fallback_stamp_insert
-        found_versions=$(get_found_versions)
-        found_versions_sorted=$(printf "%s\n" "$found_versions" | sort -u)
-        echo "[entrypoint] found versions after mismatch fallback insert:"
-        log_found_versions "$found_versions_sorted"
-    fi
-    if [ -z "$found_versions" ]; then
-        echo "[entrypoint] alembic_version_core empty after mismatch stamp; running diagnostics" >&2
-        run_empty_stamp_diagnostics
-    fi
-fi
-
-if [ -z "$found_versions" ]; then
-    echo "[entrypoint] alembic_version_core empty after retry; refusing to start" >&2
-    exit 1
-fi
-
-if [ "$expected_heads_sorted" != "$found_versions_sorted" ]; then
-    echo "[entrypoint] alembic_version_core mismatch after stamp: expected=[$(printf "%s\n" "$expected_heads_sorted" | tr '\n' ' ')] found=[$(printf "%s\n" "$found_versions_sorted" | tr '\n' ' ')]" >&2
-    exit 1
-fi
-
-echo "[entrypoint] version validation OK: heads=[$(printf "%s\n" "$found_versions_sorted" | tr '\n' ' ')]"
+echo "[entrypoint] version validation OK: current=${sql_current}"
 
 echo "[entrypoint] validating required tables using auth-aware validator"
 if ! python -m app.services.startup_validation; then

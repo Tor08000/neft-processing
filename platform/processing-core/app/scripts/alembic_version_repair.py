@@ -136,11 +136,7 @@ def _write_decision_artifacts(decision: RepairDecision, schema_tables: list[str]
 
 
 def ensure_alembic_version_consistency() -> RepairDecision:
-    schema = (
-        os.getenv("ALEMBIC_VERSION_TABLE_SCHEMA")
-        or os.getenv("NEFT_DB_SCHEMA")
-        or "processing_core"
-    ).strip() or "processing_core"
+    schema = "processing_core"
     alembic_config_path = os.getenv("ALEMBIC_CONFIG", "/app/app/alembic.ini")
     database_url = os.getenv("DATABASE_URL")
 
@@ -153,6 +149,8 @@ def ensure_alembic_version_consistency() -> RepairDecision:
 
     config = Config(alembic_config_path)
     config.set_main_option("sqlalchemy.url", database_url)
+    config.set_main_option("version_table", VERSION_TABLE_NAME)
+    config.set_main_option("version_table_schema", schema)
     script = ScriptDirectory.from_config(config)
 
     heads = sorted(script.get_heads())
