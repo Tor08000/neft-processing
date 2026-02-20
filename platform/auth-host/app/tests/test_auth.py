@@ -113,9 +113,37 @@ def test_client_login_invalid_password(monkeypatch):
     )
 
     assert response.status_code == 401
-    assert response.json() == {"detail": "Invalid credentials"}
+    assert response.json() == {"detail": "invalid_password"}
 
 
+def test_client_login_user_not_found(monkeypatch):
+    async def fake_get_user(*, email: str | None = None, username: str | None = None):
+        return None
+
+    monkeypatch.setattr(auth, "_get_user_from_db", fake_get_user)
+
+    response = _client().post(
+        "/api/v1/auth/login",
+        json={"email": "client@neft.local", "password": "wrong", "portal": "client"},
+    )
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": "user_not_found"}
+
+
+def test_client_login_db_unreachable(monkeypatch):
+    async def fake_get_user(*, email: str | None = None, username: str | None = None):
+        raise RuntimeError("db down")
+
+    monkeypatch.setattr(auth, "_get_user_from_db", fake_get_user)
+
+    response = _client().post(
+        "/api/v1/auth/login",
+        json={"email": "client@neft.local", "password": "wrong", "portal": "client"},
+    )
+
+    assert response.status_code == 503
+    assert response.json() == {"detail": "db_unreachable"}
 
 
 def test_admin_login_accepts_username(monkeypatch):

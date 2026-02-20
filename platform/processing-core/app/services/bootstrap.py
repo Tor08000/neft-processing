@@ -377,3 +377,119 @@ def ensure_demo_partner(db: Session | None = None) -> None:
     finally:
         if not session_provided:
             db.close()
+
+
+def ensure_demo_portal_bindings(db: Session | None = None) -> None:
+    logger = logging.getLogger(__name__)
+    if not _is_dev_env():
+        return
+
+    session_provided = db is not None
+    session_factory = get_sessionmaker()
+    db = db or session_factory()
+
+    try:
+        conn = db.connection()
+        table_names = {
+            row[0]
+            for row in conn.execute(
+                text(
+                    """
+                    SELECT table_name
+                    FROM information_schema.tables
+                    WHERE table_schema = :schema
+                    """
+                ),
+                {"schema": DB_SCHEMA},
+            ).fetchall()
+        }
+
+        required = {"clients", "accounts", "partner_accounts", "client_users", "client_user_roles", "partner_user_roles"}
+        if not required.issubset(table_names):
+            logger.warning("Skipping demo portal bindings: missing required tables in %s", DB_SCHEMA)
+            return
+
+        client_id = os.getenv("NEFT_DEMO_CLIENT_UUID", DEFAULT_DEMO_CLIENT_UUID)
+        client_email = (os.getenv("NEFT_BOOTSTRAP_CLIENT_EMAIL") or "client@neft.local").strip().lower()
+        partner_email = (os.getenv("NEFT_BOOTSTRAP_PARTNER_EMAIL") or "partner@neft.local").strip().lower()
+
+        client_user_id = conn.execute(
+            text("SELECT id::text FROM public.users WHERE lower(email)=:email LIMIT 1"),
+            {"email": client_email},
+        ).scalar_one_or_none()
+        partner_user_id = conn.execute(
+            text("SELECT id::text FROM public.users WHERE lower(email)=:email LIMIT 1"),
+            {"email": partner_email},
+        ).scalar_one_or_none()
+
+        partner_id = conn.execute(
+            text(f"SELECT id::text FROM {DB_SCHEMA}.partners WHERE code='demo-partner' LIMIT 1")
+        ).scalar_one_or_none()
+
+        conn.execute(
+            text(
+                f"""
+                INSERT INTO {DB_SCHEMA}.accounts (client_id, owner_type, currency, type, status)
+                SELECT :client_id, 'CLIENT', 'RUB', 'CLIENT_MAIN', 'ACTIVE'
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM {DB_SCHEMA}.accounts
+                    WHERE client_id=:client_id AND type='CLIENT_MAIN'
+                )
+                """
+            ),
+            {"client_id": client_id},
+        )
+
+        if partner_id:
+            conn.execute(
+                text(
+                    f"""
+                    INSERT INTO {DB_SCHEMA}.partner_accounts (org_id, currency, balance_available, balance_pending, balance_blocked)
+                    VALUES (:org_id, 'RUB', 0, 0, 0)
+                    ON CONFLICT (org_id) DO NOTHING
+                    """
+                ),
+                {"org_id": partner_id},
+            )
+
+        if client_user_id:
+            conn.execute(
+                text(
+                    f"""
+                    INSERT INTO {DB_SCHEMA}.client_users (id, client_id, user_id, status)
+                    VALUES (gen_random_uuid(), :client_id, :user_id, 'ACTIVE')
+                    ON CONFLICT (client_id, user_id) DO UPDATE SET status='ACTIVE'
+                    """
+                ),
+                {"client_id": client_id, "user_id": client_user_id},
+            )
+            conn.execute(
+                text(
+                    f"""
+                    INSERT INTO {DB_SCHEMA}.client_user_roles (id, client_id, user_id, roles)
+                    VALUES (gen_random_uuid(), :client_id, :user_id, '["CLIENT_OWNER"]'::jsonb)
+                    ON CONFLICT (client_id, user_id) DO UPDATE SET roles='["CLIENT_OWNER"]'::jsonb
+                    """
+                ),
+                {"client_id": client_id, "user_id": client_user_id},
+            )
+
+        if partner_id and partner_user_id:
+            conn.execute(
+                text(
+                    f"""
+                    INSERT INTO {DB_SCHEMA}.partner_user_roles (id, partner_id, user_id, roles)
+                    VALUES (gen_random_uuid(), :partner_id, :user_id, '["PARTNER_OWNER"]'::jsonb)
+                    ON CONFLICT (partner_id, user_id) DO UPDATE SET roles='["PARTNER_OWNER"]'::jsonb
+                    """
+                ),
+                {"partner_id": partner_id, "user_id": partner_user_id},
+            )
+
+        db.commit()
+    except SQLAlchemyError as exc:  # pragma: no cover
+        db.rollback()
+        logger.warning("Skipping demo portal bindings bootstrap: %s", exc)
+    finally:
+        if not session_provided:
+            db.close()

@@ -144,17 +144,23 @@ async def _resolve_tenant(*, request: Request, tenant_code: str | None = None) -
         if host and "." in host:
             code = host.split(".", 1)[0]
     if not code:
-        code = "default"
+        if os.getenv("AUTH_REQUIRE_TENANT", "0").strip().lower() in {"1", "true", "yes", "on"}:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="tenant_required")
+        code = os.getenv("AUTH_DEFAULT_TENANT_CODE", "neft").strip().lower() or "neft"
     try:
         async with get_conn() as (_conn, cur):
             await cur.execute("SELECT id, code, name, sso_enforced, token_version FROM tenants WHERE code=%s LIMIT 1", (code,))
             row = await cur.fetchone()
         if not row:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="tenant_not_found")
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="tenant_invalid")
         return row
     except HTTPException:
         raise
-    except Exception:
+    except Exception as exc:
+        logger.exception("Tenant resolution failed")
+        strict_tenant_db = os.getenv("AUTH_STRICT_TENANT_DB", "0").strip().lower() in {"1", "true", "yes", "on"}
+        if strict_tenant_db or tenant_code:
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="db_unreachable") from exc
         return {"id": "00000000-0000-0000-0000-000000000000", "code": code, "name": code, "sso_enforced": False, "token_version": 1}
 
 
@@ -553,11 +559,11 @@ async def login(request: Request, payload: LoginRequest) -> TokenResponse:
 
     try:
         user = await _get_user_from_db(email=login_email, username=login_username)
-    except Exception:
+    except Exception as exc:
         logger.exception(
             "Failed to fetch user during login", extra={"login": login_identifier}
         )
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="internal_error")
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="db_unreachable") from exc
 
     logger.info(
         "login attempt: login=%s, user_found=%s",
@@ -566,9 +572,9 @@ async def login(request: Request, payload: LoginRequest) -> TokenResponse:
     )
 
     if not user:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="user_not_found")
     if user.tenant_id and str(user.tenant_id) != str(tenant["id"]):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="tenant_invalid")
 
     if not user.is_active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="user_inactive")
@@ -576,7 +582,7 @@ async def login(request: Request, payload: LoginRequest) -> TokenResponse:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="user_blocked")
 
     if not verify_password(payload.password, user.password_hash):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid_password")
 
     roles = await _get_roles_for_user(user.id)
     user_email = user.email
