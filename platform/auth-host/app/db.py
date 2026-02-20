@@ -13,7 +13,7 @@ POSTGRES_HOST = os.getenv("POSTGRES_HOST", "postgres")
 POSTGRES_PORT = os.getenv("POSTGRES_PORT", "5432")
 POSTGRES_DB = os.getenv("POSTGRES_DB", "neft")
 POSTGRES_USER = os.getenv("POSTGRES_USER", "neft")
-POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD", "neft")
+POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD", "change-me")
 AUTH_DB_SCHEMA = os.getenv("AUTH_DB_SCHEMA", "public")
 
 logger = logging.getLogger(__name__)
