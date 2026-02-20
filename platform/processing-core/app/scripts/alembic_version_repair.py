@@ -79,6 +79,38 @@ def _format_table_preview(schema_tables: list[str], *, limit: int = 20) -> str:
     return f"total={len(schema_tables)} preview={preview}{suffix}"
 
 
+def _read_schema_tables(connection: sa.Connection, schema: str) -> list[str]:
+    rows = connection.execute(
+        sa.text(
+            """
+            SELECT table_name
+            FROM information_schema.tables
+            WHERE table_schema = :schema
+              AND table_type = 'BASE TABLE'
+            ORDER BY table_name
+            """
+        ),
+        {"schema": schema},
+    ).scalars()
+    return [str(row) for row in rows]
+
+
+def _read_clients_columns(connection: sa.Connection, schema: str) -> list[str]:
+    rows = connection.execute(
+        sa.text(
+            """
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_schema = :schema
+              AND table_name = 'clients'
+            ORDER BY ordinal_position
+            """
+        ),
+        {"schema": schema},
+    ).scalars()
+    return [str(row) for row in rows]
+
+
 def ensure_alembic_version_consistency() -> None:
     schema = (
         os.getenv("ALEMBIC_VERSION_TABLE_SCHEMA")
@@ -93,7 +125,7 @@ def ensure_alembic_version_consistency() -> None:
 
     auto_repair_default = not _is_prod_env()
     auto_repair = _env_flag("ALEMBIC_AUTO_REPAIR", auto_repair_default)
-    reset_on_missing = _env_flag("DB_RESET_ON_VERSION_MISSING", False)
+    strict_mode = _is_prod_env() and not _env_flag("ALEMBIC_REPAIR_ALLOW_RISKY_FALLBACK", False)
 
     config = Config(alembic_config_path)
     config.set_main_option("sqlalchemy.url", database_url)
@@ -109,12 +141,7 @@ def ensure_alembic_version_consistency() -> None:
         f"{'enabled' if auto_repair else 'disabled'} (ALEMBIC_AUTO_REPAIR={int(auto_repair)})",
         flush=True,
     )
-    print(
-        "[entrypoint] db reset on version-missing "
-        f"{'enabled' if reset_on_missing else 'disabled'} "
-        f"(DB_RESET_ON_VERSION_MISSING={int(reset_on_missing)})",
-        flush=True,
-    )
+    print(f"[entrypoint] alembic repair strict mode = {int(strict_mode)}", flush=True)
 
     engine = sa.create_engine(database_url)
     quoted_schema = schema.replace('"', '""')
@@ -148,6 +175,9 @@ def ensure_alembic_version_consistency() -> None:
         )
         print(f"[entrypoint] decision = {decision}", flush=True)
 
+    def _log_mode(mode: str, reason: str) -> None:
+        print(f"[entrypoint] migration mode selected: {mode} ({reason})", flush=True)
+
     try:
         with engine.begin() as connection:
             connection.execute(sa.text(f'CREATE SCHEMA IF NOT EXISTS "{quoted_schema}"'))
@@ -180,7 +210,8 @@ def ensure_alembic_version_consistency() -> None:
                 _replace_versions(connection, schema, repair_revisions)
             with engine.connect() as connection:
                 after_repair_heads = _read_alembic_ctx_heads(connection)
-            _log_state(db_revisions, alembic_ctx_heads, None, "STAMP_HEAD")
+            _log_state(db_revisions, alembic_ctx_heads, None, "REPAIR_CTX_MISMATCH")
+            _log_mode("repair", "version table differs from alembic context")
             print(f"[entrypoint] after repair alembic context current_heads = {after_repair_heads}", flush=True)
             return
 
@@ -200,60 +231,23 @@ def ensure_alembic_version_consistency() -> None:
             print(f"[entrypoint] clients columns in {schema}: {clients_columns}", flush=True)
 
             if schema_not_empty:
-                if not reset_on_missing:
-                    _log_state(db_revisions, alembic_ctx_heads, None, "FAIL_SCHEMA_NOT_EMPTY")
-                    raise RuntimeError(
-                        "alembic_version_missing_but_schema_not_empty: "
-                        f"schema={schema} tables={non_version_tables} clients_columns={clients_columns}. "
-                        "Refusing INSERT_BASE to avoid inconsistent migration lineage. "
-                        "Set DB_RESET_ON_VERSION_MISSING=1 for automatic schema reset in dev environments."
-                    )
-
-                allow_reset_in_prod = _env_flag("ALLOW_SCHEMA_RESET_IN_PROD", False)
-                if _is_prod_env() and not allow_reset_in_prod:
-                    _log_state(db_revisions, alembic_ctx_heads, None, "FAIL_RESET_FORBIDDEN_IN_PROD")
-                    raise RuntimeError(
-                        "schema_reset_forbidden_in_prod: "
-                        "DB_RESET_ON_VERSION_MISSING=1 requires non-prod APP_ENV or "
-                        "ALLOW_SCHEMA_RESET_IN_PROD=1"
-                    )
-
                 with engine.begin() as connection:
-                    connection.execute(sa.text(f'DROP SCHEMA IF EXISTS "{quoted_schema}" CASCADE'))
-                    connection.execute(sa.text(f'CREATE SCHEMA "{quoted_schema}"'))
-                    connection.execute(
-                        sa.text(
-                            f'''
-                            CREATE TABLE IF NOT EXISTS "{quoted_schema}".alembic_version_core (
-                                version_num VARCHAR(128) NOT NULL PRIMARY KEY
-                            )
-                            '''
-                        )
-                    )
-                    revisions_to_insert = bases or heads[:1]
+                    revisions_to_insert = heads
                     if revisions_to_insert:
                         _replace_versions(connection, schema, revisions_to_insert)
 
                 with engine.connect() as connection:
                     after_repair_heads = _read_alembic_ctx_heads(connection)
-                _log_state(db_revisions, alembic_ctx_heads, None, "RESET_SCHEMA_AND_INSERT_BASE")
+                _log_state(db_revisions, alembic_ctx_heads, None, "STAMP_HEAD_ON_NON_EMPTY_SCHEMA")
+                _log_mode("stamp", "version table empty but schema already has domain tables")
                 print(
                     f"[entrypoint] after reset/repair alembic context current_heads = {after_repair_heads}",
                     flush=True,
                 )
                 return
 
-            if not auto_repair:
-                _log_state(db_revisions, alembic_ctx_heads, None, "FAIL")
-                raise RuntimeError(f"empty {schema}.alembic_version_core while ALEMBIC_AUTO_REPAIR=0")
-            revisions_to_insert = bases or heads[:1]
-            with engine.begin() as connection:
-                if revisions_to_insert:
-                    _replace_versions(connection, schema, revisions_to_insert)
-            with engine.connect() as connection:
-                after_repair_heads = _read_alembic_ctx_heads(connection)
-            _log_state(db_revisions, alembic_ctx_heads, None, "INSERT_BASE")
-            print(f"[entrypoint] after repair alembic context current_heads = {after_repair_heads}", flush=True)
+            _log_state(db_revisions, alembic_ctx_heads, None, "UPGRADE_EMPTY_SCHEMA")
+            _log_mode("upgrade", "fresh schema with empty version table")
             return
 
         invalid_revisions = [
@@ -271,7 +265,8 @@ def ensure_alembic_version_consistency() -> None:
                 _replace_versions(connection, schema, heads)
             with engine.connect() as connection:
                 after_repair_heads = _read_alembic_ctx_heads(connection)
-            _log_state(db_revisions, alembic_ctx_heads, False, "STAMP_HEAD")
+            _log_state(db_revisions, alembic_ctx_heads, False, "REPAIR_INVALID_REVISIONS")
+            _log_mode("repair", "invalid revision row detected")
             print(f"[entrypoint] after repair alembic context current_heads = {after_repair_heads}", flush=True)
             return
 
@@ -291,11 +286,19 @@ def ensure_alembic_version_consistency() -> None:
                 _replace_versions(connection, schema, heads)
             with engine.connect() as connection:
                 after_repair_heads = _read_alembic_ctx_heads(connection)
-            _log_state(db_revisions, alembic_ctx_heads, False, "STAMP_HEAD")
+            _log_state(db_revisions, alembic_ctx_heads, False, "REPAIR_LINEAGE_MISMATCH")
+            _log_mode("repair", "db revision is not ancestor of script head")
             print(f"[entrypoint] after repair alembic context current_heads = {after_repair_heads}", flush=True)
             return
 
         _log_state(db_revisions, alembic_ctx_heads, True, "NONE")
+        _log_mode("skip", "version table is already consistent")
+    except Exception as exc:
+        print(f"[entrypoint] critical: alembic consistency repair failed: {exc!r}", flush=True)
+        if strict_mode:
+            raise
+        print("[entrypoint] safe fallback mode: continue with alembic upgrade head", flush=True)
+        _log_mode("upgrade", "fallback after repair exception")
     finally:
         engine.dispose()
 
