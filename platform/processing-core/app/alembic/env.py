@@ -12,7 +12,7 @@ BASE_DIR = Path(__file__).resolve().parents[2]
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
-from db.schema import quote_schema, resolve_db_schema
+from db.schema import quote_schema
 
 config = context.config
 if config.config_file_name is not None:
@@ -24,8 +24,7 @@ except KeyError as exc:
     raise RuntimeError("DATABASE_URL is required for alembic migrations") from exc
 
 config.set_main_option("sqlalchemy.url", DATABASE_URL)
-schema_resolution = resolve_db_schema()
-schema = schema_resolution.schema
+schema = "processing_core"
 version_table = "alembic_version_core"
 version_column_length = 128
 config.set_main_option("version_table", version_table)
