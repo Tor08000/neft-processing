@@ -39,7 +39,10 @@ configure_kwargs = {
     "version_table_schema": schema,
 }
 
-_PARALLEL_TABLE_ALLOWED = {(schema, version_table)}
+_PARALLEL_TABLE_ALLOWED = {
+    (schema, version_table),
+    ("processing_auth", "alembic_version_auth"),
+}
 
 
 def _find_parallel_version_tables(connection) -> list[tuple[str, str]]:
@@ -61,7 +64,12 @@ def _find_parallel_version_tables(connection) -> list[tuple[str, str]]:
 
 def _forbid_parallel_version_tables(connection) -> None:
     parallel_tables = _find_parallel_version_tables(connection)
-    if not parallel_tables:
+    conflicting_tables = [
+        (table_schema, table_name)
+        for table_schema, table_name in parallel_tables
+        if (table_schema, table_name) not in _PARALLEL_TABLE_ALLOWED
+    ]
+    if not conflicting_tables:
         return
 
     app_env = os.getenv("APP_ENV", "prod").strip().lower()
@@ -75,10 +83,8 @@ def _forbid_parallel_version_tables(connection) -> None:
 
     cleanup_candidates = [
         (table_schema, table_name)
-        for table_schema, table_name in parallel_tables
-        if table_schema == "public"
-        and table_name.startswith("alembic_version")
-        and (table_schema, table_name) not in _PARALLEL_TABLE_ALLOWED
+        for table_schema, table_name in conflicting_tables
+        if table_schema == "public" and table_name.startswith("alembic_version")
     ]
 
     if should_auto_cleanup and cleanup_candidates:
@@ -86,10 +92,15 @@ def _forbid_parallel_version_tables(connection) -> None:
             connection.execute(text(f'DROP TABLE IF EXISTS "{table_schema}"."{table_name}"'))
 
         parallel_tables = _find_parallel_version_tables(connection)
-        if not parallel_tables:
+        conflicting_tables = [
+            (table_schema, table_name)
+            for table_schema, table_name in parallel_tables
+            if (table_schema, table_name) not in _PARALLEL_TABLE_ALLOWED
+        ]
+        if not conflicting_tables:
             return
 
-    table_names = ", ".join(f"{table_schema}.{table_name}" for table_schema, table_name in parallel_tables)
+    table_names = ", ".join(f"{table_schema}.{table_name}" for table_schema, table_name in conflicting_tables)
     cleanup_command = (
         "docker compose exec -T postgres psql -U ${POSTGRES_USER:-neft} -d ${POSTGRES_DB:-neft} "
         "-c \"DO $$ DECLARE r RECORD; BEGIN FOR r IN "
@@ -102,6 +113,40 @@ def _forbid_parallel_version_tables(connection) -> None:
         f"{table_names}. Keep only {schema}.{version_table}; drop/repair extra tables in dev "
         "or migrate their data into processing_core.alembic_version_core before rerunning upgrade. "
         f"Quick fix command: {cleanup_command}"
+    )
+
+
+def _assert_non_empty_core_version_table_after_upgrade(connection, command_name: str) -> None:
+    if command_name != "upgrade":
+        return
+
+    current_version = connection.execute(
+        text(
+            """
+            SELECT version_num
+            FROM processing_core.alembic_version_core
+            LIMIT 1
+            """
+        )
+    ).scalar()
+    if current_version is not None:
+        return
+
+    rows = connection.execute(
+        text(
+            """
+            SELECT table_schema, table_name
+            FROM information_schema.columns
+            WHERE column_name = 'version_num'
+              AND table_name ILIKE 'alembic_version%'
+            ORDER BY table_schema, table_name
+            """
+        )
+    ).all()
+    tables = ", ".join(f"{table_schema}.{table_name}" for table_schema, table_name in rows) or "<none>"
+    raise RuntimeError(
+        "processing_core.alembic_version_core is empty after upgrade; detected version_num tables: "
+        f"{tables}."
     )
 
 
@@ -201,6 +246,7 @@ def run_migrations_online() -> None:
         else:
             with context.begin_transaction():
                 context.run_migrations()
+            _assert_non_empty_core_version_table_after_upgrade(connection, command_name)
 
     connectable.dispose()
 

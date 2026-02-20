@@ -22,23 +22,25 @@ AUTH_SCHEMA = "public"
 VERSION_TABLE = "alembic_version_auth"
 
 
-def upgrade() -> None:
+def _alter_version_num_if_table_exists(column_type: str) -> None:
     op.execute(
         sa.text(
             f"""
-            ALTER TABLE {AUTH_SCHEMA}.{VERSION_TABLE}
-            ALTER COLUMN version_num TYPE varchar(128);
+            DO $$
+            BEGIN
+              IF to_regclass('{AUTH_SCHEMA}.{VERSION_TABLE}') IS NOT NULL THEN
+                ALTER TABLE {AUTH_SCHEMA}.{VERSION_TABLE}
+                  ALTER COLUMN version_num TYPE {column_type};
+              END IF;
+            END $$;
             """
         )
     )
+
+
+def upgrade() -> None:
+    _alter_version_num_if_table_exists("varchar(128)")
 
 
 def downgrade() -> None:
-    op.execute(
-        sa.text(
-            f"""
-            ALTER TABLE {AUTH_SCHEMA}.{VERSION_TABLE}
-            ALTER COLUMN version_num TYPE varchar(32);
-            """
-        )
-    )
+    _alter_version_num_if_table_exists("varchar(32)")
