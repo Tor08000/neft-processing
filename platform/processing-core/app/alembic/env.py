@@ -27,12 +27,10 @@ except KeyError as exc:
 config.set_main_option("sqlalchemy.url", DATABASE_URL)
 schema = "processing_core"
 version_table = "alembic_version_core"
-version_column_length = 128
 target_metadata = None
 config.set_main_option("version_table", version_table)
 config.set_main_option("version_table_schema", schema)
 
-legacy_version_table = "alembic_version"
 
 _PARALLEL_TABLE_EXPLICITLY_ALLOWED = {
     (schema, version_table),
@@ -85,61 +83,14 @@ def _forbid_parallel_version_tables(connection) -> None:
     )
 
 
-def _repair_legacy_version_table(connection) -> None:
-    quoted_schema = quote_schema(schema)
-    repair_enabled = os.getenv("ALEMBIC_AUTO_REPAIR", "1").strip().lower() not in {"0", "false", "no"}
-    if not repair_enabled:
-        return
-
-    legacy_exists = connection.execute(
-        text("SELECT to_regclass(:reg_name)"),
-        {"reg_name": f"{schema}.{legacy_version_table}"},
-    ).scalar()
-    if legacy_exists is None:
-        return
-
-    new_count = connection.execute(
-        text(f"SELECT COUNT(*) FROM {quoted_schema}.{version_table}")
-    ).scalar_one()
-    if new_count:
-        connection.execute(text(f"DROP TABLE IF EXISTS {quoted_schema}.{legacy_version_table}"))
-        return
-
-    legacy_version = connection.execute(
-        text(
-            "SELECT version_num "
-            f"FROM {quoted_schema}.{legacy_version_table} "
-            "ORDER BY version_num LIMIT 1"
-        )
-    ).scalar()
-    if legacy_version is None:
-        return
-
-    connection.execute(
-        text(
-            f"INSERT INTO {quoted_schema}.{version_table} (version_num) VALUES (:version_num) "
-            "ON CONFLICT (version_num) DO NOTHING"
-        ),
-        {"version_num": legacy_version},
-    )
-    connection.execute(text(f"ALTER TABLE {quoted_schema}.{legacy_version_table} RENAME TO alembic_version_legacy_backup"))
-
-
-
 def _assert_non_empty_core_version_table_after_upgrade(connection, command_name: str) -> None:
     if command_name != "upgrade":
         return
 
-    current_version = connection.execute(
-        text(
-            """
-            SELECT version_num
-            FROM processing_core.alembic_version_core
-            LIMIT 1
-            """
-        )
-    ).scalar()
-    if current_version is not None:
+    row_count = connection.execute(
+        text("SELECT COUNT(*) FROM processing_core.alembic_version_core")
+    ).scalar_one()
+    if row_count > 0:
         return
 
     rows = connection.execute(
@@ -187,35 +138,21 @@ def _configure(connection, command_name: str | None) -> None:
     )
 
 
-def _ensure_version_table(connection) -> None:
+def _ensure_core_schema(connection) -> None:
     quoted_schema = quote_schema(schema)
     connection.execute(text(f"CREATE SCHEMA IF NOT EXISTS {quoted_schema}"))
-    connection.execute(
-        text(
-            "CREATE TABLE IF NOT EXISTS "
-            f"{quoted_schema}.{version_table} (version_num VARCHAR({version_column_length}) PRIMARY KEY)"
-        )
+
+
+def _log_version_table_diagnostics(connection) -> None:
+    current_schema = connection.execute(text("SELECT current_schema()")).scalar_one()
+    search_path = connection.execute(text("SHOW search_path")).scalar_one()
+    config.print_stdout(
+        "Alembic version table config: %s.%s; current_schema=%s; search_path=%s",
+        schema,
+        version_table,
+        current_schema,
+        search_path,
     )
-    current_length = connection.execute(
-        text(
-            """
-            SELECT character_maximum_length
-            FROM information_schema.columns
-            WHERE table_schema = :schema
-              AND table_name = :table_name
-              AND column_name = 'version_num'
-            """
-        ),
-        {"schema": schema, "table_name": version_table},
-    ).scalar()
-    if current_length is not None and current_length < version_column_length:
-        connection.execute(
-            text(
-                "ALTER TABLE "
-                f"{quoted_schema}.{version_table} "
-                f"ALTER COLUMN version_num TYPE VARCHAR({version_column_length})"
-            )
-        )
 
 
 def _detect_alembic_cmd() -> str:
@@ -250,14 +187,11 @@ def run_migrations_online() -> None:
         command_name = _detect_alembic_cmd()
         command_name = str(command_name).lower()
         skip_preflight = command_name in {"current", "history", "heads"}
+        _ensure_core_schema(connection)
         if not skip_preflight:
-            _ensure_version_table(connection)
-            _repair_legacy_version_table(connection)
             _forbid_parallel_version_tables(connection)
-        else:
-            quoted_schema = quote_schema(schema)
-            connection.execute(text(f"CREATE SCHEMA IF NOT EXISTS {quoted_schema}"))
         _configure(connection, command_name)
+        _log_version_table_diagnostics(connection)
         if command_name in {"current", "history", "heads", "branches", "show"}:
             context.run_migrations()
         else:
