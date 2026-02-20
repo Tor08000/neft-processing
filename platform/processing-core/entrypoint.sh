@@ -494,6 +494,16 @@ run_upgrade() {
     return "$alembic_exit_code"
 }
 
+run_stamp_head() {
+    echo "[entrypoint] running pre-upgrade sanity-check for stamp"
+    python -m app.scripts.alembic_upgrade_preflight
+    echo "[entrypoint] stamping database to alembic head ($ALEMBIC_CONFIG)"
+    alembic -c "$ALEMBIC_CONFIG" stamp head >"$MIGRATION_LOG" 2>&1
+    alembic_exit_code=$?
+    echo "[entrypoint] alembic stamp exit_code=${alembic_exit_code}"
+    return "$alembic_exit_code"
+}
+
 set +e
 case "$ALEMBIC_DECISION" in
     SKIP)
@@ -502,6 +512,10 @@ case "$ALEMBIC_DECISION" in
         ;;
     UPGRADE)
         run_upgrade
+        migration_status=$?
+        ;;
+    STAMP_HEAD)
+        run_stamp_head
         migration_status=$?
         ;;
     FAIL)
@@ -516,8 +530,8 @@ esac
 set -e
 
 if [ "$migration_status" -ne 0 ]; then
-    if [ "$ALEMBIC_DECISION" = "UPGRADE" ]; then
-        echo "[entrypoint] alembic upgrade exit_code=${migration_status}" >&2
+    if [ "$ALEMBIC_DECISION" = "UPGRADE" ] || [ "$ALEMBIC_DECISION" = "STAMP_HEAD" ]; then
+        echo "[entrypoint] alembic ${ALEMBIC_DECISION,,} exit_code=${migration_status}" >&2
         echo "[entrypoint] tail -n 120 ${MIGRATION_LOG}" >&2
         tail -n 120 "$MIGRATION_LOG" >&2 || true
     else

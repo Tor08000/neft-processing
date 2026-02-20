@@ -9,7 +9,8 @@ from alembic.runtime.migration import MigrationContext
 from alembic.script import ScriptDirectory
 
 VERSION_TABLE_NAME = "alembic_version_core"
-DOMAIN_TABLE_PROBE = ("clients", "accounts", "operations", "ledger_entries")
+DOMAIN_TABLE_PROBE = ("operations", "clients", "cards", "accounts")
+STAMP_HEAD_REQUIRED_TABLES = ("operations", "clients", "cards", "accounts")
 
 
 @dataclass(frozen=True)
@@ -90,6 +91,26 @@ def _schema_has_domain_tables(connection: sa.Connection, schema: str) -> bool:
     return bool(rows)
 
 
+def _is_prod_environment() -> bool:
+    return (os.getenv("APP_ENV") or "dev").strip().lower() == "prod"
+
+
+def _get_dev_recovery_mode() -> str:
+    mode = (os.getenv("DEV_DB_RECOVERY") or "reset").strip().lower()
+    return mode or "reset"
+
+
+def _schema_meets_stamp_head_minimum(schema_tables: list[str]) -> bool:
+    existing = set(schema_tables)
+    return set(STAMP_HEAD_REQUIRED_TABLES).issubset(existing)
+
+
+def _reset_schema(connection: sa.Connection, schema: str) -> None:
+    quoted_schema = schema.replace('"', '""')
+    connection.execute(sa.text(f'DROP SCHEMA IF EXISTS "{quoted_schema}" CASCADE'))
+    connection.execute(sa.text(f'CREATE SCHEMA "{quoted_schema}"'))
+
+
 def _to_shell_value(value: str) -> str:
     if value == "":
         return '""'
@@ -114,7 +135,7 @@ def _write_decision_artifacts(decision: RepairDecision, schema_tables: list[str]
 
 
 def ensure_alembic_version_consistency() -> RepairDecision:
-    schema = "processing_core"
+    schema = (os.getenv("NEFT_DB_SCHEMA") or "processing_core").strip() or "processing_core"
     alembic_config_path = os.getenv("ALEMBIC_CONFIG", "/app/app/alembic.ini")
     database_url = os.getenv("DATABASE_URL")
 
@@ -172,7 +193,41 @@ def ensure_alembic_version_consistency() -> RepairDecision:
 
         if len(db_revisions) == 0:
             if has_domain_tables:
-                decision = RepairDecision("FAIL", "version table empty but domain tables already exist")
+                detection = "detected: version table empty + domain tables already exist"
+                print(f"[entrypoint] {detection}", flush=True)
+
+                if _is_prod_environment():
+                    decision = RepairDecision(
+                        "FAIL",
+                        "prod safety policy: refusing startup because version table is empty while domain tables exist",
+                    )
+                else:
+                    recovery_mode = _get_dev_recovery_mode()
+                    if recovery_mode == "reset":
+                        with engine.begin() as connection:
+                            _reset_schema(connection, schema)
+                        decision = RepairDecision(
+                            "UPGRADE",
+                            "dev recovery mode RESET: dropped and recreated schema before alembic upgrade",
+                        )
+                    elif recovery_mode == "stamp_head":
+                        if _schema_meets_stamp_head_minimum(schema_tables):
+                            decision = RepairDecision(
+                                "STAMP_HEAD",
+                                "dev recovery mode STAMP: schema passes minimum required tables check",
+                            )
+                        else:
+                            with engine.begin() as connection:
+                                _reset_schema(connection, schema)
+                            decision = RepairDecision(
+                                "UPGRADE",
+                                "dev recovery fallback RESET: stamp_head requested but minimum schema check failed",
+                            )
+                    else:
+                        decision = RepairDecision(
+                            "FAIL",
+                            f"dev recovery mode {recovery_mode!r} is not supported; set DEV_DB_RECOVERY=reset|stamp_head|fail",
+                        )
             else:
                 decision = RepairDecision("UPGRADE", "fresh schema and empty version table")
             _write_decision_artifacts(decision, schema_tables)
