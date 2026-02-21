@@ -39,13 +39,6 @@ database_url = config.get_main_option("sqlalchemy.url") or _build_database_url()
 database_url = _normalize_database_url(database_url)
 config.set_main_option("sqlalchemy.url", database_url)
 
-AUTH_VERSION_SCHEMA = "processing_auth"
-AUTH_VERSION_TABLE = "alembic_version_auth"
-
-
-def _ensure_auth_version_schema(connection) -> None:
-    connection.exec_driver_sql(f'CREATE SCHEMA IF NOT EXISTS "{AUTH_VERSION_SCHEMA}"')
-
 
 def run_migrations_offline() -> None:
     context.configure(
@@ -53,8 +46,6 @@ def run_migrations_offline() -> None:
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
-        version_table=AUTH_VERSION_TABLE,
-        version_table_schema=AUTH_VERSION_SCHEMA,
         include_schemas=True,
         transactional_ddl=True,
     )
@@ -71,12 +62,9 @@ def run_migrations_online() -> None:
     )
 
     with connectable.connect() as connection:
-        _ensure_auth_version_schema(connection)
         context.configure(
             connection=connection,
             target_metadata=target_metadata,
-            version_table=AUTH_VERSION_TABLE,
-            version_table_schema=AUTH_VERSION_SCHEMA,
             include_schemas=True,
             transactional_ddl=True,
         )
