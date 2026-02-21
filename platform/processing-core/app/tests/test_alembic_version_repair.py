@@ -206,3 +206,12 @@ def test_version_missing_with_empty_schema_selects_upgrade_mode(monkeypatch, cap
 
     output = capsys.readouterr().out
     assert "mode selected = UPGRADE" in output
+
+
+def test_prod_safety_detection_depends_only_on_app_env(monkeypatch):
+    monkeypatch.delenv("APP_ENV", raising=False)
+    monkeypatch.setenv("NODE_ENV", "production")
+    assert repair_script._is_prod_environment() is False
+
+    monkeypatch.setenv("APP_ENV", "prod")
+    assert repair_script._is_prod_environment() is True
