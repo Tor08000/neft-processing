@@ -441,7 +441,7 @@ services:
       DB_NAME: ${DB_NAME:-neft}
       DB_USER: ${DB_USER:-neft}
       DB_PASSWORD: ${DB_PASSWORD:-change-me}
-      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://neft:change-me@postgres:5432/neft}
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg2://neft:change-me@postgres:5432/neft}
       CRM_JWT_SECRET: ${CRM_JWT_SECRET:-}
       CRM_JWT_ALGORITHM: ${CRM_JWT_ALGORITHM:-HS256}
     depends_on:
