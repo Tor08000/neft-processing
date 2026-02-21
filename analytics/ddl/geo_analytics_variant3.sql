@@ -108,7 +108,7 @@ SELECT
   toUInt32(floor((1.0 - (
     log(tan((least(greatest(s.lat, -85.0511), 85.0511) * pi() / 180.0)) +
         1.0 / cos((least(greatest(s.lat, -85.0511), 85.0511) * pi() / 180.0)))
-  ) / pi())) / 2.0 * pow(2, z))) AS tile_y,
+  ) / pi()) / 2.0 * pow(2, z))) AS tile_y,
   toUInt32(count()) AS tx_count,
   toUInt32(sum(r.captured)) AS captured_count,
   toUInt32(sum(r.decline)) AS declined_count,
@@ -132,7 +132,7 @@ SELECT
   toUInt32(floor((1.0 - (
     log(tan((least(greatest(s.lat, -85.0511), 85.0511) * pi() / 180.0)) +
         1.0 / cos((least(greatest(s.lat, -85.0511), 85.0511) * pi() / 180.0)))
-  ) / pi())) / 2.0 * pow(2, z))) AS tile_y,
+  ) / pi()) / 2.0 * pow(2, z))) AS tile_y,
   toUInt32(sum(r.risk_red)) AS value
 FROM raw_fuel_events r
 INNER JOIN dim_stations s ON s.station_id = r.station_id

@@ -8,7 +8,15 @@ from sqlalchemy.engine import make_url
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, declarative_base, sessionmaker
 
-DATABASE_URL = os.getenv("CRM_DATABASE_URL", os.getenv("DATABASE_URL", "sqlite:///./crm.db"))
+def _normalize_postgres_driver(url: str) -> str:
+    if url.startswith("postgresql+psycopg://"):
+        return url.replace("postgresql+psycopg://", "postgresql+psycopg2://", 1)
+    return url
+
+
+DATABASE_URL = _normalize_postgres_driver(
+    os.getenv("CRM_DATABASE_URL", os.getenv("DATABASE_URL", "sqlite:///./crm.db"))
+)
 logger = getLogger(__name__)
 
 
