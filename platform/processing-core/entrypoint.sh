@@ -532,7 +532,8 @@ set -e
 
 if [ "$migration_status" -ne 0 ]; then
     if [ "$ALEMBIC_DECISION" = "UPGRADE" ] || [ "$ALEMBIC_DECISION" = "STAMP_HEAD" ]; then
-        echo "[entrypoint] alembic ${ALEMBIC_DECISION,,} exit_code=${migration_status}" >&2
+        alembic_decision_lc=$(printf '%s' "$ALEMBIC_DECISION" | tr '[:upper:]' '[:lower:]')
+        echo "[entrypoint] alembic ${alembic_decision_lc} exit_code=${migration_status}" >&2
         echo "[entrypoint] tail -n 120 ${MIGRATION_LOG}" >&2
         tail -n 120 "$MIGRATION_LOG" >&2 || true
     else
