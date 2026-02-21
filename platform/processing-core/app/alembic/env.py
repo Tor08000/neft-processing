@@ -41,7 +41,9 @@ def run_migrations_offline() -> None:
 
 
 def run_migrations_online() -> None:
-    validate_only = os.getenv("ALEMBIC_VALIDATE_ONLY", "0") == "1"
+    validate_only_raw = os.getenv("ALEMBIC_VALIDATE_ONLY", "0")
+    validate_only = validate_only_raw == "1"
+    context.config.print_stdout("ALEMBIC_VALIDATE_ONLY=%s", "1" if validate_only else "0")
 
     connectable = engine_from_config(
         context.config.get_section(context.config.config_ini_section),
@@ -63,12 +65,12 @@ def run_migrations_online() -> None:
         )
 
         if validate_only:
-            txn = connection.begin()
+            validation_txn = connection.begin()
             try:
                 with context.begin_transaction():
                     context.run_migrations()
             finally:
-                txn.rollback()
+                validation_txn.rollback()
         else:
             with context.begin_transaction():
                 context.run_migrations()
