@@ -44,7 +44,6 @@ services:
       CLICKHOUSE_DB: ${CLICKHOUSE_DB:-neft_geo}
     volumes:
       - clickhouse-data:/var/lib/clickhouse
-      - ./analytics/ddl:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8123/ping"]
       interval: 10s
@@ -53,6 +52,19 @@ services:
     ports:
       - "8123:8123"
       - "9002:9000"
+
+  clickhouse-init:
+    image: clickhouse/clickhouse-server:24.6
+    container_name: neft-processing-clickhouse-init-1
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    environment:
+      APP_ENV: ${APP_ENV:-dev}
+    volumes:
+      - ./analytics/ddl:/docker-entrypoint-initdb.d:ro
+      - ./infra/clickhouse-init.sh:/infra/clickhouse-init.sh:ro
+    entrypoint: ["/bin/bash", "/infra/clickhouse-init.sh"]
 
   minio:
     image: quay.io/minio/minio:RELEASE.2024-09-22T00-33-43Z
@@ -424,7 +436,12 @@ services:
       dockerfile: platform/crm-service/Dockerfile
     container_name: neft-processing-crm-1
     environment:
-      CRM_DATABASE_URL: ${CRM_DATABASE_URL:-postgresql+psycopg2://neft:change-me@postgres:5432/neft}
+      DB_HOST: ${DB_HOST:-postgres}
+      DB_PORT: ${DB_PORT:-5432}
+      DB_NAME: ${DB_NAME:-neft}
+      DB_USER: ${DB_USER:-neft}
+      DB_PASSWORD: ${DB_PASSWORD:-change-me}
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://neft:change-me@postgres:5432/neft}
       CRM_JWT_SECRET: ${CRM_JWT_SECRET:-}
       CRM_JWT_ALGORITHM: ${CRM_JWT_ALGORITHM:-HS256}
     depends_on:

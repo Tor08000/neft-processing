@@ -5,6 +5,8 @@ services:
     profiles: ["test"]
   clickhouse:
     profiles: ["test"]
+  clickhouse-init:
+    profiles: ["test"]
   minio:
     profiles: ["test"]
   minio-init:
