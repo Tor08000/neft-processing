@@ -30,6 +30,20 @@ def _is_dev_mode() -> bool:
     return (os.getenv("APP_ENV", "dev") or "dev").strip().lower() == "dev"
 
 
+def _ensure_public_alembic_version_table(dsn: str) -> None:
+    with psycopg.connect(dsn) as conn:
+        conn.autocommit = True
+        with conn.cursor() as cur:
+            cur.execute(
+                "CREATE TABLE IF NOT EXISTS public.alembic_version "
+                "(version_num TEXT NOT NULL)"
+            )
+            cur.execute(
+                "ALTER TABLE public.alembic_version "
+                "ALTER COLUMN version_num TYPE TEXT"
+            )
+
+
 def run() -> None:
     dsn = os.environ["DATABASE_URL"]
     cfg = make_alembic_config()
@@ -63,6 +77,8 @@ def run() -> None:
         _drop_auth_objects(dsn)
         command.stamp(cfg, "base")
         print("[entrypoint] alembic stamp base executed", flush=True)
+
+    _ensure_public_alembic_version_table(dsn)
 
     try:
         command.upgrade(cfg, "head")
