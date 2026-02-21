@@ -6,6 +6,7 @@ import os
 from datetime import datetime, timezone
 from uuid import UUID
 
+import requests
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -22,6 +23,28 @@ DEFAULT_CARD_ID = "CARD-001"
 DEFAULT_CLIENT_ID = "CLIENT-123"
 DEFAULT_DEMO_CLIENT_UUID = "00000000-0000-0000-0000-000000000001"
 DEV_ENVS = {"local", "dev", "development", "test"}
+AUTH_INTERNAL_LOOKUP_URL = os.getenv(
+    "AUTH_INTERNAL_LOOKUP_URL",
+    "http://auth-host:8000/api/auth/internal/users/lookup",
+)
+
+
+def _lookup_auth_user_id(email: str, logger: logging.Logger) -> str | None:
+    try:
+        response = requests.get(
+            AUTH_INTERNAL_LOOKUP_URL,
+            params={"email": email.strip().lower()},
+            timeout=3,
+        )
+        if response.status_code == 404:
+            return None
+        response.raise_for_status()
+        payload = response.json()
+        user_id = payload.get("user_id")
+        return str(user_id) if user_id else None
+    except requests.RequestException as exc:
+        logger.warning("Auth-host lookup unavailable for %s: %s", email, exc)
+        return None
 
 
 def _log_guard_context(db: Session, logger: logging.Logger) -> None:
@@ -413,14 +436,8 @@ def ensure_demo_portal_bindings(db: Session | None = None) -> None:
         client_email = (os.getenv("NEFT_BOOTSTRAP_CLIENT_EMAIL") or "client@neft.local").strip().lower()
         partner_email = (os.getenv("NEFT_BOOTSTRAP_PARTNER_EMAIL") or "partner@neft.local").strip().lower()
 
-        client_user_id = conn.execute(
-            text("SELECT id::text FROM public.users WHERE lower(email)=:email LIMIT 1"),
-            {"email": client_email},
-        ).scalar_one_or_none()
-        partner_user_id = conn.execute(
-            text("SELECT id::text FROM public.users WHERE lower(email)=:email LIMIT 1"),
-            {"email": partner_email},
-        ).scalar_one_or_none()
+        client_user_id = _lookup_auth_user_id(client_email, logger)
+        partner_user_id = _lookup_auth_user_id(partner_email, logger)
 
         partner_id = conn.execute(
             text(f"SELECT id::text FROM {DB_SCHEMA}.partners WHERE code='demo-partner' LIMIT 1")

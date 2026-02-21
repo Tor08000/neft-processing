@@ -78,7 +78,11 @@ class ClientDocument(Base):
     signed_by_client_at: Mapped[DateTime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     signed_by_client_user_id: Mapped[str | None] = mapped_column(GUID(), nullable=True)
 
-    files: Mapped[list["ClientDocumentFile"]] = relationship("app.domains.documents.models.ClientDocumentFile", back_populates="document")
+    files: Mapped[list["ClientDocumentFile"]] = relationship(
+        "app.domains.documents.models.ClientDocumentFile",
+        back_populates="document",
+        overlaps="document,files",
+    )
     edo_state: Mapped["DocumentEdoState | None"] = relationship("app.domains.documents.models.DocumentEdoState", back_populates="document", uselist=False)
     signatures: Mapped[list["DocumentSignature"]] = relationship("app.domains.documents.models.DocumentSignature", back_populates="document")
 
@@ -100,7 +104,11 @@ class ClientDocumentFile(Base):
     sha256: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
-    document: Mapped[ClientDocument] = relationship("app.domains.documents.models.ClientDocument", back_populates="files")
+    document: Mapped[ClientDocument] = relationship(
+        "app.domains.documents.models.ClientDocument",
+        back_populates="files",
+        overlaps="document,files",
+    )
 
 
 class DocumentTimelineEvent(Base):

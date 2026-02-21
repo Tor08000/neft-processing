@@ -22,9 +22,11 @@ def _env_or_default(key: str, default: str, *, fallback_keys: Iterable[str] = ()
     return default
 
 
-def _require_env(key: str) -> str:
+def _require_env(key: str, *, default: str | None = None) -> str:
     value = os.getenv(key)
     if value is None or value.strip() == "":
+        if default is not None:
+            return default
         raise ValueError(f"Missing required env: {key}")
     return value
 
@@ -99,9 +101,9 @@ class DemoUser:
 
 
 def get_demo_users() -> list[DemoUser]:
-    admin_email = _require_env("NEFT_BOOTSTRAP_ADMIN_EMAIL")
+    admin_email = _require_env("NEFT_BOOTSTRAP_ADMIN_EMAIL", default="admin@neft.local")
     admin_username = _env_or_default("NEFT_BOOTSTRAP_ADMIN_USERNAME", _env_or_default("ADMIN_USERNAME", "admin"))
-    admin_password = _require_env("NEFT_BOOTSTRAP_ADMIN_PASSWORD")
+    admin_password = _require_env("NEFT_BOOTSTRAP_ADMIN_PASSWORD", default="Neft123!")
     admin_full_name = _env_or_default(
         "NEFT_BOOTSTRAP_ADMIN_FULL_NAME",
         _env_or_default(
@@ -118,7 +120,7 @@ def get_demo_users() -> list[DemoUser]:
     )
 
     client_email = _env_or_default("NEFT_BOOTSTRAP_CLIENT_EMAIL", "client@neft.local")
-    client_password = _env_or_default("NEFT_BOOTSTRAP_CLIENT_PASSWORD", "client123")
+    client_password = _env_or_default("NEFT_BOOTSTRAP_CLIENT_PASSWORD", "Neft123!")
     client_full_name = _env_or_default(
         "NEFT_BOOTSTRAP_CLIENT_FULL_NAME",
         _env_or_default(
@@ -139,7 +141,7 @@ def get_demo_users() -> list[DemoUser]:
     )
 
     partner_email = _env_or_default("NEFT_BOOTSTRAP_PARTNER_EMAIL", "partner@neft.local")
-    partner_password = _env_or_default("NEFT_BOOTSTRAP_PARTNER_PASSWORD", "partner123")
+    partner_password = _env_or_default("NEFT_BOOTSTRAP_PARTNER_PASSWORD", "Neft123!")
     partner_full_name = _env_or_default(
         "NEFT_BOOTSTRAP_PARTNER_FULL_NAME",
         _env_or_default("PARTNER_FULL_NAME", "Demo Partner"),

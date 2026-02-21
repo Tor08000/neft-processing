@@ -11,6 +11,7 @@ from app.api.routes.auth import router as auth_router
 from app.api.routes.sso import router as sso_router
 from app.api.routes.admin_sso import router as admin_sso_router
 from app.api.routes.health import router as health_router
+from app.api.routes.internal import router as internal_router
 from app.api.routes.processing import router as processing_router
 from app.bootstrap import bootstrap_required_users
 from app.db import ensure_users_table
@@ -52,6 +53,7 @@ app.include_router(sso_router, prefix=LEGACY_API_PREFIX)
 app.include_router(admin_sso_router, prefix=LEGACY_API_PREFIX)
 app.include_router(admin_users_router, prefix=LEGACY_API_PREFIX)
 app.include_router(processing_router, prefix=LEGACY_API_PREFIX)
+app.include_router(internal_router, prefix=LEGACY_API_PREFIX)
 
 app.include_router(health_router, prefix=API_PREFIX_AUTH)
 app.include_router(auth_router, prefix=API_PREFIX_AUTH)
@@ -59,6 +61,7 @@ app.include_router(sso_router, prefix=API_PREFIX_AUTH)
 app.include_router(admin_sso_router, prefix=API_PREFIX_AUTH)
 app.include_router(admin_users_router, prefix=API_PREFIX_AUTH)
 app.include_router(processing_router, prefix=API_PREFIX_AUTH)
+app.include_router(internal_router, prefix=API_PREFIX_AUTH)
 
 api_prefixed_router = APIRouter(prefix="/api/auth")
 api_prefixed_router.include_router(health_router)
@@ -67,6 +70,7 @@ api_prefixed_router.include_router(sso_router)
 api_prefixed_router.include_router(admin_sso_router)
 api_prefixed_router.include_router(admin_users_router)
 api_prefixed_router.include_router(processing_router)
+api_prefixed_router.include_router(internal_router)
 
 
 @app.get("/health")
@@ -120,8 +124,13 @@ async def bootstrap_demo_user() -> None:
     initialize_keys()
     settings = get_settings()
     await oidc_client.fail_fast_validate_enabled_providers()
-    if settings.bootstrap_enabled:
+    dev_seed_users = (os.getenv("DEV_SEED_USERS", "1") or "1").strip().lower() not in {"0", "false", "no", "off"}
+    if settings.bootstrap_enabled and dev_seed_users:
         await bootstrap_required_users(settings)
     else:
         logger.info("auth-host: bootstrap disabled; skipping demo seed")
+    if dev_seed_users:
+        logger.info(
+            "DEV users ready: client@neft.local, partner@neft.local, admin@neft.local"
+        )
     logger.info("auth-host: bootstrap done")

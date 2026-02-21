@@ -15,22 +15,7 @@ AUTH_PUBLIC_KEY_PATH="${AUTH_PUBLIC_KEY_PATH:-/data/keys/public.pem}"
 export AUTH_PRIVATE_KEY_PATH
 export AUTH_PUBLIC_KEY_PATH
 
-bootstrap_enabled="${NEFT_BOOTSTRAP_ENABLED:-1}"
-bootstrap_enabled="$(echo "${bootstrap_enabled}" | tr '[:upper:]' '[:lower:]')"
-if [ "${bootstrap_enabled}" != "0" ] && [ "${bootstrap_enabled}" != "false" ] \
-    && [ "${bootstrap_enabled}" != "no" ] && [ "${bootstrap_enabled}" != "off" ]; then
-    required_envs=(
-        NEFT_BOOTSTRAP_ADMIN_PASSWORD
-        NEFT_BOOTSTRAP_CLIENT_PASSWORD
-        NEFT_BOOTSTRAP_PARTNER_PASSWORD
-    )
-    for env_name in "${required_envs[@]}"; do
-        if [ -z "${!env_name:-}" ]; then
-            echo "[entrypoint] missing required env: ${env_name}" >&2
-            exit 1
-        fi
-    done
-fi
+export DEV_SEED_USERS="${DEV_SEED_USERS:-1}"
 
 POSTGRES_HOST="${POSTGRES_HOST:-postgres}"
 POSTGRES_PORT="${POSTGRES_PORT:-5432}"
