@@ -17,17 +17,16 @@ export AUTH_PUBLIC_KEY_PATH
 
 export DEV_SEED_USERS="${DEV_SEED_USERS:-1}"
 
-APP_ENV_NORMALIZED="$(printf '%s' "${APP_ENV:-}" | tr '[:upper:]' '[:lower:]')"
-START_MODE_NORMALIZED="$(printf '%s' "${START_MODE:-}" | tr '[:upper:]' '[:lower:]')"
+APP_ENV="${APP_ENV:-dev}"
+export APP_ENV
+APP_ENV_NORMALIZED="$(printf '%s' "${APP_ENV}" | tr '[:upper:]' '[:lower:]')"
 
-RUN_MODE="strict"
+RUN_MODE="dev"
 if [ "${APP_ENV_NORMALIZED}" = "prod" ]; then
     RUN_MODE="prod"
-elif [ "${APP_ENV_NORMALIZED}" = "dev" ] || [ "${START_MODE_NORMALIZED}" = "dev" ]; then
-    RUN_MODE="dev"
 fi
 
-echo "[entrypoint] run mode: ${RUN_MODE} (APP_ENV=${APP_ENV:-<unset>} START_MODE=${START_MODE:-<unset>})"
+echo "[entrypoint] run mode: ${RUN_MODE} (APP_ENV=${APP_ENV})"
 
 POSTGRES_HOST="${POSTGRES_HOST:-postgres}"
 POSTGRES_PORT="${POSTGRES_PORT:-5432}"
