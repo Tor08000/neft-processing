@@ -70,6 +70,17 @@ def run_migrations_online() -> None:
         with context.begin_transaction():
             context.run_migrations()
 
+        if connection.in_transaction():
+            logger.warning(
+                "[alembic] connection still in transaction after supposed COMMIT; forcing commit now"
+            )
+            connection.commit()
+
+        assert not connection.in_transaction(), (
+            "connection transaction remained open after migrations; "
+            "check for implicit SQL outside Alembic transaction handling"
+        )
+
         context.config.print_stdout("[alembic] action=COMMIT")
         logger.info("[alembic] action=COMMIT")
 
