@@ -43,12 +43,6 @@ def run_migrations_offline() -> None:
 
 
 def run_migrations_online() -> None:
-    validate_only_raw = os.getenv("ALEMBIC_VALIDATE_ONLY", "0")
-    validate_only = validate_only_raw == "1"
-    validate_only_value = "1" if validate_only else "0"
-    context.config.print_stdout("[alembic] validate_only=%s", validate_only_value)
-    logger.info("[alembic] validate_only=%s", validate_only_value)
-
     connectable = engine_from_config(
         context.config.get_section(context.config.config_ini_section),
         prefix="sqlalchemy.",
@@ -68,23 +62,11 @@ def run_migrations_online() -> None:
             version_table_schema="processing_core",
         )
 
-        trans = connection.begin()
-        try:
+        with context.begin_transaction():
             context.run_migrations()
 
-            if validate_only:
-                trans.rollback()
-                context.config.print_stdout("[alembic] action=ROLLBACK")
-                logger.warning("[alembic] action=ROLLBACK")
-            else:
-                trans.commit()
-                context.config.print_stdout("[alembic] action=COMMIT")
-                logger.info("[alembic] action=COMMIT")
-        except Exception:
-            trans.rollback()
-            context.config.print_stdout("[alembic] action=ROLLBACK")
-            logger.exception("[alembic] action=ROLLBACK due to exception")
-            raise
+        context.config.print_stdout("[alembic] action=COMMIT")
+        logger.info("[alembic] action=COMMIT")
 
 
 if context.is_offline_mode():
