@@ -56,11 +56,13 @@ def run_migrations_online() -> None:
         connection.exec_driver_sql("SET search_path TO processing_core, public")
         connection.commit()
 
-        connection.exec_driver_sql(
-            "SELECT pg_advisory_lock(hashtext(:key))",
-            {"key": MIGRATIONS_LOCK_KEY},
-        )
+        locked = False
         try:
+            connection.exec_driver_sql(
+                f"SELECT pg_advisory_lock(hashtext('{MIGRATIONS_LOCK_KEY}'))"
+            )
+            locked = True
+
             context.configure(
                 connection=connection,
                 target_metadata=target_metadata,
@@ -86,10 +88,10 @@ def run_migrations_online() -> None:
             context.config.print_stdout("[alembic] action=COMMIT")
             logger.info("[alembic] action=COMMIT")
         finally:
-            connection.exec_driver_sql(
-                "SELECT pg_advisory_unlock(hashtext(:key))",
-                {"key": MIGRATIONS_LOCK_KEY},
-            )
+            if locked:
+                connection.exec_driver_sql(
+                    f"SELECT pg_advisory_unlock(hashtext('{MIGRATIONS_LOCK_KEY}'))"
+                )
 
 
 if context.is_offline_mode():
