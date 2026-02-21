@@ -7,6 +7,7 @@ from typing import Iterable
 import psycopg
 from alembic.config import Config
 from alembic.script import ScriptDirectory
+from alembic.util.exc import CommandError
 
 REQUIRED_AUTH_TABLES: tuple[str, ...] = (
     "tenants",
@@ -90,8 +91,11 @@ def fetch_missing_tables(dsn: str, *, required_tables: Iterable[str]) -> tuple[s
 
 def is_db_revision_known(script: ScriptDirectory, revision: str | None) -> bool:
     if not revision:
-        return True
-    return script.get_revision(revision) is not None
+        return False
+    try:
+        return script.get_revision(revision) is not None
+    except CommandError:
+        return False
 
 
 def should_reset_for_broken_revision(*, db_revision: str | None, revision_known: bool) -> bool:

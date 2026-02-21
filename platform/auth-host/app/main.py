@@ -83,6 +83,16 @@ def health_root():
     return JSONResponse(status_code=status_code, content=content)
 
 
+@app.get("/ready")
+@app.get(f"{API_PREFIX_AUTH}/ready")
+def ready_root():
+    response, status_code = build_health_response()
+    content = response.model_dump(exclude_none=True)
+    if status_code != status.HTTP_200_OK:
+        return JSONResponse(status_code=status_code, content=content)
+    return JSONResponse(status_code=status_code, content=content)
+
+
 @app.get("/metrics", include_in_schema=False)
 @app.get("/api/v1/metrics", include_in_schema=False)
 def metrics_root():
