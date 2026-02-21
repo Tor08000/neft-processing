@@ -120,7 +120,7 @@ class Settings(SharedSettings):
 
     demo_admin_email: str = _env_or_default(
         "NEFT_DEMO_ADMIN_EMAIL",
-        "admin@example.com",
+        "admin@neft.local",
         fallback_keys=("DEMO_ADMIN_EMAIL",),
     )
     demo_admin_username: str = _env_or_default(
@@ -149,7 +149,7 @@ class Settings(SharedSettings):
     )
     bootstrap_admin_email: str = _env_or_default(
         "NEFT_BOOTSTRAP_ADMIN_EMAIL",
-        _env_or_default("NEFT_DEMO_ADMIN_EMAIL", "admin@example.com", fallback_keys=("DEMO_ADMIN_EMAIL",)),
+        _env_or_default("NEFT_DEMO_ADMIN_EMAIL", "admin@neft.local", fallback_keys=("DEMO_ADMIN_EMAIL",)),
     )
     bootstrap_admin_username: str = _env_or_default(
         "NEFT_BOOTSTRAP_ADMIN_USERNAME",
