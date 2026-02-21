@@ -15,6 +15,7 @@ VERSION_TABLE_SCHEMA="processing_core"
 VERSION_TABLE_NAME="alembic_version_core"
 export ALEMBIC_VERSION_TABLE_SCHEMA="$VERSION_TABLE_SCHEMA"
 echo "[entrypoint] schema_resolved=${schema_resolved} version_table=${VERSION_TABLE_SCHEMA}.${VERSION_TABLE_NAME}"
+echo "[entrypoint] APP_ENV=${APP_ENV:-} START_MODE=${START_MODE:-} DEV_DB_RECOVERY=${DEV_DB_RECOVERY:-}"
 
 python - <<'PY'
 import os
