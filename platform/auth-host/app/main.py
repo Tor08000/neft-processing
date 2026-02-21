@@ -126,7 +126,19 @@ async def bootstrap_demo_user() -> None:
     await oidc_client.fail_fast_validate_enabled_providers()
     dev_seed_users = (os.getenv("DEV_SEED_USERS", "1") or "1").strip().lower() not in {"0", "false", "no", "off"}
     if settings.bootstrap_enabled and dev_seed_users:
-        await bootstrap_required_users(settings)
+        try:
+            await bootstrap_required_users(settings)
+        except Exception:
+            app_env = (getattr(settings, "APP_ENV", "prod") or "prod").strip().lower()
+            start_mode = (os.getenv("START_MODE", "") or "").strip().lower()
+            if app_env == "dev" or start_mode == "dev":
+                logger.warning(
+                    "auth-host: demo bootstrap failed in dev; continuing startup",
+                    exc_info=True,
+                )
+            else:
+                logger.exception("auth-host: bootstrap failed in non-dev environment")
+                raise
     else:
         logger.info("auth-host: bootstrap disabled; skipping demo seed")
     if dev_seed_users:

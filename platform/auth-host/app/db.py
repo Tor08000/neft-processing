@@ -43,6 +43,10 @@ async def get_conn():
 
 
 async def ensure_users_table() -> None:
+    app_env = (os.getenv("APP_ENV", "prod") or "prod").strip().lower()
+    start_mode = (os.getenv("START_MODE", "") or "").strip().lower()
+    is_dev_mode = app_env == "dev" or start_mode == "dev"
+
     conn = await psycopg.AsyncConnection.connect(DSN_ASYNC)
     try:
         async with conn.cursor() as cur:
@@ -52,8 +56,16 @@ async def ensure_users_table() -> None:
             )
             exists = await cur.fetchone()
             if not exists:
+                if is_dev_mode:
+                    logger.warning(
+                        "auth-host: users table missing in schema %s; continuing startup in dev mode",
+                        AUTH_DB_SCHEMA,
+                    )
+                    return
                 logger.critical(
-                    "auth-host: users table missing in schema %s", AUTH_DB_SCHEMA
+                    "auth-host: users table missing in schema %s. "
+                    "Run auth-host alembic migrations before starting in production.",
+                    AUTH_DB_SCHEMA,
                 )
                 raise SystemExit(1)
     finally:

@@ -1,4 +1,10 @@
 services:
+  auth-host:
+    environment:
+      APP_ENV: dev
+      START_MODE: DEV
+      DEV_SEED_USERS: 1
+
   core-api:
     environment:
       APP_ENV: dev
