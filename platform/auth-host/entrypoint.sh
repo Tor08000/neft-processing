@@ -17,6 +17,18 @@ export AUTH_PUBLIC_KEY_PATH
 
 export DEV_SEED_USERS="${DEV_SEED_USERS:-1}"
 
+APP_ENV_NORMALIZED="$(printf '%s' "${APP_ENV:-}" | tr '[:upper:]' '[:lower:]')"
+START_MODE_NORMALIZED="$(printf '%s' "${START_MODE:-}" | tr '[:upper:]' '[:lower:]')"
+
+RUN_MODE="strict"
+if [ "${APP_ENV_NORMALIZED}" = "prod" ]; then
+    RUN_MODE="prod"
+elif [ "${APP_ENV_NORMALIZED}" = "dev" ] || [ "${START_MODE_NORMALIZED}" = "dev" ]; then
+    RUN_MODE="dev"
+fi
+
+echo "[entrypoint] run mode: ${RUN_MODE} (APP_ENV=${APP_ENV:-<unset>} START_MODE=${START_MODE:-<unset>})"
+
 POSTGRES_HOST="${POSTGRES_HOST:-postgres}"
 POSTGRES_PORT="${POSTGRES_PORT:-5432}"
 POSTGRES_DB="${POSTGRES_DB:-neft}"
@@ -78,9 +90,10 @@ if [ "${#alembic_heads[@]}" -gt 1 ]; then
 fi
 alembic ${ALEMBIC_OPTS} -c /app/alembic.ini upgrade head
 
-python - <<'PY'
+if python - <<'PY'
 import os
 import sys
+import asyncio
 
 import psycopg
 
@@ -95,6 +108,30 @@ with psycopg.connect(dsn) as conn:
             print("[entrypoint] migration did not create users", file=sys.stderr)
             sys.exit(1)
 print("[entrypoint] migration check: public.users exists")
+
+if os.getenv("DEV_SEED_USERS", "0") == "1":
+    from app.seeds.demo_users import ensure_user, get_demo_users
+
+    async def _seed() -> None:
+        for demo_user in get_demo_users():
+            await ensure_user(
+                demo_user,
+                force_password=True,
+                sync_roles=True,
+            )
+
+    asyncio.run(_seed())
+    print("[entrypoint] DEV users ready")
 PY
+then
+    :
+else
+    if [ "${RUN_MODE}" = "dev" ]; then
+        echo "[entrypoint] WARNING: users check/seed failed in dev, continuing startup"
+    else
+        echo "[entrypoint] ERROR: users check/seed failed" >&2
+        exit 1
+    fi
+fi
 
 exec uvicorn app.main:app --host 0.0.0.0 --port 8000
