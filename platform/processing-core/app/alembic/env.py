@@ -5,7 +5,8 @@ import sys
 from logging.config import fileConfig
 from pathlib import Path
 
-from alembic import command, context
+from alembic import context
+from alembic.script import ScriptDirectory
 from sqlalchemy import engine_from_config, pool
 
 BASE_DIR = Path(__file__).resolve().parents[2]
@@ -99,44 +100,37 @@ def run_migrations_online() -> None:
         ).scalar_one()
         print(f"[alembic] version rows after run_migrations={post_count}")
 
-        if _detect_alembic_cmd().lower() == "upgrade":
-            if post_count == 0:
-                app_env = os.getenv("APP_ENV", "").lower()
-                domain_tables_exist = bool(
-                    connection.exec_driver_sql(
-                        """
-                        select exists (
-                            select 1
-                            from information_schema.tables
-                            where table_schema = 'processing_core'
-                              and table_type = 'BASE TABLE'
-                              and table_name <> 'alembic_version_core'
-                        )
-                        """
-                    ).scalar_one()
+        if _detect_alembic_cmd().lower() == "upgrade" and post_count == 0:
+            script = ScriptDirectory.from_config(context.config)
+            heads = script.get_heads()
+            if len(heads) != 1:
+                raise RuntimeError(
+                    "expected a single Alembic head for recovery insert into "
+                    "processing_core.alembic_version_core"
                 )
 
-                print(
-                    "[alembic] version table empty after run_migrations; "
-                    f"app_env={app_env or 'unset'} domain_tables_exist={domain_tables_exist}"
+            head = heads[0]
+            print(
+                "[alembic] version table empty after run_migrations; "
+                f"inserting head={head}"
+            )
+            connection.exec_driver_sql(
+                """
+                insert into processing_core.alembic_version_core(version_num)
+                values (:head)
+                on conflict do nothing
+                """,
+                {"head": head},
+            )
+            ensured_count = connection.exec_driver_sql(
+                "select count(*) from processing_core.alembic_version_core"
+            ).scalar_one()
+            print(f"[alembic] version rows after ensure={ensured_count}")
+            if ensured_count != 1:
+                raise RuntimeError(
+                    "alembic upgrade completed but failed to ensure exactly one row in "
+                    "processing_core.alembic_version_core"
                 )
-
-                if app_env == "dev" and domain_tables_exist:
-                    print("[alembic] APP_ENV=dev recovery: running alembic stamp head")
-                    command.stamp(config, "head")
-                    post_stamp_count = connection.exec_driver_sql(
-                        "select count(*) from processing_core.alembic_version_core"
-                    ).scalar_one()
-                    print(f"[alembic] version rows after stamp={post_stamp_count}")
-                    if post_stamp_count == 0:
-                        raise RuntimeError(
-                            "alembic stamp head did not populate processing_core.alembic_version_core"
-                        )
-                else:
-                    raise RuntimeError(
-                        "alembic upgrade completed but processing_core.alembic_version_core is empty; "
-                        "failing to prevent masked migration state"
-                    )
 
 
 if context.is_offline_mode():
