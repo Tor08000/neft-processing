@@ -43,9 +43,8 @@ async def get_conn():
 
 
 async def ensure_users_table() -> None:
-    app_env = (os.getenv("APP_ENV", "prod") or "prod").strip().lower()
-    start_mode = (os.getenv("START_MODE", "") or "").strip().lower()
-    is_dev_mode = app_env == "dev" or start_mode == "dev"
+    app_env = (os.getenv("APP_ENV", "dev") or "dev").strip().lower()
+    is_dev_mode = app_env != "prod"
 
     conn = await psycopg.AsyncConnection.connect(DSN_ASYNC)
     try:

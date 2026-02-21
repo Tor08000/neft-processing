@@ -129,9 +129,8 @@ async def bootstrap_demo_user() -> None:
         try:
             await bootstrap_required_users(settings)
         except Exception:
-            app_env = (getattr(settings, "APP_ENV", "prod") or "prod").strip().lower()
-            start_mode = (os.getenv("START_MODE", "") or "").strip().lower()
-            if app_env == "dev" or start_mode == "dev":
+            app_env = (getattr(settings, "APP_ENV", "dev") or "dev").strip().lower()
+            if app_env != "prod":
                 logger.warning(
                     "auth-host: demo bootstrap failed in dev; continuing startup",
                     exc_info=True,
