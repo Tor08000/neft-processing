@@ -552,6 +552,29 @@ if [ "$ALEMBIC_DECISION" = "UPGRADE" ]; then
     app_env_normalized=$(printf '%s' "${APP_ENV:-}" | tr '[:upper:]' '[:lower:]')
     script_head=$(printf "%s\n" "$expected_heads" | sed '/^[[:space:]]*$/d' | head -n 1)
     script_heads_count=$(printf "%s\n" "$expected_heads" | sed '/^[[:space:]]*$/d' | wc -l | tr -d ' ')
+    missing_post_upgrade_core_tables=$(psql "$PSQL_URL" -q -v ON_ERROR_STOP=1 -tA <<EOF
+WITH required(table_name) AS (
+    VALUES
+        ('clients'),
+        ('cards'),
+        ('client_user_roles'),
+        ('card_limits')
+)
+SELECT table_name
+FROM required
+WHERE to_regclass('${schema_resolved}.' || table_name) IS NULL
+ORDER BY table_name;
+EOF
+)
+    missing_post_upgrade_core_tables=$(printf '%s\n' "$missing_post_upgrade_core_tables" | tr -d '\r' | sed '/^[[:space:]]*$/d')
+    missing_post_upgrade_core_tables_csv=$(printf '%s\n' "$missing_post_upgrade_core_tables" | paste -sd ',' -)
+
+    if [ -n "$missing_post_upgrade_core_tables" ]; then
+        echo "[entrypoint] post-upgrade smoke failed: core tables missing in ${schema_resolved}: ${missing_post_upgrade_core_tables_csv}" >&2
+        echo "[entrypoint] upgrade did not apply schema; tail -n 120 ${MIGRATION_LOG}" >&2
+        tail -n 120 "$MIGRATION_LOG" >&2 || true
+        exit 1
+    fi
 
     sql_rows_after_upgrade=$(psql "$PSQL_URL" -q -v ON_ERROR_STOP=1 -tA -c \
         "SELECT COUNT(*) FROM ${VERSION_TABLE_SCHEMA}.${VERSION_TABLE_NAME};" \
@@ -560,6 +583,10 @@ if [ "$ALEMBIC_DECISION" = "UPGRADE" ]; then
     if [ "$sql_rows_after_upgrade" = "0" ]; then
         if [ "$app_env_normalized" = "dev" ]; then
             echo "[entrypoint] version table empty after upgrade; stamping head via SQL (dev)"
+            if [ -n "$missing_post_upgrade_core_tables" ]; then
+                echo "[entrypoint] dev SQL stamp forbidden: missing core tables (${missing_post_upgrade_core_tables_csv})" >&2
+                exit 1
+            fi
             if [ "$script_heads_count" -ne 1 ] || [ -z "$script_head" ]; then
                 echo "[entrypoint] expected exactly one script head for dev SQL stamp, got ${script_heads_count}" >&2
                 exit 1

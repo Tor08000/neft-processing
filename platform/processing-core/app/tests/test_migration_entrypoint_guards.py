@@ -123,7 +123,7 @@ def test_entrypoint_rejects_missing_version_table(tmp_path):
     )
 
     assert result.returncode != 0, result.stdout + result.stderr
-    assert "required tables missing after migrations" in result.stderr
+    assert "post-upgrade smoke failed: core tables missing" in result.stderr
 
     connectable.dispose()
 
