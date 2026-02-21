@@ -548,6 +548,44 @@ if [ "$migration_status" -ne 0 ]; then
     exit 1
 fi
 
+if [ "$ALEMBIC_DECISION" = "UPGRADE" ]; then
+    app_env_normalized=$(printf '%s' "${APP_ENV:-}" | tr '[:upper:]' '[:lower:]')
+    script_head=$(printf "%s\n" "$expected_heads" | sed '/^[[:space:]]*$/d' | head -n 1)
+    script_heads_count=$(printf "%s\n" "$expected_heads" | sed '/^[[:space:]]*$/d' | wc -l | tr -d ' ')
+
+    sql_rows_after_upgrade=$(psql "$PSQL_URL" -q -v ON_ERROR_STOP=1 -tA -c \
+        "SELECT COUNT(*) FROM ${VERSION_TABLE_SCHEMA}.${VERSION_TABLE_NAME};" \
+        | tr -d '\r[:space:]')
+
+    if [ "$sql_rows_after_upgrade" = "0" ]; then
+        if [ "$app_env_normalized" = "dev" ]; then
+            echo "[entrypoint] version table empty after upgrade; stamping head via SQL (dev)"
+            if [ "$script_heads_count" -ne 1 ] || [ -z "$script_head" ]; then
+                echo "[entrypoint] expected exactly one script head for dev SQL stamp, got ${script_heads_count}" >&2
+                exit 1
+            fi
+
+            psql "$PSQL_URL" -v ON_ERROR_STOP=1 -q <<EOF
+INSERT INTO ${VERSION_TABLE_SCHEMA}.${VERSION_TABLE_NAME}(version_num)
+VALUES ('${script_head}')
+ON CONFLICT DO NOTHING;
+EOF
+            echo "[entrypoint] stamped version_num=${script_head}"
+
+            sql_rows_after_upgrade=$(psql "$PSQL_URL" -q -v ON_ERROR_STOP=1 -tA -c \
+                "SELECT COUNT(*) FROM ${VERSION_TABLE_SCHEMA}.${VERSION_TABLE_NAME};" \
+                | tr -d '\r[:space:]')
+            if [ "$sql_rows_after_upgrade" != "1" ]; then
+                echo "[entrypoint] dev invariant violated: ${VERSION_TABLE_SCHEMA}.${VERSION_TABLE_NAME} must have exactly 1 row after upgrade, got ${sql_rows_after_upgrade}" >&2
+                exit 1
+            fi
+        else
+            echo "[entrypoint] upgrade reported success but version table is empty; APP_ENV=${app_env_normalized:-<empty>} (SQL dev stamp is forbidden outside dev)" >&2
+            exit 1
+        fi
+    fi
+fi
+
 python - <<'PY'
 from app.db import reset_engine
 
