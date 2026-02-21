@@ -53,6 +53,11 @@ def run_migrations_online() -> None:
     with connectable.connect() as connection:
         connection.exec_driver_sql("CREATE SCHEMA IF NOT EXISTS processing_core")
         connection.exec_driver_sql("SET search_path TO processing_core, public")
+        # SQLAlchemy starts an implicit transaction for the bootstrap SQL above.
+        # If we don't close it here, Alembic may run migrations inside a nested
+        # transaction/savepoint and then the outer implicit transaction gets
+        # rolled back on connection close, discarding applied DDL.
+        connection.commit()
 
         context.configure(
             connection=connection,
