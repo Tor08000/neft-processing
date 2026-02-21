@@ -26,6 +26,7 @@ config.set_main_option("sqlalchemy.url", DATABASE_URL)
 
 target_metadata = None
 logger = getLogger(__name__)
+MIGRATIONS_LOCK_KEY = "processing_core_migrations"
 
 
 def run_migrations_offline() -> None:
@@ -53,36 +54,42 @@ def run_migrations_online() -> None:
     with connectable.connect() as connection:
         connection.exec_driver_sql("CREATE SCHEMA IF NOT EXISTS processing_core")
         connection.exec_driver_sql("SET search_path TO processing_core, public")
-        # SQLAlchemy starts an implicit transaction for the bootstrap SQL above.
-        # If we don't close it here, Alembic may run migrations inside a nested
-        # transaction/savepoint and then the outer implicit transaction gets
-        # rolled back on connection close, discarding applied DDL.
         connection.commit()
 
-        context.configure(
-            connection=connection,
-            target_metadata=target_metadata,
-            include_schemas=True,
-            version_table="alembic_version_core",
-            version_table_schema="processing_core",
+        connection.exec_driver_sql(
+            "SELECT pg_advisory_lock(hashtext(:key))",
+            {"key": MIGRATIONS_LOCK_KEY},
         )
-
-        with context.begin_transaction():
-            context.run_migrations()
-
-        if connection.in_transaction():
-            logger.warning(
-                "[alembic] connection still in transaction after supposed COMMIT; forcing commit now"
+        try:
+            context.configure(
+                connection=connection,
+                target_metadata=target_metadata,
+                include_schemas=True,
+                version_table="alembic_version_core",
+                version_table_schema="processing_core",
             )
-            connection.commit()
 
-        assert not connection.in_transaction(), (
-            "connection transaction remained open after migrations; "
-            "check for implicit SQL outside Alembic transaction handling"
-        )
+            with context.begin_transaction():
+                context.run_migrations()
 
-        context.config.print_stdout("[alembic] action=COMMIT")
-        logger.info("[alembic] action=COMMIT")
+            if connection.in_transaction():
+                logger.warning(
+                    "[alembic] connection still in transaction after supposed COMMIT; forcing commit now"
+                )
+                connection.commit()
+
+            assert not connection.in_transaction(), (
+                "connection transaction remained open after migrations; "
+                "check for implicit SQL outside Alembic transaction handling"
+            )
+
+            context.config.print_stdout("[alembic] action=COMMIT")
+            logger.info("[alembic] action=COMMIT")
+        finally:
+            connection.exec_driver_sql(
+                "SELECT pg_advisory_unlock(hashtext(:key))",
+                {"key": MIGRATIONS_LOCK_KEY},
+            )
 
 
 if context.is_offline_mode():

@@ -301,14 +301,12 @@ def ensure_pg_enum(bind: Connection, enum_name: str, values: Sequence[str], sche
         f"""
         DO $$
         BEGIN
-            IF NOT EXISTS (
-                SELECT 1
-                FROM pg_type t
-                JOIN pg_namespace n ON n.oid = t.typnamespace
-                WHERE n.nspname = '{schema_sql}' AND t.typname = '{enum_sql}'
-            ) THEN
+            BEGIN
                 CREATE TYPE "{schema_sql}"."{enum_sql}" AS ENUM ({values_sql});
-            END IF;
+            EXCEPTION
+                WHEN duplicate_object OR unique_violation THEN
+                    NULL;
+            END;
         END $$;
         """
     )

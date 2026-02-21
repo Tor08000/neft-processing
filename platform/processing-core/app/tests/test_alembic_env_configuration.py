@@ -27,6 +27,15 @@ class DummyConnection:
             return DummyResult(self.parallel_tables)
         return DummyResult()
 
+    def exec_driver_sql(self, statement, params=None):  # noqa: D401,ARG002
+        return self.execute(statement, params)
+
+    def commit(self):  # noqa: D401
+        self.executed.append(("COMMIT", None))
+
+    def in_transaction(self) -> bool:  # noqa: D401
+        return False
+
 
 class DummyResult:
     def __init__(self, rows=None) -> None:
@@ -78,6 +87,9 @@ class DummyConfig:
     def set_main_option(self, name: str, value: str):
         self.main_options[name] = value
 
+    def print_stdout(self, _message: str) -> None:  # noqa: D401,ARG002
+        return
+
 
 @pytest.fixture(autouse=True)
 def restore_context():
@@ -121,8 +133,9 @@ def test_env_configures_context(monkeypatch: pytest.MonkeyPatch):
     assert configure_calls["include_schemas"] is True
     assert configure_calls["version_table"] == "alembic_version_core"
     assert configure_calls["version_table_schema"] == "processing_core"
-    assert configure_calls["transaction_per_migration"] is True
     assert any("SET search_path TO" in sql for sql, _ in dummy_connection.executed)
+    assert any("pg_advisory_lock" in sql for sql, _ in dummy_connection.executed)
+    assert any("pg_advisory_unlock" in sql for sql, _ in dummy_connection.executed)
 
 
 def test_env_requires_database_url(monkeypatch: pytest.MonkeyPatch):
@@ -134,20 +147,28 @@ def test_env_requires_database_url(monkeypatch: pytest.MonkeyPatch):
         importlib.import_module("app.alembic.env")
 
 
-def test_env_rejects_parallel_alembic_tables(monkeypatch: pytest.MonkeyPatch):
+def test_env_unlocks_advisory_lock_on_migration_error(monkeypatch: pytest.MonkeyPatch):
     target_url = "postgresql+psycopg://user:secret@db:5432/neft"
     monkeypatch.setenv("DATABASE_URL", target_url)
     dummy_config = DummyConfig()
-    dummy_connection = DummyConnection(parallel_tables=[("public", "alembic_version")])
+    dummy_connection = DummyConnection()
 
     monkeypatch.setattr(context, "config", dummy_config, raising=False)
     monkeypatch.setattr(context, "is_offline_mode", lambda: False, raising=False)
     monkeypatch.setattr(context, "get_x_argument", lambda as_dictionary=True: {})  # noqa: ARG005
-    monkeypatch.setattr(context, "run_migrations", lambda: None, raising=False)
+    monkeypatch.setattr(
+        context,
+        "run_migrations",
+        lambda: (_ for _ in ()).throw(RuntimeError("boom")),
+        raising=False,
+    )
     monkeypatch.setattr(context, "configure", lambda **kwargs: None, raising=False)
     monkeypatch.setattr(context, "begin_transaction", lambda: DummyTransaction(), raising=False)
     monkeypatch.setattr(sys, "argv", ["alembic", "upgrade", "head"])
     monkeypatch.setattr("sqlalchemy.engine_from_config", lambda section, **kwargs: DummyEngine(dummy_connection), raising=False)
 
-    with pytest.raises(RuntimeError, match="parallel Alembic version tables"):
+    with pytest.raises(RuntimeError, match="boom"):
         importlib.import_module("app.alembic.env")
+
+    assert any("pg_advisory_lock" in sql for sql, _ in dummy_connection.executed)
+    assert any("pg_advisory_unlock" in sql for sql, _ in dummy_connection.executed)
