@@ -26,6 +26,10 @@ def _drop_auth_objects(dsn: str) -> None:
             cur.execute("DROP SCHEMA IF EXISTS processing_auth")
 
 
+def _is_dev_mode() -> bool:
+    return (os.getenv("APP_ENV", "dev") or "dev").strip().lower() == "dev"
+
+
 def run() -> None:
     dsn = os.environ["DATABASE_URL"]
     cfg = make_alembic_config()
@@ -41,10 +45,20 @@ def run() -> None:
     print(f"[entrypoint] script heads: {heads}", flush=True)
 
     revision_known = is_db_revision_known(script, initial_db_revision)
-    if not revision_known:
-        print(f"[entrypoint] incompatible DB revision detected: {initial_db_revision}", flush=True)
+    if initial_db_revision and not revision_known:
+        print(f"[entrypoint] unknown DB revision detected: {initial_db_revision}", flush=True)
+        if not should_reset_for_broken_revision(db_revision=initial_db_revision, revision_known=False):
+            raise RuntimeError(
+                f"DB revision {initial_db_revision} is unknown to this build; "
+                "run with DEV_DB_RECOVERY=reset or AUTH_DB_RECOVERY=reset, "
+                "or manually fix public.alembic_version"
+            )
+        if not _is_dev_mode():
+            raise RuntimeError(
+                "Refusing destructive auth DB recovery outside dev mode "
+                f"(APP_ENV={os.getenv('APP_ENV', 'dev')})"
+            )
 
-    if should_reset_for_broken_revision(db_revision=initial_db_revision, revision_known=revision_known):
         print("[entrypoint] running auth DB reset recovery", flush=True)
         _drop_auth_objects(dsn)
         command.stamp(cfg, "base")
@@ -58,10 +72,10 @@ def run() -> None:
 
     final_db_revision = fetch_db_revision(dsn)
     print(f"[entrypoint] upgrade executed; final DB revision: {final_db_revision}", flush=True)
-    if final_db_revision != expected_head:
+    if final_db_revision not in heads:
         raise RuntimeError(
             "final alembic revision mismatch: "
-            f"expected {expected_head}, got {final_db_revision}"
+            f"expected one of {heads}, got {final_db_revision}"
         )
 
     print("[entrypoint] final revision matches head", flush=True)

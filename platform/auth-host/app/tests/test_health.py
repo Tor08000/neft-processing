@@ -40,8 +40,10 @@ def test_health_endpoint(monkeypatch) -> None:
     with TestClient(app) as client:
         response_v1 = client.get("/api/v1/auth/health")
         response_prefixed = client.get("/api/auth/health")
+        response_ready = client.get("/api/auth/ready")
 
     assert response_v1.status_code == 200
     assert response_prefixed.status_code == 200
+    assert response_ready.status_code == 200
     assert response_v1.json() == {"status": "ok", "service": "auth-host"}
     assert response_prefixed.json() == {"status": "ok", "service": "auth-host"}
