@@ -66,18 +66,12 @@ def run_migrations_online() -> None:
             version_table_schema="processing_core",
         )
 
-        trans = connection.begin()
-        try:
+        with context.begin_transaction():
             context.run_migrations()
-            if validate_only:
-                trans.rollback()
-                logger.warning("[alembic] validate-only: rolling back.")
-            else:
-                trans.commit()
-                logger.info("[alembic] committed migrations")
-        except Exception:
-            trans.rollback()
-            raise
+
+        if validate_only:
+            connection.rollback()
+            logger.warning("[alembic] validate-only rollback executed")
 
 
 if context.is_offline_mode():
