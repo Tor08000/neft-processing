@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import sys
+from logging import getLogger
 from logging.config import fileConfig
 from pathlib import Path
 
@@ -24,6 +25,7 @@ except KeyError as exc:
 config.set_main_option("sqlalchemy.url", DATABASE_URL)
 
 target_metadata = None
+logger = getLogger(__name__)
 
 
 def run_migrations_offline() -> None:
@@ -64,16 +66,18 @@ def run_migrations_online() -> None:
             version_table_schema="processing_core",
         )
 
-        if validate_only:
-            validation_txn = connection.begin()
-            try:
-                with context.begin_transaction():
-                    context.run_migrations()
-            finally:
-                validation_txn.rollback()
-        else:
-            with context.begin_transaction():
-                context.run_migrations()
+        trans = connection.begin()
+        try:
+            context.run_migrations()
+            if validate_only:
+                trans.rollback()
+                logger.warning("[alembic] validate-only: rolling back.")
+            else:
+                trans.commit()
+                logger.info("[alembic] committed migrations")
+        except Exception:
+            trans.rollback()
+            raise
 
 
 if context.is_offline_mode():
