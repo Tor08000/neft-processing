@@ -12,11 +12,11 @@
 
 | Namespace | Gateway auth_request | No token | Wrong token type | Valid token |
 |---|---|---:|---:|---:|
-| `/api/core/v1/admin/*` | `/_internal/admin_auth_verify` | 401 | 403/401 | 200 |
-| `/api/core/client/*` | `/_internal/client_auth_verify` | 401 | 403/401 | 200 |
-| `/api/core/partner/*` | `/_internal/partner_auth_verify` | 401 | 403/401 | 200 |
-| `/api/core/v1/client/*` (deprecated) | `/_internal/client_auth_verify` | 401 | 403/401 | 200 + `X-API-Deprecated: true` |
-| `/api/core/v1/partner/*` (deprecated) | `/_internal/partner_auth_verify` | 401 | 403/401 | 200 + `X-API-Deprecated: true` |
+| `/api/core/v1/admin/*` | `/_internal/admin_auth_verify` | 401 | 403/401 | not-401 (typically 200/403 depending on endpoint + roles) |
+| `/api/core/client/*` | `/_internal/client_auth_verify` | 401 | 403/401 | not-401 (typically 200/403 depending on endpoint + roles) |
+| `/api/core/partner/*` | `/_internal/partner_auth_verify` | 401 | 403/401 | not-401 (typically 200/403 depending on endpoint + roles) |
+| `/api/core/v1/client/*` (deprecated) | `/_internal/client_auth_verify` | 401 | 403/401 | not-401 + `X-API-Deprecated: true` |
+| `/api/core/v1/partner/*` (deprecated) | `/_internal/partner_auth_verify` | 401 | 403/401 | not-401 + `X-API-Deprecated: true` |
 
 ## UI gating expectations
 

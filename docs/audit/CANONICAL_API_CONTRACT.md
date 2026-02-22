@@ -17,6 +17,14 @@
 | `/api/core/v1/partner/*` | Rewritten to `/api/core/partner/*`, header `X-API-Deprecated: true` | Still protected with `partner_auth_verify` |
 | `/api/auth/*` | Rewritten to `/api/v1/auth/*` | No auth bypass in gateway, routed to auth-host |
 
+## 2.1) Non-supported legacy patterns (must not appear)
+
+The following patterns are NOT part of the supported compatibility surface and must not appear in code or docs:
+
+- `/api/core/{client|partner}/v1/*` (non-supported form)
+
+If such prefixes appear, they should be treated as bugs and removed/normalized to canonical namespaces.
+
 ## 3) Auth verify contract (gateway internal)
 
 Gateway internal checks:
