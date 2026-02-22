@@ -28,8 +28,8 @@ if not "%ADMIN_TOKEN%"=="" (
   echo [warn] admin token not acquired; skipping positive 200 checks
 )
 
-call :expect_header_and_not_404 "%BASE_URL%/api/core/v1/client/health" "X-API-Deprecated: true" "legacy client alias"
-call :expect_header_and_not_404 "%BASE_URL%/api/core/v1/partner/health" "X-API-Deprecated: true" "legacy partner alias"
+call :expect_header_and_status_and_not_404 "%BASE_URL%/api/core/v1/client/me" "X-API-Deprecated: true" "401" "legacy client alias (/me)"
+call :expect_header_and_status_and_not_404 "%BASE_URL%/api/core/v1/partner/me" "X-API-Deprecated: true" "401" "legacy partner alias (/me)"
 
 call :expect_status "%BASE_URL%/api/core/client/me" "401" "client protected route without token"
 call :expect_status "%BASE_URL%/api/core/partner/me" "401" "partner protected route without token"
@@ -93,15 +93,57 @@ if errorlevel 1 (
 del "%TMP_HEADERS%" >NUL 2>&1
 exit /b 0
 
+:expect_header_and_status_and_not_404
+set "URL=%~1"
+set "HEADER=%~2"
+set "STATUS=%~3"
+set "NAME=%~4"
+set "TMP_HEADERS=%TEMP%\neft_smoke_headers_%RANDOM%.txt"
+curl -s -D "%TMP_HEADERS%" -o NUL "%URL%" >NUL
+findstr /I /C:"HTTP/1.1 404" "%TMP_HEADERS%" >NUL
+if not errorlevel 1 (
+  echo [fail] %NAME% returned 404 (%URL%)
+  set "FAILED=1"
+  del "%TMP_HEADERS%" >NUL 2>&1
+  exit /b 0
+)
+findstr /I /C:"HTTP/1.1 %STATUS%" "%TMP_HEADERS%" >NUL
+if errorlevel 1 (
+  echo [fail] %NAME% expected HTTP %STATUS% (%URL%)
+  set "FAILED=1"
+) else (
+  echo [ok] %NAME% status %STATUS%
+)
+findstr /I /C:"%HEADER%" "%TMP_HEADERS%" >NUL
+if errorlevel 1 (
+  echo [fail] %NAME% missing header %HEADER% (%URL%)
+  set "FAILED=1"
+) else (
+  echo [ok] %NAME% header present: %HEADER%
+)
+del "%TMP_HEADERS%" >NUL 2>&1
+exit /b 0
+
 :fetch_admin_token
 set "TMP_LOGIN=%TEMP%\neft_smoke_login_%RANDOM%.json"
 set "TMP_OUT=%TEMP%\neft_smoke_login_out_%RANDOM%.json"
 >"%TMP_LOGIN%" echo {"email":"%ADMIN_EMAIL%","password":"%ADMIN_PASSWORD%"}
 curl -s -H "Content-Type: application/json" -d @"%TMP_LOGIN%" "%BASE_URL%/api/v1/auth/login" > "%TMP_OUT%"
-for /f "tokens=2 delims=:,\"" %%A in ('findstr /I /C:"access_token" "%TMP_OUT%"') do (
-  set "ADMIN_TOKEN=%%A"
-  goto :token_done
+:token_parse
+set "ADMIN_TOKEN="
+set "LINE="
+for /f "delims=" %%L in ('type "%TMP_OUT%" ^| findstr /I /C:"\"access_token\""') do (
+  set "LINE=%%L"
 )
+if "%LINE%"=="" goto :token_done
+rem Extract after "access_token":
+for /f "tokens=2 delims=:" %%A in ("%LINE%") do set "REST=%%A"
+rem Trim up to first comma (if any)
+for /f "tokens=1 delims=," %%A in ("%REST%") do set "REST=%%A"
+rem Remove quotes and spaces
+set "REST=%REST:"=%"
+set "REST=%REST: =%"
+set "ADMIN_TOKEN=%REST%"
 :token_done
 set "ADMIN_TOKEN=%ADMIN_TOKEN: =%"
 del "%TMP_LOGIN%" >NUL 2>&1
