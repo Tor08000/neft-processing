@@ -225,6 +225,12 @@ curl -i "http://localhost/api/core/api/v1/admin/operations?limit=5" ^
   * partner: `/partner/`
   Используйте это при деплое под поддиректориями или при изменении префиксов.
 
+### Selftest (end-to-end)
+
+* Linux/macOS: `make selftest`
+* Windows CMD: `selftest.cmd` (базовый контейнерный selftest для core-api)
+* Что проверяется в `make selftest`: поднятие контейнеров, health gateway/auth/core, проксирование gateway, логин seeded пользователей, профиль/права/модули, создание сотрудника админом, отсутствие 500 на обязательных endpoint, миграционный smoke на clean DB.
+
 ### Smoke-проверки (gateway, health, DB, merge markers)
 
 Быстрый локальный прогон (Windows CMD):
