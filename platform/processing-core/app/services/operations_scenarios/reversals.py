@@ -11,12 +11,15 @@ from app.models.ledger_entry import LedgerDirection
 from app.models.operation import Operation
 from app.models.posting_batch import PostingBatchType
 from app.models.refund_request import SettlementPolicy
-from app.models.reversal import Reversal
+from app.models.reversal import Reversal, ReversalStatus
 from app.repositories.accounts_repository import AccountsRepository
 from app.repositories.adjustments_repository import AdjustmentsRepository
 from app.repositories.reversals_repository import ReversalsRepository
 from app.services.ledger.posting_engine import PostingEngine, PostingLine
 from app.models.financial_adjustment import FinancialAdjustmentKind, RelatedEntityType
+
+
+PLATFORM_OWNER_ID = "00000000-0000-0000-0000-000000000001"
 
 
 @dataclass
@@ -25,6 +28,12 @@ class ReversalResult:
     posting_id: UUID | None
     settlement_policy: SettlementPolicy
     adjustment_id: UUID | None = None
+
+
+class ReversalAlreadyExists(Exception):
+    """Raised when operation already has a posted reversal."""
+
+    code = "REVERSAL_ALREADY_EXISTS"
 
 
 class ReversalService:
@@ -54,6 +63,15 @@ class ReversalService:
                 posting_id=existing.posted_posting_id,
                 settlement_policy=existing.settlement_policy,
             )
+
+        existing_for_operation = (
+            self.db.query(Reversal)
+            .filter(Reversal.operation_id == operation.id)
+            .filter(Reversal.status == ReversalStatus.POSTED)
+            .one_or_none()
+        )
+        if existing_for_operation:
+            raise ReversalAlreadyExists(f"operation {operation.id} already reversed")
 
         settlement_policy = (
             SettlementPolicy.ADJUSTMENT_REQUIRED if settlement_closed else SettlementPolicy.SAME_PERIOD
@@ -136,7 +154,7 @@ class ReversalService:
         return self.accounts_repo.get_or_create_account(
             client_id="platform",
             owner_type=AccountOwnerType.PLATFORM,
-            owner_id="platform",
+            owner_id=PLATFORM_OWNER_ID,
             currency=currency,
             account_type=AccountType.TECHNICAL,
             tariff_id="PLATFORM_ADJUSTMENT",

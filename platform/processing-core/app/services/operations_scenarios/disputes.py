@@ -21,6 +21,9 @@ from app.repositories.disputes_repository import DisputesRepository
 from app.services.ledger.posting_engine import PostingEngine, PostingLine
 
 
+PLATFORM_OWNER_ID = "00000000-0000-0000-0000-000000000001"
+
+
 @dataclass
 class DisputeResult:
     dispute: Dispute
@@ -209,7 +212,7 @@ class DisputeService:
         return self.accounts_repo.get_or_create_account(
             client_id="platform",
             owner_type=AccountOwnerType.PLATFORM,
-            owner_id="platform",
+            owner_id=PLATFORM_OWNER_ID,
             currency=currency,
             account_type=AccountType.TECHNICAL,
             tariff_id="DISPUTE_RESERVE",
@@ -228,7 +231,7 @@ class DisputeService:
         return self.accounts_repo.get_or_create_account(
             client_id="platform",
             owner_type=AccountOwnerType.PLATFORM,
-            owner_id="platform",
+            owner_id=PLATFORM_OWNER_ID,
             currency=currency,
             account_type=AccountType.TECHNICAL,
             tariff_id="PLATFORM_ADJUSTMENT",
@@ -294,7 +297,7 @@ class DisputeService:
         revenue_account = self.accounts_repo.get_or_create_account(
             client_id="platform",
             owner_type=AccountOwnerType.PLATFORM,
-            owner_id="platform",
+            owner_id=PLATFORM_OWNER_ID,
             currency=operation.currency,
             account_type=AccountType.TECHNICAL,
             tariff_id="DISPUTE_FEE_REVENUE",
