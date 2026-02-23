@@ -18,6 +18,9 @@ from app.services.ledger.posting_engine import PostingEngine, PostingLine
 from app.models.financial_adjustment import FinancialAdjustmentKind, RelatedEntityType
 
 
+PLATFORM_OWNER_ID = "00000000-0000-0000-0000-000000000001"
+
+
 @dataclass
 class RefundResult:
     refund: RefundRequest
@@ -30,6 +33,12 @@ class RefundCapExceeded(Exception):
     """Raised when requested refund exceeds available amount."""
 
     code = "REFUND_CAP_EXCEEDED"
+
+
+class RefundAmountInvalid(Exception):
+    """Raised when refund amount is zero or negative."""
+
+    code = "REFUND_AMOUNT_INVALID"
 
 
 class RefundService:
@@ -60,6 +69,9 @@ class RefundService:
                 posting_id=existing.posted_posting_id,
                 settlement_policy=existing.settlement_policy,
             )
+
+        if amount <= 0:
+            raise RefundAmountInvalid("refund amount must be positive")
 
         remaining = (operation.captured_amount or 0) - (operation.refunded_amount or 0)
         if amount > remaining:
@@ -147,7 +159,7 @@ class RefundService:
         return self.accounts_repo.get_or_create_account(
             client_id="platform",
             owner_type=AccountOwnerType.PLATFORM,
-            owner_id="platform",
+            owner_id=PLATFORM_OWNER_ID,
             currency=currency,
             account_type=AccountType.TECHNICAL,
             tariff_id="PLATFORM_ADJUSTMENT",

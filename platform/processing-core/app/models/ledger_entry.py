@@ -15,6 +15,7 @@ from sqlalchemy import (
     Numeric,
     String,
     func,
+    event,
 )
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 
@@ -66,3 +67,13 @@ class LedgerEntry(Base):
 
     def __repr__(self) -> str:  # pragma: no cover - repr is for debugging
         return f"<LedgerEntry id={self.id} account_id={self.account_id} direction={self.direction}>"
+
+
+@event.listens_for(LedgerEntry, "before_update", propagate=True)
+def _prevent_ledger_entry_update(mapper, connection, target):  # pragma: no cover - guardrail
+    raise ValueError("ledger_entries_are_append_only")
+
+
+@event.listens_for(LedgerEntry, "before_delete", propagate=True)
+def _prevent_ledger_entry_delete(mapper, connection, target):  # pragma: no cover - guardrail
+    raise ValueError("ledger_entries_are_append_only")

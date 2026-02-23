@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.models.operation import Operation
 from app.schemas.admin.operational import ReversalCreate, ReversalResponse
-from app.services.operations_scenarios.reversals import ReversalService
+from app.services.operations_scenarios.reversals import ReversalAlreadyExists, ReversalService
 
 router = APIRouter(prefix="/reversals", tags=["admin-reversals"])
 
@@ -20,14 +20,17 @@ def create_reversal(request: ReversalCreate, db: Session = Depends(get_db)) -> R
         raise HTTPException(status_code=404, detail="Operation not found")
 
     service = ReversalService(db)
-    result = service.reverse_capture(
-        operation=operation,
-        reason=request.reason,
-        initiator=request.initiator,
-        idempotency_key=request.idempotency_key or f"reversal:{uuid.uuid4()}",
-        settlement_closed=request.settlement_closed,
-        adjustment_date=request.adjustment_date,
-    )
+    try:
+        result = service.reverse_capture(
+            operation=operation,
+            reason=request.reason,
+            initiator=request.initiator,
+            idempotency_key=request.idempotency_key or f"reversal:{uuid.uuid4()}",
+            settlement_closed=request.settlement_closed,
+            adjustment_date=request.adjustment_date,
+        )
+    except ReversalAlreadyExists as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     reversal = result.reversal
     return ReversalResponse(

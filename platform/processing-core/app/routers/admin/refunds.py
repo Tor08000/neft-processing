@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.models.operation import Operation
 from app.schemas.admin.operational import RefundCreate, RefundResponse
-from app.services.operations_scenarios.refunds import RefundCapExceeded, RefundService
+from app.services.operations_scenarios.refunds import RefundAmountInvalid, RefundCapExceeded, RefundService
 
 router = APIRouter(prefix="/refunds", tags=["admin-refunds"])
 
@@ -30,7 +30,7 @@ def create_refund(request: RefundCreate, db: Session = Depends(get_db)) -> Refun
             settlement_closed=request.settlement_closed,
             adjustment_date=request.adjustment_date,
         )
-    except RefundCapExceeded as exc:
+    except (RefundCapExceeded, RefundAmountInvalid) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     refund = result.refund
