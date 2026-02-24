@@ -88,7 +88,7 @@ def _product_list_out(product) -> ProductListOut:
     )
 
 
-@router.get("/partners", response_model=PartnerProfileListResponse)
+@router.get("/marketplace/partner-profiles", response_model=PartnerProfileListResponse)
 def list_partner_profiles(
     request: Request,
     verification_status: PartnerVerificationStatus | None = Query(None),

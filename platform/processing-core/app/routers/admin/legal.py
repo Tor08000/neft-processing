@@ -156,7 +156,7 @@ def list_acceptances(
     return LegalAcceptanceListResponse(items=[_acceptance_response(item) for item in acceptances])
 
 
-@router.get("/partners", response_model=LegalPartnerListResponse)
+@router.get("/partners-legacy", response_model=LegalPartnerListResponse)
 def list_legal_partners(
     status: str | None = Query(None),
     search: str | None = Query(None),
@@ -201,7 +201,7 @@ def list_legal_partners(
     return LegalPartnerListResponse(items=items, total=total, limit=limit, offset=offset, cursor=None)
 
 
-@router.get("/partners/{partner_id}", response_model=LegalPartnerDetail)
+@router.get("/partners-legacy/{partner_id}", response_model=LegalPartnerDetail)
 def get_legal_partner(
     partner_id: str,
     token: dict = Depends(require_admin_user),
@@ -260,7 +260,7 @@ def get_legal_partner(
     )
 
 
-@router.post("/partners/{partner_id}/status", response_model=LegalPartnerDetail)
+@router.post("/partners-legacy/{partner_id}/status", response_model=LegalPartnerDetail)
 def update_legal_partner_status(
     partner_id: str,
     payload: LegalPartnerStatusUpdate,
