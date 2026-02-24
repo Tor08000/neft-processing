@@ -93,7 +93,7 @@ def _product_list_out(product) -> ProductCardListOut:
     )
 
 
-@router.get("/profile", response_model=PartnerProfileOut)
+@router.get("/marketplace/profile", response_model=PartnerProfileOut)
 def get_partner_profile(
     request: Request,
     principal: Principal = Depends(require_permission("partner:catalog:*")),

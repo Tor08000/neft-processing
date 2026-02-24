@@ -123,7 +123,7 @@ def onboarding_status(
     return OnboardingStatusResponse(step=onboarding.step, status=onboarding.status, client_type=client_type)
 
 
-@router.post("/profile", response_model=OnboardingProfileResponse)
+@router.post("/profile-legacy", response_model=OnboardingProfileResponse)
 def onboarding_profile(
     payload: OnboardingProfileRequest,
     token: dict = Depends(client_auth.require_onboarding_user),

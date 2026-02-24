@@ -383,6 +383,7 @@ GET	/api/core/partner/marketplace/analytics/summary		app.routers.partner.marketp
 GET	/api/core/partner/marketplace/coupons/batches		app.routers.partner.marketplace_coupons:list_coupon_batches
 GET	/api/core/partner/marketplace/coupons/batches/{batch_id}		app.routers.partner.marketplace_coupons:get_coupon_batch
 GET	/api/core/partner/marketplace/plans		app.routers.partner.marketplace_subscriptions:list_partner_plans
+GET	/api/core/partner/marketplace/profile		app.routers.partner.marketplace_catalog:get_partner_profile
 GET	/api/core/partner/marketplace/promotions		app.routers.partner.marketplace_promotions:list_partner_promotions
 GET	/api/core/partner/marketplace/promotions/{promotion_id}/stats		app.routers.partner.marketplace_promotions:get_promotion_stats
 GET	/api/core/partner/marketplace/subscription		app.routers.partner.marketplace_subscriptions:get_partner_subscription
@@ -397,7 +398,6 @@ GET	/api/core/partner/payouts/{payout_id}		app.routers.partner_finance:get_partn
 GET	/api/core/partner/payouts/{payout_id}/trace		app.routers.partner_finance:trace_partner_payout
 GET	/api/core/partner/products		app.routers.partner.marketplace_catalog:list_partner_products
 GET	/api/core/partner/products/{product_id}		app.routers.partner.marketplace_catalog:get_partner_product
-GET	/api/core/partner/profile		app.routers.partner.marketplace_catalog:get_partner_profile
 GET	/api/core/partner/profile		app.routers.partner_core:get_partner_profile
 GET	/api/core/partner/service-locations/{service_location_id}/schedule		app.routers.partner.marketplace_services:get_partner_service_schedule
 GET	/api/core/partner/services		app.routers.partner.marketplace_services:list_partner_services
@@ -557,9 +557,9 @@ GET	/api/core/v1/admin/legal-graph/snapshot/{scope_type}/{ref_id}		app.routers.a
 GET	/api/core/v1/admin/legal-graph/trace/{node_type}/{ref_id}		app.routers.admin.legal_graph:admin_trace_legal_graph
 GET	/api/core/v1/admin/legal/acceptances		app.routers.admin.legal:list_acceptances
 GET	/api/core/v1/admin/legal/documents		app.routers.admin.legal:list_documents
-GET	/api/core/v1/admin/legal/partners		app.routers.admin.legal:list_legal_partners
 GET	/api/core/v1/admin/legal/partners		app.routers.admin.legal_partners:list_legal_partners
-GET	/api/core/v1/admin/legal/partners/{partner_id}		app.routers.admin.legal:get_legal_partner
+GET	/api/core/v1/admin/legal/partners-legacy		app.routers.admin.legal:list_legal_partners
+GET	/api/core/v1/admin/legal/partners-legacy/{partner_id}		app.routers.admin.legal:get_legal_partner
 GET	/api/core/v1/admin/legal/partners/{partner_id}		app.routers.admin.legal_partners:get_legal_partner
 GET	/api/core/v1/admin/limits/rules		app.routers.admin.limits:list_limit_rules
 GET	/api/core/v1/admin/limits/rules/{rule_id}		app.routers.admin.limits:get_limit_rule
@@ -575,6 +575,7 @@ GET	/api/core/v1/admin/marketplace/orders/{order_id}/consequences		app.routers.a
 GET	/api/core/v1/admin/marketplace/orders/{order_id}/events		app.routers.admin.marketplace_orders:list_order_events
 GET	/api/core/v1/admin/marketplace/orders/{order_id}/settlement-snapshot		app.routers.admin.marketplace_orders:get_order_settlement_snapshot
 GET	/api/core/v1/admin/marketplace/orders/{order_id}/sla		app.routers.admin.marketplace_order_sla:list_order_sla_evaluations
+GET	/api/core/v1/admin/marketplace/partner-profiles		app.routers.admin.marketplace_catalog:list_partner_profiles
 GET	/api/core/v1/admin/marketplace/products/{product_id}		app.routers.admin.marketplace_moderation:admin_get_product_card
 GET	/api/core/v1/admin/marketplace/services/{service_id}		app.routers.admin.marketplace_moderation:admin_get_service_card
 GET	/api/core/v1/admin/marketplace/sponsored/campaigns		app.routers.admin.marketplace_sponsored:list_campaigns
@@ -599,7 +600,6 @@ GET	/api/core/v1/admin/ops/reconciliation/failed		app.routers.admin.ops_runtime:
 GET	/api/core/v1/admin/ops/reports/sla		app.routers.admin.ops:admin_sla_report
 GET	/api/core/v1/admin/ops/summary		app.routers.admin.ops_runtime:ops_summary
 GET	/api/core/v1/admin/ops/support/breaches		app.routers.admin.ops_runtime:ops_support_breaches
-GET	/api/core/v1/admin/partners		app.routers.admin.marketplace_catalog:list_partner_profiles
 GET	/api/core/v1/admin/partners		app.routers.admin.partners_v1:list_partners
 GET	/api/core/v1/admin/partners/ledger		app.routers.admin.partner_finance:admin_partner_ledger
 GET	/api/core/v1/admin/partners/{partner_id}		app.routers.admin.partners_v1:get_partner
@@ -855,9 +855,9 @@ GET	/api/v1/admin/legal-graph/snapshot/{scope_type}/{ref_id}		app.routers.admin.
 GET	/api/v1/admin/legal-graph/trace/{node_type}/{ref_id}		app.routers.admin.legal_graph:admin_trace_legal_graph
 GET	/api/v1/admin/legal/acceptances		app.routers.admin.legal:list_acceptances
 GET	/api/v1/admin/legal/documents		app.routers.admin.legal:list_documents
-GET	/api/v1/admin/legal/partners		app.routers.admin.legal:list_legal_partners
 GET	/api/v1/admin/legal/partners		app.routers.admin.legal_partners:list_legal_partners
-GET	/api/v1/admin/legal/partners/{partner_id}		app.routers.admin.legal:get_legal_partner
+GET	/api/v1/admin/legal/partners-legacy		app.routers.admin.legal:list_legal_partners
+GET	/api/v1/admin/legal/partners-legacy/{partner_id}		app.routers.admin.legal:get_legal_partner
 GET	/api/v1/admin/legal/partners/{partner_id}		app.routers.admin.legal_partners:get_legal_partner
 GET	/api/v1/admin/limits/rules		app.routers.admin.limits:list_limit_rules
 GET	/api/v1/admin/limits/rules/{rule_id}		app.routers.admin.limits:get_limit_rule
@@ -873,6 +873,7 @@ GET	/api/v1/admin/marketplace/orders/{order_id}/consequences		app.routers.admin.
 GET	/api/v1/admin/marketplace/orders/{order_id}/events		app.routers.admin.marketplace_orders:list_order_events
 GET	/api/v1/admin/marketplace/orders/{order_id}/settlement-snapshot		app.routers.admin.marketplace_orders:get_order_settlement_snapshot
 GET	/api/v1/admin/marketplace/orders/{order_id}/sla		app.routers.admin.marketplace_order_sla:list_order_sla_evaluations
+GET	/api/v1/admin/marketplace/partner-profiles		app.routers.admin.marketplace_catalog:list_partner_profiles
 GET	/api/v1/admin/marketplace/products/{product_id}		app.routers.admin.marketplace_moderation:admin_get_product_card
 GET	/api/v1/admin/marketplace/services/{service_id}		app.routers.admin.marketplace_moderation:admin_get_service_card
 GET	/api/v1/admin/marketplace/sponsored/campaigns		app.routers.admin.marketplace_sponsored:list_campaigns
@@ -897,7 +898,6 @@ GET	/api/v1/admin/ops/reconciliation/failed		app.routers.admin.ops_runtime:ops_f
 GET	/api/v1/admin/ops/reports/sla		app.routers.admin.ops:admin_sla_report
 GET	/api/v1/admin/ops/summary		app.routers.admin.ops_runtime:ops_summary
 GET	/api/v1/admin/ops/support/breaches		app.routers.admin.ops_runtime:ops_support_breaches
-GET	/api/v1/admin/partners		app.routers.admin.marketplace_catalog:list_partner_profiles
 GET	/api/v1/admin/partners		app.routers.admin.partners_v1:list_partners
 GET	/api/v1/admin/partners/ledger		app.routers.admin.partner_finance:admin_partner_ledger
 GET	/api/v1/admin/partners/{partner_id}		app.routers.admin.partners_v1:get_partner
@@ -1180,9 +1180,9 @@ GET	/v1/admin/legal-graph/snapshot/{scope_type}/{ref_id}		app.routers.admin.lega
 GET	/v1/admin/legal-graph/trace/{node_type}/{ref_id}		app.routers.admin.legal_graph:admin_trace_legal_graph
 GET	/v1/admin/legal/acceptances		app.routers.admin.legal:list_acceptances
 GET	/v1/admin/legal/documents		app.routers.admin.legal:list_documents
-GET	/v1/admin/legal/partners		app.routers.admin.legal:list_legal_partners
 GET	/v1/admin/legal/partners		app.routers.admin.legal_partners:list_legal_partners
-GET	/v1/admin/legal/partners/{partner_id}		app.routers.admin.legal:get_legal_partner
+GET	/v1/admin/legal/partners-legacy		app.routers.admin.legal:list_legal_partners
+GET	/v1/admin/legal/partners-legacy/{partner_id}		app.routers.admin.legal:get_legal_partner
 GET	/v1/admin/legal/partners/{partner_id}		app.routers.admin.legal_partners:get_legal_partner
 GET	/v1/admin/limits/rules		app.routers.admin.limits:list_limit_rules
 GET	/v1/admin/limits/rules/{rule_id}		app.routers.admin.limits:get_limit_rule
@@ -1198,6 +1198,7 @@ GET	/v1/admin/marketplace/orders/{order_id}/consequences		app.routers.admin.mark
 GET	/v1/admin/marketplace/orders/{order_id}/events		app.routers.admin.marketplace_orders:list_order_events
 GET	/v1/admin/marketplace/orders/{order_id}/settlement-snapshot		app.routers.admin.marketplace_orders:get_order_settlement_snapshot
 GET	/v1/admin/marketplace/orders/{order_id}/sla		app.routers.admin.marketplace_order_sla:list_order_sla_evaluations
+GET	/v1/admin/marketplace/partner-profiles		app.routers.admin.marketplace_catalog:list_partner_profiles
 GET	/v1/admin/marketplace/products/{product_id}		app.routers.admin.marketplace_moderation:admin_get_product_card
 GET	/v1/admin/marketplace/services/{service_id}		app.routers.admin.marketplace_moderation:admin_get_service_card
 GET	/v1/admin/marketplace/sponsored/campaigns		app.routers.admin.marketplace_sponsored:list_campaigns
@@ -1222,7 +1223,6 @@ GET	/v1/admin/ops/reconciliation/failed		app.routers.admin.ops_runtime:ops_faile
 GET	/v1/admin/ops/reports/sla		app.routers.admin.ops:admin_sla_report
 GET	/v1/admin/ops/summary		app.routers.admin.ops_runtime:ops_summary
 GET	/v1/admin/ops/support/breaches		app.routers.admin.ops_runtime:ops_support_breaches
-GET	/v1/admin/partners		app.routers.admin.marketplace_catalog:list_partner_profiles
 GET	/v1/admin/partners		app.routers.admin.partners_v1:list_partners
 GET	/v1/admin/partners/ledger		app.routers.admin.partner_finance:admin_partner_ledger
 GET	/v1/admin/partners/{partner_id}		app.routers.admin.partners_v1:get_partner
@@ -1538,8 +1538,8 @@ POST	/api/core/client/notifications/{notification_id}/read		app.routers.client_n
 POST	/api/core/client/onboarding/activate		app.routers.client_portal_v1:activate_onboarding
 POST	/api/core/client/onboarding/contract/generate		app.routers.client_onboarding:onboarding_contract_generate
 POST	/api/core/client/onboarding/contract/sign		app.routers.client_onboarding:onboarding_contract_sign
-POST	/api/core/client/onboarding/profile		app.routers.client_onboarding:onboarding_profile
 POST	/api/core/client/onboarding/profile		app.routers.client_portal_v1:create_onboarding_profile
+POST	/api/core/client/onboarding/profile-legacy		app.routers.client_onboarding:onboarding_profile
 POST	/api/core/client/org		app.routers.client_portal_v1:create_org
 POST	/api/core/client/payments/intake		app.routers.client_portal_v1:submit_payment_intake_from_portal
 POST	/api/core/client/proofs/{proof_id}/confirm		app.routers.client_service_completion_proofs:confirm_proof
@@ -1770,7 +1770,7 @@ POST	/api/core/v1/admin/invoice-threads/{thread_id}/close		app.routers.admin.cli
 POST	/api/core/v1/admin/invoices/{invoice_id}/messages		app.routers.admin.client_actions:admin_create_invoice_message
 POST	/api/core/v1/admin/legal/documents		app.routers.admin.legal:create_document
 POST	/api/core/v1/admin/legal/documents/{document_id}/publish		app.routers.admin.legal:publish_document
-POST	/api/core/v1/admin/legal/partners/{partner_id}/status		app.routers.admin.legal:update_legal_partner_status
+POST	/api/core/v1/admin/legal/partners-legacy/{partner_id}/status		app.routers.admin.legal:update_legal_partner_status
 POST	/api/core/v1/admin/legal/partners/{partner_id}/status		app.routers.admin.legal_partners:update_legal_partner_status
 POST	/api/core/v1/admin/legal/poll/{provider}		app.routers.admin.legal_integrations:poll_legal_provider
 POST	/api/core/v1/admin/legal/webhook/{provider}		app.routers.admin.legal_integrations:legal_webhook
@@ -2057,7 +2057,7 @@ POST	/api/v1/admin/invoice-threads/{thread_id}/close		app.routers.admin.client_a
 POST	/api/v1/admin/invoices/{invoice_id}/messages		app.routers.admin.client_actions:admin_create_invoice_message
 POST	/api/v1/admin/legal/documents		app.routers.admin.legal:create_document
 POST	/api/v1/admin/legal/documents/{document_id}/publish		app.routers.admin.legal:publish_document
-POST	/api/v1/admin/legal/partners/{partner_id}/status		app.routers.admin.legal:update_legal_partner_status
+POST	/api/v1/admin/legal/partners-legacy/{partner_id}/status		app.routers.admin.legal:update_legal_partner_status
 POST	/api/v1/admin/legal/partners/{partner_id}/status		app.routers.admin.legal_partners:update_legal_partner_status
 POST	/api/v1/admin/legal/poll/{provider}		app.routers.admin.legal_integrations:poll_legal_provider
 POST	/api/v1/admin/legal/webhook/{provider}		app.routers.admin.legal_integrations:legal_webhook
@@ -2366,7 +2366,7 @@ POST	/v1/admin/invoice-threads/{thread_id}/close		app.routers.admin.client_actio
 POST	/v1/admin/invoices/{invoice_id}/messages		app.routers.admin.client_actions:admin_create_invoice_message
 POST	/v1/admin/legal/documents		app.routers.admin.legal:create_document
 POST	/v1/admin/legal/documents/{document_id}/publish		app.routers.admin.legal:publish_document
-POST	/v1/admin/legal/partners/{partner_id}/status		app.routers.admin.legal:update_legal_partner_status
+POST	/v1/admin/legal/partners-legacy/{partner_id}/status		app.routers.admin.legal:update_legal_partner_status
 POST	/v1/admin/legal/partners/{partner_id}/status		app.routers.admin.legal_partners:update_legal_partner_status
 POST	/v1/admin/legal/poll/{provider}		app.routers.admin.legal_integrations:poll_legal_provider
 POST	/v1/admin/legal/webhook/{provider}		app.routers.admin.legal_integrations:legal_webhook
