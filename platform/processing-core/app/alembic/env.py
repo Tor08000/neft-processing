@@ -7,6 +7,7 @@ from logging.config import fileConfig
 from pathlib import Path
 
 from alembic import context
+from sqlalchemy.engine import make_url
 from sqlalchemy import engine_from_config, pool
 
 BASE_DIR = Path(__file__).resolve().parents[2]
@@ -27,15 +28,24 @@ config.set_main_option("sqlalchemy.url", DATABASE_URL)
 target_metadata = None
 logger = getLogger(__name__)
 MIGRATIONS_LOCK_KEY = "processing_core_migrations"
+CORE_SCHEMA = "processing_core"
+
+
+def _url_is_postgresql(url: str) -> bool:
+    try:
+        return make_url(url).get_backend_name() == "postgresql"
+    except Exception:
+        return False
 
 
 def run_migrations_offline() -> None:
+    schema_resolved = CORE_SCHEMA if _url_is_postgresql(DATABASE_URL) else None
     context.configure(
         url=DATABASE_URL,
         target_metadata=target_metadata,
         include_schemas=True,
         version_table="alembic_version_core",
-        version_table_schema="processing_core",
+        version_table_schema=schema_resolved,
         literal_binds=True,
     )
 
@@ -52,23 +62,32 @@ def run_migrations_online() -> None:
     )
 
     with connectable.connect() as connection:
-        connection.exec_driver_sql("CREATE SCHEMA IF NOT EXISTS processing_core")
-        connection.exec_driver_sql("SET search_path TO processing_core, public")
-        connection.commit()
+        is_postgresql = connection.dialect.name == "postgresql"
+        schema_resolved = CORE_SCHEMA if is_postgresql else None
+
+        if is_postgresql:
+            connection.exec_driver_sql(
+                f"CREATE SCHEMA IF NOT EXISTS {CORE_SCHEMA}"
+            )
+            connection.exec_driver_sql(
+                f"SET search_path TO {CORE_SCHEMA}, public"
+            )
+            connection.commit()
 
         locked = False
         try:
-            connection.exec_driver_sql(
-                f"SELECT pg_advisory_lock(hashtext('{MIGRATIONS_LOCK_KEY}'))"
-            )
-            locked = True
+            if is_postgresql:
+                connection.exec_driver_sql(
+                    f"SELECT pg_advisory_lock(hashtext('{MIGRATIONS_LOCK_KEY}'))"
+                )
+                locked = True
 
             context.configure(
                 connection=connection,
                 target_metadata=target_metadata,
                 include_schemas=True,
                 version_table="alembic_version_core",
-                version_table_schema="processing_core",
+                version_table_schema=schema_resolved,
             )
 
             with context.begin_transaction():
