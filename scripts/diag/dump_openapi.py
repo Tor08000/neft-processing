@@ -205,6 +205,11 @@ def write_report(results: list[dict]) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Dump compact FastAPI route indexes for services")
     parser.add_argument("--service", action="append", help="Service name to dump; may be passed multiple times")
+    parser.add_argument(
+        "--fail-on-duplicates",
+        action="store_true",
+        help="Exit with code 1 when duplicate METHOD+PATH pairs are detected",
+    )
     args = parser.parse_args()
 
     selected = SERVICES
@@ -217,6 +222,20 @@ def main() -> int:
 
     results = [dump_service(service) for service in selected]
     write_report(results)
+
+    if args.fail_on_duplicates:
+        duplicated = [
+            result for result in results if result["duplicate_method_path"] > 0 or result["duplicate_excess_rows"] > 0
+        ]
+        if duplicated:
+            names = ", ".join(sorted(result["name"] for result in duplicated))
+            print(
+                f"Duplicate METHOD+PATH pairs detected for: {names}. "
+                "See docs/diag/openapi/*.duplicates.tsv for details.",
+                file=sys.stderr,
+            )
+            return 1
+
     return 0
 
 

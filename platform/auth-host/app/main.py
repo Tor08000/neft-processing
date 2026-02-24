@@ -55,15 +55,7 @@ app.include_router(admin_users_router, prefix=LEGACY_API_PREFIX)
 app.include_router(processing_router, prefix=LEGACY_API_PREFIX)
 app.include_router(internal_router, prefix=LEGACY_API_PREFIX)
 
-app.include_router(health_router, prefix=API_PREFIX_AUTH)
-app.include_router(auth_router, prefix=API_PREFIX_AUTH)
-app.include_router(sso_router, prefix=API_PREFIX_AUTH)
-app.include_router(admin_sso_router, prefix=API_PREFIX_AUTH)
-app.include_router(admin_users_router, prefix=API_PREFIX_AUTH)
-app.include_router(processing_router, prefix=API_PREFIX_AUTH)
-app.include_router(internal_router, prefix=API_PREFIX_AUTH)
-
-api_prefixed_router = APIRouter(prefix="/api/auth")
+api_prefixed_router = APIRouter(prefix=API_PREFIX_AUTH)
 api_prefixed_router.include_router(health_router)
 api_prefixed_router.include_router(auth_router)
 api_prefixed_router.include_router(sso_router)
@@ -103,15 +95,6 @@ def metrics_root():
 @app.get(f"{API_PREFIX_AUTH}/.well-known/jwks.json", include_in_schema=False)
 def jwks_root():
     return {"keys": [get_public_jwk()]}
-
-
-@api_prefixed_router.get("/health")
-def prefixed_health_root():
-    response, status_code = build_health_response()
-    content = response.model_dump(exclude_none=True)
-    if status_code != status.HTTP_200_OK:
-        return JSONResponse(status_code=status_code, content=content)
-    return JSONResponse(status_code=status_code, content=content)
 
 
 @app.get("/api/auth/openapi.json", include_in_schema=False)
