@@ -4,6 +4,7 @@ import os
 
 from fastapi.testclient import TestClient
 
+os.environ["APP_ENV"] = "dev"
 os.environ["LOGISTICS_PROVIDER"] = "mock"
 
 from neft_logistics_service.main import app  # noqa: E402

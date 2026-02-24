@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import os
 import time
 from datetime import date
 from typing import Callable
@@ -81,6 +82,17 @@ DOCUMENT_SERVICE_VERIFY_TOTAL = Counter(
 DOCUMENT_SERVICE_UP.set(1)
 
 
+
+
+def _enforce_prod_guardrails() -> None:
+    app_env = os.getenv("APP_ENV", "prod").strip().lower()
+    allow_override = os.getenv("ALLOW_MOCK_PROVIDERS_IN_PROD", "0").strip() == "1"
+    mode = (settings.provider_x_mode or "").strip().lower()
+    if app_env in {"prod", "production"} and mode in {"mock", "stub"} and not allow_override:
+        raise RuntimeError(
+            "prod guardrail violation: PROVIDER_X_MODE is mock/stub in prod. "
+            "Use ALLOW_MOCK_PROVIDERS_IN_PROD=1 only for explicit override."
+        )
 def get_storage() -> S3Storage:
     return S3Storage()
 
@@ -97,6 +109,11 @@ def get_template_registry() -> TemplateRegistry:
     return TemplateRegistry()
 
 
+
+
+@app.on_event("startup")
+def startup() -> None:
+    _enforce_prod_guardrails()
 @app.middleware("http")
 async def metrics_middleware(request: Request, call_next: Callable[[Request], Response]) -> Response:
     try:

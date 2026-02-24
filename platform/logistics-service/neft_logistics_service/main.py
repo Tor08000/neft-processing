@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import time
 from typing import Callable
 
@@ -55,6 +56,14 @@ LOGISTICS_COMPUTE_DURATION.observe(0.0)
 
 @app.on_event("startup")
 def startup_log_mode() -> None:
+    app_env = (settings.app_env or "").strip().lower()
+    allow_override = os.getenv("ALLOW_MOCK_PROVIDERS_IN_PROD", "0").strip() == "1"
+    provider_mode = (settings.provider or "").strip().lower()
+    if app_env in {"prod", "production"} and provider_mode in {"mock", "stub"} and not allow_override:
+        raise RuntimeError(
+            "prod guardrail violation: LOGISTICS_PROVIDER is mock/stub in prod. "
+            "Use ALLOW_MOCK_PROVIDERS_IN_PROD=1 only for explicit override."
+        )
     logger.info(
         "running in %s mode",
         settings.app_env.upper(),

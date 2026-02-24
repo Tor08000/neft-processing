@@ -1,5 +1,6 @@
 import os
 
+os.environ.setdefault("APP_ENV", "dev")
 os.environ.setdefault("LOGISTICS_PROVIDER", "mock")
 
 from fastapi.testclient import TestClient

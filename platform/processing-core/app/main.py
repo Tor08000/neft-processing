@@ -235,6 +235,24 @@ def _check_email_provider_health(config) -> bool:
     raise RuntimeError(f"integration_hub_health_status_{response.status_code}")
 
 
+def _enforce_prod_mock_guardrails() -> None:
+    app_env = (settings.APP_ENV or "dev").strip().lower()
+    allow_override = os.getenv("ALLOW_MOCK_PROVIDERS_IN_PROD", "0").strip() == "1"
+    if app_env not in {"prod", "production"} or allow_override:
+        return
+    guarded = {
+        "SMS_PROVIDER": os.getenv("SMS_PROVIDER", settings.SMS_PROVIDER),
+        "VOICE_PROVIDER": os.getenv("VOICE_PROVIDER", settings.VOICE_PROVIDER),
+    }
+    risky = {k: v for k, v in guarded.items() if any(t in (v or "").strip().lower() for t in ("mock", "stub"))}
+    if risky:
+        raise RuntimeError(
+            "prod guardrail violation: mock/stub providers are forbidden in prod. "
+            "Set ALLOW_MOCK_PROVIDERS_IN_PROD=1 only for explicit emergency override. "
+            f"Violations: {risky}"
+        )
+
+
 def _validate_email_provider_startup() -> None:
     config = load_email_provider_startup_config()
     logger.info(
@@ -344,6 +362,7 @@ class HealthResponse(BaseModel):
 # -----------------------------------------------------------------------------
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    _enforce_prod_mock_guardrails()
     _validate_email_provider_startup()
     recovery_task = asyncio.create_task(_email_provider_recovery_loop(app))
     app.state.email_provider_recovery_task = recovery_task
