@@ -381,7 +381,7 @@ services:
     env_file:
       - .env
     environment:
-      APP_ENV: ${APP_ENV:-prod}
+      APP_ENV: ${INTEGRATION_HUB_APP_ENV:-${APP_ENV:-dev}}
       USE_STUB_EDO: ${USE_STUB_EDO:-0}
       SERVICE_NAME: integration-hub
       UVICORN_HOST: 0.0.0.0
