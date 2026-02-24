@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from enum import Enum
 
-from sqlalchemy import Column, DateTime, ForeignKey, Numeric, String, UniqueConstraint, func
+from sqlalchemy import Column, DateTime, ForeignKey, JSON, Numeric, String, UniqueConstraint, func
 
 from app.db import Base
 from app.db.types import ExistingEnum, GUID, new_uuid_str
@@ -75,6 +75,10 @@ class SettlementPeriod(Base):
     approved_at = Column(DateTime(timezone=True), nullable=True)
     paid_at = Column(DateTime(timezone=True), nullable=True)
     audit_event_id = Column(GUID(), nullable=True)
+    genesis_batch_hash = Column(String(64), nullable=False, server_default="GENESIS_INTERNAL_LEDGER_V1")
+    last_batch_hash = Column(String(64), nullable=True)
+    period_hash = Column(String(64), nullable=True)
+    snapshot_payload = Column(JSON, nullable=True)
 
 
 class SettlementItem(Base):

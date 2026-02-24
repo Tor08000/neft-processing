@@ -8,7 +8,9 @@ def get_test_dsn_or_fail() -> str:
     if not dsn:
         dsn = (os.getenv("DATABASE_URL_TEST") or "").strip()
     if not dsn:
+        dsn = (os.getenv("DATABASE_URL") or "").strip()
+    if not dsn:
         raise RuntimeError(
-            "TEST_DATABASE_DSN is not set. Run docker-compose.test.yml or set env var."
+            "Database DSN is not set. Provide TEST_DATABASE_DSN (preferred) or DATABASE_URL_TEST or DATABASE_URL."
         )
     return dsn

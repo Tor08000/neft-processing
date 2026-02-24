@@ -128,6 +128,47 @@ jobs:
       - name: Run migrations gate
         run: scripts/ci/gate_migrations.sh
 
+
+  phase3-postgres:
+    name: Phase3 tamper tests (Postgres)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: neft
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d neft"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      TEST_DATABASE_DSN: postgresql+psycopg://postgres:postgres@127.0.0.1:5432/neft
+      DATABASE_URL: postgresql+psycopg://postgres:postgres@127.0.0.1:5432/neft
+      NEFT_DB_SCHEMA: processing_core
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install processing-core dependencies
+        run: pip install -r platform/processing-core/requirements.txt
+
+      - name: Alembic upgrade head
+        working-directory: platform/processing-core
+        run: alembic -c app/alembic.ini upgrade head
+
+      - name: Run Phase3 tamper tests
+        working-directory: platform/processing-core
+        run: pytest -q app/tests/test_phase3_tamper_evidence.py
+
   compose-prod-e2e:
     name: Compose prod e2e
     runs-on: ubuntu-latest
@@ -210,7 +251,7 @@ jobs:
   gate:
     name: PR Gate
     runs-on: ubuntu-latest
-    needs: [lint-and-typecheck, unit-tests, migrations, compose-prod-e2e]
+    needs: [lint-and-typecheck, unit-tests, migrations, phase3-postgres, compose-prod-e2e]
     steps:
       - name: Unified gate passed
         run: echo "Unified PR gate passed"

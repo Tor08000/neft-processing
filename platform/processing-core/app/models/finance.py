@@ -35,6 +35,7 @@ class InvoicePayment(Base):
     provider = Column(String(64), nullable=True)
     external_ref = Column(String(128), nullable=True, index=True)
     idempotency_key = Column(String(128), nullable=False, unique=True, index=True)
+    response_hash = Column(String(64), nullable=False, server_default="")
     status = Column(
         ExistingEnum(PaymentStatus, name="invoice_payment_status"),
         nullable=False,
@@ -64,6 +65,7 @@ class CreditNote(Base):
     external_ref = Column(String(128), nullable=True, index=True)
     reason = Column(String(255), nullable=True)
     idempotency_key = Column(String(128), nullable=False, unique=True, index=True)
+    response_hash = Column(String(64), nullable=False, server_default="")
     status = Column(
         ExistingEnum(CreditNoteStatus, name="credit_note_status"),
         nullable=False,

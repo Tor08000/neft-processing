@@ -1,15 +1,18 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import hashlib
+import json
 from datetime import datetime, timezone
 from decimal import Decimal, ROUND_HALF_UP
 
-from sqlalchemy import and_
+from sqlalchemy import and_, case, func
 from sqlalchemy.orm import Session
 
 from app.models.audit_log import AuditVisibility
 from app.models.cases import Case, CaseEventType, CaseKind, CasePriority
 from app.models.internal_ledger import (
+    InternalLedgerAccount,
     InternalLedgerAccountType,
     InternalLedgerEntry,
     InternalLedgerEntryDirection,
@@ -60,6 +63,73 @@ def _amount_to_minor(amount: Decimal) -> int:
 
 def _amount_from_minor(amount_minor: int) -> Decimal:
     return (Decimal(amount_minor) / Decimal("100")).quantize(Decimal("0.01"))
+
+
+def _snapshot_period_hash(payload: dict[str, object]) -> str:
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _build_settlement_snapshot(db: Session, *, period: SettlementPeriod) -> tuple[dict[str, object], str, str | None]:
+    balance_rows = (
+        db.query(
+            InternalLedgerAccount.id,
+            InternalLedgerAccount.account_type,
+            InternalLedgerAccount.client_id,
+            (
+                func.sum(
+                    case(
+                        (InternalLedgerEntry.direction == InternalLedgerEntryDirection.DEBIT, InternalLedgerEntry.amount),
+                        else_=-InternalLedgerEntry.amount,
+                    )
+                )
+            ).label("balance_minor"),
+        )
+        .join(InternalLedgerEntry, InternalLedgerEntry.account_id == InternalLedgerAccount.id)
+        .filter(InternalLedgerEntry.currency == period.currency)
+        .filter(InternalLedgerEntry.created_at >= period.period_start)
+        .filter(InternalLedgerEntry.created_at <= period.period_end)
+        .group_by(InternalLedgerAccount.id, InternalLedgerAccount.account_type, InternalLedgerAccount.client_id)
+        .all()
+    )
+    balances = [
+        {
+            "account_id": str(row.id),
+            "account_type": row.account_type.value,
+            "client_id": row.client_id,
+            "balance_minor": int(row.balance_minor or 0),
+        }
+        for row in balance_rows
+    ]
+    tx_rows = (
+        db.query(InternalLedgerTransaction)
+        .filter(InternalLedgerTransaction.currency == period.currency)
+        .filter(InternalLedgerTransaction.posted_at >= period.period_start)
+        .filter(InternalLedgerTransaction.posted_at <= period.period_end)
+        .order_by(InternalLedgerTransaction.batch_sequence.asc())
+        .all()
+    )
+    total_debit = sum(int(tx.total_debit or 0) for tx in tx_rows)
+    total_credit = sum(int(tx.total_credit or 0) for tx in tx_rows)
+    last_batch_hash = tx_rows[-1].batch_hash if tx_rows else period.genesis_batch_hash
+    snapshot_payload = {
+        "settlement_period_id": str(period.id),
+        "partner_id": str(period.partner_id),
+        "currency": period.currency,
+        "balances": balances,
+        "total_debit": total_debit,
+        "total_credit": total_credit,
+        "last_batch_hash": last_batch_hash,
+    }
+    period_hash = _snapshot_period_hash(snapshot_payload)
+    return snapshot_payload, period_hash, last_batch_hash
+
+
+def verify_period_hash(period: SettlementPeriod) -> bool:
+    if not period.snapshot_payload or not period.period_hash:
+        return False
+    expected = _snapshot_period_hash(period.snapshot_payload)
+    return expected == period.period_hash
 
 
 def apply_order_penalty(
@@ -396,6 +466,10 @@ def approve_settlement(
     now = datetime.now(timezone.utc)
     period.status = SettlementPeriodStatus.APPROVED
     period.approved_at = now
+    snapshot_payload, period_hash, last_batch_hash = _build_settlement_snapshot(db, period=period)
+    period.snapshot_payload = snapshot_payload
+    period.period_hash = period_hash
+    period.last_batch_hash = last_batch_hash
 
     audit_event = AuditService(db).audit(
         event_type="SETTLEMENT_APPROVED",
@@ -406,6 +480,8 @@ def approve_settlement(
         after={
             "status": period.status.value,
             "approved_at": period.approved_at,
+            "period_hash": period.period_hash,
+            "last_batch_hash": period.last_batch_hash,
         },
         request_ctx=actor,
     )
