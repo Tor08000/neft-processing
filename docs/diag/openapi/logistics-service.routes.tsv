@@ -1,0 +1,10 @@
+GET	/health		neft_logistics_service.main:health
+GET	/metrics		neft_logistics_service.main:metrics
+GET	/v1/trips/{trip_id}/status		neft_logistics_service.main:trip_status_endpoint
+POST	/v1/deviation		neft_logistics_service.main:deviation_endpoint
+POST	/v1/eta		neft_logistics_service.main:eta_endpoint
+POST	/v1/explain		neft_logistics_service.main:explain_endpoint
+POST	/v1/fleet/list		neft_logistics_service.main:fleet_list_endpoint
+POST	/v1/fleet/upsert		neft_logistics_service.main:fleet_upsert_endpoint
+POST	/v1/fuel/consumption		neft_logistics_service.main:fuel_consumption_endpoint
+POST	/v1/trips/create		neft_logistics_service.main:trip_create_endpoint
