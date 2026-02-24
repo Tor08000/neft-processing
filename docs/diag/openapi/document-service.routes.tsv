@@ -1,0 +1,8 @@
+GET	/health		app.main:health
+GET	/metrics		app.main:metrics
+GET	/v1/templates		app.main:list_templates
+GET	/v1/templates/{code}		app.main:get_template
+POST	/v1/presign		app.main:presign_download
+POST	/v1/render		app.main:render_document
+POST	/v1/sign		app.main:sign_document
+POST	/v1/verify		app.main:verify_document
