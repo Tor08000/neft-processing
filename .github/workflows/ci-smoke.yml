@@ -5,6 +5,25 @@ on:
     branches: [main]
 
 jobs:
+
+  alembic-import-hygiene:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.11
+      - name: Install dependencies
+        run: pip install -r platform/processing-core/requirements.txt
+      - name: Alembic heads/history without PYTHONPATH
+        working-directory: platform/processing-core/app
+        env:
+          DATABASE_URL: sqlite+pysqlite:///:memory:
+        run: |
+          unset PYTHONPATH
+          alembic heads
+          alembic history --verbose | head -n 80
   db-smoke:
     runs-on: ubuntu-latest
     services:
