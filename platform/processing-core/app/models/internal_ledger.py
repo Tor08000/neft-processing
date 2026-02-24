@@ -2,7 +2,21 @@ from __future__ import annotations
 
 from enum import Enum
 
-from sqlalchemy import BigInteger, Column, DateTime, ForeignKey, Index, Integer, JSON, String, UniqueConstraint, func
+from sqlalchemy import (
+    BigInteger,
+    CheckConstraint,
+    Column,
+    DateTime,
+    DDL,
+    ForeignKey,
+    Index,
+    Integer,
+    JSON,
+    String,
+    UniqueConstraint,
+    event,
+    func,
+)
 
 from app.db import Base
 from app.db.types import ExistingEnum, GUID, new_uuid_str
@@ -73,6 +87,10 @@ class InternalLedgerAccount(Base):
 
 class InternalLedgerTransaction(Base):
     __tablename__ = "internal_ledger_transactions"
+    __table_args__ = (
+        CheckConstraint("total_debit = total_credit", name="ck_internal_ledger_transaction_balanced"),
+        UniqueConstraint("tenant_id", "batch_sequence", name="uq_internal_ledger_batch_sequence"),
+    )
 
     id = Column(GUID(), primary_key=True, default=new_uuid_str)
     tenant_id = Column(Integer, nullable=False)
@@ -84,7 +102,12 @@ class InternalLedgerTransaction(Base):
     external_ref_id = Column(String(64), nullable=False)
     idempotency_key = Column(String(128), nullable=False, unique=True, index=True)
     total_amount = Column(BigInteger, nullable=True)
+    total_debit = Column(BigInteger, nullable=False, server_default="0")
+    total_credit = Column(BigInteger, nullable=False, server_default="0")
     currency = Column(String(3), nullable=True)
+    batch_sequence = Column(BigInteger, nullable=False, server_default="0")
+    previous_batch_hash = Column(String(64), nullable=False, server_default="GENESIS")
+    batch_hash = Column(String(64), nullable=False, server_default="")
     posted_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     meta = Column(JSON, nullable=True)
@@ -114,6 +137,34 @@ class InternalLedgerEntry(Base):
     entry_hash = Column(String(64), nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     meta = Column(JSON, nullable=True)
+
+
+event.listen(
+    InternalLedgerEntry.__table__,
+    "after_create",
+    DDL(
+        """
+        CREATE TRIGGER internal_ledger_entries_no_update
+        BEFORE UPDATE ON internal_ledger_entries
+        BEGIN
+            SELECT RAISE(FAIL, 'Ledger entries are immutable');
+        END;
+        """
+    ).execute_if(dialect="sqlite"),
+)
+event.listen(
+    InternalLedgerEntry.__table__,
+    "after_create",
+    DDL(
+        """
+        CREATE TRIGGER internal_ledger_entries_no_delete
+        BEFORE DELETE ON internal_ledger_entries
+        BEGIN
+            SELECT RAISE(FAIL, 'Ledger entries are immutable');
+        END;
+        """
+    ).execute_if(dialect="sqlite"),
+)
 
 
 __all__ = [

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from contextlib import nullcontext
+import hashlib
+import json
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Tuple
@@ -92,6 +94,28 @@ class FinanceService:
         self.job_service = BillingJobRunService(db)
         self.policy_engine = PolicyEngine()
         self.invariant_checker = FinancialInvariantChecker(db)
+
+    @staticmethod
+    def _response_hash(payload: dict[str, object]) -> str:
+        canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+        return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+    def _payment_response_hash(self, *, invoice_id: str, amount: int, currency: str, external_ref: str | None, provider: str | None) -> str:
+        return self._response_hash({
+            "invoice_id": invoice_id,
+            "amount": int(amount),
+            "currency": currency,
+            "external_ref": external_ref,
+            "provider": provider,
+        })
+
+    def _credit_note_response_hash(self, *, invoice_id: str, amount: int, currency: str, reason: str | None) -> str:
+        return self._response_hash({
+            "invoice_id": invoice_id,
+            "amount": int(amount),
+            "currency": currency,
+            "reason": reason,
+        })
 
     def _audit_invariant_violation(
         self,
@@ -295,6 +319,15 @@ class FinanceService:
             raise PaymentIdempotencyConflict("external_ref_mismatch")
         if (payment.provider or None) != (provider or None):
             raise PaymentIdempotencyConflict("provider_mismatch")
+        expected_hash = self._payment_response_hash(
+            invoice_id=payment.invoice_id,
+            amount=amount,
+            currency=currency,
+            external_ref=external_ref,
+            provider=provider,
+        )
+        if (payment.response_hash or "") != expected_hash:
+            raise PaymentIdempotencyConflict("response_hash_mismatch")
 
     def _replay_payment(
         self,
@@ -792,6 +825,13 @@ class FinanceService:
                 idempotency_key=idempotency_key,
                 external_ref=external_ref,
                 provider=provider,
+                response_hash=self._payment_response_hash(
+                    invoice_id=invoice_id,
+                    amount=amount,
+                    currency=currency,
+                    external_ref=external_ref,
+                    provider=provider,
+                ),
                 status=PaymentStatus.POSTED,
             )
             try:
@@ -1020,6 +1060,12 @@ class FinanceService:
                 currency=currency,
                 reason=reason,
                 idempotency_key=idempotency_key,
+                response_hash=self._credit_note_response_hash(
+                    invoice_id=invoice_id,
+                    amount=amount,
+                    currency=currency,
+                    reason=reason,
+                ),
                 status=CreditNoteStatus.POSTED,
             )
             self.db.add(credit_note)

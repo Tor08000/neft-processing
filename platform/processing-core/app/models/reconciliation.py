@@ -112,6 +112,22 @@ class ExternalStatement(Base):
     audit_event_id = Column(GUID(), nullable=True)
 
 
+class ReconciliationReportStatus(str, Enum):
+    OK = "OK"
+    ERROR = "ERROR"
+
+
+class ReconciliationReport(Base):
+    __tablename__ = "reconciliation_reports"
+    __table_args__ = (Index("ix_reconciliation_reports_created", "created_at"),)
+
+    id = Column(GUID(), primary_key=True, default=new_uuid_str)
+    status = Column(String(16), nullable=False)
+    payload = Column(JSON_TYPE, nullable=False)
+    report_hash = Column(String(64), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
 class ReconciliationLinkDirection(str, Enum):
     IN = "IN"
     OUT = "OUT"
@@ -150,6 +166,8 @@ __all__ = [
     "ReconciliationDiscrepancyStatus",
     "ReconciliationDiscrepancyType",
     "ReconciliationLink",
+    "ReconciliationReport",
+    "ReconciliationReportStatus",
     "ReconciliationLinkDirection",
     "ReconciliationLinkStatus",
     "ReconciliationRun",

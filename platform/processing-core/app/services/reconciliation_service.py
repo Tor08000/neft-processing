@@ -28,6 +28,8 @@ from app.models.reconciliation import (
     ReconciliationLink,
     ReconciliationLinkDirection,
     ReconciliationLinkStatus,
+    ReconciliationReport,
+    ReconciliationReportStatus,
     ReconciliationRun,
     ReconciliationRunStatus,
     ReconciliationScope,
@@ -706,3 +708,69 @@ def ignore_discrepancy(
         request_ctx=_audit_actor(created_by),
     )
     logger.info("discrepancy ignored", extra={"discrepancy_id": str(discrepancy.id)})
+
+
+
+def reconcile_accounts(
+    db: Session,
+    *,
+    restricted_account_types: tuple[InternalLedgerAccountType, ...] = (InternalLedgerAccountType.CLIENT_CASH,),
+) -> ReconciliationReport:
+    debit_total = db.query(func.coalesce(func.sum(InternalLedgerEntry.amount), 0)).filter(
+        InternalLedgerEntry.direction == InternalLedgerEntryDirection.DEBIT
+    ).scalar()
+    credit_total = db.query(func.coalesce(func.sum(InternalLedgerEntry.amount), 0)).filter(
+        InternalLedgerEntry.direction == InternalLedgerEntryDirection.CREDIT
+    ).scalar()
+
+    system_rows = (
+        db.query(
+            InternalLedgerAccount.account_type,
+            InternalLedgerEntry.currency,
+            func.coalesce(
+                func.sum(
+                    case(
+                        (InternalLedgerEntry.direction == InternalLedgerEntryDirection.DEBIT, InternalLedgerEntry.amount),
+                        else_=-InternalLedgerEntry.amount,
+                    )
+                ),
+                0,
+            ).label("balance_minor"),
+        )
+        .join(InternalLedgerEntry, InternalLedgerEntry.account_id == InternalLedgerAccount.id)
+        .group_by(InternalLedgerAccount.account_type, InternalLedgerEntry.currency)
+        .all()
+    )
+    restricted_negative = [
+        {
+            "account_type": row.account_type.value,
+            "currency": row.currency,
+            "balance_minor": int(row.balance_minor),
+        }
+        for row in system_rows
+        if row.account_type in restricted_account_types and int(row.balance_minor) < 0
+    ]
+
+    net_balance = int(debit_total or 0) - int(credit_total or 0)
+    status = ReconciliationReportStatus.OK.value
+    errors: list[str] = []
+    if net_balance != 0:
+        status = ReconciliationReportStatus.ERROR.value
+        errors.append("system_balance_not_zero")
+    if restricted_negative:
+        status = ReconciliationReportStatus.ERROR.value
+        errors.append("restricted_negative_balance")
+
+    payload = {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "sum_debit_minor": int(debit_total or 0),
+        "sum_credit_minor": int(credit_total or 0),
+        "net_balance_minor": net_balance,
+        "restricted_negative": restricted_negative,
+        "errors": errors,
+    }
+    report_hash = _hash_payload(payload)
+    report = ReconciliationReport(status=status, payload=payload, report_hash=report_hash)
+    db.add(report)
+    db.flush()
+    return report

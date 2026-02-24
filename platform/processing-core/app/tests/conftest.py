@@ -151,18 +151,24 @@ def _uses_postgres(database_url: str) -> bool:
         return False
 
 
+def _build_engine(database_url: str) -> Engine:
+    if _uses_postgres(database_url):
+        return create_engine(
+            database_url,
+            future=True,
+            connect_args={
+                "options": f"-c search_path={os.getenv('NEFT_DB_SCHEMA', 'processing_core')}",
+                "prepare_threshold": 0,
+            },
+        )
+    return create_engine(database_url, future=True)
+
+
 @pytest.fixture(scope="session")
 def test_db_engine() -> Engine:
     database_url = _ensure_psycopg_driver(get_test_dsn_or_fail())
     os.environ["DATABASE_URL"] = database_url
-    engine = create_engine(
-        database_url,
-        future=True,
-        connect_args={
-            "options": f"-c search_path={os.getenv('NEFT_DB_SCHEMA', 'processing_core')}",
-            "prepare_threshold": 0,
-        },
-    )
+    engine = _build_engine(database_url)
     parsed = make_url(database_url)
     if engine.url.render_as_string(hide_password=False) != parsed.render_as_string(hide_password=False):
         raise RuntimeError("test_db_engine_dsn_mismatch")
@@ -394,7 +400,7 @@ def ensure_db_ready(request: pytest.FixtureRequest) -> None:
     if not _running_in_container() and "@postgres:" in database_url:
         pytest.fail("processing-core tests require docker compose stack. Run scripts\\test_core_stack.cmd")
     if not _uses_postgres(database_url):
-        pytest.fail("postgres not available; start docker compose postgres")
+        return
 
     schema = (os.getenv("NEFT_DB_SCHEMA") or "processing_core").strip() or "processing_core"
     try:
