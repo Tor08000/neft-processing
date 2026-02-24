@@ -1,8 +1,9 @@
 from datetime import datetime, timezone
+from uuid import uuid4
 
 import pytest
 from sqlalchemy import text
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import DBAPIError, IntegrityError
 
 from app.db import Base
 from app.models.internal_ledger import (
@@ -39,6 +40,10 @@ def _reset_phase3_tables(test_db_engine):
 @pytest.fixture
 def db_session(test_db_session):
     return test_db_session
+
+
+def _is_postgres(session) -> bool:
+    return bool(session.bind and session.bind.dialect.name == "postgresql")
 
 
 @pytest.fixture(autouse=True)
@@ -199,3 +204,82 @@ def test_idempotency_replay_response_hash_mutation_detected(db_session, test_db_
             request_ctx=None,
             token=None,
         )
+
+
+@pytest.mark.phase3
+def test_phase3_pg_triggers_exist_for_immutability(db_session):
+    if not _is_postgres(db_session):
+        pytest.skip("Postgres-only: trigger catalog checks")
+
+    rows = db_session.execute(
+        text(
+            """
+            SELECT tg.tgname AS name
+            FROM pg_trigger tg
+            JOIN pg_class c ON c.oid = tg.tgrelid
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            WHERE NOT tg.tgisinternal
+              AND c.relname = 'internal_ledger_entries'
+            """
+        )
+    ).fetchall()
+    trigger_names = {r[0] for r in rows}
+
+    assert "ledger_no_update" in trigger_names, f"Expected ledger_no_update trigger, found: {sorted(trigger_names)}"
+    assert "ledger_no_delete" in trigger_names, f"Expected ledger_no_delete trigger, found: {sorted(trigger_names)}"
+
+
+@pytest.mark.phase3
+def test_phase3_db_rejects_unbalanced_batch_via_sql(db_session):
+    if not _is_postgres(db_session):
+        pytest.skip("Postgres-only: DB-level constraint/trigger enforcement proof")
+
+    try:
+        db_session.execute(
+            text(
+                """
+                INSERT INTO internal_ledger_transactions (
+                    id,
+                    tenant_id,
+                    transaction_type,
+                    external_ref_type,
+                    external_ref_id,
+                    idempotency_key,
+                    total_amount,
+                    total_debit,
+                    total_credit,
+                    currency,
+                    batch_sequence,
+                    previous_batch_hash,
+                    batch_hash,
+                    posted_at,
+                    meta
+                ) VALUES (
+                    :id,
+                    1,
+                    'ADJUSTMENT',
+                    'TEST',
+                    'bad-sql-batch',
+                    :idempotency_key,
+                    100,
+                    100,
+                    99,
+                    'RUB',
+                    10_001,
+                    'GENESIS_INTERNAL_LEDGER_V1',
+                    :batch_hash,
+                    NOW(),
+                    '{}'::jsonb
+                )
+                """
+            ),
+            {
+                "id": str(uuid4()),
+                "idempotency_key": f"phase3-unbalanced-sql-{uuid4()}",
+                "batch_hash": "f" * 64,
+            },
+        )
+        db_session.commit()
+        pytest.fail("Expected DB to reject unbalanced ledger batch totals, but commit succeeded")
+    except (IntegrityError, DBAPIError):
+        db_session.rollback()
