@@ -57,6 +57,9 @@ os.environ.setdefault("NEFT_DB_SCHEMA", "processing_core")
 os.environ.setdefault("NEFT_AUTH_ISSUER", "neft-auth")
 os.environ.setdefault("NEFT_AUTH_AUDIENCE", "neft-admin")
 os.environ.setdefault("RISK_V5_SHADOW_ENABLED", "false")
+# Keep pytest collection import-safe in clean environments.
+if not os.getenv("DATABASE_URL"):
+    os.environ["DATABASE_URL"] = "sqlite+pysqlite:///:memory:"
 
 from app.db.schema import DB_SCHEMA
 from app.integrations.fuel import models as fuel_models  # noqa: F401
