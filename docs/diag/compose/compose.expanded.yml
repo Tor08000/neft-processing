@@ -1,0 +1,20 @@
+# Diagnostic snapshot for integration-hub effective compose environment.
+# NOTE: `docker compose config` is unavailable in this execution environment,
+# so this excerpt is resolved from repository compose sources and default .env values.
+services:
+  integration-hub:
+    env_file:
+      - .env
+    environment:
+      APP_ENV: dev
+      DIADOK_MODE: mock
+      NOTIFICATIONS_MODE: mock
+      EMAIL_PROVIDER_MODE: mock
+      OTP_PROVIDER_MODE: mock
+      USE_STUB_EDO: "0"
+      SERVICE_NAME: integration-hub
+      UVICORN_HOST: 0.0.0.0
+      UVICORN_PORT: "8000"
+      INTEGRATION_HUB_DATABASE_URL: postgresql+psycopg://neft:change-me@postgres:5432/neft
+      WEBHOOK_INTAKE_SECRET: change-me
+      WEBHOOK_ALLOW_UNSIGNED: "true"

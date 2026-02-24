@@ -20,3 +20,12 @@ services:
       APP_ENV: dev
       LOGISTICS_PROVIDER: mock
       USE_MOCK_LOGISTICS: 1
+
+  integration-hub:
+    environment:
+      APP_ENV: dev
+      DIADOK_MODE: mock
+      NOTIFICATIONS_MODE: mock
+      EMAIL_PROVIDER_MODE: mock
+      OTP_PROVIDER_MODE: mock
+
