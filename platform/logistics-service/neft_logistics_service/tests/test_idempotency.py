@@ -5,6 +5,7 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
+os.environ["APP_ENV"] = "dev"
 os.environ["LOGISTICS_PROVIDER"] = "mock"
 os.environ["LOGISTICS_IDEMPOTENCY_DB_PATH"] = "/tmp/logistics-idempotency-test.sqlite3"
 

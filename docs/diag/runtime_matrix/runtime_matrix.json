@@ -1,0 +1,155 @@
+[
+  {
+    "service": "document-service",
+    "setting_key": "PROVIDER_X_MODE",
+    "default": "mock",
+    "allowed_values": [
+      "mock",
+      "prod"
+    ],
+    "where_defined": "platform/document-service/app/settings.py:24 `provider_x_mode: str = os.getenv(\"PROVIDER_X_MODE\", \"mock\")`",
+    "overridden_in_compose": false,
+    "compose_value": null,
+    "risk": "RISK"
+  },
+  {
+    "service": "integration-hub",
+    "setting_key": "APP_ENV",
+    "default": "prod",
+    "allowed_values": [
+      "dev",
+      "test",
+      "prod",
+      "production"
+    ],
+    "where_defined": "platform/integration-hub/neft_integration_hub/settings.py:14 `app_env: str = os.getenv(\"APP_ENV\", \"prod\").lower()`",
+    "overridden_in_compose": true,
+    "compose_value": "${APP_ENV:-prod}",
+    "risk": "SAFE"
+  },
+  {
+    "service": "integration-hub",
+    "setting_key": "DIADOK_MODE",
+    "default": "mock",
+    "allowed_values": [
+      "mock",
+      "prod"
+    ],
+    "where_defined": "platform/integration-hub/neft_integration_hub/settings.py:41 `diadok_mode: str = os.getenv(\"DIADOK_MODE\", \"mock\")`",
+    "overridden_in_compose": false,
+    "compose_value": null,
+    "risk": "RISK"
+  },
+  {
+    "service": "integration-hub",
+    "setting_key": "EMAIL_PROVIDER_MODE",
+    "default": "mock",
+    "allowed_values": [
+      "mock",
+      "smtp",
+      "integration_hub",
+      "stub",
+      "disabled"
+    ],
+    "where_defined": "platform/integration-hub/neft_integration_hub/settings.py:67 `email_provider_mode: str = os.getenv(\"EMAIL_PROVIDER_MODE\", \"mock\").lower()`",
+    "overridden_in_compose": false,
+    "compose_value": null,
+    "risk": "RISK"
+  },
+  {
+    "service": "integration-hub",
+    "setting_key": "NOTIFICATIONS_MODE",
+    "default": "mock",
+    "allowed_values": [
+      "mock",
+      "real"
+    ],
+    "where_defined": "platform/integration-hub/neft_integration_hub/settings.py:64 `notifications_mode: str = os.getenv(\"NOTIFICATIONS_MODE\", \"mock\").lower()`",
+    "overridden_in_compose": false,
+    "compose_value": null,
+    "risk": "RISK"
+  },
+  {
+    "service": "integration-hub",
+    "setting_key": "OTP_PROVIDER_MODE",
+    "default": "prod",
+    "allowed_values": [
+      "mock",
+      "prod"
+    ],
+    "where_defined": "platform/integration-hub/neft_integration_hub/settings.py:59 `otp_provider_mode: str = os.getenv(\"OTP_PROVIDER_MODE\", \"prod\").lower()`",
+    "overridden_in_compose": false,
+    "compose_value": null,
+    "risk": "SAFE"
+  },
+  {
+    "service": "logistics-service",
+    "setting_key": "APP_ENV",
+    "default": "prod",
+    "allowed_values": [
+      "dev",
+      "test",
+      "prod",
+      "production"
+    ],
+    "where_defined": "platform/logistics-service/neft_logistics_service/settings.py:15 `app_env: str = os.getenv(\"APP_ENV\", \"prod\").lower()`",
+    "overridden_in_compose": true,
+    "compose_value": "dev",
+    "risk": "SAFE"
+  },
+  {
+    "service": "logistics-service",
+    "setting_key": "LOGISTICS_PROVIDER",
+    "default": "UNKNOWN",
+    "allowed_values": [
+      "mock",
+      "integration_hub",
+      "osrm"
+    ],
+    "where_defined": "platform/logistics-service/neft_logistics_service/settings.py:27 `configured_provider = os.getenv(\"LOGISTICS_PROVIDER\")`",
+    "overridden_in_compose": true,
+    "compose_value": "mock",
+    "risk": "UNKNOWN"
+  },
+  {
+    "service": "processing-core",
+    "setting_key": "APP_ENV",
+    "default": "prod",
+    "allowed_values": [
+      "dev",
+      "test",
+      "prod",
+      "production"
+    ],
+    "where_defined": "shared/python/neft_shared/settings.py:29 `APP_ENV: str = os.getenv(\"APP_ENV\", \"prod\").lower()`",
+    "overridden_in_compose": true,
+    "compose_value": "dev",
+    "risk": "SAFE"
+  },
+  {
+    "service": "processing-core",
+    "setting_key": "SMS_PROVIDER",
+    "default": "sms_stub",
+    "allowed_values": [
+      "sms_stub",
+      "real"
+    ],
+    "where_defined": "shared/python/neft_shared/settings.py:254 `SMS_PROVIDER: str = os.getenv(\"SMS_PROVIDER\", \"sms_stub\")`",
+    "overridden_in_compose": false,
+    "compose_value": null,
+    "risk": "RISK"
+  },
+  {
+    "service": "processing-core",
+    "setting_key": "VOICE_PROVIDER",
+    "default": "voice_stub",
+    "allowed_values": [
+      "voice_stub",
+      "real"
+    ],
+    "where_defined": "shared/python/neft_shared/settings.py:255 `VOICE_PROVIDER: str = os.getenv(\"VOICE_PROVIDER\", \"voice_stub\")`",
+    "overridden_in_compose": false,
+    "compose_value": null,
+    "risk": "RISK"
+  }
+]

@@ -7,6 +7,7 @@ from neft_integration_hub.main import app
 
 
 def test_otp_send_valid_and_idempotent() -> None:
+    object.__setattr__(main.settings, "app_env", "dev")
     object.__setattr__(main.settings, "otp_provider_mode", "mock")
     with TestClient(app) as client:
         payload = {
@@ -24,6 +25,7 @@ def test_otp_send_valid_and_idempotent() -> None:
 
 
 def test_otp_send_invalid_destination() -> None:
+    object.__setattr__(main.settings, "app_env", "dev")
     with TestClient(app) as client:
         resp = client.post(
             "/api/int/v1/otp/send",

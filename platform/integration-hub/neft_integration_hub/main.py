@@ -124,6 +124,32 @@ def _email_provider_enabled() -> bool:
     return False
 
 
+
+
+def _prod_mode() -> bool:
+    return (settings.app_env or "").strip().lower() in {"prod", "production"}
+
+
+def _mock_overrides_allowed() -> bool:
+    return (os.getenv("ALLOW_MOCK_PROVIDERS_IN_PROD", "0").strip() == "1")
+
+
+def _enforce_prod_guardrails() -> None:
+    if not _prod_mode() or _mock_overrides_allowed():
+        return
+    guarded = {
+        "DIADOK_MODE": settings.diadok_mode,
+        "NOTIFICATIONS_MODE": settings.notifications_mode,
+        "EMAIL_PROVIDER_MODE": settings.email_provider_mode,
+        "OTP_PROVIDER_MODE": settings.otp_provider_mode,
+    }
+    risky = {k: v for k, v in guarded.items() if (v or "").strip().lower() in {"mock", "stub"}}
+    if risky:
+        raise RuntimeError(
+            "prod guardrail violation: mock/stub providers are forbidden in prod. "
+            "Set ALLOW_MOCK_PROVIDERS_IN_PROD=1 only for explicit emergency override. "
+            f"Violations: {risky}"
+        )
 def _ensure_email_provider_or_503() -> None:
     if not getattr(app.state, "email_provider_enabled", True):
         raise HTTPException(
@@ -137,6 +163,7 @@ def _ensure_email_provider_or_503() -> None:
 
 @app.on_event("startup")
 def startup() -> None:
+    _enforce_prod_guardrails()
     init_db()
     if settings.notifications_mode == "real" and not settings.notifications_email_provider:
         logger.warning("notifications_real_mode_requires_provider")
