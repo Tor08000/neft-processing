@@ -50,7 +50,7 @@ def settle_fuel_transaction_endpoint(
         )
     except FuelSettlementError as exc:
         raise HTTPException(
-            status_code=400,
+            status_code=exc.status_code,
             detail={"decline_code": exc.decline_code.value, "message": exc.message},
         ) from exc
     tx = get_fuel_transaction(db, transaction_id=result.transaction_id)
@@ -74,7 +74,7 @@ def reverse_fuel_transaction_endpoint(
         )
     except FuelSettlementError as exc:
         raise HTTPException(
-            status_code=400,
+            status_code=exc.status_code,
             detail={"decline_code": exc.decline_code.value, "message": exc.message},
         ) from exc
     tx = get_fuel_transaction(db, transaction_id=result.transaction_id)
