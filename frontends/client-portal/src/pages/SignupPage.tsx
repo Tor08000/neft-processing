@@ -6,6 +6,7 @@ import { useAuth } from "../auth/AuthContext";
 import type { AuthSession } from "../api/types";
 import { Toast } from "../components/Toast/Toast";
 import { useToast } from "../components/Toast/useToast";
+import { clearAuthTokens } from "../lib/apiClient";
 
 const PHONE_REGEX = /^[+()\d\s-]{6,}$/;
 
@@ -73,12 +74,12 @@ export function SignupPage() {
           expiresAt: Date.now() + (registerResponse.expires_in ?? 3600) * 1000,
         };
         await activateSession(session);
-        navigate("/onboarding", { replace: true });
+        navigate("/", { replace: true });
       } else {
         try {
           const session = await loginApi({ email: contactPayload.email, password });
           await activateSession(session);
-          navigate("/onboarding", { replace: true });
+          navigate("/", { replace: true });
         } catch (loginError) {
           console.error("Не удалось войти после регистрации", loginError);
           setLoginFallback(true);
@@ -127,7 +128,7 @@ export function SignupPage() {
                   try {
                     const session = await loginApi({ email: contactPayload.email, password });
                     await activateSession(session);
-                    navigate("/onboarding", { replace: true });
+                    navigate("/", { replace: true });
                   } catch (loginError) {
                     console.error("Не удалось войти после регистрации", loginError);
                     setError("Не удалось войти. Проверьте email и пароль.");
@@ -200,7 +201,11 @@ export function SignupPage() {
         <button
           type="button"
           className="ghost neft-btn-secondary"
-          onClick={() => navigate("/login")}
+          onClick={() => {
+            clearAuthTokens();
+            localStorage.removeItem("onboarding_state");
+            navigate("/client/login");
+          }}
           disabled={isSubmitting}
         >
           Вернуться к входу

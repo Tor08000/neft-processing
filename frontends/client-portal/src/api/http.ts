@@ -1,4 +1,5 @@
 import { AUTH_API_BASE, CORE_API_BASE, CORE_ROOT_API_BASE } from "./base";
+import { getAccessToken } from "../lib/apiClient";
 
 export { AUTH_API_BASE, CORE_API_BASE };
 
@@ -7,18 +8,7 @@ type ApiBase = "core" | "auth" | "core_root";
 export type HttpHeaders = Record<string, string>;
 
 
-const STORAGE_KEY = "neft_client_access_token";
-
-const getStoredToken = (): string | undefined => {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return undefined;
-    const parsed = JSON.parse(raw) as { token?: string };
-    return parsed.token;
-  } catch {
-    return undefined;
-  }
-};
+const getStoredToken = (): string | undefined => getAccessToken() ?? undefined;
 
 const isAuthMeRequest = (base: ApiBase, path: string) => base === "auth" && path.includes("/me");
 const logErrorUrl = (url: string, status: number) => {

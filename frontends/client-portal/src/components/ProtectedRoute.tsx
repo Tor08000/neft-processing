@@ -16,12 +16,12 @@ export function ProtectedRoute() {
   }
 
   if (!user) {
-    return <Navigate to={`/login?returnUrl=${encodeURIComponent(returnUrl)}`} replace />;
+    return <Navigate to={`/client/login?returnUrl=${encodeURIComponent(returnUrl)}`} replace />;
   }
 
   if (user.expiresAt <= Date.now()) {
     logout();
-    return <Navigate to={`/login?returnUrl=${encodeURIComponent(returnUrl)}`} replace />;
+    return <Navigate to={`/client/login?returnUrl=${encodeURIComponent(returnUrl)}`} replace />;
   }
 
   if (!hasClientRole) {
