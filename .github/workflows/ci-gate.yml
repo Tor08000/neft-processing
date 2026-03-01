@@ -252,6 +252,60 @@ jobs:
           pytest -q platform/auth-host/app/tests/test_rbac_contract.py
           pytest -q platform/processing-core/app/tests/test_rbac_contract.py
 
+  auth-signup-smoke:
+    name: Auth signup smoke (Postgres)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: auth_smoke
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+    env:
+      APP_ENV: test
+      DATABASE_URL: postgresql+psycopg://postgres:postgres@127.0.0.1:5433/auth_smoke
+      POSTGRES_HOST: 127.0.0.1
+      POSTGRES_PORT: '5433'
+      POSTGRES_DB: auth_smoke
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          python -m pip install -e shared/python
+          python -m pip install -r platform/auth-host/requirements.txt
+          python -m pip install -r platform/processing-core/requirements.txt
+
+      - name: Install postgres client tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+
+      - name: Wait for Postgres
+        shell: bash
+        run: |
+          until pg_isready -h 127.0.0.1 -p 5433 -U postgres; do sleep 1; done
+
+      - name: Run auth-host signup regression suite
+        run: |
+          pytest -q platform/auth-host/app/tests/test_signup_flow.py
+
   compose-prod-e2e:
     name: Compose prod e2e
     runs-on: ubuntu-latest
@@ -334,7 +388,7 @@ jobs:
   gate:
     name: PR Gate
     runs-on: ubuntu-latest
-    needs: [lint-and-typecheck, unit-tests, migrations, phase3-postgres, postgres-migration-smoke, rbac-contract-suite, compose-prod-e2e]
+    needs: [lint-and-typecheck, unit-tests, migrations, phase3-postgres, postgres-migration-smoke, rbac-contract-suite, auth-signup-smoke, compose-prod-e2e]
     steps:
       - name: Unified gate passed
         run: echo "Unified PR gate passed"
