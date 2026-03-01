@@ -989,7 +989,7 @@ async def session_status(sid: UUID) -> SessionStatusResponse:
     if not row:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="session_not_found")
     return SessionStatusResponse(
-        sid=row["id"],
+        sid=str(row["id"]),
         active=row["revoked_at"] is None,
         revoked_at=row["revoked_at"],
         reason=row["revocation_reason"],
