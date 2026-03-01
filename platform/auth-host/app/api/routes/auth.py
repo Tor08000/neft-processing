@@ -179,7 +179,8 @@ async def _core_table_exists(cur: psycopg.AsyncCursor, table_name: str) -> bool:
 
 async def _create_core_client(*, user_id: str, email: str, full_name: str | None) -> str:
     client_id = str(uuid4())
-    async with psycopg.AsyncConnection.connect(DSN_ASYNC) as conn:
+    conn = await psycopg.AsyncConnection.connect(DSN_ASYNC)
+    try:
         async with conn.cursor() as cur:
             await cur.execute(
                 sql.SQL("SET search_path TO {}, public").format(sql.Identifier(CORE_DB_SCHEMA))
@@ -199,6 +200,8 @@ async def _create_core_client(*, user_id: str, email: str, full_name: str | None
                 (client_id, user_id, "PROFILE", "DRAFT"),
             )
             await conn.commit()
+    finally:
+        await conn.close()
     return client_id
 
 
@@ -479,10 +482,12 @@ async def register(request: Request, payload: RegisterRequest) -> SignupResponse
         except Exception:
             await conn.rollback()
             logger.exception("Failed to register user")
-            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="signup_failed")
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="signup_create_failed")
 
     user = User.from_row(row)
     roles = await _get_roles_for_user(str(new_user_id))
+    settings = get_settings()
+    portal = "client"
     expires_in = settings.access_token_expires_min * 60
     issuer, audience = _portal_token_config("client")
     tenant_token_version = await _get_tenant_token_version(user.tenant_id)
