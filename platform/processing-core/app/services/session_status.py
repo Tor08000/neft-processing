@@ -11,6 +11,8 @@ AUTH_SESSION_STATUS_URL = os.getenv(
     "http://auth-host:8000/api/v1/auth/sessions/{sid}/status",
 )
 SESSION_STATUS_CACHE_TTL_SECONDS = int(os.getenv("SESSION_STATUS_CACHE_TTL_SECONDS", "45"))
+if os.getenv("APP_ENV", "dev").lower() == "dev":
+    SESSION_STATUS_CACHE_TTL_SECONDS = max(SESSION_STATUS_CACHE_TTL_SECONDS, 10)
 
 _cache: dict[str, tuple[float, bool]] = {}
 
@@ -47,6 +49,10 @@ def ensure_session_active(payload: dict) -> None:
             resp = client.get(url)
     except Exception as exc:  # network fail-open
         return
+
+    if resp.status_code == 404:
+        _cache_set(str(sid), False)
+        raise HTTPException(status_code=401, detail="session_not_found")
 
     if resp.status_code != 200:
         return

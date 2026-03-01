@@ -2,7 +2,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useS
 import { ApiError, fetchMe, HtmlResponseError, login, UnauthorizedError, ValidationError } from "../api/auth";
 import { request } from "../api/http";
 import type { AuthSession, LoginResponse } from "../api/types";
-import { clearAuthTokens, getAccessToken, getRefreshToken, isAccessTokenExpired, saveAuthTokens } from "../lib/apiClient";
+import { clearTokens, getAccessToken, getExpiresAt, getRefreshToken, isAccessTokenExpired, isValidJwt, saveAuthTokens } from "../lib/apiClient";
 
 interface AuthContextValue {
   user: AuthSession | null;
@@ -22,6 +22,12 @@ interface AuthProviderProps {
 
 const STORAGE_KEY = "neft_client_access_token";
 const CLIENT_TOKEN_ISSUER = import.meta.env.VITE_CLIENT_TOKEN_ISSUER ?? "neft-auth";
+
+const redirectToLogin = () => {
+  if (typeof window !== "undefined") {
+    window.location.replace("/client/login");
+  }
+};
 
 function decodeJwtPayload(token: string): Record<string, unknown> | null {
   const parts = token.split(".");
@@ -74,8 +80,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialSes
 
   const logout = useCallback(() => {
     setUser(null);
-    clearAuthTokens();
-    localStorage.removeItem("onboarding_state");
+    clearTokens();
     persist(null);
   }, [persist]);
 
@@ -124,14 +129,16 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialSes
         let accessToken = getAccessToken();
         const refreshToken = getRefreshToken();
 
-        if (!accessToken) {
+        if (!isValidJwt(accessToken)) {
           logout();
+          redirectToLogin();
           return;
         }
 
         if (isAccessTokenExpired()) {
           if (!refreshToken) {
             logout();
+            redirectToLogin();
             return;
           }
           const refreshed = await refreshSession(refreshToken);
@@ -149,13 +156,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialSes
           subjectType: stored?.subjectType ?? "client_user",
           clientId: stored?.clientId,
           timezone: stored?.timezone,
-          expiresAt: Number(localStorage.getItem("expires_at") ?? Date.now()),
+          expiresAt: getExpiresAt() ?? Date.now(),
         };
 
         await finalizeSession(session);
       } catch (err) {
         if (err instanceof UnauthorizedError) {
           logout();
+          redirectToLogin();
         }
       } finally {
         setIsLoading(false);
