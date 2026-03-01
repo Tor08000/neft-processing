@@ -1,13 +1,17 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { ApiError, fetchMe, HtmlResponseError, login, UnauthorizedError, ValidationError } from "../api/auth";
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { ApiError, fetchMe, HtmlResponseError, login as loginApi, UnauthorizedError, ValidationError } from "../api/auth";
 import { request } from "../api/http";
+import { fetchClientMe } from "../api/clientPortal";
 import type { AuthSession, LoginResponse } from "../api/types";
+import { AccessState, resolveAccessState } from "../access/accessState";
 import { clearTokens, getAccessToken, getExpiresAt, getRefreshToken, isAccessTokenExpired, isValidJwt, saveAuthTokens } from "../lib/apiClient";
 
 interface AuthContextValue {
   user: AuthSession | null;
   isLoading: boolean;
   error: string | null;
+  authStatus: "loading" | "authenticated" | "unauthenticated";
+  authError: "reauth_required" | null;
   login: (email: string, password: string) => Promise<void>;
   activateSession: (session: AuthSession) => Promise<void>;
   logout: () => void;
@@ -26,6 +30,12 @@ const CLIENT_TOKEN_ISSUER = import.meta.env.VITE_CLIENT_TOKEN_ISSUER ?? "neft-au
 const redirectToLogin = () => {
   if (typeof window !== "undefined") {
     window.location.replace("/client/login");
+  }
+};
+
+const navigateTo = (path: string) => {
+  if (typeof window !== "undefined") {
+    window.location.replace(path);
   }
 };
 
@@ -65,10 +75,19 @@ function isClientRolePresent(roles: string[]): boolean {
   return roles.some((role) => role.startsWith("CLIENT_"));
 }
 
+type SessionTokens = {
+  accessToken: string;
+  refreshToken?: string;
+  expiresInSec: number;
+};
+
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialSession = null }) => {
   const [user, setUser] = useState<AuthSession | null>(initialSession);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [authStatus, setAuthStatus] = useState<"loading" | "authenticated" | "unauthenticated">("loading");
+  const [authError, setAuthError] = useState<"reauth_required" | null>(null);
+  const bootstrappedRef = useRef(false);
 
   const persist = useCallback((session: AuthSession | null) => {
     if (session) {
@@ -80,46 +99,98 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialSes
 
   const logout = useCallback(() => {
     setUser(null);
+    setAuthStatus("unauthenticated");
     clearTokens();
     persist(null);
   }, [persist]);
 
-  const finalizeSession = useCallback(
-    async (session: AuthSession) => {
-      if (!isClientIssuer(session.token)) {
-        setError("Неверный контур входа");
-        logout();
-        return;
+  const routeAfterMe = useCallback(async (session: AuthSession) => {
+    if (!session) {
+      redirectToLogin();
+      return;
+    }
+    try {
+      const portal = await fetchClientMe(session);
+      const decision = resolveAccessState({ client: portal });
+      const needsOnboarding = [AccessState.NEEDS_ONBOARDING, AccessState.NEEDS_PLAN, AccessState.NEEDS_CONTRACT].includes(decision.state);
+      navigateTo(needsOnboarding ? "/client/onboarding" : "/client/dashboard");
+      return;
+    } catch {
+      navigateTo("/client/dashboard");
+    }
+  }, []);
+
+  const establishSession = useCallback(
+    async (tokens: SessionTokens, options?: { shouldRoute?: boolean }) => {
+      const shouldRoute = options?.shouldRoute ?? true;
+      saveAuthTokens(tokens.accessToken, tokens.refreshToken, tokens.expiresInSec);
+      try {
+        if (!isClientIssuer(tokens.accessToken)) {
+          setError("Неверный контур входа");
+          logout();
+          return;
+        }
+        const profile = await fetchMe(tokens.accessToken);
+        if (!isClientRolePresent(profile.roles)) {
+          setError("У вас нет доступа к клиентскому кабинету");
+          logout();
+          return;
+        }
+        const normalized: AuthSession = {
+          token: tokens.accessToken,
+          refreshToken: tokens.refreshToken,
+          email: profile.email ?? "",
+          roles: profile.roles,
+          subjectType: profile.subject_type,
+          clientId: profile.client_id ?? undefined,
+          expiresAt: Date.now() + Math.max(1, tokens.expiresInSec) * 1000,
+        };
+        setUser(normalized);
+        persist(normalized);
+        setAuthError(null);
+        setAuthStatus("authenticated");
+        if (shouldRoute) {
+          await routeAfterMe(normalized);
+        }
+      } catch (err) {
+        if (err instanceof UnauthorizedError) {
+          clearTokens();
+          persist(null);
+          setUser(null);
+          setAuthError("reauth_required");
+          setError("Требуется повторный вход");
+          setAuthStatus("unauthenticated");
+          redirectToLogin();
+          return;
+        }
+        throw err;
       }
-      const profile = await fetchMe(session.token);
-      if (!isClientRolePresent(profile.roles)) {
-        setError("У вас нет доступа к клиентскому кабинету");
-        logout();
-        return;
-      }
-      const normalized: AuthSession = {
-        ...session,
-        email: profile.email ?? session.email,
-        roles: profile.roles,
-        subjectType: profile.subject_type,
-        clientId: profile.client_id ?? session.clientId,
-      };
-      setUser(normalized);
-      persist(normalized);
     },
-    [logout, persist],
+    [logout, persist, routeAfterMe],
   );
 
   useEffect(() => {
     const handleUnauthorized = () => {
-      logout();
+      clearTokens();
+      persist(null);
+      setUser(null);
+      setAuthError("reauth_required");
+      setError("Требуется повторный вход");
+      setAuthStatus("unauthenticated");
+      redirectToLogin();
     };
     window.addEventListener("client-auth-logout", handleUnauthorized);
     return () => window.removeEventListener("client-auth-logout", handleUnauthorized);
-  }, [logout]);
+  }, [persist]);
 
   useEffect(() => {
+    if (bootstrappedRef.current) {
+      return;
+    }
+    bootstrappedRef.current = true;
+
     if (initialSession) {
+      setAuthStatus("authenticated");
       setIsLoading(false);
       return;
     }
@@ -131,47 +202,35 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialSes
 
         if (!isValidJwt(accessToken)) {
           logout();
-          redirectToLogin();
           return;
         }
 
+        let expiresInSec = Math.max(1, Math.floor(((getExpiresAt() ?? Date.now()) - Date.now()) / 1000));
         if (isAccessTokenExpired()) {
           if (!refreshToken) {
             logout();
-            redirectToLogin();
             return;
           }
           const refreshed = await refreshSession(refreshToken);
-          saveAuthTokens(refreshed.accessToken, refreshed.refreshToken, refreshed.expiresIn);
           accessToken = refreshed.accessToken;
+          expiresInSec = refreshed.expiresIn;
+          await establishSession({ accessToken: refreshed.accessToken, refreshToken: refreshed.refreshToken, expiresInSec }, { shouldRoute: false });
+          return;
         }
 
-        const raw = localStorage.getItem(STORAGE_KEY);
-        const stored = raw ? (JSON.parse(raw) as AuthSession) : null;
-        const session: AuthSession = {
-          token: accessToken,
-          refreshToken: getRefreshToken() ?? undefined,
-          email: stored?.email ?? "",
-          roles: stored?.roles ?? [],
-          subjectType: stored?.subjectType ?? "client_user",
-          clientId: stored?.clientId,
-          timezone: stored?.timezone,
-          expiresAt: getExpiresAt() ?? Date.now(),
-        };
-
-        await finalizeSession(session);
-      } catch (err) {
-        if (err instanceof UnauthorizedError) {
-          logout();
-          redirectToLogin();
-        }
+        await establishSession(
+          { accessToken, refreshToken: refreshToken ?? undefined, expiresInSec },
+          { shouldRoute: false },
+        );
+      } catch {
+        logout();
       } finally {
         setIsLoading(false);
       }
     };
 
     void bootstrap();
-  }, [finalizeSession, initialSession, logout]);
+  }, [establishSession, initialSession, logout]);
 
   const setTimezone = useCallback(
     (timezone: string | null) => {
@@ -188,10 +247,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialSes
   const handleLogin = useCallback(
     async (email: string, password: string) => {
       setError(null);
+      setAuthError(null);
       try {
-        const session = await login({ email, password });
-        saveAuthTokens(session.token, session.refreshToken, Math.max(1, Math.floor((session.expiresAt - Date.now()) / 1000)));
-        await finalizeSession(session);
+        const session = await loginApi({ email, password });
+        const expiresInSec = Math.max(1, Math.floor((session.expiresAt - Date.now()) / 1000));
+        await establishSession({ accessToken: session.token, refreshToken: session.refreshToken, expiresInSec });
       } catch (err) {
         if (err instanceof UnauthorizedError) {
           setError("Неверный логин/пароль");
@@ -222,24 +282,26 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialSes
         setError("Сервис временно недоступен");
       }
     },
-    [finalizeSession],
+    [establishSession],
   );
 
   const activateSession = useCallback(
     async (session: AuthSession) => {
       setError(null);
+      setAuthError(null);
       try {
-        saveAuthTokens(session.token, session.refreshToken, Math.max(1, Math.floor((session.expiresAt - Date.now()) / 1000)));
-        await finalizeSession(session);
+        const expiresInSec = Math.max(1, Math.floor((session.expiresAt - Date.now()) / 1000));
+        await establishSession({ accessToken: session.token, refreshToken: session.refreshToken, expiresInSec });
       } catch (err) {
         if (err instanceof UnauthorizedError) {
+          setAuthError("reauth_required");
           setError("Требуется повторный вход");
           return;
         }
         setError("Сервис временно недоступен");
       }
     },
-    [finalizeSession],
+    [establishSession],
   );
 
   const value = useMemo(
@@ -247,13 +309,15 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialSes
       user,
       isLoading,
       error,
+      authStatus,
+      authError,
       login: handleLogin,
       activateSession,
       logout,
       setTimezone,
       hasClientRole: Boolean(user?.roles && isClientRolePresent(user.roles)),
     }),
-    [user, isLoading, error, handleLogin, activateSession, logout, setTimezone],
+    [user, isLoading, error, authStatus, authError, handleLogin, activateSession, logout, setTimezone],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

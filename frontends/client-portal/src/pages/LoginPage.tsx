@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { useClient } from "../auth/ClientContext";
 import { CopyChip } from "../components/common/CopyChip";
@@ -9,11 +9,9 @@ import { AppLogo } from "@shared/brand/components";
 import { buildSsoStartUrl, listSsoIdps, type SSOIdPItem } from "../api/auth";
 
 export function LoginPage() {
-  const { login, error, user } = useAuth();
+  const { login, error, authError, user } = useAuth();
   const { portalState, refresh } = useClient();
-  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const returnUrl = useMemo(() => searchParams.get("returnUrl") || "/", [searchParams]);
   const [email, setEmail] = useState("client@neft.local");
   const [password, setPassword] = useState("client");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -26,22 +24,12 @@ export function LoginPage() {
   const emailRef = useRef<HTMLInputElement | null>(null);
   const errorRef = useRef<HTMLDivElement | null>(null);
 
-  const redirectTarget = useMemo(() => returnUrl, [returnUrl]);
-
-  useEffect(() => {
-    if (!user || portalState !== "READY") return;
-    if (redirectTarget) {
-      navigate(redirectTarget, { replace: true });
-    }
-  }, [navigate, portalState, redirectTarget, user]);
-
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
     setIsSubmitting(true);
     setFieldError(null);
     try {
       await login(email, password);
-      await refresh();
     } catch (err) {
       console.error("Ошибка входа", err);
       setFieldError("Сервис временно недоступен");
@@ -133,6 +121,11 @@ export function LoginPage() {
                 Повторить
               </button>
             ) : null}
+          </div>
+        ) : null}
+        {authError === "reauth_required" ? (
+          <div className="error" role="alert" tabIndex={-1} ref={errorRef}>
+            Требуется повторный вход
           </div>
         ) : null}
         {error ? (
