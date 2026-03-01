@@ -482,6 +482,8 @@ services:
       dockerfile: platform/document-service/Dockerfile
     container_name: neft-processing-document-1
     environment:
+      APP_ENV: ${DOCUMENT_SERVICE_APP_ENV:-${APP_ENV:-dev}}
+      PROVIDER_X_MODE: ${DOCUMENT_SERVICE_PROVIDER_X_MODE:-mock}
       S3_ENDPOINT: ${NEFT_S3_ENDPOINT:-http://minio:9000}
       S3_KEY: ${NEFT_S3_ACCESS_KEY:-change-me}
       S3_SECRET: ${NEFT_S3_SECRET_KEY:-change-me}
@@ -494,6 +496,10 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    networks:
+      default:
+        aliases:
+          - document-service
 
   workers:
     build:
@@ -666,6 +672,8 @@ services:
       ai-service:
         condition: service_healthy
       integration-hub:
+        condition: service_healthy
+      document-service:
         condition: service_healthy
     ports:
       - "80:80"

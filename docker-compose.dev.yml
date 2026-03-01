@@ -29,3 +29,8 @@ services:
       EMAIL_PROVIDER_MODE: mock
       OTP_PROVIDER_MODE: mock
 
+
+  document-service:
+    environment:
+      APP_ENV: dev
+      PROVIDER_X_MODE: mock

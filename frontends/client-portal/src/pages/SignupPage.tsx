@@ -6,7 +6,7 @@ import { useAuth } from "../auth/AuthContext";
 import type { AuthSession } from "../api/types";
 import { Toast } from "../components/Toast/Toast";
 import { useToast } from "../components/Toast/useToast";
-import { clearAuthTokens } from "../lib/apiClient";
+import { clearTokens } from "../lib/apiClient";
 
 const PHONE_REGEX = /^[+()\d\s-]{6,}$/;
 
@@ -202,8 +202,7 @@ export function SignupPage() {
           type="button"
           className="ghost neft-btn-secondary"
           onClick={() => {
-            clearAuthTokens();
-            localStorage.removeItem("onboarding_state");
+            clearTokens();
             navigate("/client/login");
           }}
           disabled={isSubmitting}

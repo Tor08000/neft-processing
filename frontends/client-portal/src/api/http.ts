@@ -1,5 +1,5 @@
 import { AUTH_API_BASE, CORE_API_BASE, CORE_ROOT_API_BASE } from "./base";
-import { getAccessToken } from "../lib/apiClient";
+import { getAccessToken, isValidJwt } from "../lib/apiClient";
 
 export { AUTH_API_BASE, CORE_API_BASE };
 
@@ -203,7 +203,7 @@ const buildHeaders = (token?: string): HttpHeaders => {
   const headers: HttpHeaders = {
     "Content-Type": "application/json",
   };
-  if (token) {
+  if (isValidJwt(token)) {
     headers["Authorization"] = `Bearer ${token}`;
   }
   return headers;
@@ -211,7 +211,7 @@ const buildHeaders = (token?: string): HttpHeaders => {
 
 const buildAuthHeaders = (token?: string): HttpHeaders => {
   const headers: HttpHeaders = {};
-  if (token) {
+  if (isValidJwt(token)) {
     headers["Authorization"] = `Bearer ${token}`;
   }
   return headers;
