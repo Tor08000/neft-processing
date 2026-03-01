@@ -11,7 +11,7 @@ from app.db.types import GUID, new_uuid_str
 class LedgerAccountV1(Base):
     __tablename__ = "internal_ledger_v1_accounts"
     __table_args__ = (
-        UniqueConstraint("account_code", name="uq_ilv1_accounts_code"),
+        UniqueConstraint("account_code", "owner_type", "owner_id", "currency", name="uq_ilv1_accounts_scope"),
         Index("ix_ilv1_accounts_owner", "owner_type", "owner_id"),
         Index("ix_ilv1_accounts_currency", "currency"),
     )
