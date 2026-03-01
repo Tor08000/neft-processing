@@ -4,7 +4,7 @@ import hashlib
 import logging
 import os
 from datetime import datetime, timedelta, timezone
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import psycopg
 from psycopg import sql
@@ -979,11 +979,11 @@ async def force_logout_user(
 
 
 @router.get("/sessions/{sid}/status", response_model=SessionStatusResponse)
-async def session_status(sid: str) -> SessionStatusResponse:
+async def session_status(sid: UUID) -> SessionStatusResponse:
     async with get_conn() as (_conn, cur):
         await cur.execute(
             "SELECT id, revoked_at, revocation_reason FROM auth_sessions WHERE id=%s LIMIT 1",
-            (sid,),
+            (str(sid),),
         )
         row = await cur.fetchone()
     if not row:

@@ -1,7 +1,8 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { ApiError, fetchMe, HtmlResponseError, login, UnauthorizedError, ValidationError } from "../api/auth";
-import { getClientMe } from "../api/client";
-import type { AuthSession } from "../api/types";
+import { request } from "../api/http";
+import type { AuthSession, LoginResponse } from "../api/types";
+import { clearAuthTokens, getAccessToken, getRefreshToken, isAccessTokenExpired, saveAuthTokens } from "../lib/apiClient";
 
 interface AuthContextValue {
   user: AuthSession | null;
@@ -16,9 +17,6 @@ interface AuthContextValue {
 
 interface AuthProviderProps {
   children: React.ReactNode;
-  /**
-   * Позволяет в тестах подставить заранее авторизованную сессию без походов в API.
-   */
   initialSession?: AuthSession | null;
 }
 
@@ -33,8 +31,7 @@ function decodeJwtPayload(token: string): Record<string, unknown> | null {
   try {
     const decoded = atob(padded);
     return JSON.parse(decoded) as Record<string, unknown>;
-  } catch (err) {
-    console.error("Failed to decode token payload", err);
+  } catch {
     return null;
   }
 }
@@ -42,6 +39,18 @@ function decodeJwtPayload(token: string): Record<string, unknown> | null {
 function isClientIssuer(token: string): boolean {
   const payload = decodeJwtPayload(token);
   return payload?.iss === CLIENT_TOKEN_ISSUER;
+}
+
+async function refreshSession(refreshToken: string): Promise<{ accessToken: string; refreshToken: string; expiresIn: number }> {
+  const body = await request<LoginResponse>(
+    "/refresh",
+    { method: "POST", body: JSON.stringify({ refresh_token: refreshToken }) },
+    { base: "auth", token: null },
+  );
+  if (!body.access_token || !body.refresh_token || !body.expires_in) {
+    throw new UnauthorizedError();
+  }
+  return { accessToken: body.access_token, refreshToken: body.refresh_token, expiresIn: body.expires_in };
 }
 
 export const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -65,8 +74,96 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialSes
 
   const logout = useCallback(() => {
     setUser(null);
+    clearAuthTokens();
+    localStorage.removeItem("onboarding_state");
     persist(null);
   }, [persist]);
+
+  const finalizeSession = useCallback(
+    async (session: AuthSession) => {
+      if (!isClientIssuer(session.token)) {
+        setError("Неверный контур входа");
+        logout();
+        return;
+      }
+      const profile = await fetchMe(session.token);
+      if (!isClientRolePresent(profile.roles)) {
+        setError("У вас нет доступа к клиентскому кабинету");
+        logout();
+        return;
+      }
+      const normalized: AuthSession = {
+        ...session,
+        email: profile.email ?? session.email,
+        roles: profile.roles,
+        subjectType: profile.subject_type,
+        clientId: profile.client_id ?? session.clientId,
+      };
+      setUser(normalized);
+      persist(normalized);
+    },
+    [logout, persist],
+  );
+
+  useEffect(() => {
+    const handleUnauthorized = () => {
+      logout();
+    };
+    window.addEventListener("client-auth-logout", handleUnauthorized);
+    return () => window.removeEventListener("client-auth-logout", handleUnauthorized);
+  }, [logout]);
+
+  useEffect(() => {
+    if (initialSession) {
+      setIsLoading(false);
+      return;
+    }
+
+    const bootstrap = async () => {
+      try {
+        let accessToken = getAccessToken();
+        const refreshToken = getRefreshToken();
+
+        if (!accessToken) {
+          logout();
+          return;
+        }
+
+        if (isAccessTokenExpired()) {
+          if (!refreshToken) {
+            logout();
+            return;
+          }
+          const refreshed = await refreshSession(refreshToken);
+          saveAuthTokens(refreshed.accessToken, refreshed.refreshToken, refreshed.expiresIn);
+          accessToken = refreshed.accessToken;
+        }
+
+        const raw = localStorage.getItem(STORAGE_KEY);
+        const stored = raw ? (JSON.parse(raw) as AuthSession) : null;
+        const session: AuthSession = {
+          token: accessToken,
+          refreshToken: getRefreshToken() ?? undefined,
+          email: stored?.email ?? "",
+          roles: stored?.roles ?? [],
+          subjectType: stored?.subjectType ?? "client_user",
+          clientId: stored?.clientId,
+          timezone: stored?.timezone,
+          expiresAt: Number(localStorage.getItem("expires_at") ?? Date.now()),
+        };
+
+        await finalizeSession(session);
+      } catch (err) {
+        if (err instanceof UnauthorizedError) {
+          logout();
+        }
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    void bootstrap();
+  }, [finalizeSession, initialSession, logout]);
 
   const setTimezone = useCallback(
     (timezone: string | null) => {
@@ -80,118 +177,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialSes
     [persist],
   );
 
-  useEffect(() => {
-    const handleUnauthorized = () => {
-      logout();
-    };
-    window.addEventListener("client-auth-logout", handleUnauthorized);
-    return () => window.removeEventListener("client-auth-logout", handleUnauthorized);
-  }, [logout]);
-
-  const reviveSession = useCallback(
-    async (stored: AuthSession) => {
-      try {
-        if (!isClientIssuer(stored.token)) {
-          setError("Неверный контур входа");
-          logout();
-          return;
-        }
-        const profile = await fetchMe(stored.token);
-        let timezone: string | null | undefined = stored.timezone;
-        try {
-          await getClientMe(stored);
-        } catch (err) {
-          console.warn("Не удалось загрузить timezone клиента", err);
-        }
-        if (!isClientRolePresent(profile.roles)) {
-          setError("Эта зона доступна только клиентам");
-          logout();
-          return;
-        }
-        const normalized: AuthSession = {
-          ...stored,
-          roles: profile.roles,
-          email: profile.email ?? stored.email,
-          subjectType: profile.subject_type,
-          clientId: profile.client_id ?? stored.clientId,
-          timezone,
-        };
-        setUser(normalized);
-        persist(normalized);
-      } catch (err) {
-        if (err instanceof UnauthorizedError) {
-          logout();
-        }
-      } finally {
-        setIsLoading(false);
-      }
-    },
-    [logout, persist],
-  );
-
-  useEffect(() => {
-    if (initialSession) {
-      setIsLoading(false);
-      return;
-    }
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      try {
-        const stored = JSON.parse(raw) as AuthSession;
-        if (stored.expiresAt > Date.now()) {
-          void reviveSession(stored);
-          return;
-        }
-      } catch (err) {
-        console.error("Не удалось восстановить сессию", err);
-      }
-    }
-    setIsLoading(false);
-  }, [initialSession, reviveSession]);
-
-  const finalizeSession = useCallback(
-    async (session: AuthSession) => {
-      if (!isClientIssuer(session.token)) {
-        setError("Неверный контур входа");
-        logout();
-        return;
-      }
-      const profile = await fetchMe(session.token);
-      let timezone: string | null | undefined = session.timezone;
-      try {
-        await getClientMe(session);
-      } catch (err) {
-        console.warn("Не удалось загрузить timezone клиента", err);
-      }
-      if (!isClientRolePresent(profile.roles)) {
-        setError("У вас нет доступа к клиентскому кабинету");
-        logout();
-        return;
-      }
-      const normalized: AuthSession = {
-        ...session,
-        email: profile.email ?? session.email,
-        roles: profile.roles,
-        subjectType: profile.subject_type,
-        clientId: profile.client_id ?? session.clientId,
-        timezone,
-      };
-      setUser(normalized);
-      persist(normalized);
-    },
-    [logout, persist],
-  );
-
   const handleLogin = useCallback(
     async (email: string, password: string) => {
       setError(null);
       try {
         const session = await login({ email, password });
-        if (!isClientRolePresent(session.roles)) {
-          setError("У вас нет доступа к клиентскому кабинету");
-          logout();
-          return;
-        }
+        saveAuthTokens(session.token, session.refreshToken, Math.max(1, Math.floor((session.expiresAt - Date.now()) / 1000)));
         await finalizeSession(session);
       } catch (err) {
         if (err instanceof UnauthorizedError) {
@@ -203,22 +194,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialSes
           return;
         }
         if (err instanceof HtmlResponseError) {
-          console.error("Gateway returned HTML during login", {
-            url: err.url,
-            status: err.status,
-            contentType: err.contentType,
-            snippet: err.bodySnippet,
-          });
           setError("Gateway returned HTML (wrong endpoint or SPA fallback)");
           return;
         }
         if (err instanceof ApiError) {
           if (err.status === 404) {
-            setError(
-              import.meta.env.DEV
-                ? "Неверный URL API (ошибка конфигурации)"
-                : "Сервис временно недоступен",
-            );
+            setError(import.meta.env.DEV ? "Неверный URL API (ошибка конфигурации)" : "Сервис временно недоступен");
             return;
           }
           if (err.status >= 500) {
@@ -230,42 +211,23 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialSes
           setError("Нет соединения");
           return;
         }
-        console.error("Ошибка авторизации", err);
         setError("Сервис временно недоступен");
       }
     },
-    [finalizeSession, logout],
+    [finalizeSession],
   );
 
   const activateSession = useCallback(
     async (session: AuthSession) => {
       setError(null);
       try {
+        saveAuthTokens(session.token, session.refreshToken, Math.max(1, Math.floor((session.expiresAt - Date.now()) / 1000)));
         await finalizeSession(session);
       } catch (err) {
         if (err instanceof UnauthorizedError) {
           setError("Требуется повторный вход");
           return;
         }
-        if (err instanceof ApiError) {
-          if (err.status === 404) {
-            setError(
-              import.meta.env.DEV
-                ? "Неверный URL API (ошибка конфигурации)"
-                : "Сервис временно недоступен",
-            );
-            return;
-          }
-          if (err.status >= 500) {
-            setError("Сервис временно недоступен");
-            return;
-          }
-        }
-        if (err instanceof TypeError) {
-          setError("Нет соединения");
-          return;
-        }
-        console.error("Ошибка авторизации", err);
         setError("Сервис временно недоступен");
       }
     },

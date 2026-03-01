@@ -19,6 +19,7 @@ export async function login(payload: LoginRequest): Promise<AuthSession> {
   );
   return {
     token: resolveToken(body),
+    refreshToken: body.refresh_token,
     email: body.email,
     roles: body.roles,
     subjectType: body.subject_type,
