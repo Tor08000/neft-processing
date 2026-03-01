@@ -1,6 +1,6 @@
 import { FormEvent, useMemo, useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
-import { login as loginApi, register } from "../api/auth";
+import { register } from "../api/auth";
 import { ApiError } from "../api/http";
 import { useAuth } from "../auth/AuthContext";
 import type { AuthSession } from "../api/types";
@@ -32,7 +32,6 @@ export function SignupPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [errorKind, setErrorKind] = useState<"SERVICE_UNAVAILABLE" | "TECH_ERROR" | null>(null);
-  const [loginFallback, setLoginFallback] = useState(false);
 
   const contactPayload = useMemo(() => resolveContactPayload(contact), [contact]);
 
@@ -56,7 +55,6 @@ export function SignupPage() {
     setIsSubmitting(true);
     setError(null);
     setErrorKind(null);
-    setLoginFallback(false);
     try {
       const registerResponse = await register({
         email: contactPayload.email,
@@ -74,18 +72,10 @@ export function SignupPage() {
           expiresAt: Date.now() + (registerResponse.expires_in ?? 3600) * 1000,
         };
         await activateSession(session);
-        navigate("/", { replace: true });
       } else {
-        try {
-          const session = await loginApi({ email: contactPayload.email, password });
-          await activateSession(session);
-          navigate("/", { replace: true });
-        } catch (loginError) {
-          console.error("Не удалось войти после регистрации", loginError);
-          setLoginFallback(true);
-          setError("Аккаунт создан. Войдите, чтобы продолжить онбординг.");
-          return;
-        }
+        setError("Регистрация успешна, войдите");
+        navigate("/client/login?signup=success", { replace: true });
+        return;
       }
     } catch (err) {
       console.error("Ошибка регистрации", err);
@@ -119,26 +109,6 @@ export function SignupPage() {
         {error ? (
           <div className="error" role="alert">
             <div>{error}</div>
-            {loginFallback ? (
-              <button
-                type="button"
-                className="ghost neft-btn-secondary"
-                onClick={async () => {
-                  if (!contactPayload?.email) return;
-                  try {
-                    const session = await loginApi({ email: contactPayload.email, password });
-                    await activateSession(session);
-                    navigate("/", { replace: true });
-                  } catch (loginError) {
-                    console.error("Не удалось войти после регистрации", loginError);
-                    setError("Не удалось войти. Проверьте email и пароль.");
-                  }
-                }}
-                disabled={isSubmitting}
-              >
-                Войти и продолжить
-              </button>
-            ) : null}
             {errorKind ? (
               <button
                 type="button"

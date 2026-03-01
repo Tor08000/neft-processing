@@ -1,5 +1,5 @@
 import { AUTH_API_BASE, CORE_API_BASE, CORE_ROOT_API_BASE } from "./base";
-import { getAccessToken, isValidJwt } from "../lib/apiClient";
+import { getAccessToken, isAccessTokenExpired, isValidJwt } from "../lib/apiClient";
 
 export { AUTH_API_BASE, CORE_API_BASE };
 
@@ -7,8 +7,29 @@ type ApiBase = "core" | "auth" | "core_root";
 
 export type HttpHeaders = Record<string, string>;
 
+const isDevRuntime = Boolean(import.meta.env.DEV || (typeof process !== "undefined" && process.env.NODE_ENV !== "production"));
 
-const getStoredToken = (): string | undefined => getAccessToken() ?? undefined;
+const logTokenAttach = (token: unknown, attached: boolean, reason?: string) => {
+  if (!isDevRuntime) return;
+  if (attached && typeof token === "string") {
+    console.info("[auth] attach_bearer", {
+      token_length: token.length,
+      token_prefix: token.slice(0, 10),
+    });
+    return;
+  }
+  console.info("[auth] skip_bearer", { reason: reason ?? "invalid format" });
+};
+
+const getStoredToken = (): string | undefined => {
+  const token = getAccessToken();
+  if (!token) return undefined;
+  if (isAccessTokenExpired()) {
+    logTokenAttach(token, false, "expired");
+    return undefined;
+  }
+  return token;
+};
 
 const isAuthMeRequest = (base: ApiBase, path: string) => base === "auth" && path.includes("/me");
 const logErrorUrl = (url: string, status: number) => {
@@ -205,6 +226,10 @@ const buildHeaders = (token?: string): HttpHeaders => {
   };
   if (isValidJwt(token)) {
     headers["Authorization"] = `Bearer ${token}`;
+    logTokenAttach(token, true);
+  } else {
+    const reason = token == null ? "null" : "invalid format";
+    logTokenAttach(token, false, reason);
   }
   return headers;
 };
@@ -213,6 +238,10 @@ const buildAuthHeaders = (token?: string): HttpHeaders => {
   const headers: HttpHeaders = {};
   if (isValidJwt(token)) {
     headers["Authorization"] = `Bearer ${token}`;
+    logTokenAttach(token, true);
+  } else {
+    const reason = token == null ? "null" : "invalid format";
+    logTokenAttach(token, false, reason);
   }
   return headers;
 };

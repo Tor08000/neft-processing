@@ -5,22 +5,17 @@ import { ForbiddenPage } from "../pages/ForbiddenPage";
 import { useLegalGate } from "../auth/LegalGateContext";
 
 export function ProtectedRoute() {
-  const { user, isLoading, hasClientRole, logout } = useAuth();
+  const { user, authStatus, hasClientRole } = useAuth();
   const { client, isLoading: isClientLoading } = useClient();
   const { isBlocked } = useLegalGate();
   const location = useLocation();
   const returnUrl = `${location.pathname}${location.search}`;
 
-  if (isLoading) {
+  if (authStatus === "loading") {
     return <div className="centered">Загружаем сессию...</div>;
   }
 
-  if (!user) {
-    return <Navigate to={`/client/login?returnUrl=${encodeURIComponent(returnUrl)}`} replace />;
-  }
-
-  if (user.expiresAt <= Date.now()) {
-    logout();
+  if (authStatus !== "authenticated" || !user) {
     return <Navigate to={`/client/login?returnUrl=${encodeURIComponent(returnUrl)}`} replace />;
   }
 

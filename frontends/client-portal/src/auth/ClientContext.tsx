@@ -4,7 +4,6 @@ import { fetchClientMe, PORTAL_ME_PATH } from "../api/clientPortal";
 import { ApiError, HtmlResponseError, UnauthorizedError } from "../api/http";
 import { CORE_API_BASE } from "../api/base";
 import { useAuth } from "./AuthContext";
-import { useAuthGuard } from "./useAuthGuard";
 
 export type PortalState =
   | "AUTH_REQUIRED"
@@ -154,7 +153,6 @@ const resolvePortalError = (err: unknown): { portalState: PortalState; error: Po
 
 export function ClientProvider({ children }: { children: React.ReactNode }) {
   const { user, logout } = useAuth();
-  const { guard, classifyGuardError } = useAuthGuard();
   const [client, setClient] = useState<PortalMeResponse | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<PortalError | null>(null);
@@ -172,7 +170,6 @@ export function ClientProvider({ children }: { children: React.ReactNode }) {
     setError(null);
     setPortalState("LOADING");
     try {
-      await guard(user);
       const data = await fetchClientMe(user);
       setClient(data);
       setPortalState("READY");
@@ -183,7 +180,7 @@ export function ClientProvider({ children }: { children: React.ReactNode }) {
         logout();
         return;
       }
-      if (classifyGuardError(err) === "forbidden") {
+      if (err instanceof ApiError && err.status === 403) {
         setError({ kind: "ENTITLEMENT", status: 403, path: PORTAL_ME_URL, message: "forbidden" });
         setPortalState("FORBIDDEN");
         return;
@@ -209,7 +206,7 @@ export function ClientProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setIsLoading(false);
     }
-  }, [classifyGuardError, guard, logout, user]);
+  }, [logout, user]);
 
   useEffect(() => {
     void loadClient();
