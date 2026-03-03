@@ -1,4 +1,5 @@
-import { Navigate, Route, Routes } from "react-router-dom";
+import { useEffect } from "react";
+import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { AuthProvider } from "./auth/AuthContext";
 import { ClientProvider } from "./auth/ClientContext";
 import { LegalGateProvider } from "./auth/LegalGateContext";
@@ -92,6 +93,7 @@ import { ServiceSloPage } from "./pages/ServiceSloPage";
 import { BillingOverduePage } from "./pages/BillingOverduePage";
 import { ServiceUnavailablePage } from "./pages/ServiceUnavailablePage";
 import { TechErrorPage } from "./pages/TechErrorPage";
+import { API_BASE_URL } from "./api/base";
 
 interface AppProps {
   initialSession?: AuthSession | null;
@@ -133,11 +135,29 @@ function PwaIndexRedirect() {
   return <Navigate to="/login" replace />;
 }
 
+
+function DevRuntimeDiagnostics() {
+  const { authStatus } = useAuth();
+  const location = useLocation();
+
+  useEffect(() => {
+    if (!import.meta.env.DEV) {
+      return;
+    }
+    console.log("API_BASE", API_BASE_URL);
+    console.log("AuthStatus", authStatus);
+    console.log("CurrentPath", window.location.pathname || location.pathname);
+  }, [authStatus, location.pathname]);
+
+  return null;
+}
+
 export function App({ initialSession = null }: AppProps) {
   return (
     <AuthProvider initialSession={initialSession}>
       <ClientProvider>
         <LegalGateProvider>
+          <DevRuntimeDiagnostics />
           <Routes>
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<SignupPage />} />
