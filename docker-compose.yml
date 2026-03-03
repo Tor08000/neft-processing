@@ -344,13 +344,15 @@ services:
     healthcheck:
       test:
         [
-          "CMD-SHELL",
-          "python -c \"import sys, urllib.request; resp = urllib.request.urlopen('http://localhost:8000/health', timeout=5); sys.exit(0 if resp.getcode() == 200 else 1)\"",
+          "CMD",
+          "python",
+          "-c",
+          "import sys,urllib.request; r=urllib.request.urlopen('http://127.0.0.1:8000/health',timeout=5); sys.exit(0 if r.getcode()==200 else 1)",
         ]
       interval: 5s
       timeout: 5s
       retries: 10
-      start_period: 15s
+      start_period: 20s
     ports:
       - "8001:8000"
 
@@ -399,13 +401,15 @@ services:
     healthcheck:
       test:
         [
-          "CMD-SHELL",
-          "python -c \"import sys, urllib.request; resp = urllib.request.urlopen('http://localhost:8000/health', timeout=5); sys.exit(0 if resp.getcode() == 200 else 1)\"",
+          "CMD",
+          "python",
+          "-c",
+          "import sys,urllib.request; r=urllib.request.urlopen('http://127.0.0.1:8000/health',timeout=5); sys.exit(0 if r.getcode()==200 else 1)",
         ]
       interval: 5s
       timeout: 5s
       retries: 10
-      start_period: 15s
+      start_period: 20s
     ports:
       - "8010:8000"
 
@@ -452,7 +456,7 @@ services:
     expose:
       - "8000"
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8000/health | grep -q ok"]
+      test: ["CMD", "python", "-c", "import sys,urllib.request; r=urllib.request.urlopen('http://127.0.0.1:8000/health',timeout=5); sys.exit(0 if r.getcode()==200 else 1)"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -471,7 +475,7 @@ services:
     expose:
       - "8000"
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8000/health | grep -q ok"]
+      test: ["CMD", "python", "-c", "import sys,urllib.request; r=urllib.request.urlopen('http://127.0.0.1:8000/health',timeout=5); sys.exit(0 if r.getcode()==200 else 1)"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -494,13 +498,15 @@ services:
     healthcheck:
       test:
         [
-          "CMD-SHELL",
-          "python -c \"import sys, urllib.request; resp = urllib.request.urlopen('http://localhost:8000/health', timeout=5); sys.exit(0 if resp.getcode() == 200 else 1)\"",
+          "CMD",
+          "python",
+          "-c",
+          "import sys,urllib.request; r=urllib.request.urlopen('http://127.0.0.1:8000/health',timeout=5); sys.exit(0 if r.getcode()==200 else 1)",
         ]
       interval: 5s
       timeout: 5s
       retries: 10
-      start_period: 15s
+      start_period: 20s
     networks:
       default:
         aliases:
