@@ -7,11 +7,16 @@ services:
       AUTH_DB_RECOVERY: reset
       DEV_DB_RECOVERY: reset
       AUTH_ALEMBIC_AUTO_REPAIR: 1
+      NEFT_AUTH_ISSUER: neft-auth
+      NEFT_AUTH_AUDIENCE: neft-admin
+      NEFT_CLIENT_ISSUER: neft-auth
+      NEFT_CLIENT_AUDIENCE: neft-client
 
   core-api:
     environment:
       APP_ENV: dev
       ALEMBIC_AUTO_REPAIR: 1
+      NEFT_AUTH_ISSUER: neft-auth
       NEFT_AUTH_AUDIENCE: neft-admin
       NEFT_CLIENT_AUDIENCE: neft-client
       NEFT_CLIENT_ISSUER: neft-auth
