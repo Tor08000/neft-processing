@@ -29,7 +29,7 @@ import { clearTokens, isValidJwt } from "../lib/apiClient";
 
 type Step = "profile" | "plan" | "contract" | "activation";
 
-type ProfileFieldErrors = Partial<Record<"companyName" | "inn" | "kpp" | "ogrn" | "legalAddress", string>>;
+type ProfileFieldErrors = Partial<Record<"companyName" | "inn" | "kpp" | "ogrn" | "legalAddress" | "contactEmail" | "contactPhone", string>>;
 
 const DIGITS_ONLY_RE = /^\d+$/;
 
@@ -318,21 +318,12 @@ export function OnboardingPage() {
       return;
     }
 
-    const clientTypeApi: "legal" | "ip" | "individual" = clientType === "LEGAL" ? "legal" : clientType === "IP" ? "ip" : "individual";
     const payload = {
-      client_type: clientTypeApi,
-      full_name: companyName.trim(),
+      org_type: clientType,
+      name: companyName.trim(),
       inn: inn.trim(),
       kpp: clientType === "LEGAL" ? kpp.trim() : null,
       ogrn: clientType === "LEGAL" ? ogrn.trim() : null,
-      legal_address: legalAddress.trim(),
-      contact_name: contactName.trim() || null,
-      contact_role: contactRole.trim() || null,
-      contact_phone: contactPhone.trim() || null,
-      contact_email: contactEmail.trim() || null,
-      // backward-compatible fields for existing core schema
-      org_type: clientType,
-      name: companyName.trim(),
       address: legalAddress.trim(),
     };
 
@@ -376,8 +367,34 @@ export function OnboardingPage() {
         if (import.meta.env.DEV) {
           console.info("[onboarding:submit:profile] response", { status: 422, body: err.details });
         }
+        const detail = err.details as Record<string, unknown> | string | undefined;
+        const fieldMap: ProfileFieldErrors = {};
+        if (detail && typeof detail === "object") {
+          const detailItems = (detail as { detail?: unknown }).detail;
+          if (Array.isArray(detailItems)) {
+            for (const item of detailItems) {
+              if (!item || typeof item !== "object") continue;
+              const locRaw = (item as { loc?: unknown[] }).loc;
+              const loc = Array.isArray(locRaw) ? locRaw : [];
+              const rawMessage = typeof (item as { msg?: unknown }).msg === "string" ? (item as { msg?: string }).msg : "Некорректное значение";
+              const field = loc.length > 0 ? String(loc[loc.length - 1]) : "";
+              if (field === "name") fieldMap.companyName = rawMessage;
+              if (field === "inn") fieldMap.inn = rawMessage;
+              if (field === "kpp") fieldMap.kpp = rawMessage;
+              if (field === "ogrn") fieldMap.ogrn = rawMessage;
+              if (field === "address") fieldMap.legalAddress = rawMessage;
+            }
+          }
+        }
+        if (Object.keys(fieldMap).length > 0) {
+          setProfileFieldErrors(fieldMap);
+        }
         const validationMessage =
-          typeof err.details === "string" && err.details.trim() !== "" ? err.details : "Ошибка валидации. Проверьте данные формы";
+          typeof detail === "string" && detail.trim() !== ""
+            ? detail
+            : typeof detail === "object" && detail && typeof (detail as { detail?: unknown }).detail === "string"
+              ? String((detail as { detail?: unknown }).detail)
+              : "Ошибка валидации. Проверьте данные формы";
         setError(validationMessage);
         showToast("error", validationMessage);
         return;

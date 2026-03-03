@@ -9,7 +9,7 @@ import { AppLogo } from "@shared/brand/components";
 import { buildSsoStartUrl, listSsoIdps, type SSOIdPItem } from "../api/auth";
 
 export function LoginPage() {
-  const { login, error, authError, user } = useAuth();
+  const { login, error, authError } = useAuth();
   const { portalState, refresh } = useClient();
   const [searchParams] = useSearchParams();
   const [email, setEmail] = useState("client@neft.local");
@@ -94,6 +94,8 @@ export function LoginPage() {
     };
   }, [tenantId]);
 
+  const isFormValid = email.trim().length > 0 && password.length > 0;
+
   const selfSignupLabel = "Регистрация";
 
   return (
@@ -152,7 +154,7 @@ export function LoginPage() {
             value={tenantId}
             onChange={(e) => setTenantId(e.target.value)}
             placeholder="00000000-0000-0000-0000-000000000000"
-            disabled={isSubmitting || Boolean(user)}
+            disabled={isSubmitting}
           />
         </label>
 
@@ -168,7 +170,7 @@ export function LoginPage() {
             placeholder="client@neft.local"
             required
             autoComplete="username"
-            disabled={isSubmitting || Boolean(user)}
+            disabled={isSubmitting}
             aria-invalid={Boolean(error || fieldError)}
           />
         </label>
@@ -186,13 +188,13 @@ export function LoginPage() {
             placeholder="Neft123!"
             required
             autoComplete="current-password"
-            disabled={isSubmitting || Boolean(user)}
+            disabled={isSubmitting}
             aria-invalid={Boolean(error || fieldError)}
           />
         </label>
         {capsLockOn ? <div className="capslock-hint">Caps Lock включён</div> : null}
 
-        <button type="submit" className="neft-button neft-btn-primary" disabled={isSubmitting || Boolean(user)}>
+        <button type="submit" className="neft-button neft-btn-primary" disabled={isSubmitting || !isFormValid}>
           {isSubmitting ? <span className="neft-spinner" aria-hidden /> : null}
           {isSubmitting ? "Входим..." : "Войти"}
         </button>
