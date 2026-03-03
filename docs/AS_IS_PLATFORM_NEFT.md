@@ -271,8 +271,8 @@ docker compose exec -T postgres psql -U neft -d neft -c "select 1;"
 
 docker compose exec -T redis redis-cli ping
 docker compose exec -T minio mc ls local
-docker compose exec -T logistics-service wget -qO- http://localhost:8000/health
-docker compose exec -T document-service wget -qO- http://localhost:8000/health
+docker compose exec -T logistics-service python -c "import urllib.request; r=urllib.request.urlopen('http://127.0.0.1:8000/health',timeout=5); print(r.getcode()); print(r.read())"
+docker compose exec -T document-service python -c "import urllib.request; r=urllib.request.urlopen('http://127.0.0.1:8000/health',timeout=5); print(r.getcode()); print(r.read())"
 ```
 
 ---
