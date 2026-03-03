@@ -25,7 +25,7 @@ import { useToast } from "../components/Toast/useToast";
 import { AppErrorState, AppForbiddenState, AppLoadingState } from "../components/states";
 import { isDemoClient } from "@shared/demo/demo";
 import { ApiError, CORE_API_BASE, UnauthorizedError, ValidationError } from "../api/http";
-import { isValidJwt } from "../lib/apiClient";
+import { clearTokens, isValidJwt } from "../lib/apiClient";
 
 type Step = "profile" | "plan" | "contract" | "activation";
 
@@ -318,12 +318,21 @@ export function OnboardingPage() {
       return;
     }
 
+    const clientTypeApi: "legal" | "ip" | "individual" = clientType === "LEGAL" ? "legal" : clientType === "IP" ? "ip" : "individual";
     const payload = {
-      org_type: clientType,
-      name: companyName.trim(),
+      client_type: clientTypeApi,
+      full_name: companyName.trim(),
       inn: inn.trim(),
       kpp: clientType === "LEGAL" ? kpp.trim() : null,
       ogrn: clientType === "LEGAL" ? ogrn.trim() : null,
+      legal_address: legalAddress.trim(),
+      contact_name: contactName.trim() || null,
+      contact_role: contactRole.trim() || null,
+      contact_phone: contactPhone.trim() || null,
+      contact_email: contactEmail.trim() || null,
+      // backward-compatible fields for existing core schema
+      org_type: clientType,
+      name: companyName.trim(),
       address: legalAddress.trim(),
     };
 
@@ -358,6 +367,7 @@ export function OnboardingPage() {
         showToast("error", "Требуется повторный вход");
         if (!reauthRedirectedRef.current) {
           reauthRedirectedRef.current = true;
+          clearTokens();
           window.location.replace("/client/login?reauth=1");
         }
         return;
@@ -366,8 +376,10 @@ export function OnboardingPage() {
         if (import.meta.env.DEV) {
           console.info("[onboarding:submit:profile] response", { status: 422, body: err.details });
         }
-        setError("Ошибка валидации. Проверьте данные формы");
-        showToast("error", "Ошибка валидации");
+        const validationMessage =
+          typeof err.details === "string" && err.details.trim() !== "" ? err.details : "Ошибка валидации. Проверьте данные формы";
+        setError(validationMessage);
+        showToast("error", validationMessage);
         return;
       }
       if (err instanceof ApiError) {
@@ -379,8 +391,8 @@ export function OnboardingPage() {
         showToast("error", message);
         return;
       }
-      setError("Не удалось сохранить профиль");
-      showToast("error", "Не удалось сохранить профиль");
+      setError("Сервис временно недоступен, попробуйте позже");
+      showToast("error", "Сервис временно недоступен, попробуйте позже");
     } finally {
       setIsSubmitting(false);
       setIsLoading(false);

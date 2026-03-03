@@ -18,7 +18,7 @@ vi.mock("../auth/ClientContext", () => ({
 }));
 
 vi.mock("../api/clientPortal", async () => {
-  const actual = (await vi.importActual("../api/clientPortal")) as typeof import("../api/clientPortal");
+  const actual = await vi.importActual("../api/clientPortal");
   return {
     ...actual,
     createOrg: (...args: unknown[]) => createOrgMock(...args),
@@ -90,11 +90,18 @@ describe("OnboardingPage", () => {
 
     await waitFor(() => expect(createOrgMock).toHaveBeenCalledTimes(1));
     expect(createOrgMock.mock.calls[0][1]).toEqual({
-      org_type: "LEGAL",
-      name: "ООО Нефть",
+      client_type: "legal",
+      full_name: "ООО Нефть",
       inn: "1234567890",
       kpp: "123456789",
       ogrn: "1234567890123",
+      legal_address: "Москва",
+      contact_name: null,
+      contact_role: null,
+      contact_phone: null,
+      contact_email: null,
+      org_type: "LEGAL",
+      name: "ООО Нефть",
       address: "Москва",
     });
   });
@@ -143,6 +150,7 @@ describe("OnboardingPage", () => {
 
     const submit = screen.getByRole("button", { name: "Продолжить" });
     fireEvent.click(submit);
+    expect(submit).toBeDisabled();
     fireEvent.click(submit);
 
     expect(createOrgMock).toHaveBeenCalledTimes(1);
