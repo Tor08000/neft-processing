@@ -35,7 +35,7 @@ JWKS_URL = os.getenv(
 PUBLIC_KEY_CACHE_TTL = int(os.getenv("AUTH_PUBLIC_KEY_CACHE_TTL", "300"))
 EXPECTED_ISSUER = os.getenv(
     "NEFT_CLIENT_ISSUER",
-    os.getenv("CLIENT_AUTH_ISSUER", "neft-client"),
+    os.getenv("CLIENT_AUTH_ISSUER", os.getenv("NEFT_AUTH_ISSUER", os.getenv("AUTH_ISSUER", "neft-auth"))),
 )
 EXPECTED_AUDIENCE = parse_expected_audience(
     os.getenv("NEFT_CLIENT_AUDIENCE", os.getenv("CLIENT_AUTH_AUDIENCE", "neft-client"))
@@ -59,16 +59,16 @@ def _static_public_key() -> str | None:
 def _get_bearer_token(request: Request) -> str:
     auth_header = request.headers.get("Authorization")
     if not auth_header:
-        _log_rejection("", reason="missing_token", path=str(request.url.path))
-        raise HTTPException(status_code=401, detail="Missing bearer token")
+        _log_rejection("", reason="missing_header", path=str(request.url.path))
+        raise _client_auth_http_error("missing_header")
     if not auth_header.startswith("Bearer "):
-        _log_rejection("", reason="bad_format", path=str(request.url.path))
-        raise HTTPException(status_code=401, detail="Missing bearer token")
+        _log_rejection("", reason="bad_scheme", path=str(request.url.path))
+        raise _client_auth_http_error("bad_scheme")
 
     token = auth_header.split(" ", 1)[1].strip()
     if not token:
-        _log_rejection("", reason="missing_token", path=str(request.url.path))
-        raise HTTPException(status_code=401, detail="Missing bearer token")
+        _log_rejection("", reason="missing_header", path=str(request.url.path))
+        raise _client_auth_http_error("missing_header")
 
     return token
 
@@ -96,17 +96,20 @@ def _log_rejection(token: str, *, reason: str, exc: Exception | None = None, pat
 
 def _reject_wrong_portal(token: str, *, claims: dict | None = None) -> None:
     if detect_portal_mismatch(token, "client", claims=claims):
-        _log_rejection(token, reason="wrong_portal")
-        raise HTTPException(
-            status_code=401,
-            detail={
-                "detail": {
-                    "error": "token_rejected",
-                    "reason_code": "TOKEN_WRONG_PORTAL",
-                    "error_id": str(uuid4()),
-                }
-            },
-        )
+        _log_rejection(token, reason="portal_mismatch")
+        raise _client_auth_http_error("portal_mismatch")
+
+
+def _client_auth_http_error(reason: str) -> HTTPException:
+    return HTTPException(
+        status_code=401,
+        detail={
+            "error": "client_token_missing_or_invalid",
+            "reason": reason,
+            "error_id": str(uuid4()),
+        },
+        headers={"X-Auth-Reason": reason},
+    )
 
 
 def _resolve_public_key(token: str, *, force_refresh: bool = False) -> tuple[str, bool, bool]:
@@ -181,16 +184,7 @@ def verify_client_token(token: str = Depends(_get_bearer_token)) -> dict:
         raise
     except Exception as exc:
         _log_rejection(token, reason="key_resolution_failed", exc=exc)
-        raise HTTPException(
-            status_code=401,
-            detail={
-                "error": {
-                    "type": "token_rejected",
-                    "reason_code": "TOKEN_REJECTED",
-                    "message": "Invalid token",
-                }
-            },
-        ) from exc
+        raise _client_auth_http_error("decode_failed") from exc
 
     try:
         payload = _decode_token(token, public_key)
@@ -206,41 +200,22 @@ def verify_client_token(token: str = Depends(_get_bearer_token)) -> dict:
                 if kid_not_found:
                     reason = "kid_not_found"
                 _log_rejection(token, reason=reason, exc=inner_exc)
-                raise HTTPException(
-                    status_code=401,
-                    detail={
-                        "error": {
-                            "type": "token_rejected",
-                            "reason_code": "TOKEN_REJECTED",
-                            "message": "Invalid token",
-                        }
-                    },
-                )
+                if reason == "iss_mismatch":
+                    raise _client_auth_http_error("issuer_mismatch")
+                if reason == "aud_mismatch":
+                    raise _client_auth_http_error("audience_mismatch")
+                raise _client_auth_http_error("decode_failed")
         else:
             _log_rejection(token, reason=reason, exc=exc)
-            raise HTTPException(
-                status_code=401,
-                detail={
-                    "error": {
-                        "type": "token_rejected",
-                        "reason_code": "TOKEN_REJECTED",
-                        "message": "Invalid token",
-                    }
-                },
-            )
+            if reason == "iss_mismatch":
+                raise _client_auth_http_error("issuer_mismatch")
+            if reason == "aud_mismatch":
+                raise _client_auth_http_error("audience_mismatch")
+            raise _client_auth_http_error("decode_failed")
     except Exception as exc:
         _reject_wrong_portal(token)
         _log_rejection(token, reason="decode_failed", exc=exc)
-        raise HTTPException(
-            status_code=401,
-            detail={
-                "error": {
-                    "type": "token_rejected",
-                    "reason_code": "TOKEN_REJECTED",
-                    "message": "Invalid token",
-                }
-            },
-        ) from exc
+        raise _client_auth_http_error("decode_failed") from exc
 
     _reject_wrong_portal(token, claims=payload)
     ensure_session_active(payload)
@@ -270,16 +245,7 @@ def verify_onboarding_token(token: str = Depends(_get_bearer_token)) -> dict:
         raise
     except Exception as exc:
         _log_rejection(token, reason="key_resolution_failed", exc=exc)
-        raise HTTPException(
-            status_code=401,
-            detail={
-                "error": {
-                    "type": "token_rejected",
-                    "reason_code": "TOKEN_REJECTED",
-                    "message": "Invalid token",
-                }
-            },
-        ) from exc
+        raise _client_auth_http_error("decode_failed") from exc
 
     try:
         payload = _decode_token(token, public_key)
@@ -295,41 +261,22 @@ def verify_onboarding_token(token: str = Depends(_get_bearer_token)) -> dict:
                 if kid_not_found:
                     reason = "kid_not_found"
                 _log_rejection(token, reason=reason, exc=inner_exc)
-                raise HTTPException(
-                    status_code=401,
-                    detail={
-                        "error": {
-                            "type": "token_rejected",
-                            "reason_code": "TOKEN_REJECTED",
-                            "message": "Invalid token",
-                        }
-                    },
-                )
+                if reason == "iss_mismatch":
+                    raise _client_auth_http_error("issuer_mismatch")
+                if reason == "aud_mismatch":
+                    raise _client_auth_http_error("audience_mismatch")
+                raise _client_auth_http_error("decode_failed")
         else:
             _log_rejection(token, reason=reason, exc=exc)
-            raise HTTPException(
-                status_code=401,
-                detail={
-                    "error": {
-                        "type": "token_rejected",
-                        "reason_code": "TOKEN_REJECTED",
-                        "message": "Invalid token",
-                    }
-                },
-            )
+            if reason == "iss_mismatch":
+                raise _client_auth_http_error("issuer_mismatch")
+            if reason == "aud_mismatch":
+                raise _client_auth_http_error("audience_mismatch")
+            raise _client_auth_http_error("decode_failed")
     except Exception as exc:
         _reject_wrong_portal(token)
         _log_rejection(token, reason="decode_failed", exc=exc)
-        raise HTTPException(
-            status_code=401,
-            detail={
-                "error": {
-                    "type": "token_rejected",
-                    "reason_code": "TOKEN_REJECTED",
-                    "message": "Invalid token",
-                }
-            },
-        ) from exc
+        raise _client_auth_http_error("decode_failed") from exc
 
     _reject_wrong_portal(token, claims=payload)
 

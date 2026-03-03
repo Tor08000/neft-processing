@@ -12,6 +12,9 @@ services:
     environment:
       APP_ENV: dev
       ALEMBIC_AUTO_REPAIR: 1
+      NEFT_AUTH_AUDIENCE: neft-admin
+      NEFT_CLIENT_AUDIENCE: neft-client
+      NEFT_CLIENT_ISSUER: neft-auth
       # Dev-only: reset schema when alembic_version_core is empty but schema has tables.
       # DB_RESET_ON_VERSION_MISSING: 1
 

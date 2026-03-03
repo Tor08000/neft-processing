@@ -34,8 +34,8 @@ def test_invalid_token_returns_reason_code(monkeypatch):
 
     assert response.status_code == 401
     payload = response.json()
-    assert payload["error"]["reason_code"] == "TOKEN_REJECTED"
-    assert payload["error"]["type"] == "token_rejected"
+    assert payload["error"] == "client_token_missing_or_invalid"
+    assert payload["reason"] == "decode_failed"
 
 
 def test_wrong_portal_token_returns_reason_code(make_jwt, rsa_keys, monkeypatch):
@@ -55,9 +55,9 @@ def test_wrong_portal_token_returns_reason_code(make_jwt, rsa_keys, monkeypatch)
 
     assert response.status_code == 401
     payload = response.json()
-    assert payload["detail"]["reason_code"] == "TOKEN_WRONG_PORTAL"
-    assert payload["detail"]["error"] == "token_rejected"
-    assert payload["detail"]["error_id"]
+    assert payload["error"] == "client_token_missing_or_invalid"
+    assert payload["reason"] == "portal_mismatch"
+    assert payload["error_id"]
     assert calls == [False]
 
 
