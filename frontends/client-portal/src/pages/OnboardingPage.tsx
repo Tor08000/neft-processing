@@ -370,7 +370,7 @@ export function OnboardingPage() {
         if (import.meta.env.DEV) {
           console.info("[onboarding:submit:profile] response", { status: err.status, body: err.detail ?? err.message });
         }
-        const message = getApiErrorMessage(err);
+        const message = err.status >= 500 ? "Сервис недоступен, попробуйте позже" : getApiErrorMessage(err);
         setError(message);
         showToast("error", message);
         return;

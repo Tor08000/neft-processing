@@ -12,13 +12,10 @@ const isDevRuntime = Boolean(import.meta.env.DEV || (typeof process !== "undefin
 const logTokenAttach = (token: unknown, attached: boolean, reason?: "missing" | "invalid_format" | "expired") => {
   if (!isDevRuntime) return;
   if (attached && typeof token === "string") {
-    console.info("[auth] attach_bearer", {
-      token_length: token.length,
-      token_prefix: token.slice(0, 10),
-    });
+    console.info(`[auth] attach_bearer token_length=${token.length} token_prefix=${token.slice(0, 12)}`);
     return;
   }
-  console.info("[auth] skip_bearer", { reason: reason ?? "invalid_format" });
+  console.info(`[auth] skip_bearer reason=${reason ?? "invalid_format"}`);
 };
 
 const resolveBearerToken = (token: unknown): { token?: string; reason?: "missing" | "invalid_format" | "expired" } => {
@@ -206,7 +203,10 @@ const shouldRetryRequest = (attempt: number, error: unknown, response?: Response
   return error instanceof TypeError;
 };
 
-const fetchWithRetry = async (url: string, init: RequestInit): Promise<Response> => {
+const fetchWithRetry = async (url: string, init: RequestInit, options?: { disableRetry?: boolean }): Promise<Response> => {
+  if (options?.disableRetry) {
+    return fetch(url, init);
+  }
   const method = (init.method ?? "GET").toUpperCase();
   const key = methodUrlKey(method, url);
   if (checkForbiddenStorm(key)) {
@@ -286,7 +286,8 @@ export async function request<T>(
   const headers: HttpHeaders = { ...buildHeaders(token ?? undefined), ...(init.headers as HttpHeaders | undefined) };
   const apiBase = base === "auth" ? AUTH_API_BASE : base === "core_root" ? CORE_ROOT_API_BASE : CORE_API_BASE;
   const url = `${apiBase}${path}`;
-  const response = await fetchWithRetry(url, { ...init, headers });
+  const isCriticalAuthPath = base === "auth" && (path.includes("/login") || path.includes("/me") || path.includes("/sessions/"));
+  const response = await fetchWithRetry(url, { ...init, headers }, { disableRetry: isCriticalAuthPath });
   const correlationId = response.headers.get("x-correlation-id") ?? response.headers.get("x-request-id");
   const contentType = response.headers.get("content-type") ?? "";
   const isJson = contentType.includes("application/json");
@@ -316,6 +317,9 @@ export async function request<T>(
 
   if (response.status === 401) {
     if (isAuthMeRequest(base, path)) {
+      if (isDevRuntime) {
+        console.info("[auth] auth_me_401 -> reauth");
+      }
       window.dispatchEvent(new Event("client-auth-logout"));
     }
     throw new UnauthorizedError();
@@ -428,7 +432,8 @@ export async function requestWithMeta<T>(
   const headers: HttpHeaders = { ...buildHeaders(token ?? undefined), ...(init.headers as HttpHeaders | undefined) };
   const apiBase = base === "auth" ? AUTH_API_BASE : base === "core_root" ? CORE_ROOT_API_BASE : CORE_API_BASE;
   const url = `${apiBase}${path}`;
-  const response = await fetchWithRetry(url, { ...init, headers });
+  const isCriticalAuthPath = base === "auth" && (path.includes("/login") || path.includes("/me") || path.includes("/sessions/"));
+  const response = await fetchWithRetry(url, { ...init, headers }, { disableRetry: isCriticalAuthPath });
   const correlationId = response.headers.get("x-correlation-id") ?? response.headers.get("x-request-id");
   const contentType = response.headers.get("content-type") ?? "";
   const isJson = contentType.includes("application/json");
@@ -446,6 +451,9 @@ export async function requestWithMeta<T>(
 
   if (response.status === 401) {
     if (isAuthMeRequest(base, path)) {
+      if (isDevRuntime) {
+        console.info("[auth] auth_me_401 -> reauth");
+      }
       window.dispatchEvent(new Event("client-auth-logout"));
     }
     throw new UnauthorizedError();
@@ -553,13 +561,17 @@ export async function requestFormData<T>(
   const headers: HttpHeaders = buildAuthHeaders(token ?? undefined);
   const apiBase = base === "auth" ? AUTH_API_BASE : base === "core_root" ? CORE_ROOT_API_BASE : CORE_API_BASE;
   const url = `${apiBase}${path}`;
-  const response = await fetchWithRetry(url, { method: "POST", body: data, headers });
+  const isCriticalAuthPath = base === "auth" && (path.includes("/login") || path.includes("/me") || path.includes("/sessions/"));
+  const response = await fetchWithRetry(url, { method: "POST", body: data, headers }, { disableRetry: isCriticalAuthPath });
   const correlationId = response.headers.get("x-correlation-id") ?? response.headers.get("x-request-id");
 
   logErrorUrl(url, response.status);
 
   if (response.status === 401) {
     if (isAuthMeRequest(base, path)) {
+      if (isDevRuntime) {
+        console.info("[auth] auth_me_401 -> reauth");
+      }
       window.dispatchEvent(new Event("client-auth-logout"));
     }
     throw new UnauthorizedError();
