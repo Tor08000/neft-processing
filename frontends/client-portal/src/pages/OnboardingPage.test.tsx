@@ -18,7 +18,7 @@ vi.mock("../auth/ClientContext", () => ({
 }));
 
 vi.mock("../api/clientPortal", async () => {
-  const actual = await vi.importActual("../api/clientPortal") as typeof import("../api/clientPortal");
+  const actual = (await vi.importActual("../api/clientPortal")) as typeof import("../api/clientPortal");
   return {
     ...actual,
     createOrg: (...args: unknown[]) => createOrgMock(...args),
@@ -124,5 +124,29 @@ describe("OnboardingPage", () => {
     await waitFor(() => expect(replaceMock).toHaveBeenCalledWith("/client/login?reauth=1"));
     expect(replaceMock).toHaveBeenCalledTimes(1);
     expect(createOrgMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("onboarding submit sends a single request while pending", async () => {
+    createOrgMock.mockImplementation(() => new Promise(() => undefined));
+
+    render(
+      <MemoryRouter>
+        <OnboardingPage />
+      </MemoryRouter>,
+    );
+
+    fireEvent.change(screen.getByLabelText("Полное наименование"), { target: { value: "ООО Нефть" } });
+    fireEvent.change(screen.getByLabelText("ИНН"), { target: { value: "1234567890" } });
+    fireEvent.change(screen.getByLabelText("КПП"), { target: { value: "123456789" } });
+    fireEvent.change(screen.getByLabelText("ОГРН"), { target: { value: "1234567890123" } });
+    fireEvent.change(screen.getByLabelText("Юридический адрес"), { target: { value: "Москва" } });
+
+    const submit = screen.getByRole("button", { name: "Продолжить" });
+    fireEvent.click(submit);
+    fireEvent.click(submit);
+
+    expect(createOrgMock).toHaveBeenCalledTimes(1);
+
+    await waitFor(() => expect(createOrgMock).toHaveBeenCalledTimes(1));
   });
 });

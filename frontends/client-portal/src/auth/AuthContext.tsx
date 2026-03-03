@@ -90,6 +90,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialSes
   const [authError, setAuthError] = useState<"reauth_required" | null>(null);
   const bootstrappedRef = useRef(false);
   const reauthInProgressRef = useRef(false);
+  const authInProgressRef = useRef(false);
+  const reauthRedirectedRef = useRef(false);
 
   const persist = useCallback((session: AuthSession | null) => {
     if (session) {
@@ -107,8 +109,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialSes
   }, [persist]);
 
   const forceReauth = useCallback(() => {
-    if (reauthInProgressRef.current) return;
+    if (reauthInProgressRef.current || reauthRedirectedRef.current) return;
     reauthInProgressRef.current = true;
+    reauthRedirectedRef.current = true;
+    authInProgressRef.current = false;
     clearTokens();
     persist(null);
     setUser(null);
@@ -133,11 +137,17 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialSes
     async (tokens: SessionTokens, options?: { shouldRoute?: boolean }) => {
       const shouldRoute = options?.shouldRoute ?? true;
       saveAuthTokens(tokens.accessToken, tokens.refreshToken, tokens.expiresInSec);
+      if (import.meta.env.DEV) {
+        console.log("[AUTH] stored_token=", localStorage.getItem("access_token"));
+      }
       try {
         if (!isClientIssuer(tokens.accessToken)) {
           setError("Неверный контур входа");
           logout();
           return;
+        }
+        if (shouldRoute && import.meta.env.DEV) {
+          console.log("[AUTH] login success, calling /me");
         }
         const profile = await fetchMe(tokens.accessToken);
         if (!isClientRolePresent(profile.roles)) {
@@ -159,11 +169,44 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialSes
         setAuthError(null);
         setAuthStatus("authenticated");
         reauthInProgressRef.current = false;
+        if (shouldRoute && import.meta.env.DEV) {
+          try {
+            const runtimeBase = typeof window !== "undefined" ? window.location.origin : "http://localhost";
+            const meResponse = await fetch(new URL("/api/v1/auth/me", runtimeBase).toString(), {
+              method: "GET",
+              headers: {
+                Authorization: `Bearer ${tokens.accessToken}`,
+                "X-Portal": "client",
+              },
+            });
+            const meRuntime = (await meResponse.json().catch(() => ({}))) as { sid?: string };
+            const jwtPayload = decodeJwtPayload(tokens.accessToken);
+            const jwtSid = typeof jwtPayload?.sid === "string" ? jwtPayload.sid : null;
+            const sid = typeof meRuntime?.sid === "string" ? meRuntime.sid : jwtSid;
+            console.log("[AUTH] runtime_sid_check", { jwt_sid: jwtSid, me_sid: meRuntime?.sid, sid_match: Boolean(sid && jwtSid && sid === jwtSid) });
+            if (sid) {
+              const statusResponse = await fetch(new URL(`/api/v1/auth/sessions/${encodeURIComponent(sid)}/status`, runtimeBase).toString(), {
+                method: "GET",
+                headers: {
+                  Authorization: `Bearer ${tokens.accessToken}`,
+                  "X-Portal": "client",
+                },
+              });
+              const sessionStatus = (await statusResponse.json().catch(() => ({}))) as { active?: boolean };
+              console.log("[AUTH] runtime_session_status", { sid, active: sessionStatus?.active === true });
+            }
+          } catch (runtimeErr) {
+            console.log("[AUTH] runtime_session_check_failed", runtimeErr);
+          }
+        }
         if (shouldRoute) {
           await routeAfterMe(normalized);
         }
       } catch (err) {
         if (err instanceof UnauthorizedError) {
+          if (import.meta.env.DEV) {
+            console.log("[AUTH] auth_me_401 -> reauth");
+          }
           forceReauth();
           return;
         }
@@ -244,6 +287,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialSes
 
   const handleLogin = useCallback(
     async (email: string, password: string) => {
+      if (authInProgressRef.current || reauthRedirectedRef.current) {
+        return;
+      }
+      authInProgressRef.current = true;
       setError(null);
       setAuthError(null);
       try {
@@ -278,6 +325,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialSes
           return;
         }
         setError("Сервис временно недоступен");
+      } finally {
+        authInProgressRef.current = false;
       }
     },
     [establishSession],
@@ -297,6 +346,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialSes
           return;
         }
         setError("Сервис временно недоступен");
+      } finally {
+        authInProgressRef.current = false;
       }
     },
     [establishSession],
