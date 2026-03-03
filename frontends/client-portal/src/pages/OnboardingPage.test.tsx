@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { OnboardingPage } from "./OnboardingPage";
-import { UnauthorizedError } from "../api/http";
+import { UnauthorizedError, ValidationError } from "../api/http";
 
 const useAuthMock = vi.fn();
 const useClientMock = vi.fn();
@@ -90,20 +90,37 @@ describe("OnboardingPage", () => {
 
     await waitFor(() => expect(createOrgMock).toHaveBeenCalledTimes(1));
     expect(createOrgMock.mock.calls[0][1]).toEqual({
-      client_type: "legal",
-      full_name: "ООО Нефть",
+      org_type: "LEGAL",
+      name: "ООО Нефть",
       inn: "1234567890",
       kpp: "123456789",
       ogrn: "1234567890123",
-      legal_address: "Москва",
-      contact_name: null,
-      contact_role: null,
-      contact_phone: null,
-      contact_email: null,
-      org_type: "LEGAL",
-      name: "ООО Нефть",
       address: "Москва",
     });
+  });
+
+  it("maps backend 422 detail fields to form errors", async () => {
+    createOrgMock.mockRejectedValue(
+      new ValidationError("Ошибка валидации", {
+        detail: [{ loc: ["body", "name"], msg: "Field required" }],
+      }),
+    );
+
+    render(
+      <MemoryRouter>
+        <OnboardingPage />
+      </MemoryRouter>,
+    );
+
+    fireEvent.change(screen.getByLabelText("Полное наименование"), { target: { value: "ООО Нефть" } });
+    fireEvent.change(screen.getByLabelText("ИНН"), { target: { value: "1234567890" } });
+    fireEvent.change(screen.getByLabelText("КПП"), { target: { value: "123456789" } });
+    fireEvent.change(screen.getByLabelText("ОГРН"), { target: { value: "1234567890123" } });
+    fireEvent.change(screen.getByLabelText("Юридический адрес"), { target: { value: "Москва" } });
+
+    fireEvent.click(screen.getByRole("button", { name: "Продолжить" }));
+
+    expect(await screen.findByText("Field required")).toBeInTheDocument();
   });
 
   it("onboarding 401 triggers single reauth redirect", async () => {

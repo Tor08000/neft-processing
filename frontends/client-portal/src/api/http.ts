@@ -45,7 +45,7 @@ const getStoredToken = (): string | undefined => {
 const isAuthMeRequest = (base: ApiBase, path: string) => base === "auth" && path.includes("/me");
 const isRetryDisabledPath = (base: ApiBase, path: string): boolean => {
   if (base === "auth") {
-    return path.includes("/login") || path.includes("/me") || path.includes("/sessions/");
+    return true;
   }
   return base === "core" && path.includes("/client/onboarding/");
 };
@@ -323,7 +323,7 @@ export async function request<T>(
   if (response.status === 401) {
     if (isAuthMeRequest(base, path)) {
       if (isDevRuntime) {
-        console.info("[auth] auth_me_401 -> reauth");
+        console.info("[AUTH] auth_me_401 -> reauth");
       }
       window.dispatchEvent(new Event("client-auth-logout"));
     }
@@ -456,7 +456,7 @@ export async function requestWithMeta<T>(
   if (response.status === 401) {
     if (isAuthMeRequest(base, path)) {
       if (isDevRuntime) {
-        console.info("[auth] auth_me_401 -> reauth");
+        console.info("[AUTH] auth_me_401 -> reauth");
       }
       window.dispatchEvent(new Event("client-auth-logout"));
     }
@@ -573,7 +573,7 @@ export async function requestFormData<T>(
   if (response.status === 401) {
     if (isAuthMeRequest(base, path)) {
       if (isDevRuntime) {
-        console.info("[auth] auth_me_401 -> reauth");
+        console.info("[AUTH] auth_me_401 -> reauth");
       }
       window.dispatchEvent(new Event("client-auth-logout"));
     }
