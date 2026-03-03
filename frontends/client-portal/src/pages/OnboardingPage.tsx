@@ -24,8 +24,84 @@ import { Toast } from "../components/Toast/Toast";
 import { useToast } from "../components/Toast/useToast";
 import { AppErrorState, AppForbiddenState, AppLoadingState } from "../components/states";
 import { isDemoClient } from "@shared/demo/demo";
+import { ApiError, CORE_API_BASE, UnauthorizedError, ValidationError } from "../api/http";
+import { isValidJwt } from "../lib/apiClient";
 
 type Step = "profile" | "plan" | "contract" | "activation";
+
+type ProfileFieldErrors = Partial<Record<"companyName" | "inn" | "kpp" | "ogrn" | "legalAddress", string>>;
+
+const DIGITS_ONLY_RE = /^\d+$/;
+
+const getApiErrorMessage = (error: ApiError): string => {
+  const detail = error.detail;
+  if (typeof detail === "string" && detail.trim() !== "") {
+    return detail;
+  }
+  if (detail && typeof detail === "object") {
+    const maybeDetail = (detail as Record<string, unknown>).detail;
+    const maybeReason = (detail as Record<string, unknown>).reason;
+    const maybeMessage = (detail as Record<string, unknown>).message;
+    if (typeof maybeDetail === "string" && maybeDetail.trim() !== "") return maybeDetail;
+    if (typeof maybeReason === "string" && maybeReason.trim() !== "") return maybeReason;
+    if (typeof maybeMessage === "string" && maybeMessage.trim() !== "") return maybeMessage;
+  }
+  return error.message || "Не удалось сохранить профиль";
+};
+
+function validateProfile(params: {
+  clientType: "LEGAL" | "IP" | "INDIVIDUAL";
+  companyName: string;
+  inn: string;
+  kpp: string;
+  ogrn: string;
+  legalAddress: string;
+}): { fieldErrors: ProfileFieldErrors; innWarning: string | null } {
+  const fieldErrors: ProfileFieldErrors = {};
+  let innWarning: string | null = null;
+  const innTrimmed = params.inn.trim();
+  const kppTrimmed = params.kpp.trim();
+  const ogrnTrimmed = params.ogrn.trim();
+
+  if (!params.companyName.trim()) {
+    fieldErrors.companyName = "Заполните обязательное поле";
+  }
+  if (!innTrimmed) {
+    fieldErrors.inn = "Заполните обязательное поле";
+  } else {
+    if (!DIGITS_ONLY_RE.test(innTrimmed)) {
+      fieldErrors.inn = "Ожидаются только цифры";
+    } else if (innTrimmed.length !== 10 && innTrimmed.length !== 12) {
+      fieldErrors.inn = "ИНН должен содержать 10 или 12 цифр";
+    } else if (params.clientType === "LEGAL" && innTrimmed.length === 12) {
+      innWarning = "Для юрлица обычно используется ИНН из 10 цифр";
+    }
+  }
+
+  if (!params.legalAddress.trim()) {
+    fieldErrors.legalAddress = "Заполните обязательное поле";
+  }
+
+  if (params.clientType === "LEGAL") {
+    if (!kppTrimmed) {
+      fieldErrors.kpp = "Заполните обязательное поле";
+    } else if (!DIGITS_ONLY_RE.test(kppTrimmed)) {
+      fieldErrors.kpp = "Ожидаются только цифры";
+    } else if (kppTrimmed.length !== 9) {
+      fieldErrors.kpp = "КПП должен содержать 9 цифр";
+    }
+
+    if (!ogrnTrimmed) {
+      fieldErrors.ogrn = "Заполните обязательное поле";
+    } else if (!DIGITS_ONLY_RE.test(ogrnTrimmed)) {
+      fieldErrors.ogrn = "Ожидаются только цифры";
+    } else if (ogrnTrimmed.length !== 13) {
+      fieldErrors.ogrn = "ОГРН должен содержать 13 цифр";
+    }
+  }
+
+  return { fieldErrors, innWarning };
+}
 
 export function OnboardingPage() {
   const navigate = useNavigate();
@@ -34,7 +110,10 @@ export function OnboardingPage() {
   const { toast, showToast } = useToast();
   const [step, setStep] = useState<Step>("profile");
   const [isLoading, setIsLoading] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [profileFieldErrors, setProfileFieldErrors] = useState<ProfileFieldErrors>({});
+  const [innWarning, setInnWarning] = useState<string | null>(null);
   const onboardingEnabled = client?.gating?.onboarding_enabled ?? client?.features?.onboarding_enabled ?? SELF_SIGNUP_ENABLED;
   const isDemoClientAccount = isDemoClient(user?.email ?? client?.user?.email ?? null);
   const hasProfile = Boolean(client?.org?.id || client?.org?.name || client?.org_status);
@@ -217,29 +296,89 @@ export function OnboardingPage() {
   const handleProfileSubmit = async (event: FormEvent) => {
     event.preventDefault();
     setError(null);
+    setInnWarning(null);
+    setProfileFieldErrors({});
     if (!user) return;
-    if (!companyName || !inn || !legalAddress) {
-      setError("Заполните обязательные поля");
+
+    const validation = validateProfile({
+      clientType,
+      companyName,
+      inn,
+      kpp,
+      ogrn,
+      legalAddress,
+    });
+
+    setProfileFieldErrors(validation.fieldErrors);
+    setInnWarning(validation.innWarning);
+
+    if (Object.keys(validation.fieldErrors).length > 0) {
+      setError("Проверьте корректность заполнения полей");
       return;
     }
+
+    const payload = {
+      org_type: clientType,
+      name: companyName.trim(),
+      inn: inn.trim(),
+      kpp: clientType === "LEGAL" ? kpp.trim() : null,
+      ogrn: clientType === "LEGAL" ? ogrn.trim() : null,
+      address: legalAddress.trim(),
+    };
+
+    if (import.meta.env.DEV) {
+      const token = user?.token;
+      const hasValidAuthorization = typeof token === "string" && isValidJwt(token);
+      console.info("[onboarding:submit:profile] request", {
+        payload,
+        api_url: `${CORE_API_BASE}/client/onboarding/profile`,
+        authorization_attached: hasValidAuthorization,
+        token_length: hasValidAuthorization ? token.length : 0,
+      });
+    }
+
+    setIsSubmitting(true);
     setIsLoading(true);
     try {
-      await createOrg(user, {
-        org_type: clientType,
-        name: companyName,
-        inn,
-        kpp: clientType === "LEGAL" ? kpp : null,
-        ogrn: clientType === "LEGAL" ? ogrn : null,
-        address: legalAddress,
-      });
+      await createOrg(user, payload);
+      if (import.meta.env.DEV) {
+        console.info("[onboarding:submit:profile] response", { status: 200, body: { ok: true } });
+      }
       await refresh();
       setStep("plan");
       showToast("success", "Профиль сохранён");
     } catch (err) {
       console.error("Ошибка сохранения профиля", err);
+      if (err instanceof UnauthorizedError) {
+        if (import.meta.env.DEV) {
+          console.info("[onboarding:submit:profile] response", { status: 401, body: { message: err.message } });
+        }
+        setError("Требуется повторный вход");
+        showToast("error", "Требуется повторный вход");
+        window.location.replace("/client/login?reauth=1");
+        return;
+      }
+      if (err instanceof ValidationError) {
+        if (import.meta.env.DEV) {
+          console.info("[onboarding:submit:profile] response", { status: 422, body: err.details });
+        }
+        setError("Ошибка валидации. Проверьте данные формы");
+        showToast("error", "Ошибка валидации");
+        return;
+      }
+      if (err instanceof ApiError) {
+        if (import.meta.env.DEV) {
+          console.info("[onboarding:submit:profile] response", { status: err.status, body: err.detail ?? err.message });
+        }
+        const message = getApiErrorMessage(err);
+        setError(message);
+        showToast("error", message);
+        return;
+      }
       setError("Не удалось сохранить профиль");
       showToast("error", "Не удалось сохранить профиль");
     } finally {
+      setIsSubmitting(false);
       setIsLoading(false);
     }
   };
@@ -337,21 +476,26 @@ export function OnboardingPage() {
             <label>
               Полное наименование
               <input className="neft-input" value={companyName} onChange={(e) => setCompanyName(e.target.value)} />
+              {profileFieldErrors.companyName ? <div className="error">{profileFieldErrors.companyName}</div> : null}
             </label>
             <label>
               ИНН
               <input className="neft-input" value={inn} onChange={(e) => setInn(e.target.value)} />
+              {profileFieldErrors.inn ? <div className="error">{profileFieldErrors.inn}</div> : null}
+              {innWarning ? <div className="muted">{innWarning}</div> : null}
             </label>
             {clientType === "LEGAL" ? (
               <label>
                 КПП
                 <input className="neft-input" value={kpp} onChange={(e) => setKpp(e.target.value)} />
+                {profileFieldErrors.kpp ? <div className="error">{profileFieldErrors.kpp}</div> : null}
               </label>
             ) : null}
             {clientType === "LEGAL" ? (
               <label>
                 ОГРН
                 <input className="neft-input" value={ogrn} onChange={(e) => setOgrn(e.target.value)} />
+                {profileFieldErrors.ogrn ? <div className="error">{profileFieldErrors.ogrn}</div> : null}
               </label>
             ) : null}
             {clientType === "IP" ? (
@@ -363,6 +507,7 @@ export function OnboardingPage() {
             <label>
               Юридический адрес
               <input className="neft-input" value={legalAddress} onChange={(e) => setLegalAddress(e.target.value)} />
+              {profileFieldErrors.legalAddress ? <div className="error">{profileFieldErrors.legalAddress}</div> : null}
             </label>
             <div className="onboarding-section">
               <h3>Контактное лицо</h3>
@@ -383,8 +528,9 @@ export function OnboardingPage() {
                 <input className="neft-input" value={contactEmail} onChange={(e) => setContactEmail(e.target.value)} />
               </label>
             </div>
-            <button type="submit" className="neft-button neft-btn-primary" disabled={isLoading}>
-              Продолжить
+            <button type="submit" className="neft-button neft-btn-primary" disabled={isSubmitting}>
+              {isSubmitting ? <span className="neft-spinner" aria-hidden /> : null}
+              {isSubmitting ? "Сохраняем..." : "Продолжить"}
             </button>
           </form>
         ) : null}
