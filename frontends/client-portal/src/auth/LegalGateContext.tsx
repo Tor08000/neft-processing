@@ -5,6 +5,7 @@ import { ApiError, UnauthorizedError } from "../api/http";
 import type { LegalDocumentResponse, LegalRequiredItem, LegalRequiredResponse } from "../api/legal";
 import { useAuth } from "./AuthContext";
 import { useClient } from "./ClientContext";
+import { AccessState } from "../access/accessState";
 
 const CACHE_TTL_MS = 60_000;
 
@@ -41,6 +42,11 @@ export const LegalGateProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     (import.meta.env.VITE_ONBOARDING_ENABLED ?? "false").toString().toLowerCase() === "true";
   const onboardingEnabled =
     client?.gating?.onboarding_enabled ?? client?.features?.onboarding_enabled ?? onboardingEnabledEnv;
+  const isClientOnboardingFlow =
+    client?.access_state != null &&
+    [AccessState.NEEDS_ONBOARDING, AccessState.NEEDS_PLAN, AccessState.NEEDS_CONTRACT].includes(
+      client.access_state as AccessState,
+    );
 
   const resolveErrorMessage = (error: unknown) => {
     if (error instanceof UnauthorizedError) {
@@ -58,6 +64,14 @@ export const LegalGateProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const refresh = useCallback(
     async (force = false) => {
       if (!user?.token) return;
+      if (isClientOnboardingFlow) {
+        setRequired([]);
+        setIsBlocked(false);
+        setIsFeatureDisabled(true);
+        setAccessState("ok");
+        setLastFetched(Date.now());
+        return;
+      }
       if (!force && (accessState === "unauthorized" || accessState === "forbidden" || accessState === "stopped")) {
         return;
       }
@@ -115,7 +129,7 @@ export const LegalGateProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         setIsLoading(false);
       }
     },
-    [accessState, lastFetched, onboardingEnabled, user?.token],
+    [accessState, isClientOnboardingFlow, lastFetched, onboardingEnabled, user?.token],
   );
 
   const accept = useCallback(

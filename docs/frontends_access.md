@@ -37,7 +37,7 @@ Admin
 
 Client
   email:    client@neft.local
-  password: Neft123!
+  password: Neft123! (регистр важен)
 
 Partner
   email:    partner@neft.local
