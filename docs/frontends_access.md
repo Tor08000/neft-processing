@@ -62,3 +62,14 @@ Partner
 Это используется в e2e-утилитах при логине.【F:frontends/e2e/tests/utils.ts†L3-L28】
 
 Эти же переменные учитываются auth-host seed/CLI для детерминированного сброса демо-паролей.
+
+
+## Client portal base/env contract
+
+```text
+BASE_URL=/client/
+VITE_AUTH_API_BASE=/api/v1/auth
+VITE_CORE_API_BASE=/api/core
+```
+
+Для клиентского портала канонический demo-вход: `client@neft.local` / `Neft123!` (регистр важен).
