@@ -144,7 +144,7 @@ services:
       args:
         VITE_API_BASE_URL: /api
         VITE_CORE_API_BASE: /api/core
-        VITE_AUTH_API_BASE: /api/auth
+        VITE_AUTH_API_BASE: /api/v1/auth
         VITE_AI_API_BASE: /api/ai
         VITE_PUBLIC_BASE: /client/
     container_name: neft-processing-client-web-1
@@ -152,7 +152,7 @@ services:
       SERVICE_NAME: client-web
       VITE_API_BASE_URL: /api
       VITE_CORE_API_BASE: /api/core
-      VITE_AUTH_API_BASE: /api/auth
+      VITE_AUTH_API_BASE: /api/v1/auth
       VITE_AI_API_BASE: /api/ai
       VITE_PUBLIC_BASE: /client/
     healthcheck:
@@ -787,7 +787,7 @@ services:
       prometheus:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "-qO", "/dev/null", "http://localhost:3000/health"]
+      test: ["CMD", "wget", "-qO", "/dev/null", "http://localhost:3000/api/health"]
       interval: 10s
       timeout: 5s
       retries: 5
