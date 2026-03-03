@@ -21,6 +21,6 @@ describe("http auth header attachment", () => {
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     const headers = init.headers as Record<string, string>;
     expect(headers.Authorization).toBeUndefined();
-    expect(infoSpy).toHaveBeenCalledWith("[auth] skip_bearer", { reason: "invalid_format" });
+    expect(infoSpy).toHaveBeenCalledWith("[auth] skip_bearer reason=invalid_format");
   });
 });

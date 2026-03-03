@@ -18,7 +18,7 @@ vi.mock("../auth/ClientContext", () => ({
 }));
 
 vi.mock("../api/clientPortal", async () => {
-  const actual = await vi.importActual<typeof import("../api/clientPortal")>("../api/clientPortal");
+  const actual = await vi.importActual("../api/clientPortal") as typeof import("../api/clientPortal");
   return {
     ...actual,
     createOrg: (...args: unknown[]) => createOrgMock(...args),
