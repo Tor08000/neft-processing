@@ -102,11 +102,19 @@ export type PortalMeResponse = {
 };
 
 export type ClientOrgPayload = {
-  org_type: "LEGAL" | "IP" | "INDIVIDUAL";
-  name: string;
+  client_type: "legal" | "ip" | "individual";
+  full_name: string;
   inn?: string | null;
   kpp?: string | null;
   ogrn?: string | null;
+  legal_address?: string | null;
+  contact_name?: string | null;
+  contact_role?: string | null;
+  contact_phone?: string | null;
+  contact_email?: string | null;
+  // backward-compatible aliases for current core schema
+  org_type?: "LEGAL" | "IP" | "INDIVIDUAL";
+  name?: string;
   address?: string | null;
 };
 

@@ -12,10 +12,10 @@ const isDevRuntime = Boolean(import.meta.env.DEV || (typeof process !== "undefin
 const logTokenAttach = (token: unknown, attached: boolean, reason?: "missing" | "invalid_format" | "expired") => {
   if (!isDevRuntime) return;
   if (attached && typeof token === "string") {
-    console.log("[HTTP] attach_bearer token_length=", token.length, "prefix=", token.slice(0, 12));
+    console.log(`[HTTP] attach_bearer token_length=${token.length} token_prefix=${token.slice(0, 12)}`);
     return;
   }
-  console.log("[HTTP] skip_bearer reason=", reason ?? "invalid_format");
+  console.log(`[HTTP] skip_bearer reason=${reason ?? "invalid_format"}`);
 };
 
 const resolveBearerToken = (token: unknown): { token?: string; reason?: "missing" | "invalid_format" | "expired" } => {
@@ -43,6 +43,12 @@ const getStoredToken = (): string | undefined => {
 };
 
 const isAuthMeRequest = (base: ApiBase, path: string) => base === "auth" && path.includes("/me");
+const isRetryDisabledPath = (base: ApiBase, path: string): boolean => {
+  if (base === "auth") {
+    return path.includes("/login") || path.includes("/me") || path.includes("/sessions/");
+  }
+  return base === "core" && path.includes("/client/onboarding/");
+};
 const logErrorUrl = (url: string, status: number) => {
   if (import.meta.env.DEV && status >= 400) {
     console.info("[api-error]", { final_url: url, status });
@@ -286,8 +292,7 @@ export async function request<T>(
   const headers: HttpHeaders = { ...buildHeaders(token ?? undefined), ...(init.headers as HttpHeaders | undefined) };
   const apiBase = base === "auth" ? AUTH_API_BASE : base === "core_root" ? CORE_ROOT_API_BASE : CORE_API_BASE;
   const url = `${apiBase}${path}`;
-  const isCriticalAuthPath = base === "auth" && (path.includes("/login") || path.includes("/me") || path.includes("/sessions/"));
-  const response = await fetchWithRetry(url, { ...init, headers }, { disableRetry: isCriticalAuthPath });
+  const response = await fetchWithRetry(url, { ...init, headers }, { disableRetry: isRetryDisabledPath(base, path) });
   const correlationId = response.headers.get("x-correlation-id") ?? response.headers.get("x-request-id");
   const contentType = response.headers.get("content-type") ?? "";
   const isJson = contentType.includes("application/json");
@@ -432,8 +437,7 @@ export async function requestWithMeta<T>(
   const headers: HttpHeaders = { ...buildHeaders(token ?? undefined), ...(init.headers as HttpHeaders | undefined) };
   const apiBase = base === "auth" ? AUTH_API_BASE : base === "core_root" ? CORE_ROOT_API_BASE : CORE_API_BASE;
   const url = `${apiBase}${path}`;
-  const isCriticalAuthPath = base === "auth" && (path.includes("/login") || path.includes("/me") || path.includes("/sessions/"));
-  const response = await fetchWithRetry(url, { ...init, headers }, { disableRetry: isCriticalAuthPath });
+  const response = await fetchWithRetry(url, { ...init, headers }, { disableRetry: isRetryDisabledPath(base, path) });
   const correlationId = response.headers.get("x-correlation-id") ?? response.headers.get("x-request-id");
   const contentType = response.headers.get("content-type") ?? "";
   const isJson = contentType.includes("application/json");
@@ -561,8 +565,7 @@ export async function requestFormData<T>(
   const headers: HttpHeaders = buildAuthHeaders(token ?? undefined);
   const apiBase = base === "auth" ? AUTH_API_BASE : base === "core_root" ? CORE_ROOT_API_BASE : CORE_API_BASE;
   const url = `${apiBase}${path}`;
-  const isCriticalAuthPath = base === "auth" && (path.includes("/login") || path.includes("/me") || path.includes("/sessions/"));
-  const response = await fetchWithRetry(url, { method: "POST", body: data, headers }, { disableRetry: isCriticalAuthPath });
+  const response = await fetchWithRetry(url, { method: "POST", body: data, headers }, { disableRetry: isRetryDisabledPath(base, path) });
   const correlationId = response.headers.get("x-correlation-id") ?? response.headers.get("x-request-id");
 
   logErrorUrl(url, response.status);
