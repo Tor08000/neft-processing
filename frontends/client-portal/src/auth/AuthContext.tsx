@@ -27,9 +27,10 @@ interface AuthProviderProps {
 const STORAGE_KEY = "neft_client_access_token";
 const CLIENT_TOKEN_ISSUER = import.meta.env.VITE_CLIENT_TOKEN_ISSUER ?? "neft-auth";
 
-const redirectToLogin = () => {
+const redirectToLogin = (reauth = false) => {
   if (typeof window !== "undefined") {
-    window.location.replace("/client/login");
+    const target = reauth ? "/client/login?reauth=1" : "/client/login";
+    window.location.replace(target);
   }
 };
 
@@ -88,6 +89,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialSes
   const [authStatus, setAuthStatus] = useState<"loading" | "authenticated" | "unauthenticated">("loading");
   const [authError, setAuthError] = useState<"reauth_required" | null>(null);
   const bootstrappedRef = useRef(false);
+  const reauthInProgressRef = useRef(false);
 
   const persist = useCallback((session: AuthSession | null) => {
     if (session) {
@@ -104,17 +106,24 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialSes
     persist(null);
   }, [persist]);
 
+  const forceReauth = useCallback(() => {
+    if (reauthInProgressRef.current) return;
+    reauthInProgressRef.current = true;
+    clearTokens();
+    persist(null);
+    setUser(null);
+    setAuthError("reauth_required");
+    setError("Требуется повторный вход");
+    setAuthStatus("unauthenticated");
+    redirectToLogin(true);
+  }, [persist]);
+
   const routeAfterMe = useCallback(async (session: AuthSession) => {
-    if (!session) {
-      redirectToLogin();
-      return;
-    }
     try {
       const portal = await fetchClientMe(session);
       const decision = resolveAccessState({ client: portal });
       const needsOnboarding = [AccessState.NEEDS_ONBOARDING, AccessState.NEEDS_PLAN, AccessState.NEEDS_CONTRACT].includes(decision.state);
       navigateTo(needsOnboarding ? "/client/onboarding" : "/client/dashboard");
-      return;
     } catch {
       navigateTo("/client/dashboard");
     }
@@ -149,39 +158,28 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialSes
         persist(normalized);
         setAuthError(null);
         setAuthStatus("authenticated");
+        reauthInProgressRef.current = false;
         if (shouldRoute) {
           await routeAfterMe(normalized);
         }
       } catch (err) {
         if (err instanceof UnauthorizedError) {
-          clearTokens();
-          persist(null);
-          setUser(null);
-          setAuthError("reauth_required");
-          setError("Требуется повторный вход");
-          setAuthStatus("unauthenticated");
-          redirectToLogin();
+          forceReauth();
           return;
         }
         throw err;
       }
     },
-    [logout, persist, routeAfterMe],
+    [forceReauth, logout, persist, routeAfterMe],
   );
 
   useEffect(() => {
     const handleUnauthorized = () => {
-      clearTokens();
-      persist(null);
-      setUser(null);
-      setAuthError("reauth_required");
-      setError("Требуется повторный вход");
-      setAuthStatus("unauthenticated");
-      redirectToLogin();
+      forceReauth();
     };
     window.addEventListener("client-auth-logout", handleUnauthorized);
     return () => window.removeEventListener("client-auth-logout", handleUnauthorized);
-  }, [persist]);
+  }, [forceReauth]);
 
   useEffect(() => {
     if (bootstrappedRef.current) {
