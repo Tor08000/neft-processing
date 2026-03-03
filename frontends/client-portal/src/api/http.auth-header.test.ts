@@ -12,7 +12,7 @@ describe("http auth header attachment", () => {
   });
 
   it("skips bearer for invalid token and logs invalid_format", async () => {
-    const infoSpy = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    const infoSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "content-type": "application/json" } }));
     vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
 
@@ -21,6 +21,6 @@ describe("http auth header attachment", () => {
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     const headers = init.headers as Record<string, string>;
     expect(headers.Authorization).toBeUndefined();
-    expect(infoSpy).toHaveBeenCalledWith("[auth] skip_bearer reason=invalid_format");
+    expect(infoSpy).toHaveBeenCalledWith("[HTTP] skip_bearer reason=invalid_format");
   });
 });

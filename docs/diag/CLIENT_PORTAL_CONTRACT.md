@@ -5,6 +5,11 @@
 - Core API base: `/api/core`
 - Client portal UI: `/client/*`
 
+## Frontend env contract
+- `BASE_URL=/client/`
+- `VITE_AUTH_API_BASE=/api/v1/auth`
+- `VITE_CORE_API_BASE=/api/core`
+
 ## Endpoints (client flow)
 1. `POST /api/v1/auth/login` → returns access/refresh tokens.
 2. `GET /api/v1/auth/me` → must be called exactly once after login success before setting authenticated UI state.
@@ -51,7 +56,7 @@ Admin tokens (`aud=neft-admin`) must be rejected on client endpoints.
 
 ## Dev auth debug logs
 Before Authorization attach:
-- `attach_bearer token_length=<N> token_prefix=<first_12>`
+- `attach_bearer token_length=<N> token_prefix=<first10>`
 - or `skip_bearer reason=missing|invalid_format|expired`
 
 Auth flow logs:

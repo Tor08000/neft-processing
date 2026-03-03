@@ -65,6 +65,9 @@ export const LegalGateProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     async (force = false) => {
       if (!user?.token) return;
       if (isClientOnboardingFlow) {
+        if (import.meta.env.DEV) {
+          console.info("[LEGAL] legal gate skipped during onboarding");
+        }
         setRequired([]);
         setIsBlocked(false);
         setIsFeatureDisabled(true);

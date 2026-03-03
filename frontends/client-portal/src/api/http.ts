@@ -12,7 +12,7 @@ const isDevRuntime = Boolean(import.meta.env.DEV || (typeof process !== "undefin
 const logTokenAttach = (token: unknown, attached: boolean, reason?: "missing" | "invalid_format" | "expired") => {
   if (!isDevRuntime) return;
   if (attached && typeof token === "string") {
-    console.log(`[HTTP] attach_bearer token_length=${token.length} token_prefix=${token.slice(0, 12)}`);
+    console.log(`[HTTP] attach_bearer token_length=${token.length} token_prefix=${token.slice(0, 10)}`);
     return;
   }
   console.log(`[HTTP] skip_bearer reason=${reason ?? "invalid_format"}`);
