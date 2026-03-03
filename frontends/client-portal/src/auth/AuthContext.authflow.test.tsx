@@ -75,4 +75,36 @@ describe("AuthProvider deterministic flow", () => {
     expect(authApi.login).toHaveBeenCalledTimes(1);
     expect(replaceMock).toHaveBeenCalledWith("/client/login?reauth=1");
   });
+  it("blocks duplicate login while auth is in progress", async () => {
+    let resolveLogin: ((value: unknown) => void) | null = null;
+    const pendingLogin = new Promise((resolve) => {
+      resolveLogin = resolve;
+    });
+    vi.spyOn(authApi, "login").mockImplementation(() => pendingLogin as never);
+    vi.spyOn(authApi, "fetchMe").mockResolvedValue({ email: "client@neft.local", roles: ["CLIENT_USER"], subject_type: "CLIENT", client_id: "c1" } as never);
+    vi.spyOn(clientPortalApi, "fetchClientMe").mockResolvedValue({ access_state: "ACTIVE", user: { id: "u1", email: "client@neft.local" }, org_roles: [], user_roles: [], capabilities: [] } as never);
+
+    render(
+      <AuthProvider>
+        <Harness />
+      </AuthProvider>,
+    );
+
+    await act(async () => {
+      const btn = screen.getByRole("button", { name: "login" });
+      btn.click();
+      btn.click();
+    });
+
+    expect(authApi.login).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      if (resolveLogin) {
+        resolveLogin({ token: makeJwt(), refreshToken: "r1", expiresAt: Date.now() + 60_000 });
+      }
+    });
+
+    await waitFor(() => expect(authApi.fetchMe).toHaveBeenCalledTimes(1));
+  });
+
 });

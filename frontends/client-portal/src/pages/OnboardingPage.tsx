@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { EmptyState } from "@shared/brand/components";
 import { useAuth } from "../auth/AuthContext";
@@ -111,6 +111,7 @@ export function OnboardingPage() {
   const [step, setStep] = useState<Step>("profile");
   const [isLoading, setIsLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const reauthRedirectedRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const [profileFieldErrors, setProfileFieldErrors] = useState<ProfileFieldErrors>({});
   const [innWarning, setInnWarning] = useState<string | null>(null);
@@ -355,7 +356,10 @@ export function OnboardingPage() {
         }
         setError("Требуется повторный вход");
         showToast("error", "Требуется повторный вход");
-        window.location.replace("/client/login?reauth=1");
+        if (!reauthRedirectedRef.current) {
+          reauthRedirectedRef.current = true;
+          window.location.replace("/client/login?reauth=1");
+        }
         return;
       }
       if (err instanceof ValidationError) {
@@ -370,7 +374,7 @@ export function OnboardingPage() {
         if (import.meta.env.DEV) {
           console.info("[onboarding:submit:profile] response", { status: err.status, body: err.detail ?? err.message });
         }
-        const message = err.status >= 500 ? "Сервис недоступен, попробуйте позже" : getApiErrorMessage(err);
+        const message = err.status >= 500 ? "Сервис временно недоступен" : getApiErrorMessage(err);
         setError(message);
         showToast("error", message);
         return;

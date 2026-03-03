@@ -12,10 +12,10 @@ const isDevRuntime = Boolean(import.meta.env.DEV || (typeof process !== "undefin
 const logTokenAttach = (token: unknown, attached: boolean, reason?: "missing" | "invalid_format" | "expired") => {
   if (!isDevRuntime) return;
   if (attached && typeof token === "string") {
-    console.info(`[auth] attach_bearer token_length=${token.length} token_prefix=${token.slice(0, 12)}`);
+    console.log("[HTTP] attach_bearer token_length=", token.length, "prefix=", token.slice(0, 12));
     return;
   }
-  console.info(`[auth] skip_bearer reason=${reason ?? "invalid_format"}`);
+  console.log("[HTTP] skip_bearer reason=", reason ?? "invalid_format");
 };
 
 const resolveBearerToken = (token: unknown): { token?: string; reason?: "missing" | "invalid_format" | "expired" } => {
