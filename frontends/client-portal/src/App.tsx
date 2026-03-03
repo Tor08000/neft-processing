@@ -98,11 +98,11 @@ interface AppProps {
 }
 
 function IndexRedirect() {
-  const { user } = useAuth();
+  const { user, authStatus } = useAuth();
   const { client, isLoading, portalState } = useClient();
   const isDemoClientAccount = isDemoClient(user?.email ?? client?.user?.email ?? null);
 
-  if (!user) {
+  if (authStatus !== "authenticated" || !user) {
     return <Navigate to="/login" replace />;
   }
 
@@ -126,8 +126,8 @@ function IndexRedirect() {
 }
 
 function PwaIndexRedirect() {
-  const { user } = useAuth();
-  if (user) {
+  const { user, authStatus } = useAuth();
+  if (authStatus === "authenticated" && user) {
     return <Navigate to="/marketplace/orders" replace />;
   }
   return <Navigate to="/login" replace />;

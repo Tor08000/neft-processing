@@ -178,6 +178,7 @@ export function ClientProvider({ children }: { children: React.ReactNode }) {
       if (err instanceof UnauthorizedError) {
         setPortalState("AUTH_REQUIRED");
         logout();
+        window.location.replace("/client/login?reauth=1");
         return;
       }
       if (err instanceof ApiError && err.status === 403) {

@@ -9,7 +9,7 @@ export type HttpHeaders = Record<string, string>;
 
 const isDevRuntime = Boolean(import.meta.env.DEV || (typeof process !== "undefined" && process.env.NODE_ENV !== "production"));
 
-const logTokenAttach = (token: unknown, attached: boolean, reason?: string) => {
+const logTokenAttach = (token: unknown, attached: boolean, reason?: "missing" | "invalid_format" | "expired") => {
   if (!isDevRuntime) return;
   if (attached && typeof token === "string") {
     console.info("[auth] attach_bearer", {
@@ -18,7 +18,21 @@ const logTokenAttach = (token: unknown, attached: boolean, reason?: string) => {
     });
     return;
   }
-  console.info("[auth] skip_bearer", { reason: reason ?? "invalid format" });
+  console.info("[auth] skip_bearer", { reason: reason ?? "invalid_format" });
+};
+
+const resolveBearerToken = (token: unknown): { token?: string; reason?: "missing" | "invalid_format" | "expired" } => {
+  if (typeof token !== "string" || token.trim() === "") {
+    return { reason: "missing" };
+  }
+  if (!isValidJwt(token)) {
+    return { reason: "invalid_format" };
+  }
+  const storedToken = getAccessToken();
+  if (storedToken && token === storedToken && isAccessTokenExpired()) {
+    return { reason: "expired" };
+  }
+  return { token };
 };
 
 const getStoredToken = (): string | undefined => {
@@ -224,24 +238,24 @@ const buildHeaders = (token?: string): HttpHeaders => {
   const headers: HttpHeaders = {
     "Content-Type": "application/json",
   };
-  if (isValidJwt(token)) {
-    headers["Authorization"] = `Bearer ${token}`;
-    logTokenAttach(token, true);
+  const resolved = resolveBearerToken(token);
+  if (resolved.token) {
+    headers["Authorization"] = `Bearer ${resolved.token}`;
+    logTokenAttach(resolved.token, true);
   } else {
-    const reason = token == null ? "null" : "invalid format";
-    logTokenAttach(token, false, reason);
+    logTokenAttach(token, false, resolved.reason);
   }
   return headers;
 };
 
 const buildAuthHeaders = (token?: string): HttpHeaders => {
   const headers: HttpHeaders = {};
-  if (isValidJwt(token)) {
-    headers["Authorization"] = `Bearer ${token}`;
-    logTokenAttach(token, true);
+  const resolved = resolveBearerToken(token);
+  if (resolved.token) {
+    headers["Authorization"] = `Bearer ${resolved.token}`;
+    logTokenAttach(resolved.token, true);
   } else {
-    const reason = token == null ? "null" : "invalid format";
-    logTokenAttach(token, false, reason);
+    logTokenAttach(token, false, resolved.reason);
   }
   return headers;
 };
