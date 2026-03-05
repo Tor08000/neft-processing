@@ -57,6 +57,7 @@ from app.routers.client_marketplace_deals import router as client_marketplace_de
 from app.routers.marketplace_client_events import router as marketplace_client_events_router
 from app.routers.marketplace_catalog import router as marketplace_catalog_router
 from app.routers.client_service_bookings import router as client_service_bookings_router
+from app.routers.service_requests import router as service_requests_router
 from app.routers.client_service_completion_proofs import (
     router as client_service_completion_proofs_router,
 )
@@ -659,8 +660,10 @@ if INCLUDE_CUSTOM_CORE_PREFIX:
 if INCLUDE_CUSTOM_CORE_PREFIX:
     safe_include_router(app, marketplace_catalog_router, prefix=API_PREFIX_CORE)
 safe_include_router(app, client_service_bookings_router, prefix=LEGACY_API_PREFIX)
+safe_include_router(app, service_requests_router, prefix=LEGACY_API_PREFIX)
 if INCLUDE_CUSTOM_CORE_PREFIX:
     safe_include_router(app, client_service_bookings_router, prefix=API_PREFIX_CORE)
+    safe_include_router(app, service_requests_router, prefix=API_PREFIX_CORE)
 safe_include_router(app, client_documents_router)
 safe_include_router(app, client_documents_v1_router)
 safe_include_router(app, admin_documents_v1_router)
@@ -783,6 +786,7 @@ safe_include_router(core_prefixed_router, partner_marketplace_coupons_router)
 safe_include_router(core_prefixed_router, partner_marketplace_analytics_router)
 safe_include_router(core_prefixed_router, partner_marketplace_subscriptions_router)
 safe_include_router(core_prefixed_router, partner_service_bookings_router)
+safe_include_router(core_prefixed_router, service_requests_router)
 safe_include_router(core_prefixed_router, marketplace_catalog_router)
 safe_include_router(core_prefixed_router, internal_fleet_router)
 safe_include_router(core_prefixed_router, internal_fuel_providers_router)

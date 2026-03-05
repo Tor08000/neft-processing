@@ -61,6 +61,7 @@ export function Layout() {
     { to: "/marketplace/offers", label: t("nav.marketplaceOffers"), icon: <Package size={18} />, capability: "PARTNER_PRICING" },
     { to: "/orders", label: t("nav.orders"), icon: <ShoppingBag size={18} />, capability: "PARTNER_CORE" },
     { to: "/bookings", label: t("nav.bookings"), icon: <Briefcase size={18} />, capability: "PARTNER_CORE" },
+    { to: "/service-requests", label: "Заявки услуг", icon: <Briefcase size={18} />, capability: "PARTNER_CORE" },
     { to: "/promotions", label: t("nav.promotions"), icon: <Percent size={18} />, capability: "PARTNER_PRICING" },
     { to: "/analytics", label: t("nav.analytics"), icon: <BarChart3 size={18} />, capability: "PARTNER_CORE" },
     { to: "/finance", label: t("nav.finance"), icon: <Wallet size={18} />, capability: "PARTNER_FINANCE_VIEW" },

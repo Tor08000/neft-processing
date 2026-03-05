@@ -27,6 +27,7 @@ import { RefundsPage } from "./pages/RefundsPage";
 import { RefundDetailsPage } from "./pages/RefundDetailsPage";
 import { ServicesCatalogPage } from "./pages/services/ServicesCatalogPage";
 import { ServiceDetailsPage } from "./pages/ServiceDetailsPage";
+import { ServiceRequestsPage } from "./pages/ServiceRequestsPage";
 import { PricesPage } from "./pages/PricesPage";
 import { AnalyticsPage } from "./pages/analytics/AnalyticsPage";
 import { PriceVersionDetailsPage } from "./pages/PriceVersionDetailsPage";
@@ -68,6 +69,7 @@ export function App({ initialSession = null }: AppProps) {
                 <Route path="/products" element={<MarketplaceProductsPage />} />
                 <Route path="/products/:id" element={<MarketplaceProductsPage />} />
                 <Route path="/bookings" element={<ServicesCatalogPage />} />
+                <Route path="/service-requests" element={<ServiceRequestsPage />} />
                 <Route path="/bookings/:id" element={<ServiceDetailsPage />} />
                 <Route path="/promotions" element={<MarketplaceProfilePage />} />
                 <Route path="/analytics" element={<AnalyticsPage />} />

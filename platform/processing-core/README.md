@@ -9,7 +9,8 @@ Canonical client endpoints are exposed under:
 
 Current baseline endpoints:
 
-- `GET /api/core/client/me`
+- `GET /api/core/portal/me` (single profile endpoint for client/partner/admin portals)
+- `GET /api/core/client/me` (legacy alias: redirects to `/api/core/portal/me`)
 - `GET /api/core/client/health`
 
 Compatibility aliases for `/api/core/client/v1/*` may exist for legacy integrations, but new integrations should use `/api/core/client/*`.
