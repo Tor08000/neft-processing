@@ -43,10 +43,7 @@ export const LegalGateProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const onboardingEnabled =
     client?.gating?.onboarding_enabled ?? client?.features?.onboarding_enabled ?? onboardingEnabledEnv;
   const isClientOnboardingFlow =
-    client?.access_state != null &&
-    [AccessState.NEEDS_ONBOARDING, AccessState.NEEDS_PLAN, AccessState.NEEDS_CONTRACT].includes(
-      client.access_state as AccessState,
-    );
+    client?.access_state === AccessState.NEEDS_ONBOARDING || client?.org_status === null || !client?.org;
 
   const resolveErrorMessage = (error: unknown) => {
     if (error instanceof UnauthorizedError) {
@@ -66,7 +63,7 @@ export const LegalGateProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       if (!user?.token) return;
       if (isClientOnboardingFlow) {
         if (import.meta.env.DEV) {
-          console.info("[LEGAL] legal gate skipped during onboarding");
+          console.log("[LEGAL] skipped during onboarding");
         }
         setRequired([]);
         setIsBlocked(false);
@@ -114,8 +111,12 @@ export const LegalGateProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           return;
         }
         if (error instanceof ApiError && error.status === 403) {
-          setAccessState("forbidden");
-          setErrorMessage("Нет доступа или неверный портал. Войдите заново.");
+          setRequired([]);
+          setIsBlocked(false);
+          setIsFeatureDisabled(true);
+          setAccessState("ok");
+          setErrorMessage(null);
+          setLastFetched(now);
           return;
         }
         if (error instanceof ApiError && error.status === 404) {
