@@ -9,10 +9,16 @@ import {
   type ServiceRequestItem,
 } from "../api/serviceRequests";
 
+const canAccept = (status: string) => status === "new";
+const canReject = (status: string) => status === "new" || status === "accepted" || status === "in_progress";
+const canStart = (status: string) => status === "accepted";
+const canComplete = (status: string) => status === "in_progress";
+
 export function ServiceRequestsPage() {
   const { user } = useAuth();
   const [items, setItems] = useState<ServiceRequestItem[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [loadingId, setLoadingId] = useState<string | null>(null);
 
   const load = async () => {
     try {
@@ -29,6 +35,7 @@ export function ServiceRequestsPage() {
 
   const act = async (id: string, action: "accept" | "reject" | "start" | "complete") => {
     try {
+      setLoadingId(id);
       if (action === "accept") await acceptPartnerServiceRequest(user, id);
       if (action === "reject") await rejectPartnerServiceRequest(user, id);
       if (action === "start") await startPartnerServiceRequest(user, id);
@@ -36,6 +43,8 @@ export function ServiceRequestsPage() {
       await load();
     } catch {
       setError("Не удалось выполнить действие");
+    } finally {
+      setLoadingId(null);
     }
   };
 
@@ -47,9 +56,9 @@ export function ServiceRequestsPage() {
         <thead>
           <tr>
             <th>ID</th>
-            <th>Client</th>
             <th>Service</th>
             <th>Status</th>
+            <th>Created</th>
             <th />
           </tr>
         </thead>
@@ -57,14 +66,14 @@ export function ServiceRequestsPage() {
           {items.map((item) => (
             <tr key={item.id}>
               <td>{item.id}</td>
-              <td>{item.client_id}</td>
               <td>{item.service_id}</td>
               <td>{item.status}</td>
+              <td>{item.created_at ?? "—"}</td>
               <td>
-                <button onClick={() => act(item.id, "accept")}>Accept</button>
-                <button onClick={() => act(item.id, "reject")}>Reject</button>
-                <button onClick={() => act(item.id, "start")}>Start</button>
-                <button onClick={() => act(item.id, "complete")}>Complete</button>
+                <button disabled={loadingId === item.id || !canAccept(item.status)} onClick={() => act(item.id, "accept")}>Accept</button>
+                <button disabled={loadingId === item.id || !canReject(item.status)} onClick={() => act(item.id, "reject")}>Reject</button>
+                <button disabled={loadingId === item.id || !canStart(item.status)} onClick={() => act(item.id, "start")}>Start</button>
+                <button disabled={loadingId === item.id || !canComplete(item.status)} onClick={() => act(item.id, "complete")}>Complete</button>
               </td>
             </tr>
           ))}

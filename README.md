@@ -197,7 +197,8 @@ curl -i "http://localhost/api/core/api/v1/admin/operations?limit=5" ^
 ### Клиентский кабинет (реальные данные)
 
 * Доступ: `http://localhost/client/`.
-* Демо-креды: `${NEFT_BOOTSTRAP_CLIENT_EMAIL}` / `${NEFT_BOOTSTRAP_CLIENT_PASSWORD}` (значения можно изменить в `.env`).
+* Демо-креды по умолчанию (clean start): `client@neft.local / Neft123!`, `partner@neft.local / Neft123!`.
+* Переменные для переопределения в `.env`: `${NEFT_BOOTSTRAP_CLIENT_EMAIL}`, `${NEFT_BOOTSTRAP_CLIENT_PASSWORD}`, `${NEFT_BOOTSTRAP_PARTNER_EMAIL}`, `${NEFT_BOOTSTRAP_PARTNER_PASSWORD}`.
 * Что внутри: операции, лимиты и дашборд читают реальные записи из БД (`client_operations`, `client_limits`, `client_cards`).
 * Быстрый старт:
   1. `cp -n .env.example .env` и при необходимости скорректируйте `DEMO_CLIENT_*`.
@@ -228,7 +229,8 @@ curl -i "http://localhost/api/core/api/v1/admin/operations?limit=5" ^
 ### Selftest (end-to-end)
 
 * Linux/macOS: `make selftest`
-* Windows CMD: `selftest.cmd` (базовый контейнерный selftest для core-api)
+* Windows CMD: `scripts\selftest.cmd` (E2E: login -> portal/me -> onboarding -> service request -> partner actions -> done).
+* Для детерминированного партнёра в dev используйте `GET /api/core/partners/demo` (возвращает `partner_id` seeded партнёра `demo-partner`).
 * Что проверяется в `make selftest`: поднятие контейнеров, health gateway/auth/core, проксирование gateway, логин seeded пользователей, профиль/права/модули, создание сотрудника админом, отсутствие 500 на обязательных endpoint, миграционный smoke на clean DB.
 
 ### Smoke-проверки (gateway, health, DB, merge markers)
