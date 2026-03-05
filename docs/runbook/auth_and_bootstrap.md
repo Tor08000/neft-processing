@@ -85,15 +85,15 @@ curl -i http://localhost/api/v1/auth/.well-known/jwks.json
 ```
 curl -s -X POST http://localhost/api/v1/auth/login ^
   -H "Content-Type: application/json" ^
-  -d "{\"email\":\"client@neft.local\",\"password\":\"client\",\"portal\":\"client\"}"
+  -d "{\"email\":\"client@neft.local\",\"password\":\"Neft123!\",\"portal\":\"client\"}"
 
 curl -s -X POST http://localhost/api/v1/auth/login ^
   -H "Content-Type: application/json" ^
-  -d "{\"email\":\"partner@neft.local\",\"password\":\"partner\",\"portal\":\"partner\"}"
+  -d "{\"email\":\"partner@neft.local\",\"password\":\"Neft123!\",\"portal\":\"partner\"}"
 
 curl -s -X POST http://localhost/api/v1/auth/login ^
   -H "Content-Type: application/json" ^
-  -d "{\"email\":\"admin@example.com\",\"password\":\"admin\",\"portal\":\"admin\"}"
+  -d "{\"email\":\"admin@neft.local\",\"password\":\"Neft123!\",\"portal\":\"admin\"}"
 ```
 
 DoD: ответы не `404`, и в JSON есть `access_token`. Если используются другие demo креды — зафиксировать их в этом runbook.

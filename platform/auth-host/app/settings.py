@@ -101,7 +101,7 @@ class Settings(SharedSettings):
         fallback_keys=("DEMO_CLIENT_EMAIL",),
     )
     demo_client_password: str = _env_or_default(
-        "NEFT_DEMO_CLIENT_PASSWORD", "client", fallback_keys=("DEMO_CLIENT_PASSWORD",)
+        "NEFT_DEMO_CLIENT_PASSWORD", "Neft123!", fallback_keys=("DEMO_CLIENT_PASSWORD",)
     )
     demo_client_id: str = _env_or_default(
         "NEFT_DEMO_CLIENT_ID", "demo-client", fallback_keys=("DEMO_CLIENT_ID",)
@@ -129,7 +129,7 @@ class Settings(SharedSettings):
         fallback_keys=("DEMO_ADMIN_USERNAME",),
     )
     demo_admin_password: str = _env_or_default(
-        "NEFT_DEMO_ADMIN_PASSWORD", "change-me", fallback_keys=("DEMO_ADMIN_PASSWORD",)
+        "NEFT_DEMO_ADMIN_PASSWORD", "Neft123!", fallback_keys=("DEMO_ADMIN_PASSWORD",)
     )
     demo_admin_full_name: str = _env_or_default(
         "NEFT_DEMO_ADMIN_FULL_NAME",
@@ -157,7 +157,7 @@ class Settings(SharedSettings):
     )
     bootstrap_admin_password: str = _env_or_default(
         "NEFT_BOOTSTRAP_ADMIN_PASSWORD",
-        _env_or_default("NEFT_DEMO_ADMIN_PASSWORD", "change-me", fallback_keys=("DEMO_ADMIN_PASSWORD",)),
+        _env_or_default("NEFT_DEMO_ADMIN_PASSWORD", "Neft123!", fallback_keys=("DEMO_ADMIN_PASSWORD",)),
     )
     bootstrap_admin_full_name: str = _env_or_default(
         "NEFT_BOOTSTRAP_ADMIN_FULL_NAME",

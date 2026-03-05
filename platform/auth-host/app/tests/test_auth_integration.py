@@ -7,6 +7,7 @@ import httpx
 from app import bootstrap, db
 from app.demo import DEMO_CLIENT_EMAIL, DEMO_CLIENT_PASSWORD
 from app.main import app
+from app.security import hash_password
 from app.settings import Settings
 from app.tests.migration_helpers import run_auth_migrations
 
@@ -65,13 +66,13 @@ async def test_bootstrap_required_users_seeds_demo_admin_and_allows_login():
     async with db.get_conn() as (_conn, cur):
         await cur.execute(
             "SELECT email, is_active FROM users WHERE lower(email)=lower(%s) LIMIT 1",
-            ("admin@example.com",),
+            ("admin@neft.local",),
         )
         admin_row = await cur.fetchone()
 
         await cur.execute(
             "SELECT role_code FROM user_roles ur JOIN users u ON u.id = ur.user_id WHERE lower(u.email)=lower(%s)",
-            ("admin@example.com",),
+            ("admin@neft.local",),
         )
         admin_roles = {r["role_code"] for r in await cur.fetchall()}
 
@@ -83,7 +84,41 @@ async def test_bootstrap_required_users_seeds_demo_admin_and_allows_login():
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         response = await client.post(
             "/api/v1/auth/login",
-            json={"email": "admin@example.com", "password": "admin123", "portal": "admin"},
+            json={"email": "admin@neft.local", "password": "Neft123!", "portal": "admin"},
+        )
+
+    assert response.status_code == 200
+
+
+
+
+@pytest.mark.anyio
+async def test_bootstrap_required_users_resets_existing_demo_password_in_dev_mode():
+    try:
+        conn = await psycopg.AsyncConnection.connect(db.DSN_ASYNC)
+    except Exception as exc:  # pragma: no cover - skip when DB unavailable
+        pytest.skip(f"Postgres not available: {exc}")
+    else:
+        await conn.close()
+
+    run_auth_migrations(db.DSN_ASYNC)
+
+    settings = Settings(APP_ENV="dev")
+    await bootstrap.bootstrap_required_users(settings)
+
+    async with db.get_conn() as (_conn, cur):
+        await cur.execute(
+            "UPDATE users SET password_hash = %s WHERE lower(email)=lower(%s)",
+            (hash_password("definitely-wrong"), "client@neft.local"),
+        )
+
+    await bootstrap.bootstrap_required_users(settings)
+
+    transport = httpx.ASGITransport(app=app, lifespan="on")
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/api/v1/auth/login",
+            json={"email": "client@neft.local", "password": "Neft123!", "portal": "client"},
         )
 
     assert response.status_code == 200
