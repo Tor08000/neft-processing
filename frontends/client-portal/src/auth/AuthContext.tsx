@@ -128,7 +128,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialSes
       const decision = resolveAccessState({ client: portal });
       const needsOnboarding = [AccessState.NEEDS_ONBOARDING, AccessState.NEEDS_PLAN, AccessState.NEEDS_CONTRACT].includes(decision.state);
       navigateTo(needsOnboarding ? "/client/onboarding" : "/client/dashboard");
-    } catch {
+    } catch (err) {
+      if (err instanceof ApiError && (err.status === 404 || err.status === 409)) {
+        navigateTo("/client/onboarding");
+        return;
+      }
       navigateTo("/client/dashboard");
     }
   }, []);
@@ -172,15 +176,16 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialSes
       } catch (err) {
         if (err instanceof UnauthorizedError) {
           if (import.meta.env.DEV) {
-            console.log("[AUTH] auth_me_401 -> reauth");
+            console.log("[AUTH] auth_me_401 -> invalid token");
           }
-          forceReauth();
+          logout();
+          setError("Нет доступа: токен недействителен");
           return;
         }
         throw err;
       }
     },
-    [forceReauth, logout, persist, routeAfterMe],
+    [logout, persist, routeAfterMe],
   );
 
   useEffect(() => {

@@ -10,10 +10,10 @@ from fastapi import HTTPException
 from jose import JWTError, jwk, jwt
 from jose.exceptions import ExpiredSignatureError, JWTClaimsError
 
-DEFAULT_JWKS_URL = os.getenv("AUTH_JWKS_URL", "http://auth-host:8000/api/auth/.well-known/jwks.json")
+DEFAULT_JWKS_URL = os.getenv("AUTH_JWKS_URL", "http://gateway/api/auth/.well-known/jwks.json")
 DEFAULT_PUBLIC_KEY_URL = os.getenv(
     "AUTH_PUBLIC_KEY_URL",
-    "http://auth-host:8000/api/auth/v1/auth/public-key",
+    "http://gateway/api/auth/public-key",
 )
 DEFAULT_CACHE_TTL = int(os.getenv("AUTH_PUBLIC_KEY_CACHE_TTL", "300"))
 DEFAULT_JWKS_BACKOFF_SECONDS = int(os.getenv("AUTH_JWKS_BACKOFF_SECONDS", "30"))
@@ -226,6 +226,8 @@ def log_token_rejection(
     event: str,
     exc: Exception | None = None,
     path: str | None = None,
+    key_source: str | None = None,
+    key_url: str | None = None,
 ) -> None:
     header = get_unverified_header(token)
     claims = get_unverified_claims(token)
@@ -242,6 +244,8 @@ def log_token_rejection(
         "subject": subject,
         "reason": reason,
         "path": path_value or None,
+        "key_source": key_source,
+        "key_url": key_url,
     }
     if exc is not None:
         payload["error"] = str(exc)
@@ -314,7 +318,7 @@ def fetch_public_key(
         raise HTTPException(status_code=503, detail="Public key refresh backoff")
 
     try:
-        response = requests.get(url, timeout=5)
+        response = requests.get(url, timeout=5, allow_redirects=True)
         if log_info:
             log_info(f"{event_prefix}.public_key.refresh", {"url": url, "status_code": response.status_code})
         response.raise_for_status()
@@ -348,7 +352,7 @@ def fetch_jwks(
         raise HTTPException(status_code=503, detail="JWKS refresh backoff")
 
     try:
-        response = requests.get(url, timeout=5)
+        response = requests.get(url, timeout=5, allow_redirects=True)
         if log_info:
             log_info(f"{event_prefix}.jwks.refresh", {"url": url, "status_code": response.status_code})
         response.raise_for_status()
