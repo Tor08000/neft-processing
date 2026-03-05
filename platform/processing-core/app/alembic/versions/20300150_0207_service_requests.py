@@ -23,13 +23,23 @@ service_request_status = sa.Enum(
     "done",
     "rejected",
     name="service_request_status",
+    create_type=False,
 )
 
 
 def upgrade() -> None:
     bind = op.get_bind()
     if bind.dialect.name == "postgresql":
-        service_request_status.create(bind, checkfirst=True)
+        op.execute(
+            """
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'service_request_status') THEN
+    CREATE TYPE service_request_status AS ENUM ('new','accepted','in_progress','done','rejected');
+  END IF;
+END$$;
+"""
+        )
 
     op.create_table(
         "service_requests",
@@ -66,7 +76,3 @@ def downgrade() -> None:
     op.drop_index("ix_service_requests_tenant_client_created", table_name="service_requests", schema="processing_core")
     op.drop_index("ix_service_requests_tenant_partner_status", table_name="service_requests", schema="processing_core")
     op.drop_table("service_requests", schema="processing_core")
-
-    bind = op.get_bind()
-    if bind.dialect.name == "postgresql":
-        service_request_status.drop(bind, checkfirst=True)
