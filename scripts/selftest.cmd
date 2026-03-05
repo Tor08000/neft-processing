@@ -6,54 +6,57 @@ set "CLIENT_EMAIL=client@neft.local"
 set "CLIENT_PASSWORD=Neft123!"
 set "PARTNER_EMAIL=partner@neft.local"
 set "PARTNER_PASSWORD=Neft123!"
-set "FAILED=0"
 set "CREATED_ID="
 set "PARTNER_ID="
+set "CLIENT_ACCESS_STATE="
 
 echo [INFO] Base URL: %BASE_URL%
 
-call :step "gateway health" "curl -sS -f %BASE_URL%/health" || set "FAILED=1"
-call :step "auth health" "curl -sS -f %BASE_URL%/api/auth/health" || set "FAILED=1"
-call :step "core health" "curl -sS -f %BASE_URL%/api/core/health" || set "FAILED=1"
+call :step "gateway health" "curl -sS -f %BASE_URL%/health" || exit /b 1
+call :step "auth health" "curl -sS -f %BASE_URL%/api/auth/health" || exit /b 1
+call :step "core health" "curl -sS -f %BASE_URL%/api/core/health" || exit /b 1
 
-call :login "%CLIENT_EMAIL%" "%CLIENT_PASSWORD%" CLIENT_TOKEN || set "FAILED=1"
-if defined CLIENT_TOKEN (
-  call :portal_me "%CLIENT_TOKEN%" CLIENT_ACCESS_STATE || set "FAILED=1"
-) else (
-  set "FAILED=1"
+call :login "%CLIENT_EMAIL%" "%CLIENT_PASSWORD%" CLIENT_TOKEN || exit /b 1
+if not defined CLIENT_TOKEN (
+  echo [FAIL] client token is empty after login
+  exit /b 1
 )
 
+call :portal_me "%CLIENT_TOKEN%" CLIENT_ACCESS_STATE || exit /b 1
 if /I "%CLIENT_ACCESS_STATE%"=="NEEDS_ONBOARDING" (
-  call :step "onboarding create profile" "curl -sS -f -H \"Content-Type: application/json\" -H \"Authorization: Bearer %CLIENT_TOKEN%\" -d \"{\"name\":\"Demo Client\",\"inn\":\"7707083893\",\"client_type\":\"LEGAL\"}\" %BASE_URL%/api/core/client/onboarding/profile" || set "FAILED=1"
-  call :portal_me "%CLIENT_TOKEN%" CLIENT_ACCESS_STATE || set "FAILED=1"
+  call :step "onboarding create profile" "curl -sS -f -H \"Content-Type: application/json\" -H \"Authorization: Bearer %CLIENT_TOKEN%\" -d \"{\"name\":\"Demo Client\",\"inn\":\"7707083893\",\"client_type\":\"LEGAL\"}\" %BASE_URL%/api/core/client/onboarding/profile" || exit /b 1
+  call :portal_me "%CLIENT_TOKEN%" CLIENT_ACCESS_STATE || exit /b 1
 )
 
 if not /I "%CLIENT_ACCESS_STATE%"=="ACTIVE" (
-  echo [FAIL] portal/me expected ACTIVE, got %CLIENT_ACCESS_STATE%
-  set "FAILED=1"
-) else (
-  echo [PASS] portal/me is ACTIVE
-)
-
-call :demo_partner "%CLIENT_TOKEN%" PARTNER_ID || set "FAILED=1"
-if not defined PARTNER_ID (
-  echo [FAIL] demo partner id not found
-  set "FAILED=1"
-)
-
-call :create_request "%CLIENT_TOKEN%" "%PARTNER_ID%" CREATED_ID || set "FAILED=1"
-
-call :login "%PARTNER_EMAIL%" "%PARTNER_PASSWORD%" PARTNER_TOKEN || set "FAILED=1"
-call :partner_has_request "%PARTNER_TOKEN%" "%CREATED_ID%" || set "FAILED=1"
-call :partner_action "%PARTNER_TOKEN%" "%CREATED_ID%" accept || set "FAILED=1"
-call :partner_action "%PARTNER_TOKEN%" "%CREATED_ID%" start || set "FAILED=1"
-call :partner_action "%PARTNER_TOKEN%" "%CREATED_ID%" complete || set "FAILED=1"
-call :client_assert_done "%CLIENT_TOKEN%" "%CREATED_ID%" || set "FAILED=1"
-
-if "%FAILED%"=="1" (
-  echo SELFTEST RESULT: FAIL
+  echo [FAIL] portal/me expected ACTIVE, got "%CLIENT_ACCESS_STATE%"
   exit /b 1
 )
+echo [PASS] portal/me is ACTIVE
+
+call :demo_partner "%CLIENT_TOKEN%" PARTNER_ID || exit /b 1
+if not defined PARTNER_ID (
+  echo [FAIL] demo partner id not found
+  exit /b 1
+)
+
+call :create_request "%CLIENT_TOKEN%" "%PARTNER_ID%" CREATED_ID || exit /b 1
+if not defined CREATED_ID (
+  echo [FAIL] created request id is empty
+  exit /b 1
+)
+
+call :login "%PARTNER_EMAIL%" "%PARTNER_PASSWORD%" PARTNER_TOKEN || exit /b 1
+if not defined PARTNER_TOKEN (
+  echo [FAIL] partner token is empty after login
+  exit /b 1
+)
+
+call :partner_has_request "%PARTNER_TOKEN%" "%CREATED_ID%" || exit /b 1
+call :partner_action "%PARTNER_TOKEN%" "%CREATED_ID%" accept || exit /b 1
+call :partner_action "%PARTNER_TOKEN%" "%CREATED_ID%" start || exit /b 1
+call :partner_action "%PARTNER_TOKEN%" "%CREATED_ID%" complete || exit /b 1
+call :client_assert_done "%CLIENT_TOKEN%" "%CREATED_ID%" || exit /b 1
 
 echo SELFTEST RESULT: PASS
 exit /b 0
@@ -75,6 +78,7 @@ set "PASSWORD=%~2"
 set "OUTVAR=%~3"
 set "RESP=%TEMP%\selftest_login_%RANDOM%.json"
 set "STATUS=%TEMP%\selftest_login_%RANDOM%.txt"
+echo [INFO] login endpoint: %BASE_URL%/api/auth/login email=%EMAIL%
 curl -sS -o "%RESP%" -w "%%{http_code}" -H "Content-Type: application/json" -d "{\"email\":\"%EMAIL%\",\"password\":\"%PASSWORD%\"}" "%BASE_URL%/api/auth/login" > "%STATUS%"
 set /p CODE=<"%STATUS%"
 if not "%CODE%"=="200" (
@@ -85,6 +89,7 @@ if not "%CODE%"=="200" (
 for /f "usebackq delims=" %%T in (`python -c "import json;from pathlib import Path;d=json.loads(Path(r'%RESP%').read_text(encoding='utf-8',errors='ignore') or '{}');print(d.get('access_token',''))"`) do set "TOKEN=%%T"
 if "%TOKEN%"=="" (
   echo [FAIL] login %EMAIL% token missing
+  type "%RESP%"
   exit /b 1
 )
 set "%OUTVAR%=%TOKEN%"

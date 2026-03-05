@@ -230,6 +230,7 @@ curl -i "http://localhost/api/core/api/v1/admin/operations?limit=5" ^
 
 * Linux/macOS: `make selftest`
 * Windows CMD: `scripts\selftest.cmd` (E2E: login -> portal/me -> onboarding -> service request -> partner actions -> done).
+* Selftest использует endpoints: `POST /api/auth/login`, `GET /api/core/portal/me`, `GET /api/core/partners/demo`, `POST /api/core/services/requests`, `GET /api/core/partner/services/requests`.
 * Для детерминированного партнёра в dev используйте `GET /api/core/partners/demo` (возвращает `partner_id` seeded партнёра `demo-partner`).
 * Что проверяется в `make selftest`: поднятие контейнеров, health gateway/auth/core, проксирование gateway, логин seeded пользователей, профиль/права/модули, создание сотрудника админом, отсутствие 500 на обязательных endpoint, миграционный smoke на clean DB.
 

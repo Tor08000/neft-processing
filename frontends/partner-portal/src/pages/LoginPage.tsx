@@ -10,7 +10,7 @@ export function LoginPage() {
   const [searchParams] = useSearchParams();
   const returnUrl = useMemo(() => searchParams.get("returnUrl") || "/products", [searchParams]);
   const [email, setEmail] = useState("partner@neft.local");
-  const [password, setPassword] = useState("partner");
+  const [password, setPassword] = useState("Neft123!");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [fieldError, setFieldError] = useState<string | null>(null);
 
@@ -43,7 +43,7 @@ export function LoginPage() {
         <p className="muted">Используйте учётные данные партнёра для доступа.</p>
         <div className="login-demo muted small">
           <CopyChip label="Demo" value="partner@neft.local" />
-          <CopyChip label="Demo" value="partner" />
+          <CopyChip label="Demo" value="Neft123!" />
         </div>
         {error ? (
           <div className="error" role="alert">
@@ -76,7 +76,7 @@ export function LoginPage() {
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            placeholder="partner"
+            placeholder="Neft123!"
             required
             autoComplete="current-password"
             className="neft-input neft-focus-ring"

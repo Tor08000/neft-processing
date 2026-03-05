@@ -11,6 +11,12 @@ from app.seeds.demo_users import ensure_user, get_demo_users
 logger = logging.getLogger(__name__)
 
 
+def _is_dev_mode(settings: Settings) -> bool:
+    app_env = (getattr(settings, "APP_ENV", "") or "").strip().lower()
+    start_mode = (getattr(settings, "START_MODE", "") or "").strip().lower()
+    return app_env in {"dev", "local", "development", "test"} or start_mode == "dev"
+
+
 async def seed_demo_client_account(settings: Settings | None = None) -> None:
     settings = settings or get_settings()
     try:
@@ -25,11 +31,16 @@ async def bootstrap_required_users(settings: Settings | None = None) -> None:
         logger.info("auth bootstrap: disabled via NEFT_BOOTSTRAP_ENABLED")
         return
 
+    if not _is_dev_mode(settings):
+        logger.info("auth bootstrap: skipped because runtime mode is not dev")
+        return
+
     demo_users = get_demo_users()
+    force_password_reset = True
     for demo_user in demo_users:
         status = await ensure_user(
             demo_user,
-            force_password=settings.demo_seed_force_password_reset,
+            force_password=force_password_reset,
             sync_roles=True,
             reset_password_once=True,
             bootstrap_password_version=settings.bootstrap_password_version,
