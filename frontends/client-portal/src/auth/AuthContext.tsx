@@ -12,7 +12,7 @@ interface AuthContextValue {
   error: string | null;
   authStatus: "loading" | "authenticated" | "unauthenticated";
   authError: "reauth_required" | null;
-  login: (email: string, password: string) => Promise<void>;
+  login: (credentials: { email: string; password: string; tenantId?: string }) => Promise<void>;
   activateSession: (session: AuthSession) => Promise<void>;
   logout: () => void;
   setTimezone: (timezone: string | null) => void;
@@ -297,7 +297,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialSes
   );
 
   const handleLogin = useCallback(
-    async (email: string, password: string) => {
+    async (credentials: { email: string; password: string; tenantId?: string }) => {
       if (authInProgressRef.current || reauthRedirectedRef.current) {
         return;
       }
@@ -305,7 +305,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialSes
       setError(null);
       setAuthError(null);
       try {
-        const session = await loginApi({ email, password });
+        const session = await loginApi({ email: credentials.email, password: credentials.password });
         const expiresInSec = Math.max(1, Math.floor((session.expiresAt - Date.now()) / 1000));
         await establishSession({ accessToken: session.token, refreshToken: session.refreshToken, expiresInSec });
       } catch (err) {

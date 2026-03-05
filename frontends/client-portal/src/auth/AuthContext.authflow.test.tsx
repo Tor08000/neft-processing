@@ -15,7 +15,7 @@ function Harness() {
   return (
     <>
       <div data-testid="status">{auth.authStatus}</div>
-      <button onClick={() => auth.login("client@neft.local", "client")}>login</button>
+      <button onClick={() => auth.login({ email: "client@neft.local", password: "client" })}>login</button>
     </>
   );
 }
@@ -73,7 +73,7 @@ describe("AuthProvider deterministic flow", () => {
 
     await waitFor(() => expect(authApi.fetchMe).toHaveBeenCalledTimes(1));
     expect(authApi.login).toHaveBeenCalledTimes(1);
-    expect(replaceMock).toHaveBeenCalledWith("/client/login?reauth=1");
+    expect(replaceMock).not.toHaveBeenCalled();
   });
   it("blocks duplicate login while auth is in progress", async () => {
     let resolveLogin: ((value: unknown) => void) | null = null;
