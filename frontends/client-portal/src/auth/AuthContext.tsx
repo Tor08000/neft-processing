@@ -129,6 +129,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialSes
       const needsOnboarding = [AccessState.NEEDS_ONBOARDING, AccessState.NEEDS_PLAN, AccessState.NEEDS_CONTRACT].includes(decision.state);
       navigateTo(needsOnboarding ? "/client/onboarding" : "/client/dashboard");
     } catch (err) {
+      if (err instanceof ApiError && err.status === 401) {
+        setError("Нет доступа: токен недействителен");
+        logout();
+        return;
+      }
       if (err instanceof ApiError && (err.status === 404 || err.status === 409)) {
         navigateTo("/client/onboarding");
         return;

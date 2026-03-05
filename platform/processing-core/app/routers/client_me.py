@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
 from app.db import get_db
@@ -55,110 +56,13 @@ def _resolve_org_id(token: dict) -> int | None:
         return None
 
 
-@router.get("/me", response_model=ClientMeResponse)
-def get_client_me(
-    token: dict = Depends(require_onboarding_user),
-    db: Session = Depends(get_db),
-) -> ClientMeResponse:
-    portal_payload = build_portal_me(db, token=token)
-    client_id = token.get("client_id")
-    client = db.get(Client, client_id) if client_id else None
-    org_status = _resolve_org_status(client)
-    roles = token.get("roles") or []
-    if isinstance(roles, str):
-        roles = [roles]
-    if token.get("role"):
-        roles.append(token["role"])
-    normalized_roles = normalize_roles([str(role) for role in roles])
-
-    subscription_payload = None
-    entitlements_limits: dict[str, dict] = {}
-    entitlements_modules: dict[str, dict] = {}
-    role_entitlements: list[dict] = []
-    entitlements_snapshot = None
-    entitlements_hash = None
-    entitlements_computed_at = None
-
-    org_id = _resolve_org_id(token)
-
-    if client_id and client is not None:
-        entitlements = entitlements_service.get_entitlements(db, client_id=str(client_id))
-        if org_id is not None:
-            entitlements_snapshot = get_org_entitlements_snapshot(db, org_id=org_id)
-            entitlements_hash = entitlements_snapshot.hash
-            entitlements_computed_at = entitlements_snapshot.computed_at
-        entitlements_limits = entitlements.limits
-        entitlements_modules = entitlements.modules
-        tenant_id = int(token.get("tenant_id") or DEFAULT_TENANT_ID)
-        subscription = get_client_subscription(db, tenant_id=tenant_id, client_id=str(client_id))
-        if subscription is None:
-            subscription = ensure_free_subscription(db, tenant_id=tenant_id, client_id=str(client_id))
-        if subscription:
-            plan = db.get(SubscriptionPlan, subscription.plan_id)
-            if plan:
-                role_entitlements = [
-                    compute_entitlements(db, plan_id=plan.id, role_code=role_code)
-                    for role_code in normalized_roles
-                ]
-            snapshot_subscription = (
-                entitlements_snapshot.entitlements.get("subscription") if entitlements_snapshot else None
-            )
-            subscription_payload = ClientMeSubscription(
-                plan_code=plan.code if plan else entitlements.plan_code,
-                status=str(subscription.status) if subscription else None,
-                billing_cycle=snapshot_subscription.get("billing_cycle") if snapshot_subscription else None,
-                support_plan=snapshot_subscription.get("support_plan") if snapshot_subscription else None,
-                slo_tier=snapshot_subscription.get("slo_tier") if snapshot_subscription else None,
-                addons=snapshot_subscription.get("addons") if snapshot_subscription else None,
-                modules=entitlements.modules,
-                limits=entitlements.limits,
-            )
-
-    entitlements_output = build_client_entitlements(
-        roles=normalized_roles,
-        org_status=org_status,
-        modules=entitlements_modules,
-        limits=entitlements_limits,
-        role_entitlements=role_entitlements,
-    )
-
-    org_payload = None
-    if portal_payload.org is not None:
-        org_payload = ClientMeOrg(
-            id=portal_payload.org.id,
-            name=portal_payload.org.name,
-            inn=portal_payload.org.inn,
-            status=portal_payload.org.status or "UNKNOWN",
-            timezone=portal_payload.org.timezone,
-        )
-
-    employee_timezone = portal_payload.user.timezone
-
-    return ClientMeResponse(
-        user=ClientMeUser(
-            id=portal_payload.user.id,
-            email=portal_payload.user.email,
-            subject_type=portal_payload.user.subject_type,
-            timezone=employee_timezone,
-        ),
-        org=org_payload,
-        membership=ClientMeMembership(roles=normalized_roles, status="active"),
-        subscription=subscription_payload,
-        entitlements=ClientMeEntitlements(
-            features=entitlements_snapshot.entitlements.get("features") if entitlements_snapshot else None,
-            modules=entitlements_snapshot.entitlements.get("modules") if entitlements_snapshot else None,
-            enabled_modules=entitlements_output.enabled_modules,
-            permissions=entitlements_output.permissions,
-            limits=entitlements_snapshot.entitlements.get("limits")
-            if entitlements_snapshot
-            else entitlements_output.limits,
-            org_status=entitlements_output.org_status,
-        ),
-        entitlements_snapshot=entitlements_snapshot.entitlements if entitlements_snapshot else None,
-        entitlements_hash=entitlements_hash,
-        entitlements_computed_at=entitlements_computed_at,
-        org_status=org_status,
-    )
+@router.get("/me", include_in_schema=False)
+def get_client_me(request: Request) -> RedirectResponse:
+    target_path = request.url.path.replace("/client/me", "/portal/me")
+    if target_path == request.url.path:
+        target_path = "/api/core/portal/me"
+    query = f"?{request.url.query}" if request.url.query else ""
+    return RedirectResponse(url=f"{target_path}{query}", status_code=308)
 
 
 @router.get("/entitlements")
