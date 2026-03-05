@@ -235,3 +235,28 @@ def test_upgrade_operations_are_guarded(migrations: list[tuple[Path, ast.AST]]) 
         violations.extend(_analyze_upgrade_guards(path, tree))
 
     assert not violations, "Unguarded migration operations detected:\n" + "\n".join(sorted(violations))
+
+
+def test_create_table_does_not_use_sa_enum(migrations: list[tuple[Path, ast.AST]]) -> None:
+    violations: list[str] = []
+
+    for path, tree in migrations:
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            if not isinstance(node.func, ast.Attribute) or node.func.attr != "create_table":
+                continue
+
+            for child in ast.walk(node):
+                if not isinstance(child, ast.Call):
+                    continue
+                if not isinstance(child.func, ast.Attribute):
+                    continue
+                if not isinstance(child.func.value, ast.Name) or child.func.value.id != "sa":
+                    continue
+                if child.func.attr == "Enum":
+                    violations.append(
+                        f"{path.name}:{child.lineno} op.create_table() must not use sa.Enum; use postgresql.ENUM(..., create_type=False)"
+                    )
+
+    assert not violations, "Forbidden sa.Enum usage in create_table detected:\n" + "\n".join(sorted(violations))

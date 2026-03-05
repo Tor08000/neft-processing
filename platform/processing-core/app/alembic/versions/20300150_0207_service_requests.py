@@ -16,13 +16,14 @@ branch_labels = None
 depends_on = None
 
 
-service_request_status = sa.Enum(
+service_request_status = postgresql.ENUM(
     "new",
     "accepted",
     "in_progress",
     "done",
     "rejected",
     name="service_request_status",
+    schema="processing_core",
     create_type=False,
 )
 
@@ -34,8 +35,14 @@ def upgrade() -> None:
             """
 DO $$
 BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'service_request_status') THEN
-    CREATE TYPE service_request_status AS ENUM ('new','accepted','in_progress','done','rejected');
+  IF NOT EXISTS (
+    SELECT 1
+      FROM pg_type t
+      JOIN pg_namespace n ON n.oid = t.typnamespace
+     WHERE t.typname = 'service_request_status'
+       AND n.nspname = 'processing_core'
+  ) THEN
+    CREATE TYPE processing_core.service_request_status AS ENUM ('new','accepted','in_progress','done','rejected');
   END IF;
 END$$;
 """
@@ -48,7 +55,12 @@ END$$;
         sa.Column("client_id", postgresql.UUID(as_uuid=False), nullable=False),
         sa.Column("partner_id", postgresql.UUID(as_uuid=False), nullable=False),
         sa.Column("service_id", postgresql.UUID(as_uuid=False), nullable=False),
-        sa.Column("status", service_request_status, nullable=False, server_default="new"),
+        sa.Column(
+            "status",
+            service_request_status,
+            nullable=False,
+            server_default=sa.text("'new'::processing_core.service_request_status"),
+        ),
         sa.Column("payload", postgresql.JSONB(astext_type=sa.Text()), nullable=False, server_default=sa.text("'{}'::jsonb")),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
