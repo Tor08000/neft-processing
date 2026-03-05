@@ -10,8 +10,13 @@ import "./styles/neft-client-brand.css";
 import "leaflet/dist/leaflet.css";
 import { applyTheme, getInitialTheme } from "./lib/theme";
 import { normalizeBase } from "@shared/lib/path";
+import { AUTH_API_BASE, CORE_API_BASE } from "./api/base";
 
 const base = normalizeBase(import.meta.env.VITE_PUBLIC_BASE ?? "/client");
+
+if (import.meta.env.DEV) {
+  console.info("[API] base_urls", { auth: AUTH_API_BASE, core: CORE_API_BASE });
+}
 
 registerServiceWorker();
 applyTheme(getInitialTheme());
