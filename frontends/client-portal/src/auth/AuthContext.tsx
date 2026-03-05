@@ -12,7 +12,7 @@ interface AuthContextValue {
   error: string | null;
   authStatus: "loading" | "authenticated" | "unauthenticated";
   authError: "reauth_required" | null;
-  login: (credentials: { email: string; password: string; tenantId?: string }) => Promise<void>;
+  login: (credentials: { email: string; password: string }) => Promise<void>;
   activateSession: (session: AuthSession) => Promise<void>;
   logout: () => void;
   setTimezone: (timezone: string | null) => void;
@@ -297,7 +297,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialSes
   );
 
   const handleLogin = useCallback(
-    async (credentials: { email: string; password: string; tenantId?: string }) => {
+    async (credentials: { email: string; password: string }) => {
       if (authInProgressRef.current || reauthRedirectedRef.current) {
         return;
       }

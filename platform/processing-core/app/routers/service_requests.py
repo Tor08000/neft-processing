@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.api.dependencies.client import client_portal_user
 from app.api.dependencies.partner import partner_portal_user
 from app.db import get_db
+from app.models.partner import Partner
 from app.models.service_requests import ServiceRequest, ServiceRequestStatus
 
 
@@ -43,6 +44,11 @@ class ServiceRequestOut(BaseModel):
 class ServiceRequestActionOut(BaseModel):
     id: str
     status: str
+
+
+class DemoPartnerOut(BaseModel):
+    partner_id: str
+    code: str
 
 
 def _tenant_id(token: dict) -> int:
@@ -111,6 +117,18 @@ def create_service_request(
     db.commit()
     db.refresh(item)
     return _request_out(item)
+
+
+@router.get("/partners/demo", response_model=DemoPartnerOut)
+def get_demo_partner(
+    token: dict = Depends(client_portal_user),
+    db: Session = Depends(get_db),
+) -> DemoPartnerOut:
+    _tenant_id(token)
+    partner = db.query(Partner).filter(Partner.code == "demo-partner").one_or_none()
+    if partner is None:
+        raise HTTPException(status_code=404, detail="demo_partner_not_found")
+    return DemoPartnerOut(partner_id=str(partner.id), code=str(partner.code))
 
 
 @router.get("/services/requests", response_model=list[ServiceRequestOut])
