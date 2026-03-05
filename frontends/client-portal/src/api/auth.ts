@@ -14,7 +14,7 @@ const resolveToken = (body: LoginResponse): string => {
 export async function login(payload: LoginRequest): Promise<AuthSession> {
   const body = await request<LoginResponse>(
     "/login",
-    { method: "POST", body: JSON.stringify({ ...payload, portal: "client" }) },
+    { method: "POST", body: JSON.stringify(payload) },
     { base: "auth" },
   );
   return {

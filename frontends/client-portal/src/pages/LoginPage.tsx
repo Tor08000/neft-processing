@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { useClient } from "../auth/ClientContext";
@@ -18,18 +18,21 @@ export function LoginPage() {
   const [signupNotice, setSignupNotice] = useState<string | null>(null);
   const [fieldError, setFieldError] = useState<string | null>(null);
   const [capsLockOn, setCapsLockOn] = useState(false);
-  const [tenantId, setTenantId] = useState("00000000-0000-0000-0000-000000000000");
+  const [tenantId] = useState("00000000-0000-0000-0000-000000000000");
   const [ssoProviders, setSsoProviders] = useState<SSOIdPItem[]>([]);
   const { toast, showToast } = useToast();
   const emailRef = useRef<HTMLInputElement | null>(null);
   const errorRef = useRef<HTMLDivElement | null>(null);
 
-  const handleSubmit = async (event: FormEvent) => {
-    event.preventDefault();
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
     setIsSubmitting(true);
     setFieldError(null);
     try {
-      await login(email, password);
+      await login({
+        email,
+        password,
+      });
     } catch (err) {
       console.error("Ошибка входа", err);
       setFieldError("Сервис временно недоступен");
@@ -152,9 +155,9 @@ export function LoginPage() {
             className="neft-input neft-focus-ring"
             type="text"
             value={tenantId}
-            onChange={(e) => setTenantId(e.target.value)}
+            readOnly
             placeholder="00000000-0000-0000-0000-000000000000"
-            disabled={isSubmitting}
+            disabled
           />
         </label>
 
