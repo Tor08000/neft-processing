@@ -38,7 +38,13 @@ EXPECTED_ISSUER = os.getenv(
     os.getenv("CLIENT_AUTH_ISSUER", os.getenv("NEFT_AUTH_ISSUER", os.getenv("AUTH_ISSUER", "neft-auth"))),
 )
 EXPECTED_AUDIENCE = parse_expected_audience(
-    os.getenv("NEFT_CLIENT_AUDIENCE", os.getenv("CLIENT_AUTH_AUDIENCE", "neft-client"))
+    os.getenv(
+        "NEFT_CLIENT_AUDIENCE",
+        os.getenv(
+            "CLIENT_AUTH_AUDIENCE",
+            os.getenv("ALLOWED_AUDIENCES", "neft-client"),
+        ),
+    )
 )
 ALLOWED_ALGS = parse_allowed_algs()
 
@@ -84,6 +90,8 @@ def _decode_token(token: str, key: str) -> dict:
 
 
 def _log_rejection(token: str, *, reason: str, exc: Exception | None = None, path: str | None = None) -> None:
+    key_source = "public_key" if PUBLIC_KEY_URL else ("jwks" if JWKS_URL else "none")
+    key_url = PUBLIC_KEY_URL or JWKS_URL
     log_token_rejection(
         logger=_logger,
         token=token,
@@ -91,6 +99,8 @@ def _log_rejection(token: str, *, reason: str, exc: Exception | None = None, pat
         event="client_auth.token_rejected",
         exc=exc,
         path=path,
+        key_source=key_source,
+        key_url=key_url,
     )
 
 
@@ -118,6 +128,17 @@ def _resolve_public_key(token: str, *, force_refresh: bool = False) -> tuple[str
         if static_key:
             return static_key, False, False
 
+    if PUBLIC_KEY_URL:
+        public_key = fetch_public_key(
+            PUBLIC_KEY_URL,
+            ttl=PUBLIC_KEY_CACHE_TTL,
+            force_refresh=force_refresh,
+            log_info=lambda event, payload: _logger.info(event, extra=payload),
+            log_warning=lambda event, payload: _logger.warning(event, extra=payload),
+            event_prefix="client_auth",
+        )
+        return public_key, False, False
+
     if JWKS_URL:
         resolution = resolve_jwks_key(
             token,
@@ -130,15 +151,7 @@ def _resolve_public_key(token: str, *, force_refresh: bool = False) -> tuple[str
         )
         return resolution.public_key, resolution.missing_kid, resolution.kid_not_found
 
-    public_key = fetch_public_key(
-        PUBLIC_KEY_URL,
-        ttl=PUBLIC_KEY_CACHE_TTL,
-        force_refresh=force_refresh,
-        log_info=lambda event, payload: _logger.info(event, extra=payload),
-        log_warning=lambda event, payload: _logger.warning(event, extra=payload),
-        event_prefix="client_auth",
-    )
-    return public_key, False, False
+    raise HTTPException(status_code=503, detail="No key source configured")
 
 
 def get_public_key(*, force_refresh: bool = False) -> str:
