@@ -208,6 +208,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialSes
         let accessToken = getAccessToken();
         const refreshToken = getRefreshToken();
 
+        if (import.meta.env.DEV) {
+          const tokenLen = typeof accessToken === "string" ? accessToken.length : 0;
+          const tokenPrefix = typeof accessToken === "string" ? accessToken.slice(0, 10) : "";
+          console.log(`[AUTH] stored_token=${tokenLen} prefix=${tokenPrefix}`);
+        }
+
         if (!isValidJwt(accessToken)) {
           logout();
           return;
