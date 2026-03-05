@@ -306,6 +306,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialSes
       setAuthError(null);
       try {
         const session = await loginApi({ email: credentials.email, password: credentials.password });
+        if (import.meta.env.DEV) {
+          const tokenLen = session.token.length;
+          const tokenPrefix = session.token.slice(0, 10);
+          console.log(`[AUTH] login_token=${tokenLen} prefix=${tokenPrefix}`);
+        }
         const expiresInSec = Math.max(1, Math.floor((session.expiresAt - Date.now()) / 1000));
         await establishSession({ accessToken: session.token, refreshToken: session.refreshToken, expiresInSec });
       } catch (err) {
