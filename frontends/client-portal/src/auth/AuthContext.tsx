@@ -123,24 +123,52 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialSes
   }, [persist]);
 
   const routeAfterMe = useCallback(async (session: AuthSession) => {
-    try {
-      const portal = await fetchClientMe(session);
+    const navigateByPortal = (portal: Awaited<ReturnType<typeof fetchClientMe>>) => {
       const decision = resolveAccessState({ client: portal });
       const needsOnboarding = [AccessState.NEEDS_ONBOARDING, AccessState.NEEDS_PLAN, AccessState.NEEDS_CONTRACT].includes(decision.state);
       navigateTo(needsOnboarding ? "/client/onboarding" : "/client/dashboard");
+    };
+
+    try {
+      const portal = await fetchClientMe(session);
+      navigateByPortal(portal);
+      return;
     } catch (err) {
-      if (err instanceof ApiError && err.status === 401) {
-        setError("Нет доступа: токен недействителен");
-        logout();
-        return;
-      }
       if (err instanceof ApiError && (err.status === 404 || err.status === 409)) {
         navigateTo("/client/onboarding");
         return;
       }
-      navigateTo("/client/dashboard");
+      if (!(err instanceof ApiError) || err.status !== 401) {
+        navigateTo("/client/dashboard");
+        return;
+      }
     }
-  }, []);
+
+    if (!session.refreshToken) {
+      setError("Нет доступа: токен недействителен");
+      logout();
+      return;
+    }
+
+    try {
+      const refreshed = await refreshSession(session.refreshToken);
+      saveAuthTokens(refreshed.accessToken, refreshed.refreshToken, refreshed.expiresIn);
+      const refreshedSession: AuthSession = {
+        ...session,
+        token: refreshed.accessToken,
+        refreshToken: refreshed.refreshToken,
+        expiresAt: Date.now() + Math.max(1, refreshed.expiresIn) * 1000,
+      };
+      setUser(refreshedSession);
+      persist(refreshedSession);
+      const portal = await fetchClientMe(refreshedSession);
+      navigateByPortal(portal);
+      return;
+    } catch {
+      setError("Нет доступа: токен недействителен");
+      logout();
+    }
+  }, [logout, persist]);
 
   const establishSession = useCallback(
     async (tokens: SessionTokens, options?: { shouldRoute?: boolean }) => {

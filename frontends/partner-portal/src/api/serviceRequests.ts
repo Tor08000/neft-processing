@@ -26,3 +26,7 @@ export const rejectPartnerServiceRequest = (user: AuthSession | null, id: string
 
 export const completePartnerServiceRequest = (user: AuthSession | null, id: string) =>
   request<{ id: string; status: string }>(`/partner/services/requests/${id}/complete`, { method: "POST" }, withToken(user));
+
+
+export const startPartnerServiceRequest = (user: AuthSession | null, id: string) =>
+  request<{ id: string; status: string }>(`/partner/services/requests/${id}/start`, { method: "POST" }, withToken(user));

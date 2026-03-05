@@ -5,6 +5,7 @@ import {
   completePartnerServiceRequest,
   listPartnerServiceRequests,
   rejectPartnerServiceRequest,
+  startPartnerServiceRequest,
   type ServiceRequestItem,
 } from "../api/serviceRequests";
 
@@ -26,10 +27,11 @@ export function ServiceRequestsPage() {
     void load();
   }, []);
 
-  const act = async (id: string, action: "accept" | "reject" | "complete") => {
+  const act = async (id: string, action: "accept" | "reject" | "start" | "complete") => {
     try {
       if (action === "accept") await acceptPartnerServiceRequest(user, id);
       if (action === "reject") await rejectPartnerServiceRequest(user, id);
+      if (action === "start") await startPartnerServiceRequest(user, id);
       if (action === "complete") await completePartnerServiceRequest(user, id);
       await load();
     } catch {
@@ -61,6 +63,7 @@ export function ServiceRequestsPage() {
               <td>
                 <button onClick={() => act(item.id, "accept")}>Accept</button>
                 <button onClick={() => act(item.id, "reject")}>Reject</button>
+                <button onClick={() => act(item.id, "start")}>Start</button>
                 <button onClick={() => act(item.id, "complete")}>Complete</button>
               </td>
             </tr>

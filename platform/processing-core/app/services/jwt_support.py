@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import os
 import time
+import ipaddress
+from urllib.parse import urlparse
 from dataclasses import dataclass
 from typing import Any, Callable
 
@@ -258,6 +260,36 @@ def log_token_rejection(
         logger.debug(f"{event}.suppressed", extra=payload)
 
 
+
+
+def _is_dev_env() -> bool:
+    return os.getenv("APP_ENV", "dev").strip().lower() in {"dev", "local", "test"}
+
+
+def _validate_fetch_url(url: str) -> None:
+    parsed = urlparse(url)
+    if parsed.scheme not in {"http", "https"}:
+        raise HTTPException(status_code=503, detail="Unsupported key URL scheme")
+
+    host = (parsed.hostname or "").strip().lower()
+    if not host:
+        raise HTTPException(status_code=503, detail="Missing key URL host")
+
+    allowed_hosts = {"gateway", "auth-host"}
+    if _is_dev_env():
+        allowed_hosts.update({"localhost", "127.0.0.1"})
+    if host not in allowed_hosts:
+        raise HTTPException(status_code=503, detail="Disallowed key URL host")
+
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        return
+
+    if ip.is_link_local or ip.is_loopback and host not in {"127.0.0.1"}:
+        raise HTTPException(status_code=503, detail="Disallowed key URL host")
+
+
 def _fetch_cached(
     cache: dict[str, tuple[float, Any]],
     url: str,
@@ -310,6 +342,7 @@ def fetch_public_key(
     log_warning: Callable[[str, dict], None] | None = None,
     event_prefix: str = "auth",
 ) -> str:
+    _validate_fetch_url(url)
     cached = _fetch_cached(_public_key_cache, url, ttl=ttl, force_refresh=force_refresh)
     if cached:
         return cached
@@ -318,7 +351,7 @@ def fetch_public_key(
         raise HTTPException(status_code=503, detail="Public key refresh backoff")
 
     try:
-        response = requests.get(url, timeout=5, allow_redirects=True)
+        response = requests.get(url, timeout=5, allow_redirects=False)
         if log_info:
             log_info(f"{event_prefix}.public_key.refresh", {"url": url, "status_code": response.status_code})
         response.raise_for_status()
@@ -344,6 +377,7 @@ def fetch_jwks(
     log_warning: Callable[[str, dict], None] | None = None,
     event_prefix: str = "auth",
 ) -> dict:
+    _validate_fetch_url(url)
     cached = _fetch_cached(_jwks_cache, url, ttl=ttl, force_refresh=force_refresh)
     if cached:
         return cached
@@ -352,7 +386,7 @@ def fetch_jwks(
         raise HTTPException(status_code=503, detail="JWKS refresh backoff")
 
     try:
-        response = requests.get(url, timeout=5, allow_redirects=True)
+        response = requests.get(url, timeout=5, allow_redirects=False)
         if log_info:
             log_info(f"{event_prefix}.jwks.refresh", {"url": url, "status_code": response.status_code})
         response.raise_for_status()
