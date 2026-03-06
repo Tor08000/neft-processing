@@ -44,9 +44,76 @@ function resolveStepFromAccessState(accessState?: string | null): Step | null {
   return null;
 }
 
-type ProfileFieldErrors = Partial<Record<"companyName" | "inn" | "kpp" | "ogrn" | "legalAddress" | "contactEmail" | "contactPhone", string>>;
+type ProfileField =
+  | "companyName"
+  | "inn"
+  | "kpp"
+  | "ogrn"
+  | "legalAddress"
+  | "contactName"
+  | "contactRole"
+  | "contactPhone"
+  | "contactEmail";
+
+type ProfileFieldErrors = Partial<Record<ProfileField, string>>;
+
+const PROFILE_BACKEND_FIELD_MAP: Record<string, ProfileField> = {
+  name: "companyName",
+  company_name: "companyName",
+  organization_name: "companyName",
+  inn: "inn",
+  kpp: "kpp",
+  ogrn: "ogrn",
+  legal_address: "legalAddress",
+  address: "legalAddress",
+  contact_name: "contactName",
+  contact_role: "contactRole",
+  contact_phone: "contactPhone",
+  contact_email: "contactEmail",
+};
 
 const DIGITS_ONLY_RE = /^\d+$/;
+
+type BackendValidationItem = {
+  field: string;
+  message: string;
+};
+
+function parseBackendValidationErrors(detail: unknown): BackendValidationItem[] {
+  if (!detail || typeof detail !== "object") return [];
+  const body = detail as Record<string, unknown>;
+  const entries = [body.detail, body.errors].filter(Array.isArray).flat() as unknown[];
+  const parsed: BackendValidationItem[] = [];
+
+  for (const entry of entries) {
+    if (!entry || typeof entry !== "object") continue;
+    const item = entry as Record<string, unknown>;
+    const loc = Array.isArray(item.loc) ? item.loc.map((v) => String(v)) : [];
+    const backendFieldRaw =
+      typeof item.field === "string"
+        ? item.field
+        : typeof item.loc === "string"
+          ? item.loc
+          : loc.length > 0
+            ? loc[loc.length - 1]
+            : "";
+    const backendField = backendFieldRaw.replace(/^body\./, "").trim();
+    const message =
+      typeof item.message === "string"
+        ? item.message
+        : typeof item.msg === "string"
+          ? item.msg
+          : typeof item.detail === "string"
+            ? item.detail
+            : "Некорректное значение";
+
+    if (backendField) {
+      parsed.push({ field: backendField, message });
+    }
+  }
+
+  return parsed;
+}
 
 const getApiErrorMessage = (error: ApiError): string => {
   const detail = error.detail;
@@ -423,28 +490,25 @@ export function OnboardingPage() {
         return;
       }
       if (err instanceof ValidationError) {
-        if (import.meta.env.DEV) {
-          console.info("[onboarding:submit:profile] response", { status: 422, body: err.details });
-        }
         const detail = err.details as Record<string, unknown> | string | undefined;
         const fieldMap: ProfileFieldErrors = {};
-        if (detail && typeof detail === "object") {
-          const detailItems = (detail as { detail?: unknown }).detail;
-          if (Array.isArray(detailItems)) {
-            for (const item of detailItems) {
-              if (!item || typeof item !== "object") continue;
-              const locRaw = (item as { loc?: unknown[] }).loc;
-              const loc = Array.isArray(locRaw) ? locRaw : [];
-              const rawMessage = typeof (item as { msg?: unknown }).msg === "string" ? (item as { msg?: string }).msg : "Некорректное значение";
-              const field = loc.length > 0 ? String(loc[loc.length - 1]) : "";
-              if (field === "name") fieldMap.companyName = rawMessage;
-              if (field === "inn") fieldMap.inn = rawMessage;
-              if (field === "kpp") fieldMap.kpp = rawMessage;
-              if (field === "ogrn") fieldMap.ogrn = rawMessage;
-              if (field === "address") fieldMap.legalAddress = rawMessage;
-            }
+        const backendValidationErrors = parseBackendValidationErrors(detail);
+        for (const item of backendValidationErrors) {
+          const mappedField = PROFILE_BACKEND_FIELD_MAP[item.field];
+          if (mappedField && !fieldMap[mappedField]) {
+            fieldMap[mappedField] = item.message;
           }
         }
+
+        if (import.meta.env.DEV) {
+          console.info("[onboarding:submit:profile] response", { status: 422, body: err.details });
+          console.info("[onboarding:submit:profile] validation_mapping", {
+            status: 422,
+            backend_fields: backendValidationErrors.map((item) => item.field),
+            mapped_frontend_fields: Object.keys(fieldMap),
+          });
+        }
+
         if (Object.keys(fieldMap).length > 0) {
           setProfileFieldErrors(fieldMap);
         }
@@ -609,18 +673,22 @@ export function OnboardingPage() {
               <label>
                 ФИО (необязательно)
                 <input className="neft-input" value={contactName} onChange={(e) => setContactName(e.target.value)} />
+                {profileFieldErrors.contactName ? <div className="error">{profileFieldErrors.contactName}</div> : null}
               </label>
               <label>
                 Должность (необязательно)
                 <input className="neft-input" value={contactRole} onChange={(e) => setContactRole(e.target.value)} />
+                {profileFieldErrors.contactRole ? <div className="error">{profileFieldErrors.contactRole}</div> : null}
               </label>
               <label>
                 Телефон (необязательно)
                 <input className="neft-input" value={contactPhone} onChange={(e) => setContactPhone(e.target.value)} />
+                {profileFieldErrors.contactPhone ? <div className="error">{profileFieldErrors.contactPhone}</div> : null}
               </label>
               <label>
                 Email (необязательно)
                 <input className="neft-input" value={contactEmail} onChange={(e) => setContactEmail(e.target.value)} />
+                {profileFieldErrors.contactEmail ? <div className="error">{profileFieldErrors.contactEmail}</div> : null}
               </label>
             </div>
             <button type="submit" className="neft-button neft-btn-primary" disabled={isSubmitting}>
