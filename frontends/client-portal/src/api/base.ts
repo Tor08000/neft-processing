@@ -33,6 +33,14 @@ const extractPathname = (value: string): string => {
 
 const isDev = import.meta.env.DEV;
 const browserOrigin = typeof window !== "undefined" ? window.location.origin : "";
+const browserHost = typeof window !== "undefined" ? window.location.hostname.toLowerCase() : "";
+
+const DOCKER_INTERNAL_HOSTS = new Set(["gateway", "auth-host", "core-host", "processing-core"]);
+
+const isDockerInternalHost = (host: string): boolean => {
+  const normalized = host.toLowerCase();
+  return DOCKER_INTERNAL_HOSTS.has(normalized) || normalized.endsWith(".docker.internal") || normalized.endsWith(".internal");
+};
 
 const resolveGatewayBase = (raw: string): string => {
   const trimmed = normalizeBase(raw);
@@ -41,6 +49,15 @@ const resolveGatewayBase = (raw: string): string => {
   }
   if (/^https?:\/\//i.test(trimmed)) {
     const url = new URL(trimmed);
+    const host = url.hostname.toLowerCase();
+    const shouldUseSameOriginPath =
+      Boolean(browserOrigin) &&
+      (host === browserHost || isDockerInternalHost(host));
+
+    if (shouldUseSameOriginPath) {
+      return normalizeApiBase(url.pathname || "/");
+    }
+
     if (!isDev && browserOrigin) {
       return normalizeApiBase(`${browserOrigin}${url.pathname || "/"}`);
     }
@@ -50,7 +67,7 @@ const resolveGatewayBase = (raw: string): string => {
 };
 
 const rawApiBaseEnv = import.meta.env.VITE_API_BASE ?? import.meta.env.VITE_API_BASE_URL;
-const defaultApiBase = browserOrigin ? `${browserOrigin}/api` : "/api";
+const defaultApiBase = "/api";
 const rawApiBase = rawApiBaseEnv && rawApiBaseEnv.trim() !== "" ? rawApiBaseEnv : defaultApiBase;
 const API_BASE = resolveGatewayBase(rawApiBase);
 const clientBase = normalizeBase(import.meta.env.BASE_URL ?? "/client/");

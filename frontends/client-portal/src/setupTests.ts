@@ -8,5 +8,5 @@ beforeEach(() => {
   vi.stubGlobal("crypto", {
     randomUUID: () => "test-uuid-0000-0000-0000-000000000000",
   });
-  vi.stubEnv("VITE_API_BASE_URL", "http://gateway");
+  vi.stubEnv("VITE_API_BASE_URL", "/api");
 });

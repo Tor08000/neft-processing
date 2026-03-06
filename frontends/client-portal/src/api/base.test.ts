@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { joinUrl } from "./base";
 
 describe("joinUrl", () => {
@@ -51,5 +51,19 @@ describe("joinUrl", () => {
     expect(joinUrl("http://localhost/api", "/auth/v1/auth/login")).toBe(
       "http://localhost/api/v1/auth/login",
     );
+  });
+});
+
+describe("api base defaults", () => {
+  it("keeps auth/core base same-origin when docker hostname is configured", async () => {
+    vi.resetModules();
+    vi.stubEnv("VITE_API_BASE_URL", "http://gateway/api");
+    vi.stubEnv("VITE_AUTH_API_BASE", "");
+    vi.stubEnv("VITE_CORE_API_BASE", "");
+
+    const baseModule = await import("./base");
+
+    expect(baseModule.AUTH_API_BASE).toBe("/api/v1/auth");
+    expect(baseModule.CORE_API_BASE).toBe("/api/core");
   });
 });
