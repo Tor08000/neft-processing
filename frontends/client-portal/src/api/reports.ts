@@ -16,7 +16,7 @@ export async function downloadReportCsv(
   params: ReportParams,
   user: AuthSession | null,
 ): Promise<void> {
-  const url = new URL(`${CORE_API_BASE}${path}`);
+  const url = new URL(`${CORE_API_BASE}${path}`, window.location.origin);
   Object.entries(params).forEach(([key, value]) => {
     if (value === undefined || value === null || value === "") return;
     if (Array.isArray(value)) {

@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import type { PortalMeResponse } from "../api/clientPortal";
 import { fetchClientMe, PORTAL_ME_PATH } from "../api/clientPortal";
 import { ApiError, HtmlResponseError, UnauthorizedError } from "../api/http";
-import { CORE_API_BASE } from "../api/base";
+import { CORE_API_BASE, isBrowserSafeApiBase } from "../api/base";
 import { useAuth } from "./AuthContext";
 
 export type PortalState =
@@ -75,10 +75,22 @@ const resolvePortalError = (err: unknown): { portalState: PortalState; error: Po
       };
     }
     if (err.status === 404) {
+      if (!isBrowserSafeApiBase(CORE_API_BASE)) {
+        return {
+          portalState: "API_MISCONFIGURED",
+          error: {
+            kind: "MISCONFIG",
+            status: err.status,
+            path: PORTAL_ME_URL,
+            requestId: err.requestId ?? undefined,
+            message: err.message,
+          },
+        };
+      }
       return {
-        portalState: "API_MISCONFIGURED",
+        portalState: "SERVICE_UNAVAILABLE",
         error: {
-          kind: "MISCONFIG",
+          kind: "UPSTREAM",
           status: err.status,
           path: PORTAL_ME_URL,
           requestId: err.requestId ?? undefined,
@@ -111,10 +123,21 @@ const resolvePortalError = (err: unknown): { portalState: PortalState; error: Po
   }
   if (err instanceof HtmlResponseError) {
     if (err.status === 404) {
+      if (!isBrowserSafeApiBase(CORE_API_BASE)) {
+        return {
+          portalState: "API_MISCONFIGURED",
+          error: {
+            kind: "MISCONFIG",
+            status: err.status,
+            path: err.url ?? PORTAL_ME_URL,
+            message: err.message,
+          },
+        };
+      }
       return {
-        portalState: "API_MISCONFIGURED",
+        portalState: "SERVICE_UNAVAILABLE",
         error: {
-          kind: "MISCONFIG",
+          kind: "UPSTREAM",
           status: err.status,
           path: err.url ?? PORTAL_ME_URL,
           message: err.message,
