@@ -5,7 +5,7 @@ Use `scripts\seed.cmd` after `docker compose up -d --build`.
 ## Credentials
 
 - Admin: `admin@neft.local` / `Neft123!`
-- Partner: `partner@neft.local` / `Neft123!`
+- Partner: `partner@neft.local` / `Partner123!`
 - Client: `client@neft.local` / `Neft123!`
 
 Tenant code for login flow: `neft`.

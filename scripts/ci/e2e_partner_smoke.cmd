@@ -3,7 +3,7 @@ setlocal ENABLEDELAYEDEXPANSION
 
 if "%BASE_URL%"=="" set BASE_URL=http://localhost
 if "%PARTNER_LOGIN%"=="" set PARTNER_LOGIN=partner@neft.local
-if "%PARTNER_PASSWORD%"=="" set PARTNER_PASSWORD=partner
+if "%PARTNER_PASSWORD%"=="" set PARTNER_PASSWORD=Partner123!
 
 for /f "usebackq delims=" %%T in (`curl -sS -X POST "%BASE_URL%/api/v1/auth/login" -H "Content-Type: application/json" -d "{\"login\":\"%PARTNER_LOGIN%\",\"password\":\"%PARTNER_PASSWORD%\",\"portal\":\"partner\"}" ^| jq -r ".access_token"`) do set TOKEN=%%T
 if "%TOKEN%"=="" (

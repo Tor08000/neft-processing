@@ -3,7 +3,7 @@ set -euo pipefail
 
 BASE_URL="${BASE_URL:-http://localhost:8080}"
 LOGIN="${PARTNER_LOGIN:-partner@neft.local}"
-PASSWORD="${PARTNER_PASSWORD:-partner}"
+PASSWORD="${PARTNER_PASSWORD:-Partner123!}"
 
 LOGIN_PAYLOAD=$(jq -n --arg login "$LOGIN" --arg password "$PASSWORD" '{login:$login,password:$password,portal:"partner"}')
 TOKEN=$(curl -sS -X POST "$BASE_URL/api/v1/auth/login" -H "Content-Type: application/json" -d "$LOGIN_PAYLOAD" | jq -r '.access_token')

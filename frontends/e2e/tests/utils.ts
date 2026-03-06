@@ -663,7 +663,7 @@ export async function loginPartner(page: Page) {
     page,
     baseUrl: PARTNER_BASE_URL,
     emailValue: resolveEnv(process.env.NEFT_BOOTSTRAP_PARTNER_EMAIL, process.env.PARTNER_EMAIL ?? "partner@neft.local"),
-    passwordValue: resolveEnv(process.env.NEFT_BOOTSTRAP_PARTNER_PASSWORD, process.env.PARTNER_PASSWORD ?? "partner"),
+    passwordValue: resolveEnv(process.env.NEFT_BOOTSTRAP_PARTNER_PASSWORD, process.env.PARTNER_PASSWORD ?? "Partner123!"),
     appLabel: "partner",
   });
 }

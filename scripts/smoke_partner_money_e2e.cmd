@@ -14,7 +14,7 @@ if "%CORE_ADMIN_FINANCE_URL%"=="" set "CORE_ADMIN_FINANCE_URL=%CORE_ADMIN%/finan
 if "%CORE_ADMIN_AUDIT_URL%"=="" set "CORE_ADMIN_AUDIT_URL=%CORE_ADMIN%/audit"
 
 if "%PARTNER_EMAIL%"=="" set "PARTNER_EMAIL=partner@neft.local"
-if "%PARTNER_PASSWORD%"=="" set "PARTNER_PASSWORD=partner"
+if "%PARTNER_PASSWORD%"=="" set "PARTNER_PASSWORD=Partner123!"
 if "%ADMIN_EMAIL%"=="" set "ADMIN_EMAIL=admin@example.com"
 if "%ADMIN_PASSWORD%"=="" set "ADMIN_PASSWORD=admin"
 

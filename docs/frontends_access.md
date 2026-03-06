@@ -41,13 +41,13 @@ Client
 
 Partner
   email:    partner@neft.local
-  password: partner
+  password: Partner123!
 ```
 
 Источники дефолтов:
 - Admin UI: `NEFT_DEMO_ADMIN_EMAIL` / `NEFT_DEMO_ADMIN_PASSWORD` (или только email, если пароль скрыт в UI).【F:frontends/admin-ui/src/pages/LoginPage.tsx†L11-L15】
 - Client UI: `client@neft.local` / `Neft123!`.【F:frontends/client-portal/src/pages/LoginPage.tsx†L14-L17】
-- Partner UI: `partner@neft.local` / `partner`.【F:frontends/partner-portal/src/pages/LoginPage.tsx†L11-L14】
+- Partner UI: `partner@neft.local` / `Partner123!`.【F:frontends/partner-portal/src/pages/LoginPage.tsx†L11-L14】
 
 В dev окружении эти пользователи детерминированно сидятся через auth-host seed/CLI — см. runbook
 `docs/runbooks/DEMO_USERS_AND_LOGIN.md`.

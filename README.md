@@ -197,7 +197,7 @@ curl -i "http://localhost/api/core/api/v1/admin/operations?limit=5" ^
 ### Клиентский кабинет (реальные данные)
 
 * Доступ: `http://localhost/client/`.
-* Демо-креды по умолчанию (clean start): `client@neft.local / Neft123!`, `partner@neft.local / Neft123!`.
+* Демо-креды по умолчанию (clean start): `client@neft.local / Neft123!`, `partner@neft.local / Partner123!`.
 * Переменные для переопределения в `.env`: `${NEFT_BOOTSTRAP_CLIENT_EMAIL}`, `${NEFT_BOOTSTRAP_CLIENT_PASSWORD}`, `${NEFT_BOOTSTRAP_PARTNER_EMAIL}`, `${NEFT_BOOTSTRAP_PARTNER_PASSWORD}`.
 * Что внутри: операции, лимиты и дашборд читают реальные записи из БД (`client_operations`, `client_limits`, `client_cards`).
 * Быстрый старт:

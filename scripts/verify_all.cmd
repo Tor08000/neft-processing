@@ -148,7 +148,7 @@ call :run_cmd "4.10.1 core legal accept (client token)" "python scripts\\smoke_l
 set "PARTNER_EMAIL=%NEFT_BOOTSTRAP_PARTNER_EMAIL%"
 if "%PARTNER_EMAIL%"=="" set "PARTNER_EMAIL=partner@neft.local"
 set "PARTNER_PASSWORD=%NEFT_BOOTSTRAP_PARTNER_PASSWORD%"
-if "%PARTNER_PASSWORD%"=="" set "PARTNER_PASSWORD=partner"
+if "%PARTNER_PASSWORD%"=="" set "PARTNER_PASSWORD=Partner123!"
 
 set "PARTNER_LOGIN_FILE=%TEMP%\\verify_partner_login_%RANDOM%.json"
 call :run_cmd "4.11 partner login via gateway" "curl -sS -o \"%PARTNER_LOGIN_FILE%\" -H \"Content-Type: application/json\" -d \"{\\\"email\\\":\\\"%PARTNER_EMAIL%\\\",\\\"password\\\":\\\"%PARTNER_PASSWORD%\\\",\\\"portal\\\":\\\"partner\\\"}\" %GATEWAY_BASE%%AUTH_BASE%/login" || goto finalize
