@@ -8,7 +8,7 @@
     "configError": "Конфигурация приложения: отсутствует API base URL",
     "configMissingTitle": "Не указан API base URL",
     "configMissingDescription": "Укажите переменную VITE_API_BASE_URL, чтобы клиентский портал использовал адрес API.",
-    "configMissingExample": "VITE_API_BASE_URL=https://api.example.com"
+    "configMissingExample": "VITE_API_BASE_URL=/api"
   },
   "nav": {
     "dashboard": "Дашборд",
