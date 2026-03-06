@@ -80,13 +80,43 @@ describe("OnboardingPage", () => {
       kpp: "123456789",
       ogrn: "1234567890123",
       address: "Москва",
-      contact_name: null,
-      contact_role: null,
-      contact_phone: null,
-      contact_email: null,
     });
     expect(await screen.findByText("Выберите план и модули для вашей компании."))
       .toBeInTheDocument();
+  });
+
+
+  it("submits with blank optional contact fields and advances to step 2", async () => {
+    createOrgMock.mockResolvedValue({ id: "c1", status: "ONBOARDING" });
+
+    render(
+      <MemoryRouter>
+        <OnboardingPage />
+      </MemoryRouter>,
+    );
+
+    fireEvent.change(screen.getByLabelText("Полное наименование"), { target: { value: "ООО Нефть" } });
+    fireEvent.change(screen.getByLabelText("ИНН"), { target: { value: "1234567890" } });
+    fireEvent.change(screen.getByLabelText("КПП"), { target: { value: "123456789" } });
+    fireEvent.change(screen.getByLabelText("ОГРН"), { target: { value: "1234567890123" } });
+    fireEvent.change(screen.getByLabelText("Юридический адрес"), { target: { value: "Москва" } });
+    fireEvent.change(screen.getByLabelText("ФИО (необязательно)"), { target: { value: "   " } });
+    fireEvent.change(screen.getByLabelText("Должность (необязательно)"), { target: { value: "" } });
+    fireEvent.change(screen.getByLabelText("Телефон (необязательно)"), { target: { value: "   " } });
+    fireEvent.change(screen.getByLabelText("Email (необязательно)"), { target: { value: "" } });
+
+    fireEvent.click(screen.getByRole("button", { name: "Продолжить" }));
+
+    await waitFor(() => expect(createOrgMock).toHaveBeenCalledTimes(1));
+    expect(createOrgMock.mock.calls[0][1]).toEqual({
+      org_type: "LEGAL",
+      name: "ООО Нефть",
+      inn: "1234567890",
+      kpp: "123456789",
+      ogrn: "1234567890123",
+      address: "Москва",
+    });
+    expect(await screen.findByText("Выберите план и модули для вашей компании.")).toBeInTheDocument();
   });
 
   it("Case B: invalid step 1 shows validation, does not submit, keeps typed data", async () => {

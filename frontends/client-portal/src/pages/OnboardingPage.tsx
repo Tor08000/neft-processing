@@ -434,10 +434,6 @@ export function OnboardingPage() {
       kpp: clientType === "LEGAL" ? kpp.trim() : null,
       ogrn: clientType === "LEGAL" ? ogrn.trim() : null,
       address: legalAddress.trim(),
-      contact_name: contactName.trim() || null,
-      contact_role: contactRole.trim() || null,
-      contact_phone: contactPhone.trim() || null,
-      contact_email: contactEmail.trim() || null,
     };
 
     if (import.meta.env.DEV) {
