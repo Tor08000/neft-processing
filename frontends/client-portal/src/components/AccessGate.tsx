@@ -362,18 +362,8 @@ export const AccessGate = ({
   }
 
   let decision = resolveAccessState({ client, requiredRoles, capability, module });
-  if (
-    isDemoClientAccount &&
-    [
-      AccessState.NEEDS_ONBOARDING,
-      AccessState.NEEDS_PLAN,
-      AccessState.NEEDS_CONTRACT,
-      AccessState.TECH_ERROR,
-      AccessState.MISCONFIG,
-      AccessState.SERVICE_UNAVAILABLE,
-    ].includes(decision.state)
-  ) {
-    // Demo-only bypass: allow access even if onboarding or backend data is missing.
+  if (isDemoClientAccount && decision.state !== AccessState.AUTH_REQUIRED) {
+    // Demo-only showcase mode: ignore backend onboarding/entitlement gating and always render routes.
     decision = { state: AccessState.ACTIVE };
   }
 

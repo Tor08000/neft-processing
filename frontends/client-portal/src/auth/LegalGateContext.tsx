@@ -6,6 +6,7 @@ import type { LegalDocumentResponse, LegalRequiredItem, LegalRequiredResponse } 
 import { useAuth } from "./AuthContext";
 import { useClient } from "./ClientContext";
 import { AccessState } from "../access/accessState";
+import { isDemoClient } from "@shared/demo/demo";
 
 const CACHE_TTL_MS = 60_000;
 
@@ -42,6 +43,7 @@ export const LegalGateProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     (import.meta.env.VITE_ONBOARDING_ENABLED ?? "false").toString().toLowerCase() === "true";
   const onboardingEnabled =
     client?.gating?.onboarding_enabled ?? client?.features?.onboarding_enabled ?? onboardingEnabledEnv;
+  const isDemoClientAccount = isDemoClient(user?.email ?? client?.user?.email ?? null);
   const isClientOnboardingFlow =
     client?.access_state === AccessState.NEEDS_ONBOARDING || client?.org_status === null || !client?.org;
 
@@ -61,6 +63,14 @@ export const LegalGateProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const refresh = useCallback(
     async (force = false) => {
       if (!user?.token) return;
+      if (isDemoClientAccount) {
+        setRequired([]);
+        setIsBlocked(false);
+        setIsFeatureDisabled(true);
+        setAccessState("ok");
+        setLastFetched(Date.now());
+        return;
+      }
       if (isClientOnboardingFlow) {
         if (import.meta.env.DEV) {
           console.log("[LEGAL] skipped during onboarding");
@@ -133,7 +143,7 @@ export const LegalGateProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         setIsLoading(false);
       }
     },
-    [accessState, isClientOnboardingFlow, lastFetched, onboardingEnabled, user?.token],
+    [accessState, isClientOnboardingFlow, isDemoClientAccount, lastFetched, onboardingEnabled, user?.token],
   );
 
   const accept = useCallback(

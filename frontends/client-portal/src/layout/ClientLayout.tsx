@@ -21,6 +21,7 @@ import {
 import { ClientSidebar } from "./ClientSidebar";
 import { ClientTopbar } from "./ClientTopbar";
 import { ClientBottomNav } from "./ClientBottomNav";
+import { demoClientNavManifest } from "./demoClientNavManifest";
 import { isDemoClient } from "@shared/demo/demo";
 import "./client-layout.css";
 
@@ -181,11 +182,15 @@ export function ClientLayout({ pwaMode = isPwaMode }: ClientLayoutProps) {
   const hasActivatedClient = Boolean(client?.org?.id);
 
   const filteredItems = useMemo(() => {
+    if (isDemoAccount) {
+      return demoClientNavManifest;
+    }
+
     const activationAllowed = new Set(["/dashboard", "/documents", "/fleet/employees"]);
     return navItems
       .filter((item) => item.audience === "all" || mode === "fleet")
       .filter((item) => hasActivatedClient || activationAllowed.has(item.to));
-  }, [hasActivatedClient, mode]);
+  }, [hasActivatedClient, isDemoAccount, mode]);
 
   const activePath = location.pathname;
 
