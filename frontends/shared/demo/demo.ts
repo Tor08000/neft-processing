@@ -14,9 +14,9 @@ export const isDemoModeEnabled = () => {
 };
 
 const isDemoEmail = (email: string, allowed: Set<string>) => {
-  if (!isDemoModeEnabled()) return false;
   if (!email) return false;
-  return allowed.has(email) || email.endsWith("@demo.test");
+  if (allowed.has(email)) return true;
+  return isDemoModeEnabled() && email.endsWith("@demo.test");
 };
 
 export const isDemoClient = (email?: string | null) => {

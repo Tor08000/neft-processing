@@ -57,6 +57,32 @@ describe("AuthProvider deterministic flow", () => {
     expect(replaceMock).not.toHaveBeenCalledWith("/client/login");
   });
 
+  it("demo client bypasses onboarding state and routes to dashboard", async () => {
+    vi.spyOn(authApi, "login").mockResolvedValue({ token: makeJwt(), refreshToken: "r1", expiresAt: Date.now() + 60_000 } as never);
+    vi.spyOn(authApi, "fetchMe").mockResolvedValue({ email: "client@neft.local", roles: ["CLIENT_USER"], subject_type: "CLIENT", client_id: "c1" } as never);
+    vi.spyOn(clientPortalApi, "fetchClientMe").mockResolvedValue({
+      access_state: "NEEDS_ONBOARDING",
+      user: { id: "u1", email: "client@neft.local" },
+      org_roles: [],
+      user_roles: [],
+      capabilities: [],
+    } as never);
+
+    render(
+      <AuthProvider>
+        <Harness />
+      </AuthProvider>,
+    );
+
+    await act(async () => {
+      screen.getByRole("button", { name: "login" }).click();
+    });
+
+    await waitFor(() => expect(clientPortalApi.fetchClientMe).toHaveBeenCalledTimes(1));
+    expect(replaceMock).toHaveBeenCalledWith("/client/dashboard");
+    expect(replaceMock).not.toHaveBeenCalledWith("/client/onboarding");
+  });
+
   it("/me 401 after login triggers reauth redirect and no login retry", async () => {
     vi.spyOn(authApi, "login").mockResolvedValue({ token: makeJwt(), refreshToken: "r1", expiresAt: Date.now() + 60_000 } as never);
     vi.spyOn(authApi, "fetchMe").mockRejectedValue(new authApi.UnauthorizedError());
