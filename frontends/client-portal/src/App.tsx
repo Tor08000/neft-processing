@@ -127,6 +127,36 @@ function IndexRedirect() {
   );
 }
 
+
+function LoginEntryRoute() {
+  const { user, authStatus } = useAuth();
+  const { client, isLoading, portalState } = useClient();
+
+  if (authStatus === "loading") {
+    return <AppLoadingState label="Проверяем сессию..." />;
+  }
+
+  if (authStatus === "authenticated" && user) {
+    const isDemoClientAccount = isDemoClient(user.email ?? client?.user?.email ?? null);
+    if (portalState === "LOADING" || isLoading) {
+      return <AppLoadingState label="Загружаем профиль..." />;
+    }
+
+    if (isDemoClientAccount) {
+      return <Navigate to="/dashboard" replace />;
+    }
+
+    const decision = resolveAccessState({ client });
+    const needsOnboarding = [AccessState.NEEDS_ONBOARDING, AccessState.NEEDS_PLAN, AccessState.NEEDS_CONTRACT].includes(
+      decision.state,
+    );
+
+    return <Navigate to={needsOnboarding ? "/onboarding" : "/dashboard"} replace />;
+  }
+
+  return <LoginPage />;
+}
+
 function PwaIndexRedirect() {
   const { user, authStatus } = useAuth();
   if (authStatus === "authenticated" && user) {
@@ -159,7 +189,7 @@ export function App({ initialSession = null }: AppProps) {
         <LegalGateProvider>
           <DevRuntimeDiagnostics />
           <Routes>
-            <Route path="/login" element={<LoginPage />} />
+            <Route path="/login" element={<LoginEntryRoute />} />
             <Route path="/register" element={<SignupPage />} />
             <Route path="/client/login" element={<Navigate to="/login" replace />} />
             <Route path="/client/signup" element={<Navigate to="/register" replace />} />
