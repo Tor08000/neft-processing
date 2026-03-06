@@ -7,7 +7,11 @@ const normalizeApiPath = (path: string): string =>
     .replace(/\/api\/auth(\/v1\/auth)+/g, "/api/v1/auth")
     .replace(/\/api\/auth(\/auth)+/g, "/api/v1/auth")
     .replace(/\/api\/v1\/auth(\/|$)/g, "/api/v1/auth$1")
-    .replace(/\/api\/auth(\/|$)/g, "/api/v1/auth$1");
+    .replace(/\/api\/auth(\/|$)/g, "/api/v1/auth$1")
+    .replace(/^\/auth\/v1\/auth(\/|$)/g, "/v1/auth$1")
+    .replace(/^\/auth(\/|$)/g, "/v1/auth$1")
+    .replace(/^auth\/v1\/auth(\/|$)/g, "v1/auth$1")
+    .replace(/^auth(\/|$)/g, "v1/auth$1");
 
 const normalizeApiBase = (raw: string): string => {
   const trimmed = normalizeBase(raw);
@@ -31,15 +35,58 @@ const extractPathname = (value: string): string => {
   return value;
 };
 
-const isDev = import.meta.env.DEV;
-const browserOrigin = typeof window !== "undefined" ? window.location.origin : "";
-const browserHost = typeof window !== "undefined" ? window.location.hostname.toLowerCase() : "";
+const isBrowser = typeof window !== "undefined";
 
-const DOCKER_INTERNAL_HOSTS = new Set(["gateway", "auth-host", "core-host", "processing-core"]);
+const DOCKER_INTERNAL_HOSTS = new Set([
+  "gateway",
+  "auth-host",
+  "core-api",
+  "core-host",
+  "processing-core",
+]);
 
 const isDockerInternalHost = (host: string): boolean => {
   const normalized = host.toLowerCase();
   return DOCKER_INTERNAL_HOSTS.has(normalized) || normalized.endsWith(".docker.internal") || normalized.endsWith(".internal");
+};
+
+const getPathFromValue = (value: string): string => {
+  const normalized = normalizeBase(value);
+  if (!normalized) {
+    return "";
+  }
+  if (/^https?:\/\//i.test(normalized)) {
+    return normalizeApiPath(new URL(normalized).pathname || "/").replace(/\/+$/, "") || "/";
+  }
+  return normalizeApiPath(normalized).replace(/\/+$/, "");
+};
+
+const normalizeGatewayBase = (raw: string): string => {
+  const pathOnly = getPathFromValue(raw);
+  if (!pathOnly || pathOnly === "/") {
+    return "/api";
+  }
+  if (pathOnly === "/api" || pathOnly.startsWith("/api/")) {
+    return "/api";
+  }
+  return pathOnly;
+};
+
+const resolveServiceBase = (raw: string | undefined, defaultSuffix: string): string => {
+  const value = raw?.trim();
+  if (!value) {
+    return joinUrl(API_BASE || "/api", defaultSuffix);
+  }
+
+  const pathOnly = getPathFromValue(value);
+  if (!pathOnly || pathOnly === "/") {
+    return joinUrl("/api", defaultSuffix);
+  }
+
+  if (pathOnly === "/api" || pathOnly.startsWith("/api/")) {
+    return joinUrl("/api", defaultSuffix);
+  }
+  return joinUrl(pathOnly, defaultSuffix);
 };
 
 const resolveGatewayBase = (raw: string): string => {
@@ -47,23 +94,22 @@ const resolveGatewayBase = (raw: string): string => {
   if (!trimmed) {
     return "";
   }
-  if (/^https?:\/\//i.test(trimmed)) {
-    const url = new URL(trimmed);
-    const host = url.hostname.toLowerCase();
-    const shouldUseSameOriginPath =
-      Boolean(browserOrigin) &&
-      (host === browserHost || isDockerInternalHost(host));
 
-    if (shouldUseSameOriginPath) {
-      return normalizeApiBase(url.pathname || "/");
-    }
+  if (!/^https?:\/\//i.test(trimmed)) {
+    return normalizeGatewayBase(trimmed);
+  }
 
-    if (!isDev && browserOrigin) {
-      return normalizeApiBase(`${browserOrigin}${url.pathname || "/"}`);
-    }
+  const url = new URL(trimmed);
+  if (!isBrowser) {
     return normalizeApiBase(trimmed);
   }
-  return normalizeApiBase(trimmed);
+
+  const host = url.hostname.toLowerCase();
+  if (isDockerInternalHost(host) || host === window.location.hostname.toLowerCase()) {
+    return normalizeGatewayBase(url.pathname || "/");
+  }
+
+  return normalizeGatewayBase(url.pathname || "/");
 };
 
 const rawApiBaseEnv = import.meta.env.VITE_API_BASE ?? import.meta.env.VITE_API_BASE_URL;
@@ -98,16 +144,15 @@ export const joinUrl = (base: string, path: string): string => {
   return `${b}/${pathSegments.join("/")}`;
 };
 
-const buildBase = (legacyPrefix: string | undefined, defaultSuffix: string): string => {
-  if (legacyPrefix && legacyPrefix.trim() !== "") {
-    return resolveGatewayBase(legacyPrefix);
-  }
-  return joinUrl(API_BASE, defaultSuffix);
+
+export const isBrowserSafeApiBase = (value: string): boolean => {
+  const path = getPathFromValue(value);
+  return path === "/api" || path.startsWith("/api/");
 };
 
-export const CORE_API_BASE = buildBase(import.meta.env.VITE_CORE_API_BASE, "api/core");
-export const CORE_ROOT_API_BASE = buildBase(import.meta.env.VITE_CORE_API_BASE, "api/core").replace(/\/+$/, "");
-export const AUTH_API_BASE = buildBase(import.meta.env.VITE_AUTH_API_BASE, "api/v1/auth");
-export const AI_API_BASE = joinUrl(buildBase(import.meta.env.VITE_AI_API_BASE, "api/ai"), "/api/v1");
+export const CORE_API_BASE = resolveServiceBase(import.meta.env.VITE_CORE_API_BASE, "api/core");
+export const CORE_ROOT_API_BASE = CORE_API_BASE.replace(/\/+$/, "");
+export const AUTH_API_BASE = resolveServiceBase(import.meta.env.VITE_AUTH_API_BASE, "api/v1/auth");
+export const AI_API_BASE = joinUrl(resolveServiceBase(import.meta.env.VITE_AI_API_BASE, "api/ai"), "/api/v1");
 export const CLIENT_BASE_PATH = clientBase;
 export const API_BASE_URL = API_BASE;

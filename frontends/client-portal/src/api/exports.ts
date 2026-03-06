@@ -92,7 +92,7 @@ export async function listExportJobs(
   },
   user: AuthSession | null,
 ): Promise<ExportJobListResponse> {
-  const url = new URL(joinUrl(CORE_API_BASE, "/client/exports/jobs"));
+  const url = new URL(joinUrl(CORE_API_BASE, "/client/exports/jobs"), window.location.origin);
   if (params.status) url.searchParams.set("status", params.status);
   if (params.report_type) url.searchParams.set("report_type", params.report_type);
   if (params.limit) url.searchParams.set("limit", String(params.limit));

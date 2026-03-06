@@ -2,6 +2,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useR
 import { ApiError, fetchMe, HtmlResponseError, login as loginApi, UnauthorizedError, ValidationError } from "../api/auth";
 import { request } from "../api/http";
 import { fetchClientMe } from "../api/clientPortal";
+import { AUTH_API_BASE, isBrowserSafeApiBase } from "../api/base";
 import type { AuthSession, LoginResponse } from "../api/types";
 import { AccessState, resolveAccessState } from "../access/accessState";
 import { clearTokens, getAccessToken, getExpiresAt, getRefreshToken, isAccessTokenExpired, isValidJwt, saveAuthTokens } from "../lib/apiClient";
@@ -328,7 +329,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialSes
         }
         if (err instanceof ApiError) {
           if (err.status === 404) {
-            setError(import.meta.env.DEV ? "Неверный URL API (ошибка конфигурации)" : "Сервис временно недоступен");
+            if (!isBrowserSafeApiBase(AUTH_API_BASE)) {
+              setError(import.meta.env.DEV ? "Неверный URL API (ошибка конфигурации)" : "Сервис временно недоступен");
+            } else {
+              setError("Сервис временно недоступен");
+            }
             return;
           }
           if (err.status >= 500) {
