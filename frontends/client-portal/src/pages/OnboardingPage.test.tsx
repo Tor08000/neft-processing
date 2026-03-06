@@ -56,7 +56,7 @@ describe("OnboardingPage", () => {
   });
 
   it("Case A: valid step 1 advances to plan step", async () => {
-    createOrgMock.mockResolvedValue({ id: "c1", status: "ONBOARDING" });
+    createOrgMock.mockResolvedValue({ status: 200, data: { id: "c1", status: "ONBOARDING" } });
 
     render(
       <MemoryRouter>
@@ -87,7 +87,7 @@ describe("OnboardingPage", () => {
 
 
   it("submits with blank optional contact fields and advances to step 2", async () => {
-    createOrgMock.mockResolvedValue({ id: "c1", status: "ONBOARDING" });
+    createOrgMock.mockResolvedValue({ status: 200, data: { id: "c1", status: "ONBOARDING" } });
 
     render(
       <MemoryRouter>
@@ -188,7 +188,7 @@ describe("OnboardingPage", () => {
       error: null,
       isLoading: false,
     });
-    createOrgMock.mockResolvedValue({ id: "c1", status: "ONBOARDING" });
+    createOrgMock.mockResolvedValue({ status: 200, data: { id: "c1", status: "ONBOARDING" } });
 
     render(
       <MemoryRouter>
@@ -211,6 +211,45 @@ describe("OnboardingPage", () => {
     resolveRefresh?.();
     await waitFor(() => expect(refreshMock).toHaveBeenCalledTimes(1));
     expect(screen.getByText("Выберите план и модули для вашей компании.")).toBeInTheDocument();
+  });
+
+  it("Case D: accepts non-200 success semantics (201 and empty body)", async () => {
+    createOrgMock.mockResolvedValueOnce({ status: 201, data: { ok: true } });
+
+    const { unmount } = render(
+      <MemoryRouter>
+        <OnboardingPage />
+      </MemoryRouter>,
+    );
+
+    fireEvent.change(screen.getByLabelText("Полное наименование"), { target: { value: "ООО Нефть" } });
+    fireEvent.change(screen.getByLabelText("ИНН"), { target: { value: "1234567890" } });
+    fireEvent.change(screen.getByLabelText("КПП"), { target: { value: "123456789" } });
+    fireEvent.change(screen.getByLabelText("ОГРН"), { target: { value: "1234567890123" } });
+    fireEvent.change(screen.getByLabelText("Юридический адрес"), { target: { value: "Москва" } });
+
+    fireEvent.click(screen.getByRole("button", { name: "Продолжить" }));
+
+    expect(await screen.findByText("Выберите план и модули для вашей компании.")).toBeInTheDocument();
+    unmount();
+
+    createOrgMock.mockResolvedValueOnce({ status: 204, data: {} });
+
+    render(
+      <MemoryRouter>
+        <OnboardingPage />
+      </MemoryRouter>,
+    );
+
+    fireEvent.change(screen.getByLabelText("Полное наименование"), { target: { value: "ООО Нефть" } });
+    fireEvent.change(screen.getByLabelText("ИНН"), { target: { value: "1234567890" } });
+    fireEvent.change(screen.getByLabelText("КПП"), { target: { value: "123456789" } });
+    fireEvent.change(screen.getByLabelText("ОГРН"), { target: { value: "1234567890123" } });
+    fireEvent.change(screen.getByLabelText("Юридический адрес"), { target: { value: "Москва" } });
+
+    fireEvent.click(screen.getByRole("button", { name: "Продолжить" }));
+
+    expect(await screen.findByText("Выберите план и модули для вашей компании.")).toBeInTheDocument();
   });
 
   it("maps backend 422 detail fields to form errors", async () => {

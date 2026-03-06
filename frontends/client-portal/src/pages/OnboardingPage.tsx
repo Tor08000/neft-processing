@@ -230,6 +230,15 @@ export function OnboardingPage() {
   }, [client?.org_status]);
 
   useEffect(() => {
+    if (!import.meta.env.DEV) return;
+    console.info("[onboarding:step:change]", {
+      step,
+      min_allowed_step: minAllowedStepRef.current,
+      access_state: client?.access_state ?? null,
+    });
+  }, [client?.access_state, step]);
+
+  useEffect(() => {
     if (!user || !onboardingEnabled) return;
     const nextStep = resolveStepFromAccessState(client?.access_state);
     if (!nextStep) return;
@@ -449,12 +458,26 @@ export function OnboardingPage() {
 
     setIsSubmitting(true);
     setIsLoading(true);
+    const stepBeforeSubmit = step;
     try {
-      await createOrg(user, payload);
+      const response = await createOrg(user, payload);
       minAllowedStepRef.current = "plan";
-      setStep("plan");
+      setStep((currentStep) => {
+        const nextStep = STEP_ORDER[currentStep] < STEP_ORDER["plan"] ? "plan" : currentStep;
+        if (import.meta.env.DEV) {
+          console.info("[onboarding:submit:profile] step_transition", {
+            step_before_submit: stepBeforeSubmit,
+            current_step: currentStep,
+            next_step: nextStep,
+          });
+        }
+        return nextStep;
+      });
       if (import.meta.env.DEV) {
-        console.info("[onboarding:submit:profile] response", { status: 200, body: { ok: true } });
+        console.info("[onboarding:submit:profile] response", {
+          status: response.status,
+          body: response.data ?? null,
+        });
         console.info("[onboarding:submit:profile] step_after_submit", {
           min_allowed_step: minAllowedStepRef.current,
           next_step: "plan",
@@ -507,6 +530,10 @@ export function OnboardingPage() {
 
         if (Object.keys(fieldMap).length > 0) {
           setProfileFieldErrors(fieldMap);
+        } else if (import.meta.env.DEV) {
+          console.info("[onboarding:submit:profile] unmapped_validation_details", {
+            raw_details: err.details,
+          });
         }
         const validationMessage =
           typeof detail === "string" && detail.trim() !== ""
@@ -521,6 +548,9 @@ export function OnboardingPage() {
       if (err instanceof ApiError) {
         if (import.meta.env.DEV) {
           console.info("[onboarding:submit:profile] response", { status: err.status, body: err.detail ?? err.message });
+          if (!err.detail) {
+            console.info("[onboarding:submit:profile] unmapped_backend_message", { message: err.message });
+          }
         }
         const message = err.status >= 500 ? "Сервис временно недоступен" : getApiErrorMessage(err);
         setError(message);
