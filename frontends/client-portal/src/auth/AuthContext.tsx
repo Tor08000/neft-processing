@@ -6,6 +6,7 @@ import { AUTH_API_BASE, isBrowserSafeApiBase } from "../api/base";
 import type { AuthSession, LoginResponse } from "../api/types";
 import { AccessState, resolveAccessState } from "../access/accessState";
 import { clearTokens, getAccessToken, getExpiresAt, getRefreshToken, isAccessTokenExpired, isValidJwt, saveAuthTokens } from "../lib/apiClient";
+import { isDemoClient } from "@shared/demo/demo";
 
 interface AuthContextValue {
   user: AuthSession | null;
@@ -124,7 +125,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialSes
   }, [persist]);
 
   const routeAfterMe = useCallback(async (session: AuthSession) => {
+    const isDemoClientAccount = isDemoClient(session.email ?? null);
+
     const navigateByPortal = (portal: Awaited<ReturnType<typeof fetchClientMe>>) => {
+      if (isDemoClientAccount) {
+        navigateTo("/client/dashboard");
+        return;
+      }
       const decision = resolveAccessState({ client: portal });
       const needsOnboarding = [AccessState.NEEDS_ONBOARDING, AccessState.NEEDS_PLAN, AccessState.NEEDS_CONTRACT].includes(decision.state);
       navigateTo(needsOnboarding ? "/client/onboarding" : "/client/dashboard");
@@ -136,7 +143,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialSes
       return;
     } catch (err) {
       if (err instanceof ApiError && (err.status === 404 || err.status === 409)) {
-        navigateTo("/client/onboarding");
+        navigateTo(isDemoClientAccount ? "/client/dashboard" : "/client/onboarding");
         return;
       }
       if (!(err instanceof ApiError) || err.status !== 401) {
