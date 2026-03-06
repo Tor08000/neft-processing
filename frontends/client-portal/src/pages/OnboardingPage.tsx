@@ -36,6 +36,12 @@ const STEP_ORDER: Record<Step, number> = {
   activation: 3,
 };
 
+type StepDecisionSource = "backendState" | "profileSubmit" | "planSubmit" | "contractSubmit";
+
+function getStepWithFloor(candidate: Step, floor: Step): Step {
+  return STEP_ORDER[candidate] < STEP_ORDER[floor] ? floor : candidate;
+}
+
 function resolveStepFromAccessState(accessState?: string | null): Step | null {
   if (accessState === AccessState.ACTIVE) return "activation";
   if (accessState === AccessState.NEEDS_CONTRACT) return "contract";
@@ -192,9 +198,30 @@ export function OnboardingPage() {
   const { toast, showToast } = useToast();
   const [step, setStep] = useState<Step>("profile");
   const [isLoading, setIsLoading] = useState(false);
+  const minAllowedStepRef = useRef<Step>("profile");
+  const resolveStep = (candidateStep: Step, source: StepDecisionSource): Step => {
+    const minAllowedStep = minAllowedStepRef.current;
+    const resolvedStep = getStepWithFloor(candidateStep, minAllowedStep);
+    if (import.meta.env.DEV && resolvedStep !== candidateStep) {
+      console.info("[onboarding:step:resolve] ignored_regression", {
+        source,
+        candidate_step: candidateStep,
+        resolved_step: resolvedStep,
+        min_allowed_step: minAllowedStep,
+      });
+    }
+    if (import.meta.env.DEV) {
+      console.info("[onboarding:step:resolve] decision", {
+        source,
+        candidate_step: candidateStep,
+        resolved_step: resolvedStep,
+        min_allowed_step: minAllowedStep,
+      });
+    }
+    return resolvedStep;
+  };
   const [isSubmitting, setIsSubmitting] = useState(false);
   const reauthRedirectedRef = useRef(false);
-  const minAllowedStepRef = useRef<Step>("profile");
   const [error, setError] = useState<string | null>(null);
   const [profileFieldErrors, setProfileFieldErrors] = useState<ProfileFieldErrors>({});
   const [innWarning, setInnWarning] = useState<string | null>(null);
@@ -243,27 +270,8 @@ export function OnboardingPage() {
     const nextStep = resolveStepFromAccessState(client?.access_state);
     if (!nextStep) return;
     setStep((currentStep) => {
-      const minAllowedStep = minAllowedStepRef.current;
-      const resolvedStep = STEP_ORDER[nextStep] > STEP_ORDER[currentStep] ? nextStep : currentStep;
-      if (STEP_ORDER[resolvedStep] < STEP_ORDER[minAllowedStep]) {
-        if (import.meta.env.DEV) {
-          console.info("[onboarding:step:sync] ignore_stale_backend_step", {
-            backend_step: nextStep,
-            current_step: currentStep,
-            resolved_step: resolvedStep,
-            min_allowed_step: minAllowedStep,
-          });
-        }
-        return minAllowedStep;
-      }
-      if (import.meta.env.DEV && STEP_ORDER[nextStep] < STEP_ORDER[minAllowedStep]) {
-        console.info("[onboarding:step:sync] stale_backend_observed", {
-          backend_step: nextStep,
-          current_step: currentStep,
-          min_allowed_step: minAllowedStep,
-        });
-      }
-      return resolvedStep;
+      const candidateStep = STEP_ORDER[nextStep] > STEP_ORDER[currentStep] ? nextStep : currentStep;
+      return resolveStep(candidateStep, "backendState");
     });
   }, [client?.access_state, onboardingEnabled, user]);
 
@@ -463,7 +471,8 @@ export function OnboardingPage() {
       const response = await createOrg(user, payload);
       minAllowedStepRef.current = "plan";
       setStep((currentStep) => {
-        const nextStep = STEP_ORDER[currentStep] < STEP_ORDER["plan"] ? "plan" : currentStep;
+        const candidateStep = STEP_ORDER[currentStep] < STEP_ORDER["plan"] ? "plan" : currentStep;
+        const nextStep = resolveStep(candidateStep, "profileSubmit");
         if (import.meta.env.DEV) {
           console.info("[onboarding:submit:profile] step_transition", {
             step_before_submit: stepBeforeSubmit,
@@ -485,6 +494,11 @@ export function OnboardingPage() {
       }
       try {
         await refresh();
+        if (import.meta.env.DEV) {
+          console.info("[onboarding:submit:profile] step_after_refresh", {
+            min_allowed_step: minAllowedStepRef.current,
+          });
+        }
       } catch (refreshError) {
         if (import.meta.env.DEV) {
           console.info("[onboarding:submit:profile] refresh_after_success_failed", {
@@ -578,7 +592,10 @@ export function OnboardingPage() {
     try {
       await selectSubscription(user, { plan_code: selectedPlan });
       await refresh();
-      setStep("contract");
+      minAllowedStepRef.current = "contract";
+      setStep((currentStep) =>
+        resolveStep(STEP_ORDER[currentStep] < STEP_ORDER["contract"] ? "contract" : currentStep, "planSubmit"),
+      );
       showToast("success", "Подписка выбрана");
     } catch (err) {
       console.error("Ошибка выбора подписки", err);
@@ -625,7 +642,13 @@ export function OnboardingPage() {
       const response = await signContract(user, contractInfo.contract_id, { otp: otp.trim() });
       setContractInfo(response);
       await refresh();
-      setStep("activation");
+      minAllowedStepRef.current = "activation";
+      setStep((currentStep) =>
+        resolveStep(
+          STEP_ORDER[currentStep] < STEP_ORDER["activation"] ? "activation" : currentStep,
+          "contractSubmit",
+        ),
+      );
       showToast("success", "Договор подписан");
     } catch (err) {
       console.error("Ошибка подписи договора", err);
