@@ -108,6 +108,10 @@ export type ClientOrgPayload = {
   kpp?: string | null;
   ogrn?: string | null;
   address?: string | null;
+  contact_name?: string | null;
+  contact_role?: string | null;
+  contact_phone?: string | null;
+  contact_email?: string | null;
 };
 
 export type ClientOrgResponse = ClientOrgPayload & {
