@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { request } from "./http";
+import { request, requestWithMeta } from "./http";
 
 describe("http auth header attachment", () => {
   beforeEach(() => {
@@ -23,4 +23,24 @@ describe("http auth header attachment", () => {
     expect(headers.Authorization).toBeUndefined();
     expect(infoSpy).toHaveBeenCalledWith("[HTTP] skip_bearer reason=invalid_format");
   });
+});
+
+
+it("treats 200 with empty json body as success in requestWithMeta", async () => {
+  const fetchMock = vi.fn().mockResolvedValue(new Response("", { status: 200, headers: { "content-type": "application/json" } }));
+  vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+
+  const response = await requestWithMeta<Record<string, never>>("/client/onboarding/profile", { method: "POST" }, { token: "aaa.bbb.ccc", base: "core" });
+
+  expect(response.status).toBe(200);
+  expect(response.data).toEqual({});
+});
+
+it("treats 200 with empty json body as success in request", async () => {
+  const fetchMock = vi.fn().mockResolvedValue(new Response("", { status: 200, headers: { "content-type": "application/json" } }));
+  vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+
+  const response = await request<Record<string, never>>("/client/onboarding/profile", { method: "POST" }, { token: "aaa.bbb.ccc", base: "core" });
+
+  expect(response).toEqual({});
 });

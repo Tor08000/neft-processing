@@ -71,6 +71,13 @@ const toMessageString = (value: unknown, fallback: string): string => {
   return fallback;
 };
 
+const parseJsonSuccessPayload = <T>(text: string): T => {
+  if (!text.trim()) {
+    return {} as T;
+  }
+  return JSON.parse(text) as T;
+};
+
 export class UnauthorizedError extends Error {
   constructor(message = "Требуется повторный вход") {
     super(message);
@@ -407,7 +414,12 @@ export async function request<T>(
     return {} as T;
   }
 
-  return isJson ? (response.json() as Promise<T>) : ({} as Promise<T>);
+  if (!isJson) {
+    return {} as Promise<T>;
+  }
+
+  const text = await readResponseText();
+  return parseJsonSuccessPayload<T>(text);
 }
 
 export interface ApiResponse<T> {
@@ -540,7 +552,7 @@ export async function requestWithMeta<T>(
     return { data: {} as T, correlationId, status: response.status };
   }
 
-  const data = isJson ? ((await response.json()) as T) : ({} as T);
+  const data = isJson ? parseJsonSuccessPayload<T>(await readResponseText()) : ({} as T);
   return { data, correlationId, status: response.status };
 }
 

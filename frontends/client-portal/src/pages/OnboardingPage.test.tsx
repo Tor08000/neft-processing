@@ -166,7 +166,7 @@ describe("OnboardingPage", () => {
     expect(screen.queryByText("Выберите план и модули для вашей компании.")).not.toBeInTheDocument();
   });
 
-  it("Case D: successful step 1 remains on step 2 while refresh is stale/pending", async () => {
+  it("Case B: successful step 1 remains on step 2 while refresh is stale/pending", async () => {
     let resolveRefresh: (() => void) | null = null;
     const refreshMock = vi.fn().mockImplementation(
       () =>
@@ -213,7 +213,112 @@ describe("OnboardingPage", () => {
     expect(screen.getByText("Выберите план и модули для вашей компании.")).toBeInTheDocument();
   });
 
-  it("Case D: accepts non-200 success semantics (201 and empty body)", async () => {
+
+  it("Case C: repeated post-submit backend refreshes cannot regress below step 2", async () => {
+    const clientState = {
+      access_state: "NEEDS_ONBOARDING",
+      org: null,
+      org_status: null,
+      gating: { onboarding_enabled: true, legal_gate_enabled: false },
+      features: { onboarding_enabled: true, legal_gate_enabled: false },
+      user: { email: "user@neft.local" },
+    };
+    useClientMock.mockImplementation(() => ({
+      client: clientState,
+      refresh: vi.fn().mockResolvedValue(undefined),
+      portalState: "READY",
+      error: null,
+      isLoading: false,
+    }));
+    createOrgMock.mockResolvedValue({ status: 200, data: { id: "c1", status: "ONBOARDING" } });
+
+    const view = render(
+      <MemoryRouter>
+        <OnboardingPage />
+      </MemoryRouter>,
+    );
+
+    fireEvent.change(screen.getByLabelText("Полное наименование"), { target: { value: "ООО Нефть" } });
+    fireEvent.change(screen.getByLabelText("ИНН"), { target: { value: "1234567890" } });
+    fireEvent.change(screen.getByLabelText("КПП"), { target: { value: "123456789" } });
+    fireEvent.change(screen.getByLabelText("ОГРН"), { target: { value: "1234567890123" } });
+    fireEvent.change(screen.getByLabelText("Юридический адрес"), { target: { value: "Москва" } });
+
+    fireEvent.click(screen.getByRole("button", { name: "Продолжить" }));
+
+    expect(await screen.findByText("Выберите план и модули для вашей компании.")).toBeInTheDocument();
+
+    clientState.access_state = "NEEDS_ONBOARDING";
+    view.rerender(
+      <MemoryRouter>
+        <OnboardingPage />
+      </MemoryRouter>,
+    );
+    await waitFor(() => expect(screen.getByText("Выберите план и модули для вашей компании.")).toBeInTheDocument());
+
+    clientState.access_state = "NEEDS_PLAN";
+    view.rerender(
+      <MemoryRouter>
+        <OnboardingPage />
+      </MemoryRouter>,
+    );
+    await waitFor(() => expect(screen.getByText("Выберите план и модули для вашей компании.")).toBeInTheDocument());
+
+    clientState.access_state = "NEEDS_ONBOARDING";
+    view.rerender(
+      <MemoryRouter>
+        <OnboardingPage />
+      </MemoryRouter>,
+    );
+    await waitFor(() => expect(screen.getByText("Выберите план и модули для вашей компании.")).toBeInTheDocument());
+  });
+
+  it("Case D: local step floor has priority over stale backend onboarding state", async () => {
+    const clientState = {
+      access_state: "NEEDS_ONBOARDING",
+      org: null,
+      org_status: null,
+      gating: { onboarding_enabled: true, legal_gate_enabled: false },
+      features: { onboarding_enabled: true, legal_gate_enabled: false },
+      user: { email: "user@neft.local" },
+    };
+    useClientMock.mockImplementation(() => ({
+      client: clientState,
+      refresh: vi.fn().mockResolvedValue(undefined),
+      portalState: "READY",
+      error: null,
+      isLoading: false,
+    }));
+    createOrgMock.mockResolvedValue({ status: 200, data: { id: "c1", status: "ONBOARDING" } });
+
+    const view = render(
+      <MemoryRouter>
+        <OnboardingPage />
+      </MemoryRouter>,
+    );
+
+    fireEvent.change(screen.getByLabelText("Полное наименование"), { target: { value: "ООО Нефть" } });
+    fireEvent.change(screen.getByLabelText("ИНН"), { target: { value: "1234567890" } });
+    fireEvent.change(screen.getByLabelText("КПП"), { target: { value: "123456789" } });
+    fireEvent.change(screen.getByLabelText("ОГРН"), { target: { value: "1234567890123" } });
+    fireEvent.change(screen.getByLabelText("Юридический адрес"), { target: { value: "Москва" } });
+    fireEvent.click(screen.getByRole("button", { name: "Продолжить" }));
+
+    expect(await screen.findByText("Выберите план и модули для вашей компании.")).toBeInTheDocument();
+
+    clientState.access_state = "NEEDS_ONBOARDING";
+    view.rerender(
+      <MemoryRouter>
+        <OnboardingPage />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(screen.queryByLabelText("Полное наименование")).not.toBeInTheDocument();
+      expect(screen.getByText("Выберите план и модули для вашей компании.")).toBeInTheDocument();
+    });
+  });
+  it("accepts non-200 success semantics (201 and empty body)", async () => {
     createOrgMock.mockResolvedValueOnce({ status: 201, data: { ok: true } });
 
     const { unmount } = render(
