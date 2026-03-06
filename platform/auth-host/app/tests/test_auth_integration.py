@@ -123,6 +123,37 @@ async def test_bootstrap_required_users_resets_existing_demo_password_in_dev_mod
 
     assert response.status_code == 200
 
+@pytest.mark.anyio
+async def test_bootstrap_required_users_resets_partner_demo_password_in_dev_mode():
+    try:
+        conn = await psycopg.AsyncConnection.connect(db.DSN_ASYNC)
+    except Exception as exc:  # pragma: no cover - skip when DB unavailable
+        pytest.skip(f"Postgres not available: {exc}")
+    else:
+        await conn.close()
+
+    run_auth_migrations(db.DSN_ASYNC)
+
+    settings = Settings(APP_ENV="dev")
+    await bootstrap.bootstrap_required_users(settings)
+
+    async with db.get_conn() as (_conn, cur):
+        await cur.execute(
+            "UPDATE users SET password_hash = %s WHERE lower(email)=lower(%s)",
+            (hash_password("definitely-wrong"), "partner@neft.local"),
+        )
+
+    await bootstrap.bootstrap_required_users(settings)
+
+    transport = httpx.ASGITransport(app=app, lifespan="on")
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/api/v1/auth/login",
+            json={"email": "partner@neft.local", "password": "Partner123!", "portal": "partner"},
+        )
+
+    assert response.status_code == 200
+
 
 @pytest.mark.anyio
 async def test_demo_admin_login_and_wrong_password():

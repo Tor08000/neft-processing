@@ -16,7 +16,7 @@ if "%NEFT_BOOTSTRAP_ADMIN_PASSWORD%"=="" set NEFT_BOOTSTRAP_ADMIN_PASSWORD=admin
 if "%NEFT_BOOTSTRAP_CLIENT_EMAIL%"=="" set NEFT_BOOTSTRAP_CLIENT_EMAIL=client@neft.local
 if "%NEFT_BOOTSTRAP_CLIENT_PASSWORD%"=="" set NEFT_BOOTSTRAP_CLIENT_PASSWORD=client
 if "%NEFT_BOOTSTRAP_PARTNER_EMAIL%"=="" set NEFT_BOOTSTRAP_PARTNER_EMAIL=partner@neft.local
-if "%NEFT_BOOTSTRAP_PARTNER_PASSWORD%"=="" set NEFT_BOOTSTRAP_PARTNER_PASSWORD=partner
+if "%NEFT_BOOTSTRAP_PARTNER_PASSWORD%"=="" set NEFT_BOOTSTRAP_PARTNER_PASSWORD=Partner123!
 
 echo ^>^>^> auth health
 curl -sS -o "%TEMP%\auth_health.json" -w "%%{http_code}" "%AUTH_BASE_URL%/api/v1/auth/health" > "%TEMP%\auth_health.status"

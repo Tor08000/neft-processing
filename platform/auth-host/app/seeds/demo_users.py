@@ -141,7 +141,7 @@ def get_demo_users() -> list[DemoUser]:
     )
 
     partner_email = _env_or_default("NEFT_BOOTSTRAP_PARTNER_EMAIL", "partner@neft.local")
-    partner_password = _env_or_default("NEFT_BOOTSTRAP_PARTNER_PASSWORD", "Neft123!")
+    partner_password = _env_or_default("NEFT_BOOTSTRAP_PARTNER_PASSWORD", "Partner123!")
     partner_full_name = _env_or_default(
         "NEFT_BOOTSTRAP_PARTNER_FULL_NAME",
         _env_or_default("PARTNER_FULL_NAME", "Demo Partner"),

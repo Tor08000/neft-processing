@@ -803,7 +803,7 @@ export const CREDENTIALS = {
     ),
     password: normalizeCredential(
       process.env.NEFT_BOOTSTRAP_PARTNER_PASSWORD,
-      process.env.PARTNER_PASSWORD || "partner",
+      process.env.PARTNER_PASSWORD || "Partner123!",
     ),
   },
 } satisfies Record<AppName, Credentials>;

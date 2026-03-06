@@ -18,7 +18,7 @@ if "%CLIENT_EMAIL%"=="" (
 )
 if "%CLIENT_PASSWORD%"=="" set "CLIENT_PASSWORD=client"
 if "%PARTNER_EMAIL%"=="" set "PARTNER_EMAIL=partner@neft.local"
-if "%PARTNER_PASSWORD%"=="" set "PARTNER_PASSWORD=partner"
+if "%PARTNER_PASSWORD%"=="" set "PARTNER_PASSWORD=Partner123!"
 if "%ADMIN_EMAIL%"=="" set "ADMIN_EMAIL=admin@example.com"
 if "%ADMIN_PASSWORD%"=="" set "ADMIN_PASSWORD=admin"
 

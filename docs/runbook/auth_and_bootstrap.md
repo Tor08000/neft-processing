@@ -89,7 +89,7 @@ curl -s -X POST http://localhost/api/v1/auth/login ^
 
 curl -s -X POST http://localhost/api/v1/auth/login ^
   -H "Content-Type: application/json" ^
-  -d "{\"email\":\"partner@neft.local\",\"password\":\"Neft123!\",\"portal\":\"partner\"}"
+  -d "{\"email\":\"partner@neft.local\",\"password\":\"Partner123!\",\"portal\":\"partner\"}"
 
 curl -s -X POST http://localhost/api/v1/auth/login ^
   -H "Content-Type: application/json" ^

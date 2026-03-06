@@ -36,7 +36,7 @@ assert_ok "$admin_token" "/api/core/admin/me"
 client_token=$(login "${CLIENT_LOGIN:-client@neft.local}" "${CLIENT_PASSWORD:-client}" "client")
 assert_ok "$client_token" "/api/core/client/v1/me"
 
-partner_token=$(login "${PARTNER_LOGIN:-partner@neft.local}" "${PARTNER_PASSWORD:-partner}" "partner")
+partner_token=$(login "${PARTNER_LOGIN:-partner@neft.local}" "${PARTNER_PASSWORD:-Partner123!}" "partner")
 assert_ok "$partner_token" "/api/core/partner/me"
 
 wrong_portal_code=$(curl -sS -o /dev/null -w '%{http_code}' "${BASE_URL}/api/core/admin/me" -H "Authorization: Bearer ${client_token}")

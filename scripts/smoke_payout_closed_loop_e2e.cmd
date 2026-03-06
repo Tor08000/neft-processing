@@ -10,7 +10,7 @@ set "CORE_URL=%GATEWAY_BASE%%CORE_BASE%"
 set "AUTH_URL=%GATEWAY_BASE%%AUTH_BASE%"
 
 if "%PARTNER_EMAIL%"=="" set "PARTNER_EMAIL=partner@neft.local"
-if "%PARTNER_PASSWORD%"=="" set "PARTNER_PASSWORD=partner"
+if "%PARTNER_PASSWORD%"=="" set "PARTNER_PASSWORD=Partner123!"
 
 if not exist logs mkdir logs
 set "LOG_FILE=logs\\%SCRIPT_NAME%_%DATE:/=-%_%TIME::=-%.log"
