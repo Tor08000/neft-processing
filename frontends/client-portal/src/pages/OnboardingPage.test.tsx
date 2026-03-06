@@ -7,6 +7,7 @@ import { UnauthorizedError, ValidationError } from "../api/http";
 const useAuthMock = vi.fn();
 const useClientMock = vi.fn();
 const createOrgMock = vi.fn();
+const fetchPlansMock = vi.fn();
 const useToastMock = vi.fn();
 
 vi.mock("../auth/AuthContext", () => ({
@@ -22,6 +23,7 @@ vi.mock("../api/clientPortal", async () => {
   return {
     ...actual,
     createOrg: (...args: unknown[]) => createOrgMock(...args),
+    fetchPlans: (...args: unknown[]) => fetchPlansMock(...args),
   };
 });
 
@@ -34,6 +36,7 @@ describe("OnboardingPage", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    fetchPlansMock.mockResolvedValue([{ id: "1", code: "FREE", title: "Free", is_active: true }]);
     useAuthMock.mockReturnValue({ user });
     useClientMock.mockReturnValue({
       client: {
@@ -52,26 +55,7 @@ describe("OnboardingPage", () => {
     useToastMock.mockReturnValue({ toast: null, showToast: vi.fn() });
   });
 
-  it("invalid INN with letters shows validation error and does not submit", async () => {
-    render(
-      <MemoryRouter>
-        <OnboardingPage />
-      </MemoryRouter>,
-    );
-
-    fireEvent.change(screen.getByLabelText("Полное наименование"), { target: { value: "ООО Нефть" } });
-    fireEvent.change(screen.getByLabelText("ИНН"), { target: { value: "вапва" } });
-    fireEvent.change(screen.getByLabelText("КПП"), { target: { value: "123456789" } });
-    fireEvent.change(screen.getByLabelText("ОГРН"), { target: { value: "1234567890123" } });
-    fireEvent.change(screen.getByLabelText("Юридический адрес"), { target: { value: "Москва" } });
-
-    fireEvent.click(screen.getByRole("button", { name: "Продолжить" }));
-
-    expect(await screen.findByText("Ожидаются только цифры")).toBeInTheDocument();
-    expect(createOrgMock).not.toHaveBeenCalled();
-  });
-
-  it("valid onboarding payload submits to onboarding profile endpoint", async () => {
+  it("Case A: valid step 1 advances to plan step", async () => {
     createOrgMock.mockResolvedValue({ id: "c1", status: "ONBOARDING" });
 
     render(
@@ -97,6 +81,55 @@ describe("OnboardingPage", () => {
       ogrn: "1234567890123",
       address: "Москва",
     });
+    expect(await screen.findByText("Выберите план и модули для вашей компании."))
+      .toBeInTheDocument();
+  });
+
+  it("Case B: invalid step 1 shows validation, does not submit, keeps typed data", async () => {
+    render(
+      <MemoryRouter>
+        <OnboardingPage />
+      </MemoryRouter>,
+    );
+
+    fireEvent.change(screen.getByLabelText("Полное наименование"), { target: { value: "ООО Нефть" } });
+    fireEvent.change(screen.getByLabelText("ИНН"), { target: { value: "вапва" } });
+    fireEvent.change(screen.getByLabelText("КПП"), { target: { value: "123456789" } });
+    fireEvent.change(screen.getByLabelText("ОГРН"), { target: { value: "1234567890123" } });
+    fireEvent.change(screen.getByLabelText("Юридический адрес"), { target: { value: "Москва" } });
+    fireEvent.change(screen.getByLabelText("ФИО (необязательно)"), { target: { value: "Иван Иванов" } });
+
+    fireEvent.click(screen.getByRole("button", { name: "Продолжить" }));
+
+    expect(await screen.findByText("Ожидаются только цифры")).toBeInTheDocument();
+    expect(screen.getByText("Проверьте корректность заполнения полей")).toBeInTheDocument();
+    expect(createOrgMock).not.toHaveBeenCalled();
+    expect(screen.getByLabelText("Полное наименование")).toHaveValue("ООО Нефть");
+    expect(screen.getByLabelText("ФИО (необязательно)")).toHaveValue("Иван Иванов");
+    expect(screen.queryByText("Выберите план и модули для вашей компании.")).not.toBeInTheDocument();
+  });
+
+  it("Case C: backend validation error is visible and preserves form values", async () => {
+    createOrgMock.mockRejectedValue(new ValidationError("Ошибка валидации", "ИНН уже зарегистрирован"));
+
+    render(
+      <MemoryRouter>
+        <OnboardingPage />
+      </MemoryRouter>,
+    );
+
+    fireEvent.change(screen.getByLabelText("Полное наименование"), { target: { value: "ООО Нефть" } });
+    fireEvent.change(screen.getByLabelText("ИНН"), { target: { value: "1234567890" } });
+    fireEvent.change(screen.getByLabelText("КПП"), { target: { value: "123456789" } });
+    fireEvent.change(screen.getByLabelText("ОГРН"), { target: { value: "1234567890123" } });
+    fireEvent.change(screen.getByLabelText("Юридический адрес"), { target: { value: "Москва" } });
+
+    fireEvent.click(screen.getByRole("button", { name: "Продолжить" }));
+
+    expect(await screen.findByText("ИНН уже зарегистрирован")).toBeInTheDocument();
+    expect(screen.getByLabelText("Полное наименование")).toHaveValue("ООО Нефть");
+    expect(screen.getByLabelText("ИНН")).toHaveValue("1234567890");
+    expect(screen.queryByText("Выберите план и модули для вашей компании.")).not.toBeInTheDocument();
   });
 
   it("maps backend 422 detail fields to form errors", async () => {

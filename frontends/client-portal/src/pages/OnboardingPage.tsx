@@ -29,6 +29,21 @@ import { clearTokens, isValidJwt } from "../lib/apiClient";
 
 type Step = "profile" | "plan" | "contract" | "activation";
 
+const STEP_ORDER: Record<Step, number> = {
+  profile: 0,
+  plan: 1,
+  contract: 2,
+  activation: 3,
+};
+
+function resolveStepFromAccessState(accessState?: string | null): Step | null {
+  if (accessState === AccessState.ACTIVE) return "activation";
+  if (accessState === AccessState.NEEDS_CONTRACT) return "contract";
+  if (accessState === AccessState.NEEDS_PLAN) return "plan";
+  if (accessState === AccessState.NEEDS_ONBOARDING) return "profile";
+  return null;
+}
+
 type ProfileFieldErrors = Partial<Record<"companyName" | "inn" | "kpp" | "ogrn" | "legalAddress" | "contactEmail" | "contactPhone", string>>;
 
 const DIGITS_ONLY_RE = /^\d+$/;
@@ -148,19 +163,9 @@ export function OnboardingPage() {
 
   useEffect(() => {
     if (!user || !onboardingEnabled) return;
-    if (client?.access_state === AccessState.ACTIVE) {
-      setStep("activation");
-      return;
-    }
-    if (client?.access_state === AccessState.NEEDS_CONTRACT) {
-      setStep("contract");
-      return;
-    }
-    if (client?.access_state === AccessState.NEEDS_PLAN) {
-      setStep("plan");
-      return;
-    }
-    setStep("profile");
+    const nextStep = resolveStepFromAccessState(client?.access_state);
+    if (!nextStep) return;
+    setStep((currentStep) => (STEP_ORDER[nextStep] > STEP_ORDER[currentStep] ? nextStep : currentStep));
   }, [client?.access_state, onboardingEnabled, user]);
 
   useEffect(() => {
@@ -301,6 +306,13 @@ export function OnboardingPage() {
     setProfileFieldErrors({});
     if (!user) return;
 
+    if (import.meta.env.DEV) {
+      console.info("[onboarding:submit:profile] start", {
+        step,
+        client_type: clientType,
+      });
+    }
+
     const validation = validateProfile({
       clientType,
       companyName,
@@ -312,6 +324,13 @@ export function OnboardingPage() {
 
     setProfileFieldErrors(validation.fieldErrors);
     setInnWarning(validation.innWarning);
+
+    if (import.meta.env.DEV) {
+      console.info("[onboarding:submit:profile] validation", {
+        has_errors: Object.keys(validation.fieldErrors).length > 0,
+        invalid_fields: Object.keys(validation.fieldErrors),
+      });
+    }
 
     if (Object.keys(validation.fieldErrors).length > 0) {
       setError("Проверьте корректность заполнения полей");
@@ -331,7 +350,7 @@ export function OnboardingPage() {
       const token = user?.token;
       const hasValidAuthorization = typeof token === "string" && isValidJwt(token);
       console.info("[onboarding:submit:profile] request", {
-        payload,
+        payload_keys: Object.keys(payload),
         api_url: `${CORE_API_BASE}/client/onboarding/profile`,
         authorization_attached: hasValidAuthorization,
         token_length: hasValidAuthorization ? token.length : 0,
@@ -409,6 +428,9 @@ export function OnboardingPage() {
         return;
       }
       setError("Сервис временно недоступен, попробуйте позже");
+      if (import.meta.env.DEV) {
+        console.info("[onboarding:submit:profile] response", { status: "unknown", body: "unexpected_error" });
+      }
       showToast("error", "Сервис временно недоступен, попробуйте позже");
     } finally {
       setIsSubmitting(false);
