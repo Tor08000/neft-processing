@@ -127,6 +127,7 @@ export function OnboardingPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const reauthRedirectedRef = useRef(false);
+  const minAllowedStepRef = useRef<Step>("profile");
   const [error, setError] = useState<string | null>(null);
   const [profileFieldErrors, setProfileFieldErrors] = useState<ProfileFieldErrors>({});
   const [innWarning, setInnWarning] = useState<string | null>(null);
@@ -165,7 +166,29 @@ export function OnboardingPage() {
     if (!user || !onboardingEnabled) return;
     const nextStep = resolveStepFromAccessState(client?.access_state);
     if (!nextStep) return;
-    setStep((currentStep) => (STEP_ORDER[nextStep] > STEP_ORDER[currentStep] ? nextStep : currentStep));
+    setStep((currentStep) => {
+      const minAllowedStep = minAllowedStepRef.current;
+      const resolvedStep = STEP_ORDER[nextStep] > STEP_ORDER[currentStep] ? nextStep : currentStep;
+      if (STEP_ORDER[resolvedStep] < STEP_ORDER[minAllowedStep]) {
+        if (import.meta.env.DEV) {
+          console.info("[onboarding:step:sync] ignore_stale_backend_step", {
+            backend_step: nextStep,
+            current_step: currentStep,
+            resolved_step: resolvedStep,
+            min_allowed_step: minAllowedStep,
+          });
+        }
+        return minAllowedStep;
+      }
+      if (import.meta.env.DEV && STEP_ORDER[nextStep] < STEP_ORDER[minAllowedStep]) {
+        console.info("[onboarding:step:sync] stale_backend_observed", {
+          backend_step: nextStep,
+          current_step: currentStep,
+          min_allowed_step: minAllowedStep,
+        });
+      }
+      return resolvedStep;
+    });
   }, [client?.access_state, onboardingEnabled, user]);
 
   useEffect(() => {
@@ -344,6 +367,10 @@ export function OnboardingPage() {
       kpp: clientType === "LEGAL" ? kpp.trim() : null,
       ogrn: clientType === "LEGAL" ? ogrn.trim() : null,
       address: legalAddress.trim(),
+      contact_name: contactName.trim() || null,
+      contact_role: contactRole.trim() || null,
+      contact_phone: contactPhone.trim() || null,
+      contact_email: contactEmail.trim() || null,
     };
 
     if (import.meta.env.DEV) {
@@ -361,11 +388,24 @@ export function OnboardingPage() {
     setIsLoading(true);
     try {
       await createOrg(user, payload);
+      minAllowedStepRef.current = "plan";
+      setStep("plan");
       if (import.meta.env.DEV) {
         console.info("[onboarding:submit:profile] response", { status: 200, body: { ok: true } });
+        console.info("[onboarding:submit:profile] step_after_submit", {
+          min_allowed_step: minAllowedStepRef.current,
+          next_step: "plan",
+        });
       }
-      await refresh();
-      setStep("plan");
+      try {
+        await refresh();
+      } catch (refreshError) {
+        if (import.meta.env.DEV) {
+          console.info("[onboarding:submit:profile] refresh_after_success_failed", {
+            error_type: refreshError instanceof Error ? refreshError.name : typeof refreshError,
+          });
+        }
+      }
       showToast("success", "Профиль сохранён");
     } catch (err) {
       console.error("Ошибка сохранения профиля", err);
