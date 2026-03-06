@@ -1,4 +1,4 @@
-import { ApiError, CORE_API_BASE, UnauthorizedError, request } from "./http";
+import { ApiError, CORE_API_BASE, UnauthorizedError, request, requestWithMeta, type ApiResponse } from "./http";
 import type { AuthSession } from "./types";
 
 export type ClientDashboardSnapshot = {
@@ -213,8 +213,15 @@ export const updateClientTimezone = (user: AuthSession | null, timezone: string)
     withToken(user),
   );
 
-export const createOrg = (user: AuthSession | null, payload: ClientOrgPayload) =>
-  request<ClientOrgResponse>("/client/onboarding/profile", { method: "POST", body: JSON.stringify(payload) }, withToken(user));
+export const createOrg = (
+  user: AuthSession | null,
+  payload: ClientOrgPayload,
+): Promise<ApiResponse<ClientOrgResponse | Record<string, never>>> =>
+  requestWithMeta<ClientOrgResponse | Record<string, never>>(
+    "/client/onboarding/profile",
+    { method: "POST", body: JSON.stringify(payload) },
+    withToken(user),
+  );
 
 export const updateOrg = (user: AuthSession | null, payload: ClientOrgPayload) =>
   request<ClientOrgResponse>("/client/org", { method: "PATCH", body: JSON.stringify(payload) }, withToken(user));
