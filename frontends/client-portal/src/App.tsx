@@ -493,7 +493,11 @@ export function App({ initialSession = null }: AppProps) {
                 <Route path="/subscription" element={<SubscriptionPage />} />
                 <Route path="/profile" element={<ProfilePage />} />
                 <Route path="/settings" element={<SettingsPage />} />
+                <Route path="/client/settings" element={<Navigate to="/settings" replace />} />
                 <Route path="/settings/management" element={<ClientControlsPage />} />
+                <Route path="/client/limits" element={<Navigate to="/limits/templates" replace />} />
+                <Route path="/client/fleet" element={<Navigate to="/fleet/groups" replace />} />
+                <Route path="/client/analytics/dashboard" element={<Navigate to="/analytics" replace />} />
                 <Route path="/audit" element={<AuditPage />} />
                 <Route
                   path="/client/reports"
