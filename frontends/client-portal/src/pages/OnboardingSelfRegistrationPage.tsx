@@ -96,7 +96,7 @@ export function OnboardingSelfRegistrationPage({ mode }: { mode: "start" | "form
     try {
       const res = await createApplication({ email });
       saveOnboardingSession(res.application.id, res.access_token);
-      navigate("/client/onboarding/form");
+      navigate("/onboarding/form");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Не удалось создать заявку");
     } finally {
@@ -136,7 +136,7 @@ export function OnboardingSelfRegistrationPage({ mode }: { mode: "start" | "form
       await onSave();
       const app = await submitApplication(session.appId, session.accessToken);
       setApplication(app);
-      navigate("/client/onboarding/status");
+      navigate("/onboarding/status");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Не удалось отправить заявку");
     } finally {
@@ -297,7 +297,7 @@ export function OnboardingSelfRegistrationPage({ mode }: { mode: "start" | "form
           </button>
         </div>
         <p>
-          <Link to="/client/onboarding/status">К статусу</Link>
+          <Link to="/onboarding/status">К статусу</Link>
         </p>
         {error ? <p>{error}</p> : null}
       </main>
@@ -315,7 +315,7 @@ export function OnboardingSelfRegistrationPage({ mode }: { mode: "start" | "form
         <li>Approved</li>
         <li>Rejected</li>
       </ol>
-      {application?.status === "DRAFT" ? <Link to="/client/onboarding/form">Редактировать</Link> : null}
+      {application?.status === "DRAFT" ? <Link to="/onboarding/form">Редактировать</Link> : null}
       <section style={{ marginTop: 20 }}>
         <h2>Документы на подпись</h2>
         <button type="button" disabled={busy} onClick={() => void generateDocs()}>

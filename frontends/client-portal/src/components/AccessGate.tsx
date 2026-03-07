@@ -172,7 +172,7 @@ const AccessStateView = ({
           title="Подключить компанию"
           description="Завершите подключение компании, чтобы открыть этот раздел."
           actionLabel="Перейти к подключению"
-          actionTo="/client/onboarding"
+          actionTo="/onboarding"
         />
       );
     case AccessState.NEEDS_PLAN:
@@ -181,7 +181,7 @@ const AccessStateView = ({
           title="Выберите тариф"
           description="Для доступа к разделу нужен активный тариф."
           actionLabel="Продолжить подключение"
-          actionTo="/client/onboarding/plan"
+          actionTo="/onboarding/plan"
           secondaryAction={
             <Link className="ghost neft-btn-secondary" to="/client/support/new?topic=plan">
               Связаться с менеджером
@@ -195,7 +195,7 @@ const AccessStateView = ({
           title="Подпишите договор"
           description="Завершите подписание договора, чтобы открыть этот раздел."
           actionLabel="Перейти к подписанию"
-          actionTo="/client/onboarding/contract"
+          actionTo="/onboarding/contract"
         />
       );
     case AccessState.OVERDUE:

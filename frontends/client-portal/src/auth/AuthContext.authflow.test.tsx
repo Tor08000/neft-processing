@@ -80,7 +80,66 @@ describe("AuthProvider deterministic flow", () => {
 
     await waitFor(() => expect(clientPortalApi.fetchClientMe).toHaveBeenCalledTimes(1));
     expect(replaceMock).toHaveBeenCalledWith("/client/dashboard");
-    expect(replaceMock).not.toHaveBeenCalledWith("/client/onboarding");
+    expect(replaceMock).not.toHaveBeenCalledWith("/client/client/onboarding");
+  });
+
+
+  it("routes onboarding clients to canonical onboarding route once", async () => {
+    vi.spyOn(authApi, "login").mockResolvedValue({ token: makeJwt(), refreshToken: "r1", expiresAt: Date.now() + 60_000 } as never);
+    vi.spyOn(authApi, "fetchMe").mockResolvedValue({ email: "client@corp.local", roles: ["CLIENT_USER"], subject_type: "CLIENT", client_id: "c1" } as never);
+    vi.spyOn(clientPortalApi, "fetchClientMe").mockResolvedValue({
+      access_state: "NEEDS_ONBOARDING",
+      user: { id: "u1", email: "client@corp.local" },
+      org_roles: [],
+      user_roles: [],
+      capabilities: [],
+    } as never);
+
+    render(
+      <AuthProvider>
+        <Harness />
+      </AuthProvider>,
+    );
+
+    await act(async () => {
+      screen.getByRole("button", { name: "login" }).click();
+    });
+
+    await waitFor(() => expect(clientPortalApi.fetchClientMe).toHaveBeenCalledTimes(1));
+    expect(replaceMock).toHaveBeenCalledWith("/client/onboarding");
+    expect(replaceMock).toHaveBeenCalledTimes(1);
+    expect(replaceMock).not.toHaveBeenCalledWith("/client/client/onboarding");
+  });
+
+
+  it("does not call replace when already on canonical onboarding route", async () => {
+    Object.defineProperty(window, "location", {
+      value: { ...window.location, pathname: "/client/onboarding", search: "", replace: replaceMock },
+      writable: true,
+    });
+
+    vi.spyOn(authApi, "login").mockResolvedValue({ token: makeJwt(), refreshToken: "r1", expiresAt: Date.now() + 60_000 } as never);
+    vi.spyOn(authApi, "fetchMe").mockResolvedValue({ email: "client@corp.local", roles: ["CLIENT_USER"], subject_type: "CLIENT", client_id: "c1" } as never);
+    vi.spyOn(clientPortalApi, "fetchClientMe").mockResolvedValue({
+      access_state: "NEEDS_ONBOARDING",
+      user: { id: "u1", email: "client@corp.local" },
+      org_roles: [],
+      user_roles: [],
+      capabilities: [],
+    } as never);
+
+    render(
+      <AuthProvider>
+        <Harness />
+      </AuthProvider>,
+    );
+
+    await act(async () => {
+      screen.getByRole("button", { name: "login" }).click();
+    });
+
+    await waitFor(() => expect(clientPortalApi.fetchClientMe).toHaveBeenCalledTimes(1));
+    expect(replaceMock).not.toHaveBeenCalled();
   });
 
   it("/me 401 after login triggers reauth redirect and no login retry", async () => {
