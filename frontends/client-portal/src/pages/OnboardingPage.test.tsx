@@ -206,10 +206,10 @@ describe("OnboardingPage", () => {
 
     expect(await screen.findByText("Выберите план и модули для вашей компании.")).toBeInTheDocument();
     expect(screen.queryByLabelText("Полное наименование")).not.toBeInTheDocument();
-    expect(refreshMock).toHaveBeenCalledTimes(1);
+    expect(refreshMock).toHaveBeenCalledTimes(2);
 
     resolveRefresh?.();
-    await waitFor(() => expect(refreshMock).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(refreshMock).toHaveBeenCalledTimes(2));
     expect(screen.getByText("Выберите план и модули для вашей компании.")).toBeInTheDocument();
   });
 
@@ -471,4 +471,59 @@ describe("OnboardingPage", () => {
 
     await waitFor(() => expect(createOrgMock).toHaveBeenCalledTimes(1));
   });
+
+  it("Case B: onboarding mount triggers at most one refresh", async () => {
+    const refreshMock = vi.fn().mockResolvedValue(undefined);
+    useClientMock.mockReturnValue({
+      client: {
+        access_state: "NEEDS_ONBOARDING",
+        org: null,
+        org_status: null,
+        gating: { onboarding_enabled: true, legal_gate_enabled: false },
+        features: { onboarding_enabled: true, legal_gate_enabled: false },
+        user: { email: "user@neft.local" },
+      },
+      refresh: refreshMock,
+      portalState: "READY",
+      error: null,
+      isLoading: false,
+    });
+
+    render(
+      <MemoryRouter initialEntries={["/client/onboarding"]}>
+        <OnboardingPage />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => expect(screen.getByText("Онбординг клиента")).toBeInTheDocument());
+    await waitFor(() => expect(refreshMock).toHaveBeenCalledTimes(1));
+  });
+
+  it("Case C: demo onboarding entry stays on onboarding route", async () => {
+    useAuthMock.mockReturnValue({ user: { token: "aaa.bbb.ccc", email: "demo@demo.neft", roles: ["CLIENT_OWNER"] } });
+    useClientMock.mockReturnValue({
+      client: {
+        access_state: "NEEDS_ONBOARDING",
+        org: null,
+        org_status: null,
+        gating: { onboarding_enabled: true, legal_gate_enabled: false },
+        features: { onboarding_enabled: true, legal_gate_enabled: false },
+        user: { email: "demo@demo.neft" },
+      },
+      refresh: vi.fn().mockResolvedValue(undefined),
+      portalState: "READY",
+      error: null,
+      isLoading: false,
+    });
+
+    render(
+      <MemoryRouter initialEntries={["/client/onboarding"]}>
+        <OnboardingPage />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => expect(screen.getByText("Онбординг клиента")).toBeInTheDocument());
+    expect(screen.queryByText("Демо-режим: онбординг пропущен")).not.toBeInTheDocument();
+  });
+
 });

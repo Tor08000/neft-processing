@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import { Navigate, useNavigate } from "react-router-dom";
+import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import { EmptyState } from "@shared/brand/components";
 import { useAuth } from "../auth/AuthContext";
 import { useClient } from "../auth/ClientContext";
@@ -193,6 +193,7 @@ function validateProfile(params: {
 
 export function OnboardingPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user } = useAuth();
   const { client, refresh, portalState, error: portalError, isLoading: isPortalLoading } = useClient();
   const { toast, showToast } = useToast();
@@ -221,6 +222,8 @@ export function OnboardingPage() {
     return resolvedStep;
   };
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const hasInitializedRef = useRef(false);
+  const hasRefreshedOnMountRef = useRef(false);
   const reauthRedirectedRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const [profileFieldErrors, setProfileFieldErrors] = useState<ProfileFieldErrors>({});
@@ -255,6 +258,71 @@ export function OnboardingPage() {
     if (client?.org_status === "ACTIVE") return "Аккаунт активирован";
     return "Ожидайте активации";
   }, [client?.org_status]);
+
+  useEffect(() => {
+    if (!import.meta.env.DEV) return;
+    console.info("[onboarding:lifecycle] mounted", {
+      route: location.pathname,
+      portal_state: portalState,
+      access_state: client?.access_state ?? null,
+    });
+    return () => {
+      console.info("[onboarding:lifecycle] unmounted", { route: location.pathname });
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!user || !onboardingEnabled) return;
+    if (hasInitializedRef.current) return;
+    hasInitializedRef.current = true;
+    if (import.meta.env.DEV) {
+      console.info("[onboarding:init] started", {
+        route: location.pathname,
+        portal_state: portalState,
+        has_profile: hasProfile,
+      });
+    }
+    if (portalState === "READY" && !hasProfile && !hasRefreshedOnMountRef.current) {
+      hasRefreshedOnMountRef.current = true;
+      if (import.meta.env.DEV) {
+        console.info("[onboarding:init] refresh_called", {
+          route: location.pathname,
+          portal_state: portalState,
+        });
+      }
+      void refresh()
+        .then(() => {
+          if (import.meta.env.DEV) {
+            console.info("[onboarding:init] refresh_resolved", {
+              route: location.pathname,
+              portal_state: portalState,
+            });
+          }
+        })
+        .catch((initRefreshError) => {
+          if (import.meta.env.DEV) {
+            console.info("[onboarding:init] refresh_failed", {
+              error_type: initRefreshError instanceof Error ? initRefreshError.name : typeof initRefreshError,
+            });
+          }
+        })
+        .finally(() => {
+          if (import.meta.env.DEV) {
+            console.info("[onboarding:init] completed", {
+              route: location.pathname,
+              portal_state: portalState,
+            });
+          }
+        });
+      return;
+    }
+    if (import.meta.env.DEV) {
+      console.info("[onboarding:init] completed", {
+        route: location.pathname,
+        portal_state: portalState,
+      });
+    }
+  }, [hasProfile, location.pathname, onboardingEnabled, portalState, refresh, user]);
 
   useEffect(() => {
     if (!import.meta.env.DEV) return;
@@ -331,11 +399,14 @@ export function OnboardingPage() {
     );
   }
 
-  if (isDemoClientAccount) {
-    return <Navigate to="/" replace />;
-  }
-
   if (portalState === "READY" && hasProfile) {
+    if (import.meta.env.DEV) {
+      console.info("[onboarding:redirect] already_has_profile", {
+        from: location.pathname,
+        to: "/",
+        access_state: client?.access_state ?? null,
+      });
+    }
     return <Navigate to="/" replace />;
   }
 
@@ -389,6 +460,13 @@ export function OnboardingPage() {
       client.access_state as AccessState,
     )
   ) {
+    if (import.meta.env.DEV) {
+      console.info("[onboarding:redirect] access_state_not_onboarding", {
+        from: location.pathname,
+        to: "/",
+        access_state: client.access_state,
+      });
+    }
     return <Navigate to="/" replace />;
   }
 
