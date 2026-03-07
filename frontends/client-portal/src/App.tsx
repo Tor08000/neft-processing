@@ -195,18 +195,20 @@ function PwaIndexRedirect() {
 export function OnboardingCanonicalizer() {
   const location = useLocation();
   const canonicalPath = toCanonicalOnboardingPath(location.pathname);
+  const skipped = canonicalPath === location.pathname;
 
   if (import.meta.env.DEV) {
-    console.info("[routing:resolve]", {
+    console.info("[routing:attempt]", {
       source: "OnboardingCanonicalizer",
-      pathname: location.pathname,
-      logical_route: resolveLogicalRoute(location.pathname),
-      component: canonicalPath === location.pathname ? "OnboardingPage" : "Navigate",
-      redirect_target: canonicalPath === location.pathname ? null : canonicalPath,
+      currentPath: location.pathname,
+      requestedTargetPath: canonicalPath,
+      skipped,
+      skipReason: skipped ? "already_canonical_onboarding" : null,
+      logicalRoute: resolveLogicalRoute(location.pathname),
     });
   }
 
-  if (canonicalPath !== location.pathname) {
+  if (!skipped) {
     return <Navigate to={canonicalPath} replace />;
   }
 

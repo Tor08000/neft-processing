@@ -1,4 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { ApiError, fetchMe, HtmlResponseError, login as loginApi, UnauthorizedError, ValidationError } from "../api/auth";
 import { request } from "../api/http";
 import { fetchClientMe } from "../api/clientPortal";
@@ -7,7 +8,7 @@ import type { AuthSession, LoginResponse } from "../api/types";
 import { AccessState, resolveAccessState } from "../access/accessState";
 import { clearTokens, getAccessToken, getExpiresAt, getRefreshToken, isAccessTokenExpired, isValidJwt, saveAuthTokens } from "../lib/apiClient";
 import { isDemoClient } from "@shared/demo/demo";
-import { ONBOARDING_ROUTE, toBrowserPath } from "../lib/onboardingRoute";
+import { ONBOARDING_ROUTE } from "../lib/onboardingRoute";
 
 interface AuthContextValue {
   user: AuthSession | null;
@@ -30,21 +31,7 @@ interface AuthProviderProps {
 const STORAGE_KEY = "neft_client_access_token";
 const CLIENT_TOKEN_ISSUER = import.meta.env.VITE_CLIENT_TOKEN_ISSUER ?? "neft-auth";
 
-const redirectToLogin = (reauth = false) => {
-  if (typeof window !== "undefined") {
-    const target = reauth ? "/login?reauth=1" : "/login";
-    window.location.replace(toBrowserPath(target));
-  }
-};
-
-const navigateTo = (path: string) => {
-  if (typeof window === "undefined") return;
-  const target = toBrowserPath(path);
-  if (window.location.pathname + window.location.search === target) {
-    return;
-  }
-  window.location.replace(target);
-};
+const isCanonicalOnboardingRoute = (path: string) => path === ONBOARDING_ROUTE;
 
 function decodeJwtPayload(token: string): Record<string, unknown> | null {
   const parts = token.split(".");
@@ -89,6 +76,8 @@ type SessionTokens = {
 };
 
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialSession = null }) => {
+  const navigate = useNavigate();
+  const location = useLocation();
   const [user, setUser] = useState<AuthSession | null>(initialSession);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -125,20 +114,62 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialSes
     setAuthError("reauth_required");
     setError("Требуется повторный вход");
     setAuthStatus("unauthenticated");
-    redirectToLogin(true);
-  }, [persist]);
+    const target = "/login?reauth=1";
+    const current = `${location.pathname}${location.search}`;
+    const skipped = current === target;
+
+    if (import.meta.env.DEV) {
+      console.info("[routing:attempt]", {
+        source: "AuthContext.forceReauth",
+        currentPath: current,
+        requestedTargetPath: target,
+        skipped,
+        skipReason: skipped ? "already_target" : null,
+      });
+    }
+
+    if (!skipped) {
+      navigate(target, { replace: true });
+    }
+  }, [location.pathname, location.search, navigate, persist]);
+
+  const navigateTo = useCallback(
+    (path: string, source: string) => {
+      const current = `${location.pathname}${location.search}`;
+      const requestedTargetPath = path;
+      const alreadyTarget = current === requestedTargetPath;
+      const skippedCanonicalOnboarding =
+        isCanonicalOnboardingRoute(location.pathname) && isCanonicalOnboardingRoute(path);
+      const skipped = alreadyTarget || skippedCanonicalOnboarding;
+
+      if (import.meta.env.DEV) {
+        console.info("[routing:attempt]", {
+          source,
+          currentPath: current,
+          requestedTargetPath,
+          skipped,
+          skipReason: alreadyTarget ? "already_target" : skippedCanonicalOnboarding ? "already_canonical_onboarding" : null,
+        });
+      }
+
+      if (!skipped) {
+        navigate(path, { replace: true });
+      }
+    },
+    [location.pathname, location.search, navigate],
+  );
 
   const routeAfterMe = useCallback(async (session: AuthSession) => {
     const isDemoClientAccount = isDemoClient(session.email ?? null);
 
     const navigateByPortal = (portal: Awaited<ReturnType<typeof fetchClientMe>>) => {
       if (isDemoClientAccount) {
-        navigateTo("/dashboard");
+        navigateTo("/dashboard", "AuthContext.routeAfterMe.demo");
         return;
       }
       const decision = resolveAccessState({ client: portal });
       const needsOnboarding = [AccessState.NEEDS_ONBOARDING, AccessState.NEEDS_PLAN, AccessState.NEEDS_CONTRACT].includes(decision.state);
-      navigateTo(needsOnboarding ? ONBOARDING_ROUTE : "/dashboard");
+      navigateTo(needsOnboarding ? ONBOARDING_ROUTE : "/dashboard", "AuthContext.routeAfterMe.portal");
     };
 
     try {
@@ -147,11 +178,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialSes
       return;
     } catch (err) {
       if (err instanceof ApiError && (err.status === 404 || err.status === 409)) {
-        navigateTo(isDemoClientAccount ? "/dashboard" : ONBOARDING_ROUTE);
+        navigateTo(isDemoClientAccount ? "/dashboard" : ONBOARDING_ROUTE, "AuthContext.routeAfterMe.portalError404or409");
         return;
       }
       if (!(err instanceof ApiError) || err.status !== 401) {
-        navigateTo("/dashboard");
+        navigateTo("/dashboard", "AuthContext.routeAfterMe.portalFallback");
         return;
       }
     }
@@ -180,7 +211,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialSes
       setError("Нет доступа: токен недействителен");
       logout();
     }
-  }, [logout, persist]);
+  }, [logout, navigateTo, persist]);
 
   const establishSession = useCallback(
     async (tokens: SessionTokens, options?: { shouldRoute?: boolean }) => {
