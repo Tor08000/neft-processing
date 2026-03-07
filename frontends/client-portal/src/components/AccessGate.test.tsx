@@ -95,7 +95,7 @@ describe("AccessGate", () => {
   });
 
 
-  it("Case A: onboarding CTA navigates once to /client/onboarding", () => {
+  it("Case A: onboarding CTA navigates once to /onboarding", () => {
     useAuthMock.mockReturnValue({
       user: { email: "client@corp.local" },
     });
@@ -124,7 +124,7 @@ describe("AccessGate", () => {
               </AccessGate>
             }
           />
-          <Route path="/client/onboarding" element={<div>Onboarding Route</div>} />
+          <Route path="/onboarding" element={<div>Onboarding Route</div>} />
         </Routes>
       </MemoryRouter>,
     );

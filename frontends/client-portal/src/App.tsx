@@ -94,6 +94,7 @@ import { BillingOverduePage } from "./pages/BillingOverduePage";
 import { ServiceUnavailablePage } from "./pages/ServiceUnavailablePage";
 import { TechErrorPage } from "./pages/TechErrorPage";
 import { API_BASE_URL } from "./api/base";
+import { ONBOARDING_CONTRACT_ROUTE, ONBOARDING_PLAN_ROUTE, ONBOARDING_ROUTE, toCanonicalOnboardingPath } from "./lib/onboardingRoute";
 
 interface AppProps {
   initialSession?: AuthSession | null;
@@ -117,7 +118,7 @@ function IndexRedirect() {
     !isDemoClientAccount &&
     [AccessState.NEEDS_ONBOARDING, AccessState.NEEDS_PLAN, AccessState.NEEDS_CONTRACT].includes(decision.state)
   ) {
-    return <Navigate to="/client/onboarding" replace />;
+    return <Navigate to={ONBOARDING_ROUTE} replace />;
   }
 
   return (
@@ -151,7 +152,7 @@ function LoginEntryRoute() {
       decision.state,
     );
 
-    return <Navigate to={needsOnboarding ? "/client/onboarding" : "/dashboard"} replace />;
+    return <Navigate to={needsOnboarding ? ONBOARDING_ROUTE : "/dashboard"} replace />;
   }
 
   return <LoginPage />;
@@ -163,6 +164,18 @@ function PwaIndexRedirect() {
     return <Navigate to="/marketplace/orders" replace />;
   }
   return <Navigate to="/login" replace />;
+}
+
+
+function OnboardingCanonicalizer() {
+  const location = useLocation();
+
+  if (location.pathname === "/client/onboarding" || location.pathname === "/client/onboarding/plan" || location.pathname === "/client/onboarding/contract" || location.pathname.startsWith("/client/client/onboarding")) {
+    const canonicalPath = toCanonicalOnboardingPath(location.pathname);
+    return <Navigate to={canonicalPath} replace />;
+  }
+
+  return null;
 }
 
 
@@ -197,21 +210,27 @@ export function App({ initialSession = null }: AppProps) {
             <Route path="/client/login" element={<Navigate to="/login" replace />} />
             <Route path="/client/signup" element={<Navigate to="/register" replace />} />
             <Route path="/unauthorized" element={<UnauthorizedPage />} />
-            <Route path="/client/onboarding/start" element={<OnboardingSelfRegistrationPage mode="start" />} />
-            <Route path="/client/onboarding/form" element={<OnboardingSelfRegistrationPage mode="form" />} />
-            <Route path="/client/onboarding/status" element={<OnboardingSelfRegistrationPage mode="status" />} />
+            <Route path="/client/onboarding/start" element={<Navigate to="/onboarding/start" replace />} />
+            <Route path="/onboarding/start" element={<OnboardingSelfRegistrationPage mode="start" />} />
+            <Route path="/client/onboarding/form" element={<Navigate to="/onboarding/form" replace />} />
+            <Route path="/onboarding/form" element={<OnboardingSelfRegistrationPage mode="form" />} />
+            <Route path="/client/onboarding/status" element={<Navigate to="/onboarding/status" replace />} />
+            <Route path="/onboarding/status" element={<OnboardingSelfRegistrationPage mode="status" />} />
             <Route element={<ProtectedRoute />}>
               <Route path="/client/dashboard" element={<Navigate to="/dashboard" replace />} />
               <Route path="/client/connect" element={<Navigate to="/onboarding" replace />} />
-              <Route path="/client/onboarding" element={<OnboardingPage />} />
-              <Route path="/client/onboarding/plan" element={<OnboardingPage />} />
-              <Route path="/client/onboarding/contract" element={<OnboardingPage />} />
+              <Route path="/client/onboarding" element={<OnboardingCanonicalizer />} />
+              <Route path="/client/onboarding/plan" element={<OnboardingCanonicalizer />} />
+              <Route path="/client/onboarding/contract" element={<OnboardingCanonicalizer />} />
+              <Route path="/client/client/onboarding" element={<OnboardingCanonicalizer />} />
+              <Route path="/client/client/onboarding/plan" element={<OnboardingCanonicalizer />} />
+              <Route path="/client/client/onboarding/contract" element={<OnboardingCanonicalizer />} />
               <Route path="/client/billing/overdue" element={<Navigate to="/billing/overdue" replace />} />
               <Route path="/client/service-unavailable" element={<ServiceUnavailablePage />} />
               <Route path="/client/tech-error" element={<TechErrorPage />} />
-              <Route path="/onboarding" element={<OnboardingPage />} />
-              <Route path="/onboarding/plan" element={<OnboardingPage />} />
-              <Route path="/onboarding/contract" element={<OnboardingPage />} />
+              <Route path={ONBOARDING_ROUTE} element={<OnboardingPage />} />
+              <Route path={ONBOARDING_PLAN_ROUTE} element={<OnboardingPage />} />
+              <Route path={ONBOARDING_CONTRACT_ROUTE} element={<OnboardingPage />} />
               <Route element={<ClientLayout pwaMode={isPwaMode} />}>
               {isPwaMode ? (
                 <>

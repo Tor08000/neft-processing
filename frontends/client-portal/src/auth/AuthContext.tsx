@@ -7,6 +7,7 @@ import type { AuthSession, LoginResponse } from "../api/types";
 import { AccessState, resolveAccessState } from "../access/accessState";
 import { clearTokens, getAccessToken, getExpiresAt, getRefreshToken, isAccessTokenExpired, isValidJwt, saveAuthTokens } from "../lib/apiClient";
 import { isDemoClient } from "@shared/demo/demo";
+import { ONBOARDING_ROUTE, toBrowserPath } from "../lib/onboardingRoute";
 
 interface AuthContextValue {
   user: AuthSession | null;
@@ -31,15 +32,18 @@ const CLIENT_TOKEN_ISSUER = import.meta.env.VITE_CLIENT_TOKEN_ISSUER ?? "neft-au
 
 const redirectToLogin = (reauth = false) => {
   if (typeof window !== "undefined") {
-    const target = reauth ? "/client/login?reauth=1" : "/client/login";
-    window.location.replace(target);
+    const target = reauth ? "/login?reauth=1" : "/login";
+    window.location.replace(toBrowserPath(target));
   }
 };
 
 const navigateTo = (path: string) => {
-  if (typeof window !== "undefined") {
-    window.location.replace(path);
+  if (typeof window === "undefined") return;
+  const target = toBrowserPath(path);
+  if (window.location.pathname + window.location.search === target) {
+    return;
   }
+  window.location.replace(target);
 };
 
 function decodeJwtPayload(token: string): Record<string, unknown> | null {
@@ -129,12 +133,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialSes
 
     const navigateByPortal = (portal: Awaited<ReturnType<typeof fetchClientMe>>) => {
       if (isDemoClientAccount) {
-        navigateTo("/client/dashboard");
+        navigateTo("/dashboard");
         return;
       }
       const decision = resolveAccessState({ client: portal });
       const needsOnboarding = [AccessState.NEEDS_ONBOARDING, AccessState.NEEDS_PLAN, AccessState.NEEDS_CONTRACT].includes(decision.state);
-      navigateTo(needsOnboarding ? "/client/onboarding" : "/client/dashboard");
+      navigateTo(needsOnboarding ? ONBOARDING_ROUTE : "/dashboard");
     };
 
     try {
@@ -143,11 +147,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialSes
       return;
     } catch (err) {
       if (err instanceof ApiError && (err.status === 404 || err.status === 409)) {
-        navigateTo(isDemoClientAccount ? "/client/dashboard" : "/client/onboarding");
+        navigateTo(isDemoClientAccount ? "/dashboard" : ONBOARDING_ROUTE);
         return;
       }
       if (!(err instanceof ApiError) || err.status !== 401) {
-        navigateTo("/client/dashboard");
+        navigateTo("/dashboard");
         return;
       }
     }
