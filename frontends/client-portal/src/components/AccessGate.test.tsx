@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AccessGate } from "./AccessGate";
@@ -92,5 +92,47 @@ describe("AccessGate", () => {
 
     expect(screen.getByText("Подключить компанию")).toBeInTheDocument();
     expect(screen.queryByText("Dashboard App Shell")).not.toBeInTheDocument();
+  });
+
+
+  it("Case A: onboarding CTA navigates once to /client/onboarding", () => {
+    useAuthMock.mockReturnValue({
+      user: { email: "client@corp.local" },
+    });
+    useClientMock.mockReturnValue({
+      client: {
+        access_state: "NEEDS_ONBOARDING",
+        user: { email: "client@corp.local" },
+        org_roles: [],
+        user_roles: [],
+        capabilities: [],
+      },
+      isLoading: false,
+      error: null,
+      portalState: "READY",
+      refresh: vi.fn(),
+    });
+
+    render(
+      <MemoryRouter initialEntries={["/dashboard"]}>
+        <Routes>
+          <Route
+            path="/dashboard"
+            element={
+              <AccessGate title="Дашборд" capability="CLIENT_DASHBOARD">
+                <div>Dashboard App Shell</div>
+              </AccessGate>
+            }
+          />
+          <Route path="/client/onboarding" element={<div>Onboarding Route</div>} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    const cta = screen.getByRole("link", { name: "Перейти к подключению" });
+    fireEvent.click(cta);
+
+    expect(screen.getByText("Onboarding Route")).toBeInTheDocument();
+    expect(screen.queryByText("Подключить компанию")).not.toBeInTheDocument();
   });
 });

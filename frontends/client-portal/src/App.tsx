@@ -117,7 +117,7 @@ function IndexRedirect() {
     !isDemoClientAccount &&
     [AccessState.NEEDS_ONBOARDING, AccessState.NEEDS_PLAN, AccessState.NEEDS_CONTRACT].includes(decision.state)
   ) {
-    return <Navigate to="/onboarding" replace />;
+    return <Navigate to="/client/onboarding" replace />;
   }
 
   return (
@@ -151,7 +151,7 @@ function LoginEntryRoute() {
       decision.state,
     );
 
-    return <Navigate to={needsOnboarding ? "/onboarding" : "/dashboard"} replace />;
+    return <Navigate to={needsOnboarding ? "/client/onboarding" : "/dashboard"} replace />;
   }
 
   return <LoginPage />;
@@ -168,6 +168,7 @@ function PwaIndexRedirect() {
 
 function DevRuntimeDiagnostics() {
   const { authStatus } = useAuth();
+  const { portalState, client } = useClient();
   const location = useLocation();
 
   useEffect(() => {
@@ -177,7 +178,9 @@ function DevRuntimeDiagnostics() {
     console.log("API_BASE", API_BASE_URL);
     console.log("AuthStatus", authStatus);
     console.log("CurrentPath", window.location.pathname || location.pathname);
-  }, [authStatus, location.pathname]);
+    console.log("PortalState", portalState);
+    console.log("AccessState", client?.access_state ?? null);
+  }, [authStatus, client?.access_state, location.pathname, portalState]);
 
   return null;
 }
@@ -200,9 +203,9 @@ export function App({ initialSession = null }: AppProps) {
             <Route element={<ProtectedRoute />}>
               <Route path="/client/dashboard" element={<Navigate to="/dashboard" replace />} />
               <Route path="/client/connect" element={<Navigate to="/onboarding" replace />} />
-              <Route path="/client/onboarding" element={<Navigate to="/onboarding" replace />} />
-              <Route path="/client/onboarding/plan" element={<Navigate to="/onboarding/plan" replace />} />
-              <Route path="/client/onboarding/contract" element={<Navigate to="/onboarding/contract" replace />} />
+              <Route path="/client/onboarding" element={<OnboardingPage />} />
+              <Route path="/client/onboarding/plan" element={<OnboardingPage />} />
+              <Route path="/client/onboarding/contract" element={<OnboardingPage />} />
               <Route path="/client/billing/overdue" element={<Navigate to="/billing/overdue" replace />} />
               <Route path="/client/service-unavailable" element={<ServiceUnavailablePage />} />
               <Route path="/client/tech-error" element={<TechErrorPage />} />

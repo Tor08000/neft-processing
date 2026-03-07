@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { acceptLegalDocument, fetchLegalDocument, fetchLegalRequired } from "../api/legal";
 import { ApiError, UnauthorizedError } from "../api/http";
@@ -38,6 +38,9 @@ export const LegalGateProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const [lastFetched, setLastFetched] = useState<number | null>(null);
   const [document, setDocument] = useState<LegalDocumentResponse | null>(null);
   const [accessState, setAccessState] = useState<"idle" | "ok" | "unauthorized" | "forbidden" | "stopped">("idle");
+  const accessStateRef = useRef(accessState);
+  const lastFetchedRef = useRef<number | null>(null);
+  const hasBootstrappedRef = useRef(false);
   const onboardingEnabledEnv =
     (import.meta.env.VITE_ONBOARDING_ENABLED ?? "false").toString().toLowerCase() === "1" ||
     (import.meta.env.VITE_ONBOARDING_ENABLED ?? "false").toString().toLowerCase() === "true";
@@ -46,6 +49,15 @@ export const LegalGateProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const isDemoClientAccount = isDemoClient(user?.email ?? client?.user?.email ?? null);
   const isClientOnboardingFlow =
     client?.access_state === AccessState.NEEDS_ONBOARDING || client?.org_status === null || !client?.org;
+
+
+  useEffect(() => {
+    accessStateRef.current = accessState;
+  }, [accessState]);
+
+  useEffect(() => {
+    lastFetchedRef.current = lastFetched;
+  }, [lastFetched]);
 
   const resolveErrorMessage = (error: unknown) => {
     if (error instanceof UnauthorizedError) {
@@ -82,7 +94,8 @@ export const LegalGateProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         setLastFetched(Date.now());
         return;
       }
-      if (!force && (accessState === "unauthorized" || accessState === "forbidden" || accessState === "stopped")) {
+      const currentAccessState = accessStateRef.current;
+      if (!force && (currentAccessState === "unauthorized" || currentAccessState === "forbidden" || currentAccessState === "stopped")) {
         return;
       }
       if (!onboardingEnabled) {
@@ -94,7 +107,8 @@ export const LegalGateProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         return;
       }
       const now = Date.now();
-      if (!force && lastFetched && now - lastFetched < CACHE_TTL_MS) {
+      const lastFetchedAt = lastFetchedRef.current;
+      if (!force && lastFetchedAt && now - lastFetchedAt < CACHE_TTL_MS) {
         return;
       }
       setIsLoading(true);
@@ -143,7 +157,7 @@ export const LegalGateProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         setIsLoading(false);
       }
     },
-    [accessState, isClientOnboardingFlow, isDemoClientAccount, lastFetched, onboardingEnabled, user?.token],
+    [isClientOnboardingFlow, isDemoClientAccount, onboardingEnabled, user?.token],
   );
 
   const accept = useCallback(
@@ -188,10 +202,25 @@ export const LegalGateProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   );
 
   useEffect(() => {
-    if (user?.token) {
-      void refresh(true);
+    if (!user?.token || hasBootstrappedRef.current) {
+      return;
     }
-  }, [refresh, user?.token]);
+    hasBootstrappedRef.current = true;
+    if (import.meta.env.DEV) {
+      console.info("[legal-gate:init] refresh_called", { route: location.pathname });
+    }
+    void refresh(true).finally(() => {
+      if (import.meta.env.DEV) {
+        console.info("[legal-gate:init] refresh_resolved", { route: location.pathname });
+      }
+    });
+  }, [location.pathname, refresh, user?.token]);
+
+  useEffect(() => {
+    if (!user?.token) {
+      hasBootstrappedRef.current = false;
+    }
+  }, [user?.token]);
 
   useEffect(() => {
     if (!onboardingEnabled || isFeatureDisabled) {
@@ -201,14 +230,20 @@ export const LegalGateProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       if (accessState === "unauthorized" || accessState === "forbidden" || accessState === "stopped") {
         return;
       }
+      if (import.meta.env.DEV) {
+        console.info("[legal-gate:event] legal-required", { route: location.pathname, access_state: client?.access_state ?? null });
+      }
       void refresh(true);
-      if (location.pathname !== "/legal") {
+      if (location.pathname !== "/legal" && !location.pathname.startsWith("/onboarding")) {
+        if (import.meta.env.DEV) {
+          console.info("[legal-gate:redirect]", { from: location.pathname, to: "/legal" });
+        }
         navigate("/legal", { replace: true });
       }
     };
     window.addEventListener("legal-required", handler);
     return () => window.removeEventListener("legal-required", handler);
-  }, [accessState, isFeatureDisabled, location.pathname, navigate, onboardingEnabled, refresh]);
+  }, [accessState, client?.access_state, isFeatureDisabled, location.pathname, navigate, onboardingEnabled, refresh]);
 
   const value = useMemo(
     () => ({

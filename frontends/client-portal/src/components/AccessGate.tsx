@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { Link, Navigate } from "react-router-dom";
+import { Link, Navigate, useLocation } from "react-router-dom";
 import { useClient, type PortalError, type PortalState } from "../auth/ClientContext";
 import { useAuth } from "../auth/AuthContext";
 import { AccessState, resolveAccessState } from "../access/accessState";
@@ -172,7 +172,7 @@ const AccessStateView = ({
           title="Подключить компанию"
           description="Завершите подключение компании, чтобы открыть этот раздел."
           actionLabel="Перейти к подключению"
-          actionTo="/onboarding"
+          actionTo="/client/onboarding"
         />
       );
     case AccessState.NEEDS_PLAN:
@@ -181,7 +181,7 @@ const AccessStateView = ({
           title="Выберите тариф"
           description="Для доступа к разделу нужен активный тариф."
           actionLabel="Продолжить подключение"
-          actionTo="/onboarding/plan"
+          actionTo="/client/onboarding/plan"
           secondaryAction={
             <Link className="ghost neft-btn-secondary" to="/client/support/new?topic=plan">
               Связаться с менеджером
@@ -195,7 +195,7 @@ const AccessStateView = ({
           title="Подпишите договор"
           description="Завершите подписание договора, чтобы открыть этот раздел."
           actionLabel="Перейти к подписанию"
-          actionTo="/onboarding/contract"
+          actionTo="/client/onboarding/contract"
         />
       );
     case AccessState.OVERDUE:
@@ -346,6 +346,7 @@ export const AccessGate = ({
 }: AccessGateProps) => {
   const { user } = useAuth();
   const { client, isLoading, error, portalState, refresh } = useClient();
+  const location = useLocation();
 
   if (!user) {
     return null;
@@ -367,6 +368,16 @@ export const AccessGate = ({
     decision = { state: AccessState.ACTIVE };
   }
 
+  if (import.meta.env.DEV) {
+    console.info("[access-gate:decision]", {
+      route: location.pathname,
+      portal_state: portalState,
+      access_state: client?.access_state ?? null,
+      resolved_state: decision.state,
+      is_demo: isDemoClientAccount,
+    });
+  }
+
   if (
     (decision.state === AccessState.MISSING_CAPABILITY || decision.state === AccessState.MODULE_DISABLED) &&
     fallbackMode !== "paywall"
@@ -376,6 +387,12 @@ export const AccessGate = ({
   }
 
   if (decision.state !== AccessState.ACTIVE) {
+    if (import.meta.env.DEV) {
+      console.info("[access-gate:redirect]", {
+        route: location.pathname,
+        state: decision.state,
+      });
+    }
     if (decision.state === AccessState.OVERDUE) {
       return <BillingOverdueState billing={client?.billing} />;
     }
