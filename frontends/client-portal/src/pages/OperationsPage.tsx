@@ -110,6 +110,11 @@ export function OperationsPage() {
   }, [user, isDemoClientAccount]);
 
   useEffect(() => {
+    if (!import.meta.env.DEV) return;
+    console.info("[operations:loader] invoked", { page: "OperationsPage", route: location.pathname });
+  }, [location.pathname]);
+
+  useEffect(() => {
     if (!user) return;
     setIsLoading(true);
     setUseDemoData(false);

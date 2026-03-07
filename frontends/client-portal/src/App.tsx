@@ -100,6 +100,31 @@ interface AppProps {
   initialSession?: AuthSession | null;
 }
 
+const onboardingAliasPaths = new Set([
+  "/client/onboarding",
+  "/client/onboarding/plan",
+  "/client/onboarding/contract",
+  "/client/client/onboarding",
+  "/client/client/onboarding/plan",
+  "/client/client/onboarding/contract",
+]);
+
+export function resolveLogicalRoute(pathname: string): string {
+  if ([ONBOARDING_ROUTE, ONBOARDING_PLAN_ROUTE, ONBOARDING_CONTRACT_ROUTE].includes(pathname)) {
+    return "onboarding";
+  }
+  if (onboardingAliasPaths.has(pathname)) {
+    return "onboarding_alias";
+  }
+  if (pathname.startsWith("/operations")) {
+    return "operations";
+  }
+  if (pathname.startsWith("/dashboard")) {
+    return "dashboard";
+  }
+  return "other";
+}
+
 function IndexRedirect() {
   const { user, authStatus } = useAuth();
   const { client, isLoading, portalState } = useClient();
@@ -167,15 +192,25 @@ function PwaIndexRedirect() {
 }
 
 
-function OnboardingCanonicalizer() {
+export function OnboardingCanonicalizer() {
   const location = useLocation();
+  const canonicalPath = toCanonicalOnboardingPath(location.pathname);
 
-  if (location.pathname === "/client/onboarding" || location.pathname === "/client/onboarding/plan" || location.pathname === "/client/onboarding/contract" || location.pathname.startsWith("/client/client/onboarding")) {
-    const canonicalPath = toCanonicalOnboardingPath(location.pathname);
+  if (import.meta.env.DEV) {
+    console.info("[routing:resolve]", {
+      source: "OnboardingCanonicalizer",
+      pathname: location.pathname,
+      logical_route: resolveLogicalRoute(location.pathname),
+      component: canonicalPath === location.pathname ? "OnboardingPage" : "Navigate",
+      redirect_target: canonicalPath === location.pathname ? null : canonicalPath,
+    });
+  }
+
+  if (canonicalPath !== location.pathname) {
     return <Navigate to={canonicalPath} replace />;
   }
 
-  return null;
+  return <OnboardingPage />;
 }
 
 
@@ -191,6 +226,7 @@ function DevRuntimeDiagnostics() {
     console.log("API_BASE", API_BASE_URL);
     console.log("AuthStatus", authStatus);
     console.log("CurrentPath", window.location.pathname || location.pathname);
+    console.log("LogicalRoute", resolveLogicalRoute(location.pathname));
     console.log("PortalState", portalState);
     console.log("AccessState", client?.access_state ?? null);
   }, [authStatus, client?.access_state, location.pathname, portalState]);
@@ -228,9 +264,9 @@ export function App({ initialSession = null }: AppProps) {
               <Route path="/client/billing/overdue" element={<Navigate to="/billing/overdue" replace />} />
               <Route path="/client/service-unavailable" element={<ServiceUnavailablePage />} />
               <Route path="/client/tech-error" element={<TechErrorPage />} />
-              <Route path={ONBOARDING_ROUTE} element={<OnboardingPage />} />
-              <Route path={ONBOARDING_PLAN_ROUTE} element={<OnboardingPage />} />
-              <Route path={ONBOARDING_CONTRACT_ROUTE} element={<OnboardingPage />} />
+              <Route path={ONBOARDING_ROUTE} element={<OnboardingCanonicalizer />} />
+              <Route path={ONBOARDING_PLAN_ROUTE} element={<OnboardingCanonicalizer />} />
+              <Route path={ONBOARDING_CONTRACT_ROUTE} element={<OnboardingCanonicalizer />} />
               <Route element={<ClientLayout pwaMode={isPwaMode} />}>
               {isPwaMode ? (
                 <>
