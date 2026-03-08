@@ -71,6 +71,8 @@ describe("SignupPage", () => {
       email: "new@neft.local",
       is_active: true,
       access_token: "aaa.bbb.ccc",
+      refresh_token: "refresh-1",
+      token_type: "bearer",
       expires_in: 3600,
       roles: ["CLIENT_OWNER"],
       subject_type: "client_user",
@@ -86,6 +88,34 @@ describe("SignupPage", () => {
     fillAndSubmit();
 
     await waitFor(() => expect(activateSessionMock).toHaveBeenCalledTimes(1));
+    expect(activateSessionMock).toHaveBeenCalledWith(
+      expect.objectContaining({ token: "aaa.bbb.ccc", refreshToken: "refresh-1", email: "new@neft.local" }),
+    );
+    expect(navigateMock).not.toHaveBeenCalledWith("/client/login?reauth=1", expect.anything());
+  });
+
+  it("Case B2 — signup success supports token fallback field", async () => {
+    registerMock.mockResolvedValue({
+      id: "u1",
+      email: "new@neft.local",
+      is_active: true,
+      token: "aaa.bbb.ccc",
+      expires_in: 3600,
+      roles: ["CLIENT_OWNER"],
+      subject_type: "client_user",
+      client_id: "c1",
+    });
+
+    render(
+      <MemoryRouter>
+        <SignupPage />
+      </MemoryRouter>,
+    );
+
+    fillAndSubmit();
+
+    await waitFor(() => expect(activateSessionMock).toHaveBeenCalledTimes(1));
+    expect(activateSessionMock).toHaveBeenCalledWith(expect.objectContaining({ token: "aaa.bbb.ccc" }));
     expect(navigateMock).not.toHaveBeenCalledWith("/client/login?reauth=1", expect.anything());
   });
 
