@@ -46,7 +46,7 @@ function resolveSignupConflictMessage(err: ApiError): string {
 
 export function SignupPage() {
   const navigate = useNavigate();
-  const { user, activateSession } = useAuth();
+  const { user, activateSession, login } = useAuth();
   const { toast, showToast } = useToast();
   const [contact, setContact] = useState("");
   const [password, setPassword] = useState("");
@@ -108,9 +108,7 @@ export function SignupPage() {
           });
         }
       } else {
-        setError("Регистрация успешна, войдите");
-        navigate("/client/login?signup=success", { replace: true });
-        return;
+        await login({ email: contactPayload.email, password }, { source: "signup" });
       }
     } catch (err) {
       console.error("Ошибка регистрации", err);

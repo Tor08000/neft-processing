@@ -19,6 +19,7 @@ function Harness() {
       <div data-testid="status">{auth.authStatus}</div>
       <div data-testid="path">{location.pathname}</div>
       <button onClick={() => auth.login({ email: "client@neft.local", password: "client" })}>login</button>
+      <button onClick={() => auth.login({ email: "new@neft.local", password: "Pass123!" }, { source: "signup" })}>signup-login</button>
       <button
         onClick={() =>
           auth.activateSession({
@@ -148,7 +149,7 @@ describe("AuthProvider deterministic flow", () => {
     const savedToken = localStorage.getItem("access_token");
     expect(savedToken).toBeTruthy();
     expect(savedToken).toContain(".");
-    await waitFor(() => expect(screen.getByTestId("path").textContent).toBe("/"));
+    await waitFor(() => expect(screen.getByTestId("path").textContent).toBe("/connect/plan"));
   });
 
   it("blocks duplicate login while auth is in progress", async () => {
@@ -176,5 +177,20 @@ describe("AuthProvider deterministic flow", () => {
     });
 
     await waitFor(() => expect(authApi.fetchMe).toHaveBeenCalledTimes(1));
+  });
+
+  it("signup fallback login routes directly to connect plan", async () => {
+    vi.spyOn(authApi, "login").mockResolvedValue({ token: makeJwt(), refreshToken: "r1", expiresAt: Date.now() + 60_000 } as never);
+    vi.spyOn(authApi, "fetchMe").mockResolvedValue({ email: "new@neft.local", roles: ["CLIENT_USER"], subject_type: "CLIENT", client_id: "c1" } as never);
+
+    renderHarness("/register");
+
+    await act(async () => {
+      screen.getByRole("button", { name: "signup-login" }).click();
+    });
+
+    await waitFor(() => expect(authApi.login).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(authApi.fetchMe).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.getByTestId("path").textContent).toBe("/connect/plan"));
   });
 });

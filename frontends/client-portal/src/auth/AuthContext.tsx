@@ -12,7 +12,7 @@ interface AuthContextValue {
   error: string | null;
   authStatus: "loading" | "authenticated" | "unauthenticated";
   authError: "reauth_required" | null;
-  login: (credentials: { email: string; password: string }) => Promise<void>;
+  login: (credentials: { email: string; password: string }, options?: { source?: "login" | "signup" }) => Promise<void>;
   activateSession: (session: AuthSession) => Promise<void>;
   logout: () => void;
   setTimezone: (timezone: string | null) => void;
@@ -203,7 +203,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialSes
         setAuthStatus("authenticated");
         reauthInProgressRef.current = false;
         if (shouldRoute) {
-          navigateTo("/", `AuthContext.establishSession.${source}`);
+          const postAuthRoute = source === "signup" ? "/connect/plan" : "/";
+          navigateTo(postAuthRoute, `AuthContext.establishSession.${source}`);
         }
       } catch (err) {
         if (err instanceof UnauthorizedError) {
@@ -296,10 +297,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialSes
   );
 
   const handleLogin = useCallback(
-    async (credentials: { email: string; password: string }) => {
+    async (credentials: { email: string; password: string }, options?: { source?: "login" | "signup" }) => {
       if (authInProgressRef.current || reauthRedirectedRef.current) {
         return;
       }
+      const source = options?.source ?? "login";
       authInProgressRef.current = true;
       setError(null);
       setAuthError(null);
@@ -311,7 +313,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialSes
           console.log(`[AUTH] login_token=${tokenLen} prefix=${tokenPrefix}`);
         }
         const expiresInSec = Math.max(1, Math.floor((session.expiresAt - Date.now()) / 1000));
-        await establishSession({ accessToken: session.token, refreshToken: session.refreshToken, expiresInSec }, { source: "login" });
+        await establishSession({ accessToken: session.token, refreshToken: session.refreshToken, expiresInSec }, { source });
       } catch (err) {
         if (err instanceof UnauthorizedError) {
           setError("Неверный логин/пароль");
