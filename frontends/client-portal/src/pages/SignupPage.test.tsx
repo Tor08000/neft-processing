@@ -6,6 +6,7 @@ import { ApiError } from "../api/http";
 
 const registerMock = vi.fn();
 const activateSessionMock = vi.fn();
+const loginMock = vi.fn();
 const showToastMock = vi.fn();
 const navigateMock = vi.fn();
 
@@ -18,7 +19,7 @@ vi.mock("../api/auth", async () => {
 });
 
 vi.mock("../auth/AuthContext", () => ({
-  useAuth: () => ({ user: null, activateSession: activateSessionMock }),
+  useAuth: () => ({ user: null, activateSession: activateSessionMock, login: loginMock }),
 }));
 
 vi.mock("../components/Toast/useToast", () => ({
@@ -116,6 +117,28 @@ describe("SignupPage", () => {
 
     await waitFor(() => expect(activateSessionMock).toHaveBeenCalledTimes(1));
     expect(activateSessionMock).toHaveBeenCalledWith(expect.objectContaining({ token: "aaa.bbb.ccc" }));
+    expect(navigateMock).not.toHaveBeenCalledWith("/client/login?reauth=1", expect.anything());
+  });
+
+  it("Case B3 — signup without tokens performs silent login and keeps user in signup auth flow", async () => {
+    registerMock.mockResolvedValue({
+      id: "u1",
+      email: "new@neft.local",
+      is_active: true,
+    });
+
+    render(
+      <MemoryRouter>
+        <SignupPage />
+      </MemoryRouter>,
+    );
+
+    fillAndSubmit();
+
+    await waitFor(() => expect(loginMock).toHaveBeenCalledTimes(1));
+    expect(loginMock).toHaveBeenCalledWith({ email: "existing@neft.local", password: "Pass123!" }, { source: "signup" });
+    expect(activateSessionMock).not.toHaveBeenCalled();
+    expect(navigateMock).not.toHaveBeenCalledWith("/client/login?signup=success", expect.anything());
     expect(navigateMock).not.toHaveBeenCalledWith("/client/login?reauth=1", expect.anything());
   });
 
