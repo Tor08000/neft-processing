@@ -5,10 +5,8 @@ import { request } from "../api/http";
 import { fetchClientMe } from "../api/clientPortal";
 import { AUTH_API_BASE, isBrowserSafeApiBase } from "../api/base";
 import type { AuthSession, LoginResponse } from "../api/types";
-import { AccessState, resolveAccessState } from "../access/accessState";
 import { clearTokens, getAccessToken, getExpiresAt, getRefreshToken, isAccessTokenExpired, isValidJwt, saveAuthTokens } from "../lib/apiClient";
 import { isDemoClient } from "@shared/demo/demo";
-import { ONBOARDING_ROUTE } from "../lib/onboardingRoute";
 
 interface AuthContextValue {
   user: AuthSession | null;
@@ -31,7 +29,7 @@ interface AuthProviderProps {
 const STORAGE_KEY = "neft_client_access_token";
 const CLIENT_TOKEN_ISSUER = import.meta.env.VITE_CLIENT_TOKEN_ISSUER ?? "neft-auth";
 
-const isCanonicalOnboardingRoute = (path: string) => path === ONBOARDING_ROUTE;
+const isCanonicalConnectRoute = (path: string) => path === "/connect" || path.startsWith("/connect/");
 
 function decodeJwtPayload(token: string): Record<string, unknown> | null {
   const parts = token.split(".");
@@ -144,7 +142,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialSes
       const requestedTargetPath = path;
       const alreadyTarget = current === requestedTargetPath;
       const skippedCanonicalOnboarding =
-        isCanonicalOnboardingRoute(location.pathname) && isCanonicalOnboardingRoute(path);
+        isCanonicalConnectRoute(location.pathname) && isCanonicalConnectRoute(path);
       const skipped = alreadyTarget || skippedCanonicalOnboarding;
 
       if (import.meta.env.DEV) {
@@ -153,7 +151,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialSes
           currentPath: current,
           requestedTargetPath,
           skipped,
-          skipReason: alreadyTarget ? "already_target" : skippedCanonicalOnboarding ? "already_canonical_onboarding" : null,
+          skipReason: alreadyTarget ? "already_target" : skippedCanonicalOnboarding ? "already_canonical_connect" : null,
         });
       }
 
@@ -172,9 +170,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialSes
         navigateTo("/dashboard", "AuthContext.routeAfterMe.demo");
         return;
       }
-      const decision = resolveAccessState({ client: portal });
-      const needsOnboarding = [AccessState.NEEDS_ONBOARDING, AccessState.NEEDS_PLAN, AccessState.NEEDS_CONTRACT].includes(decision.state);
-      navigateTo(needsOnboarding ? ONBOARDING_ROUTE : "/dashboard", "AuthContext.routeAfterMe.portal");
+      const target = portal.access_state === "ACTIVE" ? "/dashboard" : "/connect";
+      navigateTo(target, "AuthContext.routeAfterMe.portal");
     };
 
     try {
@@ -183,7 +180,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialSes
       return;
     } catch (err) {
       if (err instanceof ApiError && (err.status === 404 || err.status === 409)) {
-        navigateTo(isDemoClientAccount ? "/dashboard" : ONBOARDING_ROUTE, "AuthContext.routeAfterMe.portalError404or409");
+        navigateTo(isDemoClientAccount ? "/dashboard" : "/connect", "AuthContext.routeAfterMe.portalError404or409");
         return;
       }
       if (!(err instanceof ApiError) || err.status !== 401) {
