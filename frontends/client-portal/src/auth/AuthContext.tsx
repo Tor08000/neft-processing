@@ -71,6 +71,12 @@ type SessionTokens = {
   expiresInSec: number;
 };
 
+type EstablishSessionOptions = {
+  shouldRoute?: boolean;
+  source?: "login" | "signup" | "bootstrap" | "refresh";
+  onUnauthorized?: "handle" | "throw";
+};
+
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialSession = null }) => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -161,9 +167,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialSes
   );
 
   const establishSession = useCallback(
-    async (tokens: SessionTokens, options?: { shouldRoute?: boolean; source?: "login" | "signup" | "bootstrap" | "refresh" }) => {
+    async (tokens: SessionTokens, options?: EstablishSessionOptions) => {
       const shouldRoute = options?.shouldRoute ?? true;
       const source = options?.source ?? "login";
+      const onUnauthorized = options?.onUnauthorized ?? "handle";
       saveAuthTokens(tokens.accessToken, tokens.refreshToken, tokens.expiresInSec);
       if (import.meta.env.DEV) {
         console.info("[AUTH] session tokens persisted", {
@@ -213,6 +220,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialSes
           }
           logout();
           setError("Нет доступа: токен недействителен");
+          if (onUnauthorized === "throw") {
+            throw err;
+          }
           return;
         }
         throw err;
@@ -363,12 +373,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialSes
       setAuthError(null);
       try {
         const expiresInSec = Math.max(1, Math.floor((session.expiresAt - Date.now()) / 1000));
-        await establishSession({ accessToken: session.token, refreshToken: session.refreshToken, expiresInSec }, { source: "signup" });
+        await establishSession(
+          { accessToken: session.token, refreshToken: session.refreshToken, expiresInSec },
+          { source: "signup", onUnauthorized: "throw" },
+        );
       } catch (err) {
         if (err instanceof UnauthorizedError) {
-          setAuthError("reauth_required");
-          setError("Требуется повторный вход");
-          return;
+          throw err;
         }
         setError("Сервис временно недоступен");
       } finally {

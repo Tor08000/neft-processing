@@ -3,6 +3,7 @@ import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SignupPage } from "./SignupPage";
 import { ApiError } from "../api/http";
+import { UnauthorizedError } from "../api/auth";
 
 const registerMock = vi.fn();
 const activateSessionMock = vi.fn();
@@ -120,6 +121,36 @@ describe("SignupPage", () => {
     expect(navigateMock).not.toHaveBeenCalledWith("/client/login?reauth=1", expect.anything());
   });
 
+
+  it("Case B4 — signup token unauthorized falls back to silent login without reauth redirect", async () => {
+    registerMock.mockResolvedValue({
+      id: "u1",
+      email: "new@neft.local",
+      is_active: true,
+      access_token: "aaa.bbb.ccc",
+      refresh_token: "refresh-1",
+      token_type: "bearer",
+      expires_in: 3600,
+      roles: ["CLIENT_OWNER"],
+      subject_type: "client_user",
+      client_id: "c1",
+    });
+    activateSessionMock.mockRejectedValue(new UnauthorizedError());
+
+    render(
+      <MemoryRouter>
+        <SignupPage />
+      </MemoryRouter>,
+    );
+
+    fillAndSubmit();
+
+    await waitFor(() => expect(activateSessionMock).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(loginMock).toHaveBeenCalledTimes(1));
+    expect(loginMock).toHaveBeenCalledWith({ email: "existing@neft.local", password: "Pass123!" }, { source: "signup" });
+    expect(navigateMock).not.toHaveBeenCalledWith("/client/login?reauth=1", expect.anything());
+    expect(screen.queryByText("Требуется повторный вход")).not.toBeInTheDocument();
+  });
   it("Case B3 — signup without tokens performs silent login and keeps user in signup auth flow", async () => {
     registerMock.mockResolvedValue({
       id: "u1",

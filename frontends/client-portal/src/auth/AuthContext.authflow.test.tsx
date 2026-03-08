@@ -18,11 +18,13 @@ function Harness() {
     <>
       <div data-testid="status">{auth.authStatus}</div>
       <div data-testid="path">{location.pathname}</div>
+      <div data-testid="auth-error">{auth.authError ?? ""}</div>
       <button onClick={() => auth.login({ email: "client@neft.local", password: "client" })}>login</button>
       <button onClick={() => auth.login({ email: "new@neft.local", password: "Pass123!" }, { source: "signup" })}>signup-login</button>
       <button
-        onClick={() =>
-          auth.activateSession({
+        onClick={async () => {
+          try {
+            await auth.activateSession({
             token: makeJwt(),
             refreshToken: undefined,
             email: "new@neft.local",
@@ -30,8 +32,11 @@ function Harness() {
             subjectType: "client_user",
             clientId: "c1",
             expiresAt: Date.now() + 60_000,
-          })
-        }
+            });
+          } catch {
+            // noop for tests
+          }
+        }}
       >
         signup
       </button>
@@ -151,6 +156,21 @@ describe("AuthProvider deterministic flow", () => {
     expect(savedToken).toContain(".");
     await waitFor(() => expect(screen.getByTestId("path").textContent).toBe("/connect/plan"));
   });
+
+  it("signup activation with /me 401 throws to caller and keeps reauth flag unset", async () => {
+    vi.spyOn(authApi, "fetchMe").mockRejectedValue(new authApi.UnauthorizedError());
+
+    renderHarness("/register");
+
+    await act(async () => {
+      screen.getByRole("button", { name: "signup" }).click();
+    });
+
+    await waitFor(() => expect(authApi.fetchMe).toHaveBeenCalledTimes(1));
+    expect(screen.getByTestId("auth-error").textContent).toBe("");
+    expect(screen.getByTestId("path").textContent).toBe("/register");
+  });
+
 
   it("blocks duplicate login while auth is in progress", async () => {
     let resolveLogin: ((value: unknown) => void) | null = null;

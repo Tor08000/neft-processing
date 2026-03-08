@@ -1,6 +1,6 @@
 import { FormEvent, useMemo, useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
-import { register } from "../api/auth";
+import { register, UnauthorizedError } from "../api/auth";
 import { ApiError } from "../api/http";
 import { useAuth } from "../auth/AuthContext";
 import type { AuthSession } from "../api/types";
@@ -99,7 +99,15 @@ export function SignupPage() {
           clientId: registerResponse.client_id ?? undefined,
           expiresAt: Date.now() + (registerResponse.expires_in ?? 3600) * 1000,
         };
-        await activateSession(session);
+        try {
+          await activateSession(session);
+        } catch (err) {
+          if (err instanceof UnauthorizedError) {
+            await login({ email: contactPayload.email, password }, { source: "signup" });
+          } else {
+            throw err;
+          }
+        }
         if (import.meta.env.DEV) {
           console.info("[signup] session activation finished", {
             tokenSaved: Boolean(getAccessToken()),
