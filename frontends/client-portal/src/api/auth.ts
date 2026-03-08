@@ -67,7 +67,7 @@ export async function register(payload: RegisterPayload): Promise<RegisterRespon
     portal: payload.portal ?? "client",
     ...(consentValue !== undefined ? { consent: consentValue } : {}),
   };
-  return request<RegisterResponse>("/signup", { method: "POST", body: JSON.stringify(normalizedPayload) }, { base: "auth" });
+  return request<RegisterResponse>("/signup", { method: "POST", body: JSON.stringify(normalizedPayload) }, { base: "auth", token: null });
 }
 
 

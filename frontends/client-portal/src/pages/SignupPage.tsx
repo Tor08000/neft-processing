@@ -21,6 +21,29 @@ function resolveContactPayload(value: string): { email?: string; phone?: string 
   return null;
 }
 
+function resolveSignupConflictMessage(err: ApiError): string {
+  const detail = err.detail;
+  if (detail && typeof detail === "object") {
+    const record = detail as Record<string, unknown>;
+    const detailText = typeof record.detail === "string" ? record.detail : null;
+    const detailsText = typeof record.details === "string" ? record.details : null;
+    const message = typeof record.message === "string" ? record.message : null;
+    if (detailText) return detailText;
+    if (detailsText) return detailsText;
+    if (message) return message;
+  }
+
+  const fallback = err.message?.trim();
+  if (fallback) {
+    if (fallback.includes("admin_email_reserved") || fallback.includes("user_exists")) {
+      return "Аккаунт с таким email уже существует";
+    }
+    return fallback;
+  }
+
+  return "Аккаунт с таким email уже существует";
+}
+
 export function SignupPage() {
   const navigate = useNavigate();
   const { user, activateSession } = useAuth();
@@ -80,14 +103,19 @@ export function SignupPage() {
     } catch (err) {
       console.error("Ошибка регистрации", err);
       if (err instanceof ApiError) {
-        if (err.status === 502 || err.status === 503) {
+        if (err.status === 409) {
+          setErrorKind(null);
+          setError(resolveSignupConflictMessage(err));
+          showToast("error", "Аккаунт с таким email уже существует");
+        } else if (err.status === 502 || err.status === 503) {
           setErrorKind("SERVICE_UNAVAILABLE");
           setError("Сервис временно недоступен. Попробуйте позже.");
+          showToast("error", "Сервис временно недоступен");
         } else {
           setErrorKind("TECH_ERROR");
           setError("Техническая ошибка регистрации. Попробуйте позже.");
+          showToast("error", "Не удалось зарегистрироваться");
         }
-        showToast("error", "Сервис временно недоступен");
       } else if (err instanceof Error) {
         setError("Не удалось зарегистрироваться");
         showToast("error", "Не удалось зарегистрироваться");
