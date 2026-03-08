@@ -7,6 +7,21 @@ import { useClientJourney } from "../auth/ClientJourneyContext";
 
 type CustomerType = "INDIVIDUAL" | "SOLE_PROPRIETOR" | "LEGAL_ENTITY";
 
+export type ConnectProfileField =
+  | "fullName"
+  | "legalName"
+  | "phone"
+  | "email"
+  | "inn"
+  | "kpp"
+  | "ogrn"
+  | "ogrnip"
+  | "address"
+  | "contact";
+
+type ConnectProfileValues = Record<ConnectProfileField, string>;
+type ConnectProfileErrors = Partial<Record<ConnectProfileField, string>>;
+
 type PlanConfig = {
   code: string;
   title: string;
@@ -93,14 +108,14 @@ export function ConnectTypePage() {
   );
 }
 
-export function getProfileFields(customerType: CustomerType | null | undefined) {
+export function getProfileFields(customerType: CustomerType | null | undefined): ConnectProfileField[] {
   if (customerType === "INDIVIDUAL") {
-    return ["fullName", "phone", "email", "address"] as const;
+    return ["fullName", "phone", "email", "address"];
   }
   if (customerType === "SOLE_PROPRIETOR") {
-    return ["fullName", "inn", "ogrnip", "address", "contact"] as const;
+    return ["fullName", "inn", "ogrnip", "address", "contact"];
   }
-  return ["legalName", "inn", "kpp", "ogrn", "address", "contact"] as const;
+  return ["legalName", "inn", "kpp", "ogrn", "address", "contact"];
 }
 
 export function ConnectProfilePage() {
@@ -109,7 +124,7 @@ export function ConnectProfilePage() {
   const { refresh } = useClient();
   const navigate = useNavigate();
 
-  const [values, setValues] = useState<Record<string, string>>({
+  const [values, setValues] = useState<ConnectProfileValues>({
     fullName: "",
     legalName: "",
     phone: "",
@@ -121,18 +136,18 @@ export function ConnectProfilePage() {
     ogrnip: "",
     contact: "",
   });
-  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [errors, setErrors] = useState<ConnectProfileErrors>({});
   const [submitError, setSubmitError] = useState<string | null>(null);
 
   const requiredFields = useMemo(() => getProfileFields(draft.customerType), [draft.customerType]);
 
-  const setField = (field: string, value: string) => {
+  const setField = (field: ConnectProfileField, value: string) => {
     setValues((prev) => ({ ...prev, [field]: value }));
     setErrors((prev) => ({ ...prev, [field]: "" }));
   };
 
   const validate = () => {
-    const nextErrors: Record<string, string> = {};
+    const nextErrors: ConnectProfileErrors = {};
     requiredFields.forEach((field) => {
       if (!values[field]?.trim()) {
         nextErrors[field] = "Обязательное поле";
