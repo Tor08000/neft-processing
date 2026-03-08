@@ -2,11 +2,9 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useR
 import { useLocation, useNavigate } from "react-router-dom";
 import { ApiError, fetchMe, HtmlResponseError, login as loginApi, UnauthorizedError, ValidationError } from "../api/auth";
 import { request } from "../api/http";
-import { fetchClientMe } from "../api/clientPortal";
 import { AUTH_API_BASE, isBrowserSafeApiBase } from "../api/base";
 import type { AuthSession, LoginResponse } from "../api/types";
 import { clearTokens, getAccessToken, getExpiresAt, getRefreshToken, isAccessTokenExpired, isValidJwt, saveAuthTokens } from "../lib/apiClient";
-import { isDemoClient } from "@shared/demo/demo";
 
 interface AuthContextValue {
   user: AuthSession | null;
@@ -162,59 +160,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialSes
     [location.pathname, location.search, navigate],
   );
 
-  const routeAfterMe = useCallback(async (session: AuthSession) => {
-    const isDemoClientAccount = isDemoClient(session.email ?? null);
-
-    const navigateByPortal = (portal: Awaited<ReturnType<typeof fetchClientMe>>) => {
-      if (isDemoClientAccount) {
-        navigateTo("/dashboard", "AuthContext.routeAfterMe.demo");
-        return;
-      }
-      const target = portal.access_state === "ACTIVE" ? "/dashboard" : "/connect";
-      navigateTo(target, "AuthContext.routeAfterMe.portal");
-    };
-
-    try {
-      const portal = await fetchClientMe(session);
-      navigateByPortal(portal);
-      return;
-    } catch (err) {
-      if (err instanceof ApiError && (err.status === 404 || err.status === 409)) {
-        navigateTo(isDemoClientAccount ? "/dashboard" : "/connect", "AuthContext.routeAfterMe.portalError404or409");
-        return;
-      }
-      if (!(err instanceof ApiError) || err.status !== 401) {
-        navigateTo("/dashboard", "AuthContext.routeAfterMe.portalFallback");
-        return;
-      }
-    }
-
-    if (!session.refreshToken) {
-      setError("Нет доступа: токен недействителен");
-      logout();
-      return;
-    }
-
-    try {
-      const refreshed = await refreshSession(session.refreshToken);
-      saveAuthTokens(refreshed.accessToken, refreshed.refreshToken, refreshed.expiresIn);
-      const refreshedSession: AuthSession = {
-        ...session,
-        token: refreshed.accessToken,
-        refreshToken: refreshed.refreshToken,
-        expiresAt: Date.now() + Math.max(1, refreshed.expiresIn) * 1000,
-      };
-      setUser(refreshedSession);
-      persist(refreshedSession);
-      const portal = await fetchClientMe(refreshedSession);
-      navigateByPortal(portal);
-      return;
-    } catch {
-      setError("Нет доступа: токен недействителен");
-      logout();
-    }
-  }, [logout, navigateTo, persist]);
-
   const establishSession = useCallback(
     async (tokens: SessionTokens, options?: { shouldRoute?: boolean; source?: "login" | "signup" | "bootstrap" | "refresh" }) => {
       const shouldRoute = options?.shouldRoute ?? true;
@@ -258,7 +203,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialSes
         setAuthStatus("authenticated");
         reauthInProgressRef.current = false;
         if (shouldRoute) {
-          await routeAfterMe(normalized);
+          navigateTo("/", `AuthContext.establishSession.${source}`);
         }
       } catch (err) {
         if (err instanceof UnauthorizedError) {
@@ -272,7 +217,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialSes
         throw err;
       }
     },
-    [logout, persist, routeAfterMe],
+    [logout, navigateTo, persist],
   );
 
   useEffect(() => {
