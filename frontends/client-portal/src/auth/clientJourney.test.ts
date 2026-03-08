@@ -6,11 +6,20 @@ describe("resolveClientJourneyState", () => {
     expect(resolveClientJourneyState({ authStatus: "authenticated", isDemo: true, client: null, draft: {} })).toBe("DEMO_SHOWCASE");
   });
 
-  it("returns needs plan for authenticated unconnected", () => {
-    expect(resolveClientJourneyState({ authStatus: "authenticated", isDemo: false, client: null, draft: {} })).toBe("NEEDS_PLAN");
+  it("returns authenticated unconnected for a fresh real account", () => {
+    expect(resolveClientJourneyState({ authStatus: "authenticated", isDemo: false, client: null, draft: {} })).toBe("AUTHENTICATED_UNCONNECTED");
   });
 
-  it("moves through type/profile/doc/sign/payment", () => {
+  it("moves through plan/type/profile/doc/sign/payment states", () => {
+    expect(
+      resolveClientJourneyState({
+        authStatus: "authenticated",
+        isDemo: false,
+        client: { access_state: "NEEDS_ONBOARDING" } as never,
+        draft: {},
+      }),
+    ).toBe("AUTHENTICATED_UNCONNECTED");
+
     expect(
       resolveClientJourneyState({
         authStatus: "authenticated",

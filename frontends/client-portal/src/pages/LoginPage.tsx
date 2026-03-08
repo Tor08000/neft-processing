@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { useClient } from "../auth/ClientContext";
 import { CopyChip } from "../components/common/CopyChip";
@@ -11,7 +11,6 @@ import { buildSsoStartUrl, listSsoIdps, type SSOIdPItem } from "../api/auth";
 export function LoginPage() {
   const { login, error, authError } = useAuth();
   const { portalState, refresh } = useClient();
-  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [email, setEmail] = useState("client@neft.local");
   const [password, setPassword] = useState("Neft123!");
@@ -35,9 +34,6 @@ export function LoginPage() {
         password,
       });
       await refresh();
-      if (email.trim().toLowerCase() === "client@neft.local") {
-        navigate("/client/dashboard");
-      }
     } catch (err) {
       console.error("Ошибка входа", err);
       setFieldError("Сервис временно недоступен");

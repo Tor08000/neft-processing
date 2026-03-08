@@ -218,6 +218,7 @@ export function App({ initialSession = null }: AppProps) {
             <Route path="/register" element={<SignupPage />} />
             <Route path="/client/login" element={<Navigate to="/login" replace />} />
             <Route path="/client/signup" element={<Navigate to="/register" replace />} />
+            <Route path="/client/register" element={<Navigate to="/register" replace />} />
             <Route path="/unauthorized" element={<UnauthorizedPage />} />
             <Route path="/client/onboarding/start" element={<Navigate to="/onboarding/start" replace />} />
             <Route path="/onboarding/start" element={<OnboardingSelfRegistrationPage mode="start" />} />

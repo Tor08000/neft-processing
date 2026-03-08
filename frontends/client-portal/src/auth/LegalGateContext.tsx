@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useLocation } from "react-router-dom";
 import { acceptLegalDocument, fetchLegalDocument, fetchLegalRequired } from "../api/legal";
 import { ApiError, UnauthorizedError } from "../api/http";
 import type { LegalDocumentResponse, LegalRequiredItem, LegalRequiredResponse } from "../api/legal";
@@ -28,7 +28,6 @@ const LegalGateContext = createContext<LegalGateContextValue | undefined>(undefi
 export const LegalGateProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user } = useAuth();
   const { client } = useClient();
-  const navigate = useNavigate();
   const location = useLocation();
   const [required, setRequired] = useState<LegalRequiredItem[]>([]);
   const [isBlocked, setIsBlocked] = useState(false);
@@ -234,16 +233,10 @@ export const LegalGateProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         console.info("[legal-gate:event] legal-required", { route: location.pathname, access_state: client?.access_state ?? null });
       }
       void refresh(true);
-      if (location.pathname !== "/legal" && !location.pathname.startsWith("/onboarding")) {
-        if (import.meta.env.DEV) {
-          console.info("[legal-gate:redirect]", { from: location.pathname, to: "/legal" });
-        }
-        navigate("/legal", { replace: true });
-      }
     };
     window.addEventListener("legal-required", handler);
     return () => window.removeEventListener("legal-required", handler);
-  }, [accessState, client?.access_state, isFeatureDisabled, location.pathname, navigate, onboardingEnabled, refresh]);
+  }, [accessState, client?.access_state, isFeatureDisabled, location.pathname, onboardingEnabled, refresh]);
 
   const value = useMemo(
     () => ({

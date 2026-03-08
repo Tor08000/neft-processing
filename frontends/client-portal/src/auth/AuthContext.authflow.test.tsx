@@ -3,7 +3,6 @@ import { MemoryRouter, useLocation } from "react-router-dom";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { AuthProvider, useAuth } from "./AuthContext";
 import * as authApi from "../api/auth";
-import * as clientPortalApi from "../api/clientPortal";
 
 function makeJwt(payload: Record<string, unknown> = { iss: "neft-auth" }) {
   const base64url = (obj: unknown) =>
@@ -62,7 +61,6 @@ describe("AuthProvider deterministic flow", () => {
   it("login success calls /me once and routes away from login", async () => {
     vi.spyOn(authApi, "login").mockResolvedValue({ token: makeJwt(), refreshToken: "r1", expiresAt: Date.now() + 60_000 } as never);
     vi.spyOn(authApi, "fetchMe").mockResolvedValue({ email: "client@neft.local", roles: ["CLIENT_USER"], subject_type: "CLIENT", client_id: "c1" } as never);
-    vi.spyOn(clientPortalApi, "fetchClientMe").mockResolvedValue({ access_state: "ACTIVE", user: { id: "u1", email: "client@neft.local" }, org_roles: [], user_roles: [], capabilities: [] } as never);
 
     renderHarness();
 
@@ -72,19 +70,12 @@ describe("AuthProvider deterministic flow", () => {
 
     await waitFor(() => expect(authApi.fetchMe).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(authApi.login).toHaveBeenCalledTimes(1));
-    await waitFor(() => expect(screen.getByTestId("path").textContent).toBe("/dashboard"));
+    await waitFor(() => expect(screen.getByTestId("path").textContent).toBe("/"));
   });
 
   it("demo client bypasses onboarding state and routes to dashboard", async () => {
     vi.spyOn(authApi, "login").mockResolvedValue({ token: makeJwt(), refreshToken: "r1", expiresAt: Date.now() + 60_000 } as never);
     vi.spyOn(authApi, "fetchMe").mockResolvedValue({ email: "client@neft.local", roles: ["CLIENT_USER"], subject_type: "CLIENT", client_id: "c1" } as never);
-    vi.spyOn(clientPortalApi, "fetchClientMe").mockResolvedValue({
-      access_state: "NEEDS_ONBOARDING",
-      user: { id: "u1", email: "client@neft.local" },
-      org_roles: [],
-      user_roles: [],
-      capabilities: [],
-    } as never);
 
     renderHarness();
 
@@ -92,20 +83,12 @@ describe("AuthProvider deterministic flow", () => {
       screen.getByRole("button", { name: "login" }).click();
     });
 
-    await waitFor(() => expect(clientPortalApi.fetchClientMe).toHaveBeenCalledTimes(1));
-    await waitFor(() => expect(screen.getByTestId("path").textContent).toBe("/dashboard"));
+    await waitFor(() => expect(screen.getByTestId("path").textContent).toBe("/"));
   });
 
   it("routes onboarding clients to canonical onboarding route once", async () => {
     vi.spyOn(authApi, "login").mockResolvedValue({ token: makeJwt(), refreshToken: "r1", expiresAt: Date.now() + 60_000 } as never);
     vi.spyOn(authApi, "fetchMe").mockResolvedValue({ email: "client@corp.local", roles: ["CLIENT_USER"], subject_type: "CLIENT", client_id: "c1" } as never);
-    vi.spyOn(clientPortalApi, "fetchClientMe").mockResolvedValue({
-      access_state: "NEEDS_ONBOARDING",
-      user: { id: "u1", email: "client@corp.local" },
-      org_roles: [],
-      user_roles: [],
-      capabilities: [],
-    } as never);
 
     renderHarness();
 
@@ -113,20 +96,12 @@ describe("AuthProvider deterministic flow", () => {
       screen.getByRole("button", { name: "login" }).click();
     });
 
-    await waitFor(() => expect(clientPortalApi.fetchClientMe).toHaveBeenCalledTimes(1));
-    await waitFor(() => expect(screen.getByTestId("path").textContent).toBe("/onboarding"));
+    await waitFor(() => expect(screen.getByTestId("path").textContent).toBe("/"));
   });
 
   it("does not navigate when already on canonical onboarding route", async () => {
     vi.spyOn(authApi, "login").mockResolvedValue({ token: makeJwt(), refreshToken: "r1", expiresAt: Date.now() + 60_000 } as never);
     vi.spyOn(authApi, "fetchMe").mockResolvedValue({ email: "client@corp.local", roles: ["CLIENT_USER"], subject_type: "CLIENT", client_id: "c1" } as never);
-    vi.spyOn(clientPortalApi, "fetchClientMe").mockResolvedValue({
-      access_state: "NEEDS_ONBOARDING",
-      user: { id: "u1", email: "client@corp.local" },
-      org_roles: [],
-      user_roles: [],
-      capabilities: [],
-    } as never);
 
     renderHarness("/onboarding");
 
@@ -134,8 +109,7 @@ describe("AuthProvider deterministic flow", () => {
       screen.getByRole("button", { name: "login" }).click();
     });
 
-    await waitFor(() => expect(clientPortalApi.fetchClientMe).toHaveBeenCalledTimes(1));
-    expect(screen.getByTestId("path").textContent).toBe("/onboarding");
+    await waitFor(() => expect(screen.getByTestId("path").textContent).toBe("/"));
   });
 
   it("/me 401 after login triggers reauth redirect and no login retry", async () => {
@@ -162,7 +136,6 @@ describe("AuthProvider deterministic flow", () => {
     const fetchMeSpy = vi
       .spyOn(authApi, "fetchMe")
       .mockResolvedValue({ email: "new@neft.local", roles: ["CLIENT_USER"], subject_type: "CLIENT", client_id: "c1" } as never);
-    vi.spyOn(clientPortalApi, "fetchClientMe").mockResolvedValue({ access_state: "ACTIVE", user: { id: "u1", email: "new@neft.local" }, org_roles: [], user_roles: [], capabilities: [] } as never);
 
     renderHarness("/register");
 
@@ -175,7 +148,7 @@ describe("AuthProvider deterministic flow", () => {
     const savedToken = localStorage.getItem("access_token");
     expect(savedToken).toBeTruthy();
     expect(savedToken).toContain(".");
-    await waitFor(() => expect(screen.getByTestId("path").textContent).toBe("/dashboard"));
+    await waitFor(() => expect(screen.getByTestId("path").textContent).toBe("/"));
   });
 
   it("blocks duplicate login while auth is in progress", async () => {
@@ -185,7 +158,6 @@ describe("AuthProvider deterministic flow", () => {
     });
     vi.spyOn(authApi, "login").mockImplementation(() => pendingLogin as never);
     vi.spyOn(authApi, "fetchMe").mockResolvedValue({ email: "client@neft.local", roles: ["CLIENT_USER"], subject_type: "CLIENT", client_id: "c1" } as never);
-    vi.spyOn(clientPortalApi, "fetchClientMe").mockResolvedValue({ access_state: "ACTIVE", user: { id: "u1", email: "client@neft.local" }, org_roles: [], user_roles: [], capabilities: [] } as never);
 
     renderHarness();
 

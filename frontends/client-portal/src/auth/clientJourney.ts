@@ -16,7 +16,7 @@ export type ClientJourneyState =
 
 export type JourneyDraft = {
   selectedPlan?: string | null;
-  customerType?: "INDIVIDUAL" | "IP" | "LEGAL" | null;
+  customerType?: "INDIVIDUAL" | "SOLE_PROPRIETOR" | "LEGAL_ENTITY" | null;
   profileCompleted?: boolean;
   documentsGenerated?: boolean;
   documentsViewed?: boolean;
@@ -50,6 +50,10 @@ export function resolveClientJourneyState(params: {
 
   if (client?.access_state === AccessState.ACTIVE || draft.paymentStatus === "succeeded") {
     return "ACTIVE";
+  }
+
+  if (!client?.org && !draft.selectedPlan && !draft.customerType && !draft.profileCompleted) {
+    return "AUTHENTICATED_UNCONNECTED";
   }
 
   if (!draft.selectedPlan) return "NEEDS_PLAN";
