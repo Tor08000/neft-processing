@@ -20,6 +20,21 @@ function Harness() {
       <div data-testid="status">{auth.authStatus}</div>
       <div data-testid="path">{location.pathname}</div>
       <button onClick={() => auth.login({ email: "client@neft.local", password: "client" })}>login</button>
+      <button
+        onClick={() =>
+          auth.activateSession({
+            token: makeJwt(),
+            refreshToken: undefined,
+            email: "new@neft.local",
+            roles: ["CLIENT_USER"],
+            subjectType: "client_user",
+            clientId: "c1",
+            expiresAt: Date.now() + 60_000,
+          })
+        }
+      >
+        signup
+      </button>
     </>
   );
 }
@@ -136,6 +151,31 @@ describe("AuthProvider deterministic flow", () => {
     await waitFor(() => expect(authApi.fetchMe).toHaveBeenCalledTimes(1));
     expect(authApi.login).toHaveBeenCalledTimes(1);
     expect(screen.getByTestId("path").textContent).toBe("/login");
+  });
+
+
+  it("signup activation persists token before /me and does not redirect to reauth", async () => {
+    localStorage.setItem("access_token", "invalid-token");
+    localStorage.setItem("refresh_token", "stale-refresh");
+    localStorage.setItem("expires_at", String(Date.now() + 120_000));
+
+    const fetchMeSpy = vi
+      .spyOn(authApi, "fetchMe")
+      .mockResolvedValue({ email: "new@neft.local", roles: ["CLIENT_USER"], subject_type: "CLIENT", client_id: "c1" } as never);
+    vi.spyOn(clientPortalApi, "fetchClientMe").mockResolvedValue({ access_state: "ACTIVE", user: { id: "u1", email: "new@neft.local" }, org_roles: [], user_roles: [], capabilities: [] } as never);
+
+    renderHarness("/register");
+
+    await act(async () => {
+      screen.getByRole("button", { name: "signup" }).click();
+    });
+
+    await waitFor(() => expect(fetchMeSpy).toHaveBeenCalledTimes(1));
+    expect(fetchMeSpy).toHaveBeenCalledWith(expect.any(String));
+    const savedToken = localStorage.getItem("access_token");
+    expect(savedToken).toBeTruthy();
+    expect(savedToken).toContain(".");
+    await waitFor(() => expect(screen.getByTestId("path").textContent).toBe("/dashboard"));
   });
 
   it("blocks duplicate login while auth is in progress", async () => {

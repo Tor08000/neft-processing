@@ -104,7 +104,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialSes
   }, [persist]);
 
   const forceReauth = useCallback(() => {
-    if (reauthInProgressRef.current || reauthRedirectedRef.current) return;
+    if (reauthInProgressRef.current || reauthRedirectedRef.current || authInProgressRef.current) {
+      if (import.meta.env.DEV && authInProgressRef.current) {
+        console.info("[AUTH] reauth event suppressed: auth flow in progress");
+      }
+      return;
+    }
     reauthInProgressRef.current = true;
     reauthRedirectedRef.current = true;
     authInProgressRef.current = false;
@@ -214,9 +219,18 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialSes
   }, [logout, navigateTo, persist]);
 
   const establishSession = useCallback(
-    async (tokens: SessionTokens, options?: { shouldRoute?: boolean }) => {
+    async (tokens: SessionTokens, options?: { shouldRoute?: boolean; source?: "login" | "signup" | "bootstrap" | "refresh" }) => {
       const shouldRoute = options?.shouldRoute ?? true;
+      const source = options?.source ?? "login";
       saveAuthTokens(tokens.accessToken, tokens.refreshToken, tokens.expiresInSec);
+      if (import.meta.env.DEV) {
+        console.info("[AUTH] session tokens persisted", {
+          source,
+          hasAccessToken: Boolean(tokens.accessToken),
+          hasRefreshToken: Boolean(tokens.refreshToken),
+          expiresInSec: tokens.expiresInSec,
+        });
+      }
       try {
         if (!isClientIssuer(tokens.accessToken)) {
           setError("Неверный контур входа");
@@ -224,7 +238,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialSes
           return;
         }
         if (import.meta.env.DEV) {
-          console.log("[AUTH] login success, calling /me");
+          console.info("[AUTH] calling /me", { source, hasAuthorizationHeader: true });
         }
         const profile = await fetchMe(tokens.accessToken);
         if (!isClientRolePresent(profile.roles)) {
@@ -309,13 +323,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialSes
           const refreshed = await refreshSession(refreshToken);
           accessToken = refreshed.accessToken;
           expiresInSec = refreshed.expiresIn;
-          await establishSession({ accessToken: refreshed.accessToken, refreshToken: refreshed.refreshToken, expiresInSec }, { shouldRoute: false });
+          await establishSession({ accessToken: refreshed.accessToken, refreshToken: refreshed.refreshToken, expiresInSec }, { shouldRoute: false, source: "refresh" });
           return;
         }
 
         await establishSession(
           { accessToken, refreshToken: refreshToken ?? undefined, expiresInSec },
-          { shouldRoute: false },
+          { shouldRoute: false, source: "bootstrap" },
         );
       } catch {
         logout();
@@ -355,7 +369,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialSes
           console.log(`[AUTH] login_token=${tokenLen} prefix=${tokenPrefix}`);
         }
         const expiresInSec = Math.max(1, Math.floor((session.expiresAt - Date.now()) / 1000));
-        await establishSession({ accessToken: session.token, refreshToken: session.refreshToken, expiresInSec });
+        await establishSession({ accessToken: session.token, refreshToken: session.refreshToken, expiresInSec }, { source: "login" });
       } catch (err) {
         if (err instanceof UnauthorizedError) {
           setError("Неверный логин/пароль");
@@ -397,11 +411,15 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialSes
 
   const activateSession = useCallback(
     async (session: AuthSession) => {
+      if (authInProgressRef.current || reauthRedirectedRef.current) {
+        return;
+      }
+      authInProgressRef.current = true;
       setError(null);
       setAuthError(null);
       try {
         const expiresInSec = Math.max(1, Math.floor((session.expiresAt - Date.now()) / 1000));
-        await establishSession({ accessToken: session.token, refreshToken: session.refreshToken, expiresInSec });
+        await establishSession({ accessToken: session.token, refreshToken: session.refreshToken, expiresInSec }, { source: "signup" });
       } catch (err) {
         if (err instanceof UnauthorizedError) {
           setAuthError("reauth_required");

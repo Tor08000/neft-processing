@@ -6,7 +6,7 @@ import { useAuth } from "../auth/AuthContext";
 import type { AuthSession } from "../api/types";
 import { Toast } from "../components/Toast/Toast";
 import { useToast } from "../components/Toast/useToast";
-import { clearTokens } from "../lib/apiClient";
+import { clearTokens, getAccessToken } from "../lib/apiClient";
 
 const PHONE_REGEX = /^[+()\d\s-]{6,}$/;
 
@@ -85,9 +85,14 @@ export function SignupPage() {
         consent_personal_data: consentPersonal,
         consent_offer: consentOffer,
       });
-      if (registerResponse.access_token) {
+      if (import.meta.env.DEV) {
+        console.info("[signup] success response keys", { keys: Object.keys(registerResponse).sort() });
+      }
+      const accessToken = registerResponse.access_token ?? registerResponse.token;
+      if (accessToken) {
         const session: AuthSession = {
-          token: registerResponse.access_token,
+          token: accessToken,
+          refreshToken: registerResponse.refresh_token,
           email: registerResponse.email ?? contactPayload.email,
           roles: registerResponse.roles ?? [],
           subjectType: registerResponse.subject_type ?? "client_user",
@@ -95,6 +100,13 @@ export function SignupPage() {
           expiresAt: Date.now() + (registerResponse.expires_in ?? 3600) * 1000,
         };
         await activateSession(session);
+        if (import.meta.env.DEV) {
+          console.info("[signup] session activation finished", {
+            tokenSaved: Boolean(getAccessToken()),
+            hasRefreshToken: Boolean(registerResponse.refresh_token),
+            tokenType: registerResponse.token_type ?? null,
+          });
+        }
       } else {
         setError("Регистрация успешна, войдите");
         navigate("/client/login?signup=success", { replace: true });
