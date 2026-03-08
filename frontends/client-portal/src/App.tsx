@@ -3,6 +3,7 @@ import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { AuthProvider } from "./auth/AuthContext";
 import { ClientProvider } from "./auth/ClientContext";
 import { LegalGateProvider } from "./auth/LegalGateContext";
+import { ClientJourneyProvider, useClientJourney } from "./auth/ClientJourneyContext";
 import type { AuthSession } from "./api/types";
 import { ClientLayout } from "./layout/ClientLayout";
 import { ProtectedRoute } from "./components/ProtectedRoute";
@@ -10,7 +11,15 @@ import { ModuleGate } from "./components/ModuleGate";
 import { AccessGate } from "./components/AccessGate";
 import { LoginPage } from "./pages/LoginPage";
 import { SignupPage } from "./pages/SignupPage";
-import { OnboardingPage } from "./pages/OnboardingPage";
+import {
+  ConnectDocumentsPage,
+  ConnectHomePage,
+  ConnectPaymentPage,
+  ConnectPlanPage,
+  ConnectProfilePage,
+  ConnectSignPage,
+  ConnectTypePage,
+} from "./pages/ConnectFlowPage";
 import { OnboardingSelfRegistrationPage } from "./pages/OnboardingSelfRegistrationPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
 import { UnauthorizedPage } from "./pages/UnauthorizedPage";
@@ -38,9 +47,7 @@ import { ExplainInsightsPage } from "./pages/ExplainInsightsPage";
 import { ActionsPage } from "./pages/ActionsPage";
 import { useAuth } from "./auth/AuthContext";
 import { useClient } from "./auth/ClientContext";
-import { AccessState, resolveAccessState } from "./access/accessState";
 import { AppLoadingState } from "./components/states";
-import { isDemoClient } from "@shared/demo/demo";
 import { SettingsPage } from "./pages/SettingsPage";
 import { ClientControlsPage } from "./pages/ClientControlsPage";
 import { MarketplaceCatalogPage } from "./pages/MarketplaceCatalogPage";
@@ -94,7 +101,7 @@ import { BillingOverduePage } from "./pages/BillingOverduePage";
 import { ServiceUnavailablePage } from "./pages/ServiceUnavailablePage";
 import { TechErrorPage } from "./pages/TechErrorPage";
 import { API_BASE_URL } from "./api/base";
-import { ONBOARDING_CONTRACT_ROUTE, ONBOARDING_PLAN_ROUTE, ONBOARDING_ROUTE, toCanonicalOnboardingPath } from "./lib/onboardingRoute";
+import { ONBOARDING_CONTRACT_ROUTE, ONBOARDING_PLAN_ROUTE, ONBOARDING_ROUTE } from "./lib/onboardingRoute";
 
 interface AppProps {
   initialSession?: AuthSession | null;
@@ -127,23 +134,14 @@ export function resolveLogicalRoute(pathname: string): string {
 
 function IndexRedirect() {
   const { user, authStatus } = useAuth();
-  const { client, isLoading, portalState } = useClient();
-  const isDemoClientAccount = isDemoClient(user?.email ?? client?.user?.email ?? null);
+  const { nextRoute } = useClientJourney();
 
   if (authStatus !== "authenticated" || !user) {
     return <Navigate to="/login" replace />;
   }
 
-  if (portalState === "LOADING" || isLoading) {
-    return <AppLoadingState label="Загружаем профиль..." />;
-  }
-
-  const decision = resolveAccessState({ client });
-  if (
-    !isDemoClientAccount &&
-    [AccessState.NEEDS_ONBOARDING, AccessState.NEEDS_PLAN, AccessState.NEEDS_CONTRACT].includes(decision.state)
-  ) {
-    return <Navigate to={ONBOARDING_ROUTE} replace />;
+  if (nextRoute !== "/dashboard") {
+    return <Navigate to={nextRoute} replace />;
   }
 
   return (
@@ -156,28 +154,14 @@ function IndexRedirect() {
 
 function LoginEntryRoute() {
   const { user, authStatus } = useAuth();
-  const { client, isLoading, portalState } = useClient();
+  const { nextRoute } = useClientJourney();
 
   if (authStatus === "loading") {
     return <AppLoadingState label="Проверяем сессию..." />;
   }
 
   if (authStatus === "authenticated" && user) {
-    const isDemoClientAccount = isDemoClient(user.email ?? client?.user?.email ?? null);
-    if (portalState === "LOADING" || isLoading) {
-      return <AppLoadingState label="Загружаем профиль..." />;
-    }
-
-    if (isDemoClientAccount) {
-      return <Navigate to="/dashboard" replace />;
-    }
-
-    const decision = resolveAccessState({ client });
-    const needsOnboarding = [AccessState.NEEDS_ONBOARDING, AccessState.NEEDS_PLAN, AccessState.NEEDS_CONTRACT].includes(
-      decision.state,
-    );
-
-    return <Navigate to={needsOnboarding ? ONBOARDING_ROUTE : "/dashboard"} replace />;
+    return <Navigate to={nextRoute} replace />;
   }
 
   return <LoginPage />;
@@ -192,27 +176,12 @@ function PwaIndexRedirect() {
 }
 
 
-export function OnboardingCanonicalizer() {
-  const location = useLocation();
-  const canonicalPath = toCanonicalOnboardingPath(location.pathname);
-  const skipped = canonicalPath === location.pathname;
-
-  if (import.meta.env.DEV) {
-    console.info("[routing:attempt]", {
-      source: "OnboardingCanonicalizer",
-      currentPath: location.pathname,
-      requestedTargetPath: canonicalPath,
-      skipped,
-      skipReason: skipped ? "already_canonical_onboarding" : null,
-      logicalRoute: resolveLogicalRoute(location.pathname),
-    });
-  }
-
-  if (!skipped) {
-    return <Navigate to={canonicalPath} replace />;
-  }
-
-  return <OnboardingPage />;
+function JourneyRouteEnforcer() {
+  const { ensureRoute } = useClientJourney();
+  useEffect(() => {
+    ensureRoute("App.JourneyRouteEnforcer");
+  }, [ensureRoute]);
+  return null;
 }
 
 
@@ -240,7 +209,9 @@ export function App({ initialSession = null }: AppProps) {
   return (
     <AuthProvider initialSession={initialSession}>
       <ClientProvider>
-        <LegalGateProvider>
+        <ClientJourneyProvider>
+          <LegalGateProvider>
+          <JourneyRouteEnforcer />
           <DevRuntimeDiagnostics />
           <Routes>
             <Route path="/login" element={<LoginEntryRoute />} />
@@ -256,19 +227,19 @@ export function App({ initialSession = null }: AppProps) {
             <Route path="/onboarding/status" element={<OnboardingSelfRegistrationPage mode="status" />} />
             <Route element={<ProtectedRoute />}>
               <Route path="/client/dashboard" element={<Navigate to="/dashboard" replace />} />
-              <Route path="/client/connect" element={<Navigate to="/onboarding" replace />} />
-              <Route path="/client/onboarding" element={<OnboardingCanonicalizer />} />
-              <Route path="/client/onboarding/plan" element={<OnboardingCanonicalizer />} />
-              <Route path="/client/onboarding/contract" element={<OnboardingCanonicalizer />} />
-              <Route path="/client/client/onboarding" element={<OnboardingCanonicalizer />} />
-              <Route path="/client/client/onboarding/plan" element={<OnboardingCanonicalizer />} />
-              <Route path="/client/client/onboarding/contract" element={<OnboardingCanonicalizer />} />
+              <Route path="/client/connect" element={<Navigate to="/connect" replace />} />
+              <Route path="/client/onboarding" element={<Navigate to="/connect" replace />} />
+              <Route path="/client/onboarding/plan" element={<Navigate to="/connect/plan" replace />} />
+              <Route path="/client/onboarding/contract" element={<Navigate to="/connect/sign" replace />} />
+              <Route path="/client/client/onboarding" element={<Navigate to="/connect" replace />} />
+              <Route path="/client/client/onboarding/plan" element={<Navigate to="/connect/plan" replace />} />
+              <Route path="/client/client/onboarding/contract" element={<Navigate to="/connect/sign" replace />} />
               <Route path="/client/billing/overdue" element={<Navigate to="/billing/overdue" replace />} />
               <Route path="/client/service-unavailable" element={<ServiceUnavailablePage />} />
               <Route path="/client/tech-error" element={<TechErrorPage />} />
-              <Route path={ONBOARDING_ROUTE} element={<OnboardingCanonicalizer />} />
-              <Route path={ONBOARDING_PLAN_ROUTE} element={<OnboardingCanonicalizer />} />
-              <Route path={ONBOARDING_CONTRACT_ROUTE} element={<OnboardingCanonicalizer />} />
+              <Route path={ONBOARDING_ROUTE} element={<Navigate to="/connect" replace />} />
+              <Route path={ONBOARDING_PLAN_ROUTE} element={<Navigate to="/connect/plan" replace />} />
+              <Route path={ONBOARDING_CONTRACT_ROUTE} element={<Navigate to="/connect/sign" replace />} />
               <Route element={<ClientLayout pwaMode={isPwaMode} />}>
               {isPwaMode ? (
                 <>
@@ -282,6 +253,13 @@ export function App({ initialSession = null }: AppProps) {
               ) : (
                 <>
                   <Route index element={<IndexRedirect />} />
+                  <Route path="/connect" element={<ConnectHomePage />} />
+                  <Route path="/connect/plan" element={<ConnectPlanPage />} />
+                  <Route path="/connect/type" element={<ConnectTypePage />} />
+                  <Route path="/connect/profile" element={<ConnectProfilePage />} />
+                  <Route path="/connect/documents" element={<ConnectDocumentsPage />} />
+                  <Route path="/connect/sign" element={<ConnectSignPage />} />
+                  <Route path="/connect/payment" element={<ConnectPaymentPage />} />
                   <Route
                     path="/dashboard"
                     element={
@@ -740,7 +718,8 @@ export function App({ initialSession = null }: AppProps) {
             </Route>
             <Route path="*" element={<NotFoundPage />} />
           </Routes>
-        </LegalGateProvider>
+          </LegalGateProvider>
+        </ClientJourneyProvider>
       </ClientProvider>
     </AuthProvider>
   );
