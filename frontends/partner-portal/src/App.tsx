@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import { AuthProvider } from "./auth/AuthContext";
 import { PortalProvider } from "./auth/PortalContext";
 import { LegalGateProvider } from "./auth/LegalGateContext";
+import { PartnerSubscriptionProvider } from "./auth/PartnerSubscriptionContext";
 import type { AuthSession } from "./api/types";
 import { Layout } from "./components/Layout";
 import { ProtectedRoute } from "./components/ProtectedRoute";
@@ -43,109 +44,69 @@ import { PartnerProfileV1Page } from "./pages/PartnerProfileV1Page";
 import { PartnerLocationsV1Page } from "./pages/PartnerLocationsV1Page";
 import { PartnerUsersV1Page } from "./pages/PartnerUsersV1Page";
 import { PartnerTermsV1Page } from "./pages/PartnerTermsV1Page";
+import { PartnerConnectPlanPage } from "./pages/PartnerConnectPlanPage";
 
-interface AppProps {
-  initialSession?: AuthSession | null;
-}
+interface AppProps { initialSession?: AuthSession | null; }
 
 export function App({ initialSession = null }: AppProps) {
   return (
     <AuthProvider initialSession={initialSession}>
       <PortalProvider>
-        <LegalGateProvider>
-          <Routes>
-            <Route path="/login" element={<LoginPage />} />
-            <Route element={<ProtectedRoute />}>
-              <Route element={<Layout />}>
-                <Route index element={<Navigate to="/products" replace />} />
-                <Route
-                  path="/dashboard"
-                  element={
-                    <AccessGate title="Дашборд">
-                      <DashboardPage />
-                    </AccessGate>
-                  }
-                />
-                <Route path="/products" element={<MarketplaceProductsPage />} />
-                <Route path="/products/:id" element={<MarketplaceProductsPage />} />
-                <Route path="/bookings" element={<ServicesCatalogPage />} />
-                <Route path="/service-requests" element={<ServiceRequestsPage />} />
-                <Route path="/bookings/:id" element={<ServiceDetailsPage />} />
-                <Route path="/promotions" element={<MarketplaceProfilePage />} />
-                <Route path="/analytics" element={<AnalyticsPage />} />
-                <Route path="/contracts" element={<PartnerContractsPage />} />
-                <Route path="/stations" element={<StationsPage />} />
-                <Route path="/stations/:id" element={<StationDetailsPage />} />
-                <Route path="/transactions" element={<TransactionsPage />} />
-                <Route path="/transactions/:id" element={<TransactionDetailsPage />} />
-                <Route path="/prices" element={<PricesPage />} />
-                <Route path="/prices/analytics" element={<AnalyticsPage />} />
-                <Route path="/prices/:id" element={<PriceVersionDetailsPage />} />
-                <Route
-                  path="/finance"
-                  element={
-                    <AccessGate title="Финансы">
-                      <FinancePage />
-                    </AccessGate>
-                  }
-                />
-                <Route
-                  path="/payouts"
-                  element={
-                    <AccessGate title="Выплаты">
-                      <PayoutsPage />
-                    </AccessGate>
-                  }
-                />
-                <Route
-                  path="/payouts/:id"
-                  element={
-                    <AccessGate title="Выплаты">
-                      <SettlementDetailsPage />
-                    </AccessGate>
-                  }
-                />
-                <Route path="/payouts/batches" element={<PayoutBatchesPage />} />
-                <Route path="/payouts/batches/:id" element={<PayoutTracePage />} />
-                <Route
-                  path="/documents"
-                  element={
-                    <AccessGate title="Документы">
-                      <DocumentsPage />
-                    </AccessGate>
-                  }
-                />
-                <Route
-                  path="/documents/:id"
-                  element={
-                    <AccessGate title="Документы">
-                      <DocumentDetailsPage />
-                    </AccessGate>
-                  }
-                />
-                <Route path="/orders" element={<OrdersPage />} />
-                <Route path="/orders/:id" element={<OrderDetailsPage />} />
-                <Route path="/refunds" element={<RefundsPage />} />
-                <Route path="/refunds/:id" element={<RefundDetailsPage />} />
-                <Route path="/services" element={<ServicesCatalogPage />} />
-                <Route path="/services/:id" element={<ServiceDetailsPage />} />
-                <Route path="/marketplace/profile" element={<MarketplaceProfilePage />} />
-                <Route path="/marketplace/products" element={<MarketplaceProductsPage />} />
-                <Route path="/marketplace/offers" element={<MarketplaceOffersPage />} />
-                <Route path="/integrations" element={<IntegrationsPage />} />
-                <Route path="/support/requests" element={<SupportRequestsPage />} />
-                <Route path="/support/requests/:id" element={<SupportRequestDetailsPage />} />
-                <Route path="/settings" element={<SettingsPage />} />
-                <Route path="/legal" element={<LegalPage />} />
-                <Route path="/partner/profile" element={<PartnerProfileV1Page />} />
-                <Route path="/partner/locations" element={<PartnerLocationsV1Page />} />
-                <Route path="/partner/users" element={<PartnerUsersV1Page />} />
-                <Route path="/partner/terms" element={<PartnerTermsV1Page />} />
+        <PartnerSubscriptionProvider>
+          <LegalGateProvider>
+            <Routes>
+              <Route path="/login" element={<LoginPage />} />
+              <Route element={<ProtectedRoute />}>
+                <Route element={<Layout />}>
+                  <Route path="/connect/plan" element={<PartnerConnectPlanPage />} />
+                  <Route index element={<Navigate to="/products" replace />} />
+                  <Route path="/dashboard" element={<AccessGate title="Дашборд"><DashboardPage /></AccessGate>} />
+                  <Route path="/products" element={<MarketplaceProductsPage />} />
+                  <Route path="/products/:id" element={<MarketplaceProductsPage />} />
+                  <Route path="/bookings" element={<ServicesCatalogPage />} />
+                  <Route path="/service-requests" element={<ServiceRequestsPage />} />
+                  <Route path="/bookings/:id" element={<ServiceDetailsPage />} />
+                  <Route path="/promotions" element={<MarketplaceProfilePage />} />
+                  <Route path="/analytics" element={<AnalyticsPage />} />
+                  <Route path="/contracts" element={<PartnerContractsPage />} />
+                  <Route path="/stations" element={<StationsPage />} />
+                  <Route path="/stations/:id" element={<StationDetailsPage />} />
+                  <Route path="/transactions" element={<TransactionsPage />} />
+                  <Route path="/transactions/:id" element={<TransactionDetailsPage />} />
+                  <Route path="/prices" element={<PricesPage />} />
+                  <Route path="/prices/analytics" element={<AnalyticsPage />} />
+                  <Route path="/prices/:id" element={<PriceVersionDetailsPage />} />
+                  <Route path="/finance" element={<AccessGate title="Финансы"><FinancePage /></AccessGate>} />
+                  <Route path="/payouts" element={<AccessGate title="Выплаты"><PayoutsPage /></AccessGate>} />
+                  <Route path="/payouts/:id" element={<AccessGate title="Выплаты"><SettlementDetailsPage /></AccessGate>} />
+                  <Route path="/payouts/batches" element={<PayoutBatchesPage />} />
+                  <Route path="/payouts/batches/:id" element={<PayoutTracePage />} />
+                  <Route path="/documents" element={<AccessGate title="Документы"><DocumentsPage /></AccessGate>} />
+                  <Route path="/documents/:id" element={<AccessGate title="Документы"><DocumentDetailsPage /></AccessGate>} />
+                  <Route path="/orders" element={<OrdersPage />} />
+                  <Route path="/orders/:id" element={<OrderDetailsPage />} />
+                  <Route path="/refunds" element={<RefundsPage />} />
+                  <Route path="/refunds/:id" element={<RefundDetailsPage />} />
+                  <Route path="/services" element={<ServicesCatalogPage />} />
+                  <Route path="/services/:id" element={<ServiceDetailsPage />} />
+                  <Route path="/marketplace/profile" element={<MarketplaceProfilePage />} />
+                  <Route path="/marketplace/products" element={<MarketplaceProductsPage />} />
+                  <Route path="/marketplace/offers" element={<MarketplaceOffersPage />} />
+                  <Route path="/integrations" element={<IntegrationsPage />} />
+                  <Route path="/support/requests" element={<SupportRequestsPage />} />
+                  <Route path="/support/requests/:id" element={<SupportRequestDetailsPage />} />
+                  <Route path="/settings" element={<SettingsPage />} />
+                  <Route path="/legal" element={<LegalPage />} />
+                  <Route path="/partner/profile" element={<PartnerProfileV1Page />} />
+                  <Route path="/partner/locations" element={<PartnerLocationsV1Page />} />
+                  <Route path="/partner/users" element={<PartnerUsersV1Page />} />
+                  <Route path="/partner/terms" element={<PartnerTermsV1Page />} />
+                </Route>
               </Route>
-            </Route>
-            <Route path="*" element={<NotFoundPage />} />
-          </Routes>
-        </LegalGateProvider>
+              <Route path="*" element={<NotFoundPage />} />
+            </Routes>
+          </LegalGateProvider>
+        </PartnerSubscriptionProvider>
       </PortalProvider>
     </AuthProvider>
   );
