@@ -1,5 +1,6 @@
 import { AccessState } from "../access/accessState";
 import type { PortalMeResponse } from "../api/clientPortal";
+import type { CustomerType, SubscriptionState } from "@shared/subscriptions/catalog";
 
 export type ClientJourneyState =
   | "ANON"
@@ -11,17 +12,18 @@ export type ClientJourneyState =
   | "NEEDS_DOCUMENTS"
   | "NEEDS_SIGNATURE"
   | "NEEDS_PAYMENT"
+  | "TRIAL_ACTIVE"
   | "ACTIVE"
   | "ERROR";
 
 export type JourneyDraft = {
   selectedPlan?: string | null;
-  customerType?: "INDIVIDUAL" | "SOLE_PROPRIETOR" | "LEGAL_ENTITY" | null;
+  customerType?: CustomerType | null;
   profileCompleted?: boolean;
   documentsGenerated?: boolean;
   documentsViewed?: boolean;
   documentsSigned?: boolean;
-  paymentStatus?: "pending" | "processing" | "failed" | "succeeded";
+  subscriptionState?: SubscriptionState;
 };
 
 export const JOURNEY_ROUTE_BY_STATE: Record<ClientJourneyState, string> = {
@@ -34,9 +36,12 @@ export const JOURNEY_ROUTE_BY_STATE: Record<ClientJourneyState, string> = {
   NEEDS_DOCUMENTS: "/connect/documents",
   NEEDS_SIGNATURE: "/connect/sign",
   NEEDS_PAYMENT: "/connect/payment",
+  TRIAL_ACTIVE: "/dashboard",
   ACTIVE: "/dashboard",
   ERROR: "/dashboard",
 };
+
+const isPaidPending = (s?: SubscriptionState) => s === "PAYMENT_PENDING" || s === "PAYMENT_PROCESSING";
 
 export function resolveClientJourneyState(params: {
   authStatus: "loading" | "authenticated" | "unauthenticated";
@@ -48,20 +53,16 @@ export function resolveClientJourneyState(params: {
   if (authStatus !== "authenticated") return "ANON";
   if (isDemo) return "DEMO_SHOWCASE";
 
-  if (client?.access_state === AccessState.ACTIVE || draft.paymentStatus === "succeeded") {
-    return "ACTIVE";
-  }
+  if (client?.access_state === AccessState.ACTIVE || draft.subscriptionState === "ACTIVE") return "ACTIVE";
+  if (draft.subscriptionState === "TRIAL_ACTIVE") return "TRIAL_ACTIVE";
 
-  if (!client?.org && !draft.selectedPlan && !draft.customerType && !draft.profileCompleted) {
-    return "AUTHENTICATED_UNCONNECTED";
-  }
-
+  if (!client?.org && !draft.selectedPlan && !draft.customerType && !draft.profileCompleted) return "AUTHENTICATED_UNCONNECTED";
   if (!draft.selectedPlan) return "NEEDS_PLAN";
   if (!draft.customerType) return "NEEDS_CUSTOMER_TYPE";
   if (!draft.profileCompleted) return "NEEDS_PROFILE";
   if (!draft.documentsGenerated || !draft.documentsViewed) return "NEEDS_DOCUMENTS";
   if (!draft.documentsSigned) return "NEEDS_SIGNATURE";
-  if (draft.paymentStatus !== "pending" && draft.paymentStatus !== "processing") return "NEEDS_PAYMENT";
-
+  if (draft.selectedPlan === "CLIENT_FREE_TRIAL") return "TRIAL_ACTIVE";
+  if (!isPaidPending(draft.subscriptionState)) return "NEEDS_PAYMENT";
   return "NEEDS_PAYMENT";
 }

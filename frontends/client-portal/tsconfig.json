@@ -32,7 +32,8 @@
     "src",
     "types",
     "../shared/brand",
-    "../shared/lib"
+    "../shared/lib",
+    "../shared/subscriptions"
   ],
   "references": [
     {

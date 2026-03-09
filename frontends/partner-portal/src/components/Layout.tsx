@@ -14,12 +14,14 @@ import { useLegalGate } from "../auth/LegalGateContext";
 import { usePortal } from "../auth/PortalContext";
 import { useTranslation } from "react-i18next";
 import { BrandHeader, BrandSidebar, PageShell } from "@shared/brand/components";
+import { usePartnerSubscription } from "../auth/PartnerSubscriptionContext";
 
 export function Layout() {
   const { user, logout } = useAuth();
   const { portal } = usePortal();
   const { isBlocked, isFeatureDisabled } = useLegalGate();
   const { t } = useTranslation();
+  const { draft } = usePartnerSubscription();
   const location = useLocation();
   const capabilities = new Set((portal?.capabilities ?? []).map((cap) => cap.toUpperCase()));
   const modulesPayload = portal?.entitlements_snapshot?.modules as Record<string, { enabled?: boolean }> | undefined;
@@ -126,6 +128,7 @@ export function Layout() {
           }
         />
         <div className="brand-content">
+          {draft.selectedPlan ? <div className="card"><div className="muted">Subscription draft: {draft.selectedPlan} · {draft.subscriptionState ?? "NONE"}</div></div> : null}
           {isFeatureDisabled ? (
             <div className="card">
               <div className="muted">Онбординг выключен администратором.</div>
