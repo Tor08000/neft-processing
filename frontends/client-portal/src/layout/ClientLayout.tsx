@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { useClient } from "../auth/ClientContext";
+import { useClientJourney } from "../auth/ClientJourneyContext";
+import { resolveActiveClientMode, resolveAvailableClientModes, type ClientMode } from "../auth/clientModes";
 import { useLegalGate } from "../auth/LegalGateContext";
 import { isPwaMode } from "../pwa/mode";
 import { PwaNotificationsPrompt } from "../pwa/PwaNotificationsPrompt";
@@ -27,8 +29,6 @@ import "./client-layout.css";
 
 const MODE_STORAGE_KEY = "neft.client.mode";
 
-export type ClientMode = "personal" | "fleet";
-
 export type ClientNavItem = {
   to: string;
   label: string;
@@ -37,7 +37,7 @@ export type ClientNavItem = {
   audience: "all" | "fleet";
 };
 
-const getInitialMode = (): ClientMode => {
+const getStoredMode = (): ClientMode => {
   const saved = localStorage.getItem(MODE_STORAGE_KEY);
   if (saved === "fleet" || saved === "personal") {
     return saved;
@@ -46,118 +46,22 @@ const getInitialMode = (): ClientMode => {
 };
 
 const navItems: ClientNavItem[] = [
-  {
-    to: "/dashboard",
-    label: "Обзор",
-    shortLabel: "Обзор",
-    icon: <LayoutDashboard size={18} />,
-    audience: "all",
-  },
-  {
-    to: "/vehicles",
-    label: "Автомобили",
-    shortLabel: "Авто",
-    icon: <Package size={18} />,
-    audience: "all",
-  },
-  {
-    to: "/cards",
-    label: "Карты",
-    shortLabel: "Карты",
-    icon: <ShoppingCart size={18} />,
-    audience: "all",
-  },
-  {
-    to: "/spend/transactions",
-    label: "Расходы",
-    shortLabel: "Расходы",
-    icon: <FileSpreadsheet size={18} />,
-    audience: "all",
-  },
-  {
-    to: "/analytics",
-    label: "Аналитика",
-    shortLabel: "Аналитика",
-    icon: <LineChart size={18} />,
-    audience: "all",
-  },
-  {
-    to: "/documents",
-    label: "Документы",
-    shortLabel: "Док",
-    icon: <FileText size={18} />,
-    audience: "all",
-  },
-  {
-    to: "/client/support",
-    label: "Поддержка",
-    shortLabel: "Поддержка",
-    icon: <MessageCircle size={18} />,
-    audience: "all",
-  },
-  {
-    to: "/settings",
-    label: "Настройки",
-    shortLabel: "Настройки",
-    icon: <Settings size={18} />,
-    audience: "all",
-  },
-  {
-    to: "/fleet/groups",
-    label: "Автопарк",
-    shortLabel: "Автопарк",
-    icon: <Package size={18} />,
-    audience: "fleet",
-  },
-  {
-    to: "/logistics/fleet",
-    label: "Логистика · Автопарк",
-    shortLabel: "Логистика",
-    icon: <Package size={18} />,
-    audience: "fleet",
-  },
-  {
-    to: "/logistics/trips",
-    label: "Логистика · Рейсы",
-    shortLabel: "Рейсы",
-    icon: <Package size={18} />,
-    audience: "fleet",
-  },
-  {
-    to: "/logistics/fuel-control",
-    label: "Логистика · Топливо",
-    shortLabel: "Топливо",
-    icon: <Package size={18} />,
-    audience: "fleet",
-  },
-  {
-    to: "/stations-map",
-    label: "Карта станций",
-    shortLabel: "Станции",
-    icon: <Package size={18} />,
-    audience: "all",
-  },
-  {
-    to: "/fleet/employees",
-    label: "Пользователи",
-    shortLabel: "Люди",
-    icon: <Workflow size={18} />,
-    audience: "fleet",
-  },
-  {
-    to: "/limits/templates",
-    label: "Лимиты",
-    shortLabel: "Лимиты",
-    icon: <ClipboardCheck size={18} />,
-    audience: "all",
-  },
-  {
-    to: "/client/reports",
-    label: "Отчёты",
-    shortLabel: "Отчёты",
-    icon: <FileSpreadsheet size={18} />,
-    audience: "fleet",
-  },
+  { to: "/dashboard", label: "Обзор", shortLabel: "Обзор", icon: <LayoutDashboard size={18} />, audience: "all" },
+  { to: "/vehicles", label: "Автомобили", shortLabel: "Авто", icon: <Package size={18} />, audience: "all" },
+  { to: "/cards", label: "Карты", shortLabel: "Карты", icon: <ShoppingCart size={18} />, audience: "all" },
+  { to: "/spend/transactions", label: "Расходы", shortLabel: "Расходы", icon: <FileSpreadsheet size={18} />, audience: "all" },
+  { to: "/analytics", label: "Аналитика", shortLabel: "Аналитика", icon: <LineChart size={18} />, audience: "all" },
+  { to: "/documents", label: "Документы", shortLabel: "Док", icon: <FileText size={18} />, audience: "all" },
+  { to: "/client/support", label: "Поддержка", shortLabel: "Поддержка", icon: <MessageCircle size={18} />, audience: "all" },
+  { to: "/settings", label: "Настройки", shortLabel: "Настройки", icon: <Settings size={18} />, audience: "all" },
+  { to: "/fleet/groups", label: "Автопарк", shortLabel: "Автопарк", icon: <Package size={18} />, audience: "fleet" },
+  { to: "/logistics/fleet", label: "Логистика · Автопарк", shortLabel: "Логистика", icon: <Package size={18} />, audience: "fleet" },
+  { to: "/logistics/trips", label: "Логистика · Рейсы", shortLabel: "Рейсы", icon: <Package size={18} />, audience: "fleet" },
+  { to: "/logistics/fuel-control", label: "Логистика · Топливо", shortLabel: "Топливо", icon: <Package size={18} />, audience: "fleet" },
+  { to: "/stations-map", label: "Карта станций", shortLabel: "Станции", icon: <Package size={18} />, audience: "all" },
+  { to: "/fleet/employees", label: "Пользователи", shortLabel: "Люди", icon: <Workflow size={18} />, audience: "fleet" },
+  { to: "/limits/templates", label: "Лимиты", shortLabel: "Лимиты", icon: <ClipboardCheck size={18} />, audience: "all" },
+  { to: "/client/reports", label: "Отчёты", shortLabel: "Отчёты", icon: <FileSpreadsheet size={18} />, audience: "fleet" },
 ];
 
 interface ClientLayoutProps {
@@ -167,17 +71,28 @@ interface ClientLayoutProps {
 export function ClientLayout({ pwaMode = isPwaMode }: ClientLayoutProps) {
   const { user, logout } = useAuth();
   const { client } = useClient();
+  const { state: journeyState, draft } = useClientJourney();
   const { isFeatureDisabled } = useLegalGate();
   const location = useLocation();
   const [theme, setTheme] = useState(getInitialTheme());
-  const [mode, setMode] = useState<ClientMode>(getInitialMode());
+  const [mode, setMode] = useState<ClientMode>(getStoredMode());
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const isDemoAccount = isDemoClient(user?.email ?? null);
 
+  const availableModes = useMemo(
+    () => resolveAvailableClientModes({ journeyState, draft, client }),
+    [journeyState, draft, client],
+  );
+
   useEffect(() => {
-    localStorage.setItem(MODE_STORAGE_KEY, mode);
-    window.dispatchEvent(new CustomEvent("neftc:client-mode", { detail: mode }));
-  }, [mode]);
+    const nextMode = resolveActiveClientMode(mode, availableModes);
+    if (nextMode !== mode) {
+      setMode(nextMode);
+      return;
+    }
+    localStorage.setItem(MODE_STORAGE_KEY, nextMode);
+    window.dispatchEvent(new CustomEvent("neftc:client-mode", { detail: nextMode }));
+  }, [availableModes, mode]);
 
   const hasActivatedClient = Boolean(client?.org?.id);
 
@@ -209,7 +124,12 @@ export function ClientLayout({ pwaMode = isPwaMode }: ClientLayoutProps) {
           items={filteredItems}
           userEmail={user?.email}
           mode={mode}
-          onToggleMode={() => setMode((prev) => (prev === "fleet" ? "personal" : "fleet"))}
+          availableModes={availableModes}
+          onSelectMode={(nextMode) => {
+            if (availableModes.includes(nextMode)) {
+              setMode(nextMode);
+            }
+          }}
           theme={theme}
           onToggleTheme={() => setTheme(toggleTheme())}
           onToggleSidebar={() => setIsSidebarCollapsed((prev) => !prev)}

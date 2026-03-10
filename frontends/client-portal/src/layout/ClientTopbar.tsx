@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
-import type { ClientMode, ClientNavItem } from "./ClientLayout";
+import type { ClientMode } from "../auth/clientModes";
+import type { ClientNavItem } from "./ClientLayout";
 import { Bell } from "../components/icons";
 
 interface ClientTopbarProps {
@@ -8,8 +9,9 @@ interface ClientTopbarProps {
   items: ClientNavItem[];
   userEmail?: string | null;
   mode: ClientMode;
+  availableModes: ClientMode[];
   theme: "light" | "dark";
-  onToggleMode: () => void;
+  onSelectMode: (mode: ClientMode) => void;
   onToggleTheme: () => void;
   onToggleSidebar: () => void;
   onLogout: () => void;
@@ -22,21 +24,27 @@ const getSectionLabel = (activePath: string, items: ClientNavItem[]) => {
   return match?.label ?? "Обзор";
 };
 
+const MODE_LABELS: Record<ClientMode, string> = {
+  fleet: "Автопарк",
+  personal: "Частник",
+};
+
 export function ClientTopbar({
   title,
   activePath,
   items,
   userEmail,
   mode,
+  availableModes,
   theme,
-  onToggleMode,
+  onSelectMode,
   onToggleTheme,
   onToggleSidebar,
   onLogout,
 }: ClientTopbarProps) {
   const sectionLabel = getSectionLabel(activePath, items);
   const themeLabel = theme === "dark" ? "Тёмная" : "Светлая";
-  const modeLabel = mode === "fleet" ? "Автопарк" : "Частник";
+  const modeLabel = MODE_LABELS[mode];
 
   return (
     <header className="neftc-topbar">
@@ -69,9 +77,23 @@ export function ClientTopbar({
         <button type="button" className="neftc-pill" onClick={onToggleTheme}>
           Тема: {themeLabel}
         </button>
-        <button type="button" className="neftc-pill" onClick={onToggleMode}>
-          Режим: {modeLabel}
-        </button>
+        {availableModes.length > 1 ? (
+          <label className="neftc-pill" style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+            Режим:
+            <select
+              aria-label="Режим клиента"
+              value={mode}
+              onChange={(event) => onSelectMode(event.target.value as ClientMode)}
+              className="neft-input"
+            >
+              {availableModes.map((item) => (
+                <option key={item} value={item}>
+                  {MODE_LABELS[item]}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
         <div className="neftc-topbar__profile">
           <div className="neftc-topbar__profile-meta">
             <div className="neftc-topbar__profile-name">{userEmail ?? "user@neft.app"}</div>

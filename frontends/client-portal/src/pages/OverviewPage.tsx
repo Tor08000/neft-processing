@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import type { ClientMode } from "../layout/ClientLayout";
+import type { ClientMode } from "../auth/clientModes";
 import { HeroSummaryCard } from "../components/overview/HeroSummaryCard";
 import { VehicleCard } from "../components/overview/VehicleCard";
 import { OperationRow } from "../components/overview/OperationRow";
