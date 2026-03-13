@@ -24,6 +24,8 @@ export type JourneyDraft = {
   documentsViewed?: boolean;
   documentsSigned?: boolean;
   subscriptionState?: SubscriptionState;
+  profileData?: Partial<Record<"fullName"|"legalName"|"phone"|"email"|"inn"|"kpp"|"ogrn"|"ogrnip"|"address"|"contact", string>>;
+  signAccepted?: boolean;
 };
 
 export const JOURNEY_ROUTE_BY_STATE: Record<ClientJourneyState, string> = {

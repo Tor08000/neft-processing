@@ -9,6 +9,8 @@ import { StatusPage } from "./StatusPage";
 import { ModuleUnavailablePage } from "../pages/ModuleUnavailablePage";
 import { BillingOverdueState } from "./BillingOverdueState";
 import { isDemoClient } from "@shared/demo/demo";
+import { useClientJourney } from "../auth/ClientJourneyContext";
+import { getPlanByCode } from "@shared/subscriptions/catalog";
 
 type AccessGateProps = {
   capability?: string;
@@ -144,6 +146,20 @@ const PortalStateView = ({
   }
 };
 
+
+const LimitedCabinetProgress = () => {
+  const { state, nextRoute, draft } = useClientJourney();
+  const plan = getPlanByCode(draft.selectedPlan);
+  return (
+    <div className="stack muted small" style={{ marginTop: 8 }}>
+      <div>Current stage: {state}</div>
+      <div>Selected plan: {plan?.title ?? "Not selected"}</div>
+      <div>Customer type: {draft.customerType ?? "Not selected"}</div>
+      <div>Next step: {nextRoute}</div>
+    </div>
+  );
+};
+
 const AccessStateView = ({
   state,
   title = "Раздел",
@@ -170,7 +186,7 @@ const AccessStateView = ({
       return (
         <StatusPage
           title="Подключить компанию"
-          description="Завершите подключение компании, чтобы открыть этот раздел."
+          description={<>Завершите подключение компании, чтобы открыть этот раздел.<LimitedCabinetProgress /></>}
           actionLabel="Перейти к подключению"
           actionTo="/connect"
         />
@@ -179,7 +195,7 @@ const AccessStateView = ({
       return (
         <StatusPage
           title="Выберите тариф"
-          description="Для доступа к разделу нужен активный тариф."
+          description={<>Для доступа к разделу нужен активный тариф.<LimitedCabinetProgress /></>}
           actionLabel="Продолжить подключение"
           actionTo="/connect/plan"
           secondaryAction={
@@ -193,7 +209,7 @@ const AccessStateView = ({
       return (
         <StatusPage
           title="Подпишите договор"
-          description="Завершите подписание договора, чтобы открыть этот раздел."
+          description={<>Завершите подписание договора, чтобы открыть этот раздел.<LimitedCabinetProgress /></>}
           actionLabel="Перейти к подписанию"
           actionTo="/connect/sign"
         />
