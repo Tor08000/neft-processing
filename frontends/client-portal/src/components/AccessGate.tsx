@@ -150,11 +150,21 @@ const PortalStateView = ({
 const LimitedCabinetProgress = () => {
   const { state, nextRoute, draft } = useClientJourney();
   const plan = getPlanByCode(draft.selectedPlan);
+  const remaining = [
+    !draft.selectedPlan ? "choose plan" : null,
+    !draft.customerType ? "choose customer type" : null,
+    !draft.profileCompleted ? "complete profile" : null,
+    !draft.documentsViewed ? "review documents" : null,
+    !draft.signAccepted ? "accept signing" : null,
+    draft.selectedPlan !== "CLIENT_FREE_TRIAL" && draft.subscriptionState !== "ACTIVE" ? "complete payment" : null,
+  ].filter(Boolean);
+
   return (
     <div className="stack muted small" style={{ marginTop: 8 }}>
       <div>Current stage: {state}</div>
       <div>Selected plan: {plan?.title ?? "Not selected"}</div>
       <div>Customer type: {draft.customerType ?? "Not selected"}</div>
+      <div>Remaining: {remaining.length ? remaining.join(" → ") : "Setup complete"}</div>
       <div>Next step: {nextRoute}</div>
     </div>
   );

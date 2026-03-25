@@ -15,12 +15,17 @@ describe("resolveClientJourneyState", () => {
     expect(resolveClientJourneyState({ authStatus: "authenticated", isDemo: false, client: null, draft: { selectedPlan: "CLIENT_START" } })).toBe("NEEDS_CUSTOMER_TYPE");
     expect(resolveClientJourneyState({ authStatus: "authenticated", isDemo: false, client: null, draft: { selectedPlan: "CLIENT_START", customerType: "INDIVIDUAL" } })).toBe("NEEDS_PROFILE");
     expect(resolveClientJourneyState({ authStatus: "authenticated", isDemo: false, client: null, draft: { selectedPlan: "CLIENT_START", customerType: "INDIVIDUAL", profileCompleted: true } })).toBe("NEEDS_DOCUMENTS");
-    expect(resolveClientJourneyState({ authStatus: "authenticated", isDemo: false, client: null, draft: { selectedPlan: "CLIENT_START", customerType: "INDIVIDUAL", profileCompleted: true, documentsGenerated: true, documentsViewed: true } })).toBe("NEEDS_SIGNATURE");
-    expect(resolveClientJourneyState({ authStatus: "authenticated", isDemo: false, client: null, draft: { selectedPlan: "CLIENT_START", customerType: "INDIVIDUAL", profileCompleted: true, documentsGenerated: true, documentsViewed: true, documentsSigned: true, subscriptionState: "PAYMENT_PENDING" } })).toBe("NEEDS_PAYMENT");
+    expect(resolveClientJourneyState({ authStatus: "authenticated", isDemo: false, client: null, draft: { selectedPlan: "CLIENT_START", customerType: "INDIVIDUAL", profileCompleted: true, documentsByCode: { service_agreement: "reviewed", onboarding_ack: "reviewed", personal_data_consent: "reviewed" } } })).toBe("NEEDS_SIGNATURE");
+    expect(resolveClientJourneyState({ authStatus: "authenticated", isDemo: false, client: null, draft: { selectedPlan: "CLIENT_START", customerType: "INDIVIDUAL", profileCompleted: true, documentsByCode: { service_agreement: "reviewed", onboarding_ack: "reviewed" }, documentsSigned: true, signAccepted: true, subscriptionState: "PAYMENT_PENDING" } })).toBe("NEEDS_PAYMENT");
+  });
+
+  it("keeps paid users on payment for failure and processing states", () => {
+    expect(resolveClientJourneyState({ authStatus: "authenticated", isDemo: false, client: null, draft: { selectedPlan: "CLIENT_START", customerType: "INDIVIDUAL", profileCompleted: true, documentsByCode: { service_agreement: "reviewed", onboarding_ack: "reviewed" }, documentsSigned: true, signAccepted: true, subscriptionState: "PAYMENT_FAILED" } })).toBe("NEEDS_PAYMENT");
+    expect(resolveClientJourneyState({ authStatus: "authenticated", isDemo: false, client: null, draft: { selectedPlan: "CLIENT_START", customerType: "INDIVIDUAL", profileCompleted: true, documentsByCode: { service_agreement: "reviewed", onboarding_ack: "reviewed" }, documentsSigned: true, signAccepted: true, subscriptionState: "PAYMENT_PROCESSING" } })).toBe("NEEDS_PAYMENT");
   });
 
   it("supports free trial activation", () => {
-    expect(resolveClientJourneyState({ authStatus: "authenticated", isDemo: false, client: null, draft: { selectedPlan: "CLIENT_FREE_TRIAL", customerType: "INDIVIDUAL", profileCompleted: true, documentsGenerated: true, documentsViewed: true, documentsSigned: true } })).toBe("TRIAL_ACTIVE");
+    expect(resolveClientJourneyState({ authStatus: "authenticated", isDemo: false, client: null, draft: { selectedPlan: "CLIENT_FREE_TRIAL", customerType: "INDIVIDUAL", profileCompleted: true, documentsByCode: { service_agreement: "reviewed", onboarding_ack: "reviewed", personal_data_consent: "reviewed" }, documentsSigned: true, signAccepted: true } })).toBe("TRIAL_ACTIVE");
   });
 
   it("returns active when payment succeeds", () => {
