@@ -37,6 +37,10 @@ frontends/**/coverage/
 frontends/**/.vite/
 frontends/**/public/brand/neft-platform-mark*.png
 frontends/**/public/favicon.ico
+Microsoft/
+login.json
+login.jsontype
+.codex/
 
 # OpenAPI diagnostics artifacts
 docs/diag/openapi/*.openapi.json
