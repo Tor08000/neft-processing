@@ -5,6 +5,7 @@ import { AccessGate } from "./AccessGate";
 
 const useAuthMock = vi.fn();
 const useClientMock = vi.fn();
+const useClientJourneyMock = vi.fn();
 
 vi.mock("../auth/AuthContext", () => ({
   useAuth: () => useAuthMock(),
@@ -14,9 +15,21 @@ vi.mock("../auth/ClientContext", () => ({
   useClient: () => useClientMock(),
 }));
 
+vi.mock("../auth/ClientJourneyContext", () => ({
+  useClientJourney: () => useClientJourneyMock(),
+}));
+
 describe("AccessGate", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    useClientJourneyMock.mockReturnValue({
+      state: "AUTHENTICATED_UNCONNECTED",
+      nextRoute: "/connect",
+      draft: {},
+      updateDraft: vi.fn(),
+      resetDraft: vi.fn(),
+      ensureRoute: vi.fn(),
+    });
   });
 
   it("renders dashboard for demo client on /client/dashboard when portal/me is NEEDS_ONBOARDING", () => {
@@ -95,7 +108,7 @@ describe("AccessGate", () => {
   });
 
 
-  it("Case A: onboarding CTA navigates once to /onboarding", () => {
+  it("Case A: onboarding CTA navigates once to /connect", () => {
     useAuthMock.mockReturnValue({
       user: { email: "client@corp.local" },
     });
@@ -124,7 +137,7 @@ describe("AccessGate", () => {
               </AccessGate>
             }
           />
-          <Route path="/onboarding" element={<div>Onboarding Route</div>} />
+          <Route path="/connect" element={<div>Connect Route</div>} />
         </Routes>
       </MemoryRouter>,
     );
@@ -132,7 +145,7 @@ describe("AccessGate", () => {
     const cta = screen.getByRole("link", { name: "Перейти к подключению" });
     fireEvent.click(cta);
 
-    expect(screen.getByText("Onboarding Route")).toBeInTheDocument();
+    expect(screen.getByText("Connect Route")).toBeInTheDocument();
     expect(screen.queryByText("Подключить компанию")).not.toBeInTheDocument();
   });
 });

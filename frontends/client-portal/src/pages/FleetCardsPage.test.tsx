@@ -79,6 +79,6 @@ describe("FleetCardsPage", () => {
     const submitButton = screen.getByRole("button", { name: /Создать/i });
     await userEvent.click(submitButton);
 
-    expect(await screen.findByText(/Masked PAN/)).toBeInTheDocument();
+    expect(await screen.findByText("Masked PAN: 6 цифр + ****** + 4 цифры")).toBeInTheDocument();
   });
 });

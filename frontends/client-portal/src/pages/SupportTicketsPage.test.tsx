@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { App } from "../App";
@@ -75,6 +75,6 @@ describe("Support tickets list", () => {
     );
 
     expect(await screen.findByText("Проблема с лимитами")).toBeInTheDocument();
-    expect(screen.getByText("Открыто")).toBeInTheDocument();
+    expect(within(screen.getByRole("table")).getByText("Открыто")).toBeInTheDocument();
   });
 });

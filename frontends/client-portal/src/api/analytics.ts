@@ -4,8 +4,9 @@ import type {
   AnalyticsDailyMetricsResponse,
   AnalyticsDeclinesResponse,
   AnalyticsDocumentsSummaryResponse,
+  AnalyticsExportDownloadResponse,
+  AnalyticsExportJob,
   AnalyticsExportRequest,
-  AnalyticsExportResponse,
   AnalyticsExportsSummaryResponse,
   AnalyticsOrdersSummaryResponse,
   AnalyticsSpendSummaryResponse,
@@ -129,10 +130,25 @@ export function fetchSpendSummary(
 export function createAnalyticsExport(
   user: AuthSession | null,
   payload: AnalyticsExportRequest,
-): Promise<AnalyticsExportResponse> {
-  return request<AnalyticsExportResponse>(
+): Promise<AnalyticsExportJob> {
+  return request<AnalyticsExportJob>(
     "/bi/exports",
     { method: "POST", body: JSON.stringify(payload) },
+    withToken(user),
+  );
+}
+
+export function getAnalyticsExportJob(user: AuthSession | null, exportId: string): Promise<AnalyticsExportJob> {
+  return request<AnalyticsExportJob>(`/bi/exports/${encodeURIComponent(exportId)}`, { method: "GET" }, withToken(user));
+}
+
+export function downloadAnalyticsExport(
+  user: AuthSession | null,
+  exportId: string,
+): Promise<AnalyticsExportDownloadResponse> {
+  return request<AnalyticsExportDownloadResponse>(
+    `/bi/exports/${encodeURIComponent(exportId)}/download`,
+    { method: "GET" },
     withToken(user),
   );
 }

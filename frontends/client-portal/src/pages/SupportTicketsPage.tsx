@@ -34,7 +34,7 @@ export function SupportTicketsPage() {
     if (!user) return;
     setIsLoading(true);
     fetchSupportTickets(user, filters)
-      .then((response) => setItems(response.items))
+      .then((response) => setItems(response.items ?? []))
       .catch((err: Error) => setError(err.message))
       .finally(() => setIsLoading(false));
   }, [user, filters]);

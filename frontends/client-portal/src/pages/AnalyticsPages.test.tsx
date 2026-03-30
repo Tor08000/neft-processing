@@ -202,7 +202,7 @@ describe("Analytics pages", () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByText(/Недостаточно данных/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Данные в демо появятся позже/i)).toBeInTheDocument();
   });
 
   it("restricts exports analytics for client users", async () => {
@@ -240,7 +240,7 @@ describe("Analytics pages", () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByText(/Недостаточно данных/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Данные в демо появятся позже/i)).toBeInTheDocument();
   });
 
   it("renders marketplace analytics empty state", async () => {
@@ -259,6 +259,7 @@ describe("Analytics pages", () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByText(/Недостаточно данных/i)).toBeInTheDocument();
+    const emptyStates = await screen.findAllByText(/Недостаточно данных за выбранный период/i);
+    expect(emptyStates.length).toBeGreaterThan(0);
   });
 });

@@ -50,7 +50,7 @@ describe("FleetSpendPage", () => {
 
     expect(await screen.findByText(/Fleet · Spend/i)).toBeInTheDocument();
     expect(screen.getByText(/Группа/i)).toBeInTheDocument();
-    expect(screen.getByText(/Карта/i)).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Card A" })).toBeInTheDocument();
 
     const exportButton = screen.getByRole("button", { name: /Экспорт CSV/i });
     await userEvent.click(exportButton);

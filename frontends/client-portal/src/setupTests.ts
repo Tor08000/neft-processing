@@ -9,4 +9,5 @@ beforeEach(() => {
     randomUUID: () => "test-uuid-0000-0000-0000-000000000000",
   });
   vi.stubEnv("VITE_API_BASE_URL", "/api");
+  vi.stubEnv("VITE_DEMO_MODE", "true");
 });

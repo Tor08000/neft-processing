@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { createAnalyticsExport, fetchSpendSummary } from "../api/analytics";
+import { createAnalyticsExport, downloadAnalyticsExport, fetchSpendSummary, getAnalyticsExportJob } from "../api/analytics";
 import { ApiError } from "../api/http";
 import { useAuth } from "../auth/AuthContext";
 import { AnalyticsChartPanel } from "../components/analytics/AnalyticsChartPanel";
@@ -31,6 +31,7 @@ export function AnalyticsSpendPage() {
   const [exportStatus, setExportStatus] = useState<string | null>(null);
   const [demoFallback, setDemoFallback] = useState(false);
   const hasData = (summary?.total_spend ?? 0) > 0;
+  const canExport = Boolean(summary?.export_dataset);
 
   const canAccess = hasAnyRole(user, ["CLIENT_OWNER", "CLIENT_ACCOUNTANT", "CLIENT_FLEET_MANAGER", "CLIENT_USER"]);
   const isDemoClientAccount = isDemoClient(user?.email ?? null);
@@ -87,23 +88,26 @@ export function AnalyticsSpendPage() {
     [summary],
   );
 
-  const handleExport = () => {
-    if (!user || !summary?.export_available || !summary.export_dataset) return;
+  const handleExport = async () => {
+    if (!user || !summary?.export_dataset) return;
     setExportStatus(t("analytics.exports.exporting"));
-    createAnalyticsExport(user, { dataset: summary.export_dataset, from: filters.from, to: filters.to })
-      .then((resp) => {
-        if (resp.download_url) {
-          window.open(resp.download_url, "_blank", "noopener");
-        }
-        setExportStatus(t("analytics.exports.exportQueued"));
-      })
-      .catch((err: unknown) => {
-        if (err instanceof ApiError) {
-          setExportStatus(`${t("analytics.errors.exportFailed")} (${err.status})`);
-          return;
-        }
-        setExportStatus(t("analytics.errors.exportFailed"));
-      });
+    try {
+      let job = await createAnalyticsExport(user, { dataset: summary.export_dataset, from: filters.from, to: filters.to });
+      if (!job.ready && job.status !== "DELIVERED") {
+        job = await getAnalyticsExportJob(user, job.id);
+      }
+      if (job.ready || job.status === "DELIVERED") {
+        const download = await downloadAnalyticsExport(user, job.id);
+        window.open(download.url, "_blank", "noopener");
+      }
+      setExportStatus(t("analytics.exports.exportQueued"));
+    } catch (err: unknown) {
+      if (err instanceof ApiError) {
+        setExportStatus(`${t("analytics.errors.exportFailed")} (${err.status})`);
+        return;
+      }
+      setExportStatus(t("analytics.errors.exportFailed"));
+    }
   };
 
   if (!user || !canAccess) {
@@ -184,9 +188,9 @@ export function AnalyticsSpendPage() {
               type="button"
               className="secondary"
               onClick={handleExport}
-              disabled={!summary.export_available}
+              disabled={!canExport}
             >
-              {summary.export_available ? t("analytics.spend.export") : t("analytics.spend.exportDisabled")}
+              {canExport ? t("analytics.spend.export") : t("analytics.spend.exportDisabled")}
             </button>
           }
         >

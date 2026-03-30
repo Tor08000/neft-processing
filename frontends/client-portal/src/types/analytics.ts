@@ -99,8 +99,19 @@ export interface AnalyticsExportRequest {
   to: string;
 }
 
-export interface AnalyticsExportResponse {
+export interface AnalyticsExportJob {
+  id: string;
+  dataset: string;
+  status: string;
+  format: string;
+  created_at: string;
+  ready: boolean;
+  error_message?: string | null;
+}
+
+export interface AnalyticsExportDownloadResponse {
   id: string;
   status: string;
-  download_url?: string | null;
+  url: string;
+  sha256?: string | null;
 }

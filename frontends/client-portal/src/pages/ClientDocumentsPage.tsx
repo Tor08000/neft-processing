@@ -321,18 +321,18 @@ export function ClientDocumentsPage() {
       {isLoading ? <AppLoadingState /> : null}
       {error ? (
         <ClientErrorState
-          title="Документы недоступны"
-          description="Не удалось получить список документов. Попробуйте обновить страницу."
+          title={t("documentsPage.errors.loadFailedTitle")}
+          description={t("documentsPage.errors.loadFailedDescription")}
           onRetry={() => setDebouncedFilters((prev) => ({ ...prev }))}
         />
       ) : null}
       {demoFallback ? (
         <DemoEmptyState
-          title="Документы в демо появятся позже"
-          description="В рабочем контуре здесь будет архив счетов, актов и договоров."
+          title={t("documentsPage.demo.title")}
+          description={t("documentsPage.demo.description")}
           action={
             <Link className="ghost neft-btn-secondary" to="/dashboard">
-              Перейти в обзор
+              {t("documentsPage.demo.action")}
             </Link>
           }
         />
@@ -340,11 +340,11 @@ export function ClientDocumentsPage() {
       {!isLoading && !error && items.length === 0 && !demoFallback ? (
         isDemoClientAccount ? (
           <DemoEmptyState
-            title="Документы в демо появятся позже"
-            description="В рабочем контуре здесь будет архив счетов, актов и договоров."
+            title={t("documentsPage.demo.title")}
+            description={t("documentsPage.demo.description")}
             action={
               <Link className="ghost neft-btn-secondary" to="/dashboard">
-                Перейти в обзор
+                {t("documentsPage.demo.action")}
               </Link>
             }
           />

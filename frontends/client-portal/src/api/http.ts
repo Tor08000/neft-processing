@@ -71,8 +71,16 @@ const toMessageString = (value: unknown, fallback: string): string => {
   return fallback;
 };
 
-const parseJsonSuccessPayload = <T>(text: string): T => {
+const isLikelyJsonPayload = (text: string): boolean => {
+  const trimmed = text.trim();
+  return trimmed.startsWith("{") || trimmed.startsWith("[");
+};
+
+const parseSuccessPayload = <T>(text: string, isJson: boolean): T => {
   if (!text.trim()) {
+    return {} as T;
+  }
+  if (!isJson && !isLikelyJsonPayload(text)) {
     return {} as T;
   }
   return JSON.parse(text) as T;
@@ -372,7 +380,7 @@ export async function request<T>(
     let payload:
       | { error?: unknown; message?: unknown; request_id?: string; details?: unknown; detail?: unknown }
       | null = null;
-    if (isJson && text) {
+    if ((isJson || isLikelyJsonPayload(text)) && text) {
       try {
         payload = JSON.parse(text) as {
           error?: unknown;
@@ -414,12 +422,8 @@ export async function request<T>(
     return {} as T;
   }
 
-  if (!isJson) {
-    return {} as Promise<T>;
-  }
-
   const text = await readResponseText();
-  return parseJsonSuccessPayload<T>(text);
+  return parseSuccessPayload<T>(text, isJson);
 }
 
 export interface ApiResponse<T> {
@@ -510,7 +514,7 @@ export async function requestWithMeta<T>(
     let payload:
       | { error?: unknown; message?: unknown; request_id?: string; details?: unknown; detail?: unknown }
       | null = null;
-    if (isJson && text) {
+    if ((isJson || isLikelyJsonPayload(text)) && text) {
       try {
         payload = JSON.parse(text) as {
           error?: unknown;
@@ -552,7 +556,7 @@ export async function requestWithMeta<T>(
     return { data: {} as T, correlationId, status: response.status };
   }
 
-  const data = isJson ? parseJsonSuccessPayload<T>(await readResponseText()) : ({} as T);
+  const data = parseSuccessPayload<T>(await readResponseText(), isJson);
   return { data, correlationId, status: response.status };
 }
 

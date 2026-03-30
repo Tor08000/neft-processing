@@ -1,18 +1,25 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "../App";
+import { AuthProvider } from "../auth/AuthContext";
 import type { AuthSession } from "../api/types";
+import { OperationDetailsPage } from "./OperationDetailsPage";
 
 const session: AuthSession = {
   token: "token-1",
   email: "client@demo.test",
-  roles: ["CLIENT_USER"],
+  roles: ["CLIENT_OWNER"],
   subjectType: "CLIENT",
   clientId: "client-1",
   expiresAt: Date.now() + 1000 * 60 * 60,
 };
+
+function StationMapRouteProbe() {
+  const location = useLocation();
+  return <div data-testid="station-map-route">{location.search}</div>;
+}
 
 describe("Client operations", () => {
   beforeEach(() => {
@@ -74,7 +81,7 @@ describe("Client operations", () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByText(/Операции/)).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: /Операции/i })).toBeInTheDocument();
     expect(await screen.findByText(/azs-7/)).toBeInTheDocument();
 
     await userEvent.selectOptions(screen.getByLabelText(/Статус/i), "DECLINED");
@@ -132,19 +139,19 @@ describe("Client operations", () => {
       }),
       { status: 200 },
     );
-    const nearestResponse = new Response(JSON.stringify([]), { status: 200 });
-    const stationResponse = new Response(
-      JSON.stringify({ id: "station-123", name: "АЗС 123", address: "RU, Moscow", lat: 55.75, lon: 37.61, nav_url: "https://maps.example/nav" }),
-      { status: 200 },
-    );
 
     const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
-    const fetchMock = vi.fn().mockResolvedValueOnce(detailResponse).mockResolvedValueOnce(nearestResponse).mockResolvedValueOnce(stationResponse);
+    const fetchMock = vi.fn().mockResolvedValue(detailResponse);
     vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
 
     render(
       <MemoryRouter initialEntries={["/operations/op-st-1"]}>
-        <App initialSession={session} />
+        <AuthProvider initialSession={session}>
+          <Routes>
+            <Route path="/operations/:id" element={<OperationDetailsPage />} />
+            <Route path="/stations-map" element={<StationMapRouteProbe />} />
+          </Routes>
+        </AuthProvider>
       </MemoryRouter>,
     );
 
@@ -154,9 +161,7 @@ describe("Client operations", () => {
     expect(openSpy).toHaveBeenCalledWith("https://maps.example/nav", "_blank", "noopener,noreferrer");
 
     await userEvent.click(screen.getByRole("button", { name: "Показать на карте" }));
-    expect(await screen.findByText("Карта станций")).toBeInTheDocument();
-    const stationCall = fetchMock.mock.calls.find((call: any[]) => String(call[0]).includes("/v1/fuel/stations/station-123"));
-    expect(stationCall).toBeTruthy();
+    expect(await screen.findByTestId("station-map-route")).toHaveTextContent("?station_id=station-123");
   });
 
   it("disables navigation when station nav_url is missing", async () => {

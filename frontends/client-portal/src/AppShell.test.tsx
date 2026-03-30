@@ -26,7 +26,7 @@ afterEach(() => {
 });
 
 describe("Client portal shell", () => {
-  it("renders client layout and hides admin navigation", async () => {
+  it("renders client layout and primary navigation", async () => {
     render(
       <MemoryRouter initialEntries={["/"]}>
         <App initialSession={session} />
@@ -34,10 +34,10 @@ describe("Client portal shell", () => {
     );
 
     expect(await screen.findByText(/Клиентский портал/i)).toBeInTheDocument();
-    expect(screen.getByText(/Обзор/)).toBeInTheDocument();
-    expect(screen.getByText(/Документы/)).toBeInTheDocument();
-    expect(screen.getByText(/Настройки/)).toBeInTheDocument();
-    expect(screen.queryByText(/Пользователи/i)).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /Обзор/i })).toBeInTheDocument();
+    expect(screen.getAllByRole("link", { name: /Документы/i }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("link", { name: /Настройки/i }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("link", { name: /Пользователи/i }).length).toBeGreaterThan(0);
   });
 
   it("blocks operations for read-only users", async () => {
@@ -73,7 +73,7 @@ describe("Client portal shell", () => {
 
     await userEvent.click(screen.getAllByRole("button", { name: /Заблокировать/i })[0]);
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining("/cards/card-1/block"), expect.anything()));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining("/cards/card-1"), expect.objectContaining({ method: "PATCH" })));
     await waitFor(() => expect(screen.getAllByText(/BLOCKED/)).not.toHaveLength(0));
   });
 });

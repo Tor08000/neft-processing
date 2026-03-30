@@ -58,13 +58,13 @@ const inProgressTrip = {
 
 function renderPage() {
   render(
-    <AuthProvider initialSession={session}>
-      <MemoryRouter initialEntries={["/logistics/trips/trip-1"]}>
+    <MemoryRouter initialEntries={["/logistics/trips/trip-1"]}>
+      <AuthProvider initialSession={session}>
         <Routes>
           <Route path="/logistics/trips/:tripId" element={<TripDetailsPage />} />
         </Routes>
-      </MemoryRouter>
-    </AuthProvider>,
+      </AuthProvider>
+    </MemoryRouter>,
   );
 }
 

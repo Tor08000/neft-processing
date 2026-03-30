@@ -67,10 +67,10 @@ describe("FleetGroupDetailsPage", () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByText(/Карты/i)).toBeInTheDocument();
-    expect(screen.getByText(/Доступы/i)).toBeInTheDocument();
-    expect(screen.getByText(/Лимиты/i)).toBeInTheDocument();
-    expect(screen.getByText(/Расходы/i)).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /Карты/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Доступы/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Лимиты/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Расходы/i })).toBeInTheDocument();
 
     const accessTab = screen.getByRole("button", { name: /Доступы/i });
     await userEvent.click(accessTab);

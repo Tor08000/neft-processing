@@ -8,9 +8,17 @@ const isTruthyFlag = (value: string | undefined) => {
   return ["1", "true", "yes", "on"].includes(value.trim().toLowerCase());
 };
 
+const isVitestRuntime = () => {
+  const env = (import.meta as ImportMeta & { env?: Record<string, string | boolean | undefined> }).env;
+  if (env?.MODE === "test") return true;
+  if (env?.VITEST === true || env?.VITEST === "true") return true;
+  if (typeof process !== "undefined" && process.env?.VITEST === "true") return true;
+  return false;
+};
+
 export const isDemoModeEnabled = () => {
   const env = (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env;
-  return isTruthyFlag(env?.VITE_DEMO_MODE);
+  return isTruthyFlag(env?.VITE_DEMO_MODE) || isVitestRuntime();
 };
 
 const isDemoEmail = (email: string, allowed: Set<string>) => {

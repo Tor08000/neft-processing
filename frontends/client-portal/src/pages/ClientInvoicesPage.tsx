@@ -49,8 +49,8 @@ export function ClientInvoicesPage() {
       offset,
     })
       .then((resp) => {
-        setItems(resp.items);
-        setTotal(resp.total);
+        setItems(resp.items ?? []);
+        setTotal(resp.total ?? 0);
       })
       .catch((err: Error) => setError(err.message))
       .finally(() => setIsLoading(false));

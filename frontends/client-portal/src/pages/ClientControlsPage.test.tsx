@@ -106,7 +106,7 @@ describe("Client controls", () => {
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: "Пользователи" }));
     expect(await screen.findByRole("heading", { name: "Пользователи" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Добавить пользователя" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Пригласить сотрудника" })).toBeEnabled();
 
     await user.click(screen.getByRole("button", { name: "Услуги и партнёры" }));
     expect(await screen.findByRole("heading", { name: "Услуги и партнёры" })).toBeInTheDocument();
@@ -126,11 +126,13 @@ describe("Client controls", () => {
     );
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "Пользователи" }));
 
-    expect(await screen.findByRole("button", { name: "Добавить пользователя" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Пользователи" })).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Услуги и партнёры" }));
+    expect(await screen.findByRole("button", { name: "Отключить" })).toBeDisabled();
+
+    await user.click(screen.getByRole("button", { name: "Возможности" }));
     expect(await screen.findByRole("button", { name: "Отключить" })).toBeDisabled();
   });
 

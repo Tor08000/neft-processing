@@ -44,7 +44,8 @@ describe("Client portal pages", () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByText(/Общие расходы/i)).toBeInTheDocument();
-    expect(screen.getByText(/Создать отчёт/i)).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: /Обзор/i })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /Быстрые действия/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Пополнить баланс/i })).toBeInTheDocument();
   });
 });

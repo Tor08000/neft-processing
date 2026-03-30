@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "../App";
@@ -89,6 +89,14 @@ describe("Client invoices", () => {
 
     expect(await screen.findByText(/Счёт #402/)).toBeInTheDocument();
     expect(screen.getByText(/Платежи/)).toBeInTheDocument();
-    expect(screen.getByText(/1500/)).toBeInTheDocument();
+    const totalStatLabel = screen.getAllByText(/Сумма/).find((element) => element.closest(".stat"));
+    expect(totalStatLabel).toBeTruthy();
+    const totalStat = totalStatLabel?.closest(".stat");
+    expect(totalStat).not.toBeNull();
+    expect(
+      within(totalStat as HTMLElement).getByText(
+        (_, element) => element?.tagName.toLowerCase() === "strong" && (element.textContent?.replace(/\s+/g, " ").includes("1 500") ?? false),
+      ),
+    ).toBeInTheDocument();
   });
 });

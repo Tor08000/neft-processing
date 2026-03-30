@@ -29,13 +29,13 @@ afterEach(() => {
 describe("ReconciliationRequestsPage", () => {
   it("shows empty state when no requests exist", async () => {
     render(
-      <AuthProvider initialSession={session}>
-        <MemoryRouter initialEntries={["/finance/reconciliation"]}>
+      <MemoryRouter initialEntries={["/finance/reconciliation"]}>
+        <AuthProvider initialSession={session}>
           <Routes>
             <Route path="/finance/reconciliation" element={<ReconciliationRequestsPage />} />
           </Routes>
-        </MemoryRouter>
-      </AuthProvider>,
+        </AuthProvider>
+      </MemoryRouter>,
     );
 
     expect(await screen.findByText("Запросов пока нет.")).toBeInTheDocument();

@@ -97,7 +97,7 @@ export function OperationsPage() {
     if (!user) return;
     setIsCardsLoading(true);
     fetchCards(user)
-      .then((resp) => setCards(resp.items))
+      .then((resp) => setCards(resp.items ?? []))
       .catch((err: Error) => {
         console.error("Не удалось загрузить карты", err);
         if (isDemoClientAccount) {
@@ -133,8 +133,8 @@ export function OperationsPage() {
       offset: pagination.offset,
     })
       .then((resp) => {
-        setOperations(resp.items);
-        setTotal(resp.total);
+        setOperations(resp.items ?? []);
+        setTotal(resp.total ?? 0);
       })
       .catch((err: unknown) => {
         console.error("Не удалось загрузить операции", err);

@@ -53,7 +53,7 @@ describe("LoginPage", () => {
     });
   });
 
-  it("navigates demo client to /client/dashboard after successful login and refresh", async () => {
+  it("refreshes client state after successful login", async () => {
     const login = vi.fn().mockResolvedValue(undefined);
     const refresh = vi.fn().mockResolvedValue(undefined);
     useAuthMock.mockReturnValue({ login, error: null, authError: null });
@@ -69,10 +69,10 @@ describe("LoginPage", () => {
 
     await waitFor(() => expect(login).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(refresh).toHaveBeenCalledTimes(1));
-    expect(navigateMock).toHaveBeenCalledWith("/client/dashboard");
+    expect(navigateMock).not.toHaveBeenCalled();
   });
 
-  it("demo client is not routed to onboarding during login completion", async () => {
+  it("does not navigate during login completion", async () => {
     const login = vi.fn().mockResolvedValue(undefined);
     const refresh = vi.fn().mockResolvedValue(undefined);
     useAuthMock.mockReturnValue({ login, error: null, authError: null });
@@ -91,7 +91,6 @@ describe("LoginPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Войти" }));
 
     await waitFor(() => expect(refresh).toHaveBeenCalledTimes(1));
-    expect(navigateMock).toHaveBeenCalledWith("/client/dashboard");
-    expect(navigateMock).not.toHaveBeenCalledWith("/client/onboarding");
+    expect(navigateMock).not.toHaveBeenCalled();
   });
 });

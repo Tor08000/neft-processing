@@ -26,7 +26,7 @@ export function ReconciliationRequestsPage() {
     setIsLoading(true);
     setError(null);
     fetchReconciliationRequests(user)
-      .then((data) => setItems(data.items))
+      .then((data) => setItems(data.items ?? []))
       .catch((err: Error) => setError(err.message))
       .finally(() => setIsLoading(false));
   };

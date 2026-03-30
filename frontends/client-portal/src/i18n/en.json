@@ -63,6 +63,7 @@
     "copyLink": "Copy link",
     "confirmReceived": "Confirm received",
     "resetFilters": "Reset filters",
+    "cancel": "Cancel",
     "close": "Close"
   },
   "policyCenter": {
@@ -569,6 +570,15 @@
   "documentsPage": {
     "title": "Documents",
     "subtitle": "Generated documents with legal status and files.",
+    "errors": {
+      "loadFailedTitle": "Documents are unavailable",
+      "loadFailedDescription": "Unable to load the document list. Try refreshing the page."
+    },
+    "demo": {
+      "title": "Documents will appear later in the demo",
+      "description": "In the live environment this section will contain invoices, acts, and agreements.",
+      "action": "Go to overview"
+    },
     "types": {
       "INVOICE": "Invoice",
       "ACT": "Act",

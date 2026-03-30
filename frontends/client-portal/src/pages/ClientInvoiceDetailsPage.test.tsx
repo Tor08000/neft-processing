@@ -43,13 +43,13 @@ afterEach(() => {
 describe("ClientInvoiceDetailsPage", () => {
   it("renders invoice summary", async () => {
     render(
-      <AuthProvider initialSession={session}>
-        <MemoryRouter initialEntries={["/invoices/101"]}>
+      <MemoryRouter initialEntries={["/invoices/101"]}>
+        <AuthProvider initialSession={session}>
           <Routes>
             <Route path="/invoices/:id" element={<ClientInvoiceDetailsPage />} />
           </Routes>
-        </MemoryRouter>
-      </AuthProvider>,
+        </AuthProvider>
+      </MemoryRouter>,
     );
 
     expect(await screen.findByText("Счёт #101")).toBeInTheDocument();

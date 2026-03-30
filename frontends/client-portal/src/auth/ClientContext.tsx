@@ -4,6 +4,7 @@ import { fetchClientMe, PORTAL_ME_PATH } from "../api/clientPortal";
 import { ApiError, HtmlResponseError, UnauthorizedError } from "../api/http";
 import { CORE_API_BASE, isBrowserSafeApiBase } from "../api/base";
 import { useAuth } from "./AuthContext";
+import { isDemoClient } from "@shared/demo/demo";
 
 export type PortalState =
   | "AUTH_REQUIRED"
@@ -54,6 +55,37 @@ const persistPortal = (portal: PortalMeResponse | null) => {
 };
 
 const PORTAL_ME_URL = `${CORE_API_BASE}${PORTAL_ME_PATH}`;
+
+const buildDemoPortal = (user: NonNullable<ReturnType<typeof useAuth>["user"]>): PortalMeResponse => ({
+  actor_type: "CLIENT",
+  context: "demo",
+  user: {
+    id: user.clientId ?? user.email ?? "demo-user",
+    email: user.email ?? null,
+    subject_type: user.subjectType ?? "CLIENT",
+    timezone: "Europe/Moscow",
+  },
+  org: null,
+  org_status: null,
+  org_roles: user.roles ?? [],
+  user_roles: user.roles ?? [],
+  roles: user.roles ?? [],
+  memberships: user.roles ?? [],
+  flags: null,
+  legal: { required_count: 0, accepted: true, missing: [], required_enabled: false },
+  modules: {},
+  features: { onboarding_enabled: false, legal_gate_enabled: false },
+  gating: { onboarding_enabled: false, legal_gate_enabled: false },
+  subscription: null,
+  entitlements_snapshot: {},
+  capabilities: [],
+  nav_sections: [],
+  dashboard: null,
+  partner: null,
+  access_state: "NEEDS_ONBOARDING",
+  access_reason: null,
+  billing: null,
+});
 
 const resolvePortalError = (err: unknown): { portalState: PortalState; error: PortalError } => {
   if (err instanceof ApiError) {
@@ -190,6 +222,17 @@ export function ClientProvider({ children }: { children: React.ReactNode }) {
       setError(null);
       setPortalState("AUTH_REQUIRED");
       persistPortal(null);
+      return;
+    }
+    if (isDemoClient(user.email ?? null)) {
+      const demoPortal = buildDemoPortal(user);
+      setClient(demoPortal);
+      setError(null);
+      setPortalState("READY");
+      persistPortal(demoPortal);
+      if (import.meta.env.DEV) {
+        console.info("[client-context:refresh] resolved", { portal_state: "READY", access_state: demoPortal.access_state, source: "demo" });
+      }
       return;
     }
     setIsLoading(true);
