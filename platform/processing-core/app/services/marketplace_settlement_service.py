@@ -48,6 +48,13 @@ class MarketplaceSettlementService:
     def _period_for_date(self, dt: datetime) -> str:
         return dt.strftime("%Y-%m")
 
+    @staticmethod
+    def _amount_text(value: Decimal) -> str:
+        text = format(value, "f")
+        if "." in text:
+            text = text.rstrip("0").rstrip(".")
+        return text or "0"
+
     def _resolve_currency(self, order: MarketplaceOrder) -> str:
         snapshot = order.price_snapshot or {}
         return str(order.currency or snapshot.get("currency") or "RUB")
@@ -77,11 +84,11 @@ class MarketplaceSettlementService:
     ) -> dict[str, str]:
         partner_net = gross - fee - penalties
         return {
-            "gross_amount": str(gross),
-            "platform_fee_amount": str(fee),
+            "gross_amount": self._amount_text(gross),
+            "platform_fee_amount": self._amount_text(fee),
             "platform_fee_basis": self._fee_basis(order),
-            "penalties_amount": str(penalties),
-            "partner_net_amount": str(partner_net),
+            "penalties_amount": self._amount_text(penalties),
+            "partner_net_amount": self._amount_text(partner_net),
             "currency": self._resolve_currency(order),
         }
 
@@ -384,11 +391,11 @@ class MarketplaceSettlementService:
         item.adjustments_amount = penalties
         item.net_partner_amount = partner_net
         order.settlement_breakdown_json = {
-            "gross_amount": str(gross),
-            "platform_fee_amount": str(platform_fee),
+            "gross_amount": self._amount_text(gross),
+            "platform_fee_amount": self._amount_text(platform_fee),
             "platform_fee_basis": self._fee_basis(order),
-            "penalties_amount": str(penalties),
-            "partner_net_amount": str(partner_net),
+            "penalties_amount": self._amount_text(penalties),
+            "partner_net_amount": self._amount_text(partner_net),
             "currency": currency,
         }
         AuditService(self.db).audit(

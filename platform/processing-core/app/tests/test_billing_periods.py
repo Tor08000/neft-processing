@@ -8,14 +8,16 @@ import sqlalchemy as sa
 from sqlalchemy.orm import sessionmaker
 
 from app.db import Base
+from app.models.audit_log import AuditLog
 from app.models.billing_period import BillingPeriod, BillingPeriodStatus, BillingPeriodType
 from app.services.billing_periods import BillingPeriodConflict, BillingPeriodService
+from app.services.policy import PolicyAccessDenied
 
 
 @pytest.fixture()
 def sqlite_session():
     engine = sa.create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
-    Base.metadata.create_all(bind=engine, tables=[BillingPeriod.__table__])
+    Base.metadata.create_all(bind=engine, tables=[BillingPeriod.__table__, AuditLog.__table__])
     SessionLocal = sessionmaker(
         bind=engine,
         autoflush=False,
@@ -116,7 +118,7 @@ def test_lock_and_finalize_flow(sqlite_session):
     assert locked.status == BillingPeriodStatus.LOCKED
     assert locked.locked_at is not None
 
-    with pytest.raises(BillingPeriodConflict):
+    with pytest.raises(PolicyAccessDenied) as exc_info:
         service.finalize(
             period_type=BillingPeriodType.DAILY,
             start_at=start_at,
@@ -124,3 +126,6 @@ def test_lock_and_finalize_flow(sqlite_session):
             tz="UTC",
             token=token,
         )
+    assert exc_info.value.decision.reason == "status_not_open"
+    audit_entry = sqlite_session.query(AuditLog).filter(AuditLog.event_type == "ACCESS_DENIED").one()
+    assert audit_entry.reason == "status_not_open"

@@ -1,6 +1,6 @@
 import base64
 from datetime import datetime, timedelta, timezone
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from cryptography.hazmat.primitives import serialization
@@ -10,7 +10,9 @@ from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.models.audit_log import AuditLog
-from app.models.cases import Case, CaseEvent
+from app.models.client import Client
+from app.models.client_notification import ClientNotification
+from app.models.cases import Case, CaseComment, CaseEvent, CaseSnapshot
 from app.models.decision_memory import DecisionMemoryRecord
 from app.models.internal_ledger import (
     InternalLedgerAccount,
@@ -25,7 +27,7 @@ from app.models.marketplace_order_sla import (
     OrderSlaConsequence,
     OrderSlaEvaluation,
 )
-from app.models.marketplace_orders import MarketplaceOrderActorType, MarketplaceOrderEventType
+from app.models.marketplace_orders import MarketplaceOrder, MarketplaceOrderActorType, MarketplaceOrderEventType
 from app.services.marketplace_contract_binding_service import bind_contract_for_order
 from app.services.order_sla_consequence_service import apply_sla_consequences
 from app.services.order_sla_service import evaluate_order_event
@@ -59,11 +61,14 @@ def db_session() -> Session:
         AuditLog.__table__,
         DecisionMemoryRecord.__table__,
         Case.__table__,
+        CaseSnapshot.__table__,
+        CaseComment.__table__,
         CaseEvent.__table__,
         Contract.__table__,
         ContractVersion.__table__,
         ContractObligation.__table__,
         MarketplaceOrderContractLink.__table__,
+        MarketplaceOrder.__table__,
         MarketplaceOrderEvent.__table__,
         OrderSlaEvaluation.__table__,
         OrderSlaConsequence.__table__,
@@ -71,6 +76,8 @@ def db_session() -> Session:
         InternalLedgerAccount.__table__,
         InternalLedgerTransaction.__table__,
         InternalLedgerEntry.__table__,
+        Client.__table__,
+        ClientNotification.__table__,
     ]
     for table in tables:
         table.create(bind=engine)
@@ -86,11 +93,18 @@ def db_session() -> Session:
 
 
 def test_marketplace_order_sla_breach_creates_consequence(db_session: Session) -> None:
+    client_id = UUID("22222222-2222-2222-2222-222222222222")
+    client = Client(
+        id=client_id,
+        name="Client",
+        email=None,
+    )
+    db_session.add(client)
     contract = Contract(
         contract_number="C-ORDER-001",
         contract_type="service",
         party_a_type="client",
-        party_a_id="22222222-2222-2222-2222-222222222222",
+        party_a_id=str(client_id),
         party_b_type="partner",
         party_b_id="33333333-3333-3333-3333-333333333333",
         currency="USD",

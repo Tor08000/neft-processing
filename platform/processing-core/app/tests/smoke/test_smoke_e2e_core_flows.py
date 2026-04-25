@@ -5,8 +5,8 @@ from uuid import uuid4
 
 import pytest
 
-from app.db import SessionLocal
 from app.models.billing_period import BillingPeriod
+from app.domains.ledger.models import LedgerAccountBalanceV1, LedgerAccountV1, LedgerEntryV1, LedgerLineV1
 from app.models.internal_ledger import InternalLedgerEntry, InternalLedgerEntryDirection, InternalLedgerTransaction
 from app.models.invoice import Invoice, InvoiceLine
 from app.models.money_flow_v3 import MoneyFlowLink, MoneyFlowLinkNodeType, MoneyFlowLinkType
@@ -14,7 +14,20 @@ from app.models.operation import Operation, OperationStatus, OperationType, Prod
 from app.models.risk_threshold_set import RiskThresholdSet
 from app.models.risk_types import RiskSubjectType, RiskThresholdScope, RiskThresholdAction
 from app.models.fleet import FleetVehicle, FleetVehicleStatus
-from app.models.fuel import FuelCard, FuelCardStatus, FuelNetwork, FuelNetworkStatus, FuelStation, FuelStationStatus
+from app.models.fuel import (
+    FuelAnalyticsEvent,
+    FuelAnomalyEvent,
+    FuelCard,
+    FuelCardStatus,
+    FuelMisuseSignal,
+    FuelNetwork,
+    FuelNetworkStatus,
+    FuelRiskShadowEvent,
+    FuelStation,
+    FuelStationOutlier,
+    FuelStationStatus,
+    FuelTransaction,
+)
 from app.schemas.fuel import FuelAuthorizeRequest
 from app.services.billing_run import BillingRunService
 from app.services.fuel.authorize import authorize_fuel_tx
@@ -22,15 +35,58 @@ from app.services.fuel.settlement import settle_fuel_tx
 from app.services.money_flow.cfo_explain import build_cfo_explain
 from app.services.money_flow.replay import MoneyReplayMode, MoneyReplayScope, run_money_flow_replay
 from app.models.billing_period import BillingPeriodType
+from app.tests._crm_test_harness import CRM_FUEL_INTEGRATION_TEST_TABLES, CRM_SUBSCRIPTION_INTEGRATION_TEST_TABLES, crm_session_context
+from app.tests._logistics_route_harness import LOGISTICS_FUEL_TEST_TABLES
+
+
+def _dedupe_tables(*tables):
+    seen: set[str] = set()
+    ordered = []
+    for table in tables:
+        key = str(table.key)
+        if key in seen:
+            continue
+        seen.add(key)
+        ordered.append(table)
+    return tuple(ordered)
+
+
+SMOKE_CORE_TEST_TABLES = _dedupe_tables(
+    *CRM_FUEL_INTEGRATION_TEST_TABLES,
+    *CRM_SUBSCRIPTION_INTEGRATION_TEST_TABLES,
+    *LOGISTICS_FUEL_TEST_TABLES,
+    Operation.__table__,
+    MoneyFlowLink.__table__,
+    FuelRiskShadowEvent.__table__,
+    FuelAnomalyEvent.__table__,
+    FuelAnalyticsEvent.__table__,
+    FuelMisuseSignal.__table__,
+    FuelStationOutlier.__table__,
+    LedgerAccountV1.__table__,
+    LedgerEntryV1.__table__,
+    LedgerLineV1.__table__,
+    LedgerAccountBalanceV1.__table__,
+)
 
 
 @pytest.fixture
 def session():
-    db = SessionLocal()
-    try:
+    with crm_session_context(tables=SMOKE_CORE_TEST_TABLES) as db:
         yield db
-    finally:
-        db.close()
+
+
+@pytest.fixture(autouse=True)
+def _disable_fleet_intelligence_enrichment(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.services.fleet_intelligence import repository as fi_repository
+    from app.services.fuel import settlement as fuel_settlement
+
+    monkeypatch.setattr(
+        fi_repository,
+        "latest_scores_for_ids",
+        lambda *_args, **_kwargs: {"driver": None, "station": None, "vehicle": None},
+    )
+    monkeypatch.setattr(fi_repository, "get_latest_trend_snapshot", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(fuel_settlement, "apply_fuel_transaction_mileage", lambda *_args, **_kwargs: None)
 
 
 def _ensure_threshold_set(
@@ -95,7 +151,7 @@ def test_fuel_authorize_settle_links(session):
     client_id = "smoke-client-fuel"
     _ensure_threshold_set(
         session,
-        subject_type=RiskSubjectType.FUEL_TRANSACTION,
+        subject_type=RiskSubjectType.PAYMENT,
         threshold_set_id="smoke-fuel-thresholds",
         action=RiskThresholdAction.PAYMENT,
     )
@@ -115,55 +171,55 @@ def test_fuel_authorize_settle_links(session):
         vehicle_plate=vehicle.plate_number,
     )
 
-    result = None
-    settled = None
-    try:
-        result = authorize_fuel_tx(session, payload=payload)
-        assert result.response.status == "ALLOW"
-        tx_id = result.response.transaction_id
-        assert tx_id
+    result = authorize_fuel_tx(session, payload=payload)
+    assert result.response.status == "ALLOW"
+    tx_id = result.response.transaction_id
+    assert tx_id
 
-        settled = settle_fuel_tx(session, transaction_id=tx_id)
-        assert settled.ledger_transaction_id
+    settled = settle_fuel_tx(session, transaction_id=tx_id)
+    assert settled.ledger_transaction_id
 
-        entries = (
-            session.query(InternalLedgerEntry)
-            .filter(InternalLedgerEntry.ledger_transaction_id == settled.ledger_transaction_id)
-            .all()
-        )
-        assert len(entries) == 2
-        debit_total = sum(
-            entry.amount for entry in entries if entry.direction == InternalLedgerEntryDirection.DEBIT
-        )
-        credit_total = sum(
-            entry.amount for entry in entries if entry.direction == InternalLedgerEntryDirection.CREDIT
-        )
-        assert debit_total == credit_total
+    ledger_v1_entry = session.get(LedgerEntryV1, settled.ledger_transaction_id)
+    assert ledger_v1_entry is not None
+    ledger_v1_lines = (
+        session.query(LedgerLineV1)
+        .filter(LedgerLineV1.entry_id == settled.ledger_transaction_id)
+        .all()
+    )
+    assert len(ledger_v1_lines) == 2
+    debit_total = sum(line.amount for line in ledger_v1_lines if line.direction == "DEBIT")
+    credit_total = sum(line.amount for line in ledger_v1_lines if line.direction == "CREDIT")
+    assert debit_total == credit_total
 
-        links = (
-            session.query(MoneyFlowLink)
-            .filter(MoneyFlowLink.src_type == MoneyFlowLinkNodeType.FUEL_TX)
-            .filter(MoneyFlowLink.src_id == tx_id)
-            .all()
-        )
-        assert any(link.link_type == MoneyFlowLinkType.POSTS for link in links)
-        assert any(link.link_type == MoneyFlowLinkType.RELATES for link in links)
-    finally:
-        if result and result.response.transaction_id:
-            session.query(MoneyFlowLink).filter(
-                MoneyFlowLink.src_id == result.response.transaction_id
-            ).delete(synchronize_session=False)
-        session.query(InternalLedgerEntry).filter(
-            InternalLedgerEntry.ledger_transaction_id == getattr(settled, "ledger_transaction_id", None)
-        ).delete(synchronize_session=False)
-        session.query(InternalLedgerTransaction).filter(
-            InternalLedgerTransaction.id == getattr(settled, "ledger_transaction_id", None)
-        ).delete(synchronize_session=False)
-        session.query(FuelCard).filter(FuelCard.id == card.id).delete(synchronize_session=False)
-        session.query(FleetVehicle).filter(FleetVehicle.id == vehicle.id).delete(synchronize_session=False)
-        session.query(FuelStation).filter(FuelStation.id == station.id).delete(synchronize_session=False)
-        session.query(FuelNetwork).filter(FuelNetwork.id == network.id).delete(synchronize_session=False)
-        session.commit()
+    fuel_transaction = session.get(FuelTransaction, tx_id)
+    assert fuel_transaction is not None
+    assert fuel_transaction.ledger_transaction_id
+
+    legacy_entries = (
+        session.query(InternalLedgerEntry)
+        .filter(InternalLedgerEntry.ledger_transaction_id == fuel_transaction.ledger_transaction_id)
+        .all()
+    )
+    assert len(legacy_entries) == 2
+    legacy_debit_total = sum(
+        entry.amount for entry in legacy_entries if entry.direction == InternalLedgerEntryDirection.DEBIT
+    )
+    legacy_credit_total = sum(
+        entry.amount for entry in legacy_entries if entry.direction == InternalLedgerEntryDirection.CREDIT
+    )
+    assert legacy_debit_total == legacy_credit_total
+
+    links = (
+        session.query(MoneyFlowLink)
+        .filter(MoneyFlowLink.src_type == MoneyFlowLinkNodeType.FUEL_TX)
+        .filter(MoneyFlowLink.src_id == tx_id)
+        .all()
+    )
+    assert any(
+        link.link_type == MoneyFlowLinkType.POSTS and link.dst_id == fuel_transaction.ledger_transaction_id
+        for link in links
+    )
+    assert any(link.link_type == MoneyFlowLinkType.RELATES for link in links)
 
 
 @pytest.mark.smoke

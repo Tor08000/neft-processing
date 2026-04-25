@@ -101,7 +101,7 @@ class Settings(SharedSettings):
         fallback_keys=("DEMO_CLIENT_EMAIL",),
     )
     demo_client_password: str = _env_or_default(
-        "NEFT_DEMO_CLIENT_PASSWORD", "Neft123!", fallback_keys=("DEMO_CLIENT_PASSWORD",)
+        "NEFT_DEMO_CLIENT_PASSWORD", "Client123!", fallback_keys=("DEMO_CLIENT_PASSWORD",)
     )
     demo_client_id: str = _env_or_default(
         "NEFT_DEMO_CLIENT_ID", "demo-client", fallback_keys=("DEMO_CLIENT_ID",)

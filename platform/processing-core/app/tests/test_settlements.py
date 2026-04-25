@@ -2,13 +2,17 @@ from datetime import date
 from decimal import Decimal
 
 import pytest
+from sqlalchemy import Column, MetaData, String, Table
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from app.db import Base
+from app.models.account import Account, AccountBalance
 from app.models.clearing import Clearing
-from app.models.payout_order import PayoutOrderStatus
+from app.models.ledger_entry import LedgerEntry
+from app.models.payout_event import PayoutEvent
+from app.models.payout_order import PayoutOrder, PayoutOrderStatus
+from app.models.settlement import Settlement
 from app.services.settlements import (
     approve_settlement,
     confirm_payout,
@@ -16,6 +20,33 @@ from app.services.settlements import (
     partner_balances,
     send_payout,
     SettlementError,
+)
+
+
+_SETTLEMENTS_TEST_METADATA = MetaData()
+
+CARDS_REFLECTED = Table(
+    "cards",
+    _SETTLEMENTS_TEST_METADATA,
+    Column("id", String(64), primary_key=True),
+)
+
+OPERATIONS_REFLECTED = Table(
+    "operations",
+    _SETTLEMENTS_TEST_METADATA,
+    Column("id", String(36), primary_key=True),
+)
+
+SETTLEMENTS_TEST_TABLES = (
+    CARDS_REFLECTED,
+    OPERATIONS_REFLECTED,
+    Clearing.__table__,
+    Settlement.__table__,
+    PayoutOrder.__table__,
+    PayoutEvent.__table__,
+    Account.__table__,
+    AccountBalance.__table__,
+    LedgerEntry.__table__,
 )
 
 
@@ -33,18 +64,26 @@ def db() -> Session:
         bind=engine,
         class_=Session,
     )
-    Base.metadata.create_all(bind=engine)
+    for table in SETTLEMENTS_TEST_TABLES:
+        table.create(bind=engine, checkfirst=True)
 
     session = TestingSessionLocal()
     try:
         yield session
     finally:
         session.close()
-        Base.metadata.drop_all(bind=engine)
+        for table in reversed(SETTLEMENTS_TEST_TABLES):
+            table.drop(bind=engine, checkfirst=True)
         engine.dispose()
 
 
-def _seed_clearing(db: Session, *, merchant_id: str = "m-1", currency: str = "RUB", total_amount: int = 1000):
+def _seed_clearing(
+    db: Session,
+    *,
+    merchant_id: str = "11111111-1111-1111-1111-111111111111",
+    currency: str = "RUB",
+    total_amount: int = 1000,
+):
     clearing = Clearing(
         batch_date=date(2025, 12, 1),
         merchant_id=merchant_id,

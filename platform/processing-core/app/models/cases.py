@@ -5,13 +5,16 @@ from enum import Enum
 from sqlalchemy import BigInteger, Column, DateTime, ForeignKey, Integer, JSON, String, Text, UniqueConstraint, func
 
 from app.db import Base
-from app.db.types import ExistingEnum, GUID, new_uuid_str
+from app.db.types import ExistingEnum, new_uuid_str
 
 
 class CaseKind(str, Enum):
     OPERATION = "operation"
     INVOICE = "invoice"
     ORDER = "order"
+    SUPPORT = "support"
+    DISPUTE = "dispute"
+    INCIDENT = "incident"
     KPI = "kpi"
     FLEET = "fleet"
     BOOKING = "booking"
@@ -20,6 +23,7 @@ class CaseKind(str, Enum):
 class CaseStatus(str, Enum):
     TRIAGE = "TRIAGE"
     IN_PROGRESS = "IN_PROGRESS"
+    WAITING = "WAITING"
     RESOLVED = "RESOLVED"
     CLOSED = "CLOSED"
 
@@ -123,13 +127,15 @@ class CaseEventType(str, Enum):
 class Case(Base):
     __tablename__ = "cases"
 
-    id = Column(GUID(), primary_key=True, default=new_uuid_str)
+    id = Column(String(36), primary_key=True, default=new_uuid_str)
     tenant_id = Column(Integer, nullable=False, index=True)
     kind = Column(ExistingEnum(CaseKind, name="case_kind"), nullable=False, index=True)
+    entity_type = Column(String(64), nullable=True, index=True)
     entity_id = Column(String(64), nullable=True, index=True)
     kpi_key = Column(String(64), nullable=True, index=True)
     window_days = Column(Integer, nullable=True)
     title = Column(String(160), nullable=False)
+    description = Column(Text, nullable=True)
     status = Column(
         ExistingEnum(CaseStatus, name="case_status"),
         nullable=False,
@@ -151,10 +157,12 @@ class Case(Base):
     escalation_level = Column(Integer, nullable=False, default=0)
     first_response_due_at = Column(DateTime(timezone=True), nullable=True)
     resolve_due_at = Column(DateTime(timezone=True), nullable=True)
+    client_id = Column(String(64), nullable=True, index=True)
+    partner_id = Column(String(64), nullable=True, index=True)
     created_by = Column(String(128), nullable=True)
     assigned_to = Column(String(128), nullable=True)
     case_source_ref_type = Column(String(64), nullable=True, index=True)
-    case_source_ref_id = Column(GUID(), nullable=True, index=True)
+    case_source_ref_id = Column(String(36), nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     last_activity_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
@@ -163,8 +171,8 @@ class Case(Base):
 class CaseSnapshot(Base):
     __tablename__ = "case_snapshots"
 
-    id = Column(GUID(), primary_key=True, default=new_uuid_str)
-    case_id = Column(GUID(), ForeignKey("cases.id", ondelete="CASCADE"), nullable=False, index=True)
+    id = Column(String(36), primary_key=True, default=new_uuid_str)
+    case_id = Column(String(36), ForeignKey("cases.id", ondelete="CASCADE"), nullable=False, index=True)
     explain_snapshot = Column(JSON, nullable=False)
     diff_snapshot = Column(JSON, nullable=True)
     selected_actions = Column(JSON, nullable=True)
@@ -175,8 +183,8 @@ class CaseSnapshot(Base):
 class CaseComment(Base):
     __tablename__ = "case_comments"
 
-    id = Column(GUID(), primary_key=True, default=new_uuid_str)
-    case_id = Column(GUID(), ForeignKey("cases.id", ondelete="CASCADE"), nullable=False, index=True)
+    id = Column(String(36), primary_key=True, default=new_uuid_str)
+    case_id = Column(String(36), ForeignKey("cases.id", ondelete="CASCADE"), nullable=False, index=True)
     author = Column(String(128), nullable=True)
     type = Column(
         ExistingEnum(CaseCommentType, name="case_comment_type"),
@@ -191,8 +199,8 @@ class CaseEvent(Base):
     __tablename__ = "case_events"
     __table_args__ = (UniqueConstraint("case_id", "seq", name="ux_case_events_case_seq"),)
 
-    id = Column(GUID(), primary_key=True, default=new_uuid_str)
-    case_id = Column(GUID(), ForeignKey("cases.id", ondelete="CASCADE"), nullable=False, index=True)
+    id = Column(String(36), primary_key=True, default=new_uuid_str)
+    case_id = Column(String(36), ForeignKey("cases.id", ondelete="CASCADE"), nullable=False, index=True)
     seq = Column(BigInteger, nullable=False)
     at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     type = Column(ExistingEnum(CaseEventType, name="case_event_type"), nullable=False)

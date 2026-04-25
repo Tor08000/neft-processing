@@ -7,10 +7,10 @@ type ApiBase = "core" | "auth" | "core_root";
 
 export type HttpHeaders = Record<string, string>;
 
-const isDevRuntime = Boolean(import.meta.env.DEV || (typeof process !== "undefined" && process.env.NODE_ENV !== "production"));
+const isDebugHttpEnabled = () => Boolean(import.meta.env.DEV && import.meta.env.VITE_CLIENT_DEBUG_HTTP === "true");
 
 const logTokenAttach = (token: unknown, attached: boolean, reason?: "missing" | "invalid_format" | "expired") => {
-  if (!isDevRuntime) return;
+  if (!isDebugHttpEnabled()) return;
   if (attached && typeof token === "string") {
     console.log(`[HTTP] attach_bearer token_length=${token.length} token_prefix=${token.slice(0, 10)}`);
     return;
@@ -50,7 +50,7 @@ const isRetryDisabledPath = (base: ApiBase, path: string): boolean => {
   return base === "core" && path.includes("/client/onboarding/");
 };
 const logErrorUrl = (url: string, status: number) => {
-  if (import.meta.env.DEV && status >= 400) {
+  if (isDebugHttpEnabled() && status >= 400) {
     console.info("[api-error]", { final_url: url, status });
   }
 };
@@ -312,7 +312,7 @@ export async function request<T>(
   const contentType = response.headers.get("content-type") ?? "";
   const isJson = contentType.includes("application/json");
   const isAuthLogin = base === "auth" && path.includes("/login");
-  const shouldLogAuth = import.meta.env.DEV && isAuthLogin;
+  const shouldLogAuth = isDebugHttpEnabled() && isAuthLogin;
   let responseText: string | null = null;
 
   const readResponseText = async () => {
@@ -337,7 +337,7 @@ export async function request<T>(
 
   if (response.status === 401) {
     if (isAuthMeRequest(base, path)) {
-      if (isDevRuntime) {
+      if (isDebugHttpEnabled()) {
         console.info("[AUTH] auth_me_401 -> reauth");
       }
       window.dispatchEvent(new Event("client-auth-logout"));
@@ -471,7 +471,7 @@ export async function requestWithMeta<T>(
 
   if (response.status === 401) {
     if (isAuthMeRequest(base, path)) {
-      if (isDevRuntime) {
+      if (isDebugHttpEnabled()) {
         console.info("[AUTH] auth_me_401 -> reauth");
       }
       window.dispatchEvent(new Event("client-auth-logout"));
@@ -588,7 +588,7 @@ export async function requestFormData<T>(
 
   if (response.status === 401) {
     if (isAuthMeRequest(base, path)) {
-      if (isDevRuntime) {
+      if (isDebugHttpEnabled()) {
         console.info("[AUTH] auth_me_401 -> reauth");
       }
       window.dispatchEvent(new Event("client-auth-logout"));

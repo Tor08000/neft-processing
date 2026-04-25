@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { test } from "@playwright/test";
+import { test } from "playwright/test";
 import type { Page } from "playwright";
 import {
   ADMIN_AUTH_URL,

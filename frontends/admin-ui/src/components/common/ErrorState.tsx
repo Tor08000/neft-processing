@@ -22,7 +22,8 @@ export const ErrorState: React.FC<ErrorStateProps> = ({
   const metaParts = [];
   if (requestId) metaParts.push(`request_id: ${requestId}`);
   if (correlationId) metaParts.push(`correlation_id: ${correlationId}`);
-  const meta = metaParts.length ? metaParts.join(" · ") : null;
+  const meta = metaParts.length ? metaParts.join(" | ") : null;
+
   return (
     <div className="card error-state">
       <div className="error-state__content">
@@ -36,7 +37,7 @@ export const ErrorState: React.FC<ErrorStateProps> = ({
         ) : null}
         {details ? (
           <details className="error-state__details">
-            <summary>Подробнее</summary>
+            <summary>Details</summary>
             <pre>{details}</pre>
           </details>
         ) : null}

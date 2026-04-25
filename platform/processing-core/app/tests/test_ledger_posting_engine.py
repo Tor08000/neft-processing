@@ -2,37 +2,20 @@ from decimal import Decimal
 from uuid import uuid4
 
 import pytest
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
 
-from app.db import Base
 from app.models.audit_log import AuditLog
 from app.models.account import AccountType, AccountOwnerType
 from app.models.ledger_entry import LedgerDirection
 from app.models.posting_batch import PostingBatchType
 from app.repositories.accounts_repository import AccountsRepository
 from app.services.ledger.posting_engine import PostingEngine, PostingInvariantError, PostingLine
-
-
-engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
-SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False, expire_on_commit=False)
-
-
-@pytest.fixture(autouse=True)
-def _reset_db():
-    Base.metadata.drop_all(bind=engine)
-    Base.metadata.create_all(bind=engine)
-    yield
-    Base.metadata.drop_all(bind=engine)
+from ._money_router_harness import ACCOUNT_LEDGER_TEST_TABLES, money_session_context
 
 
 @pytest.fixture
 def session():
-    db = SessionLocal()
-    try:
+    with money_session_context(tables=ACCOUNT_LEDGER_TEST_TABLES) as db:
         yield db
-    finally:
-        db.close()
 
 
 @pytest.fixture
@@ -47,7 +30,7 @@ def posting_engine(session):
 
 def _client_account(repo: AccountsRepository, currency: str = "RUB") -> int:
     return repo.get_or_create_account(
-        client_id="client-1",
+        client_id="11111111-1111-1111-1111-111111111111",
         owner_type=AccountOwnerType.CLIENT,
         owner_id=str(uuid4()),
         currency=currency,
@@ -57,7 +40,7 @@ def _client_account(repo: AccountsRepository, currency: str = "RUB") -> int:
 
 def _partner_account(repo: AccountsRepository, currency: str = "RUB") -> int:
     return repo.get_or_create_account(
-        client_id="partner-1",
+        client_id="22222222-2222-2222-2222-222222222222",
         owner_type=AccountOwnerType.PARTNER,
         owner_id=str(uuid4()),
         currency=currency,

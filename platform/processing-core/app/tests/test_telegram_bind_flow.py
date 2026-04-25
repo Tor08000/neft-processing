@@ -9,6 +9,7 @@ from fastapi import HTTPException
 from app.models.fuel import (
     FleetNotificationChannel,
     FleetNotificationChannelType,
+    FleetTelegramLinkToken,
     FleetTelegramBindingScopeType,
     FleetTelegramBindingStatus,
     FleetTelegramChatType,
@@ -16,6 +17,11 @@ from app.models.fuel import (
 from app.security.rbac.principal import Principal
 from app.services import fleet_service
 from app.services.fleet_notification_dispatcher import _now
+from app.tests._fuel_runtime_test_harness import (
+    FLEET_NOTIFICATION_TELEGRAM_TEST_TABLES,
+    fuel_runtime_session_context,
+)
+from app.tests._scoped_router_harness import CASES_TEST_TABLES
 
 
 def _principal(client_id: str) -> Principal:
@@ -28,6 +34,13 @@ def _principal(client_id: str) -> Principal:
         is_admin=False,
         raw_claims={"tenant_id": 1},
     )
+
+
+@pytest.fixture()
+def db_session():
+    tables = (*FLEET_NOTIFICATION_TELEGRAM_TEST_TABLES, FleetTelegramLinkToken.__table__, *CASES_TEST_TABLES)
+    with fuel_runtime_session_context(tables=tables) as session:
+        yield session
 
 
 def test_telegram_bind_flow_issues_and_uses_token(db_session) -> None:

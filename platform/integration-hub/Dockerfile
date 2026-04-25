@@ -6,20 +6,16 @@ WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
-# shared python modules
-COPY shared/python /opt/python
-RUN pip install -e /opt/python
-ENV PYTHONPATH=/app
-
-# sitecustomize
-COPY sitecustomize.py /app/sitecustomize.py
-
-# dependencies
 COPY platform/integration-hub/requirements.txt /tmp/requirements.txt
 RUN pip install --upgrade pip && \
     pip install --no-cache-dir -r /tmp/requirements.txt
 
-# app code
+COPY shared/python /opt/python
+ENV PYTHONPATH=/app:/opt/python
+
+# sitecustomize
+COPY sitecustomize.py /app/sitecustomize.py
+
 COPY platform/integration-hub /app
 
 EXPOSE 8000

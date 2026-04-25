@@ -144,6 +144,88 @@ class ClientUsersResponse(BaseModel):
     items: list[ClientUserSummary]
 
 
+class ClientLimitItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: str | None = None
+    label: str | None = None
+    type: str | None = None
+    period: str | None = None
+    limit: float | None = None
+    used: float | None = None
+    status: str | None = None
+    partner: str | None = None
+    service: str | None = None
+    station: str | None = None
+
+
+class ClientLimitsResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    amount_limits: list[ClientLimitItem] = Field(default_factory=list)
+    operation_limits: list[ClientLimitItem] = Field(default_factory=list)
+    service_limits: list[ClientLimitItem] = Field(default_factory=list)
+    partner_limits: list[ClientLimitItem] = Field(default_factory=list)
+    station_limits: list[ClientLimitItem] = Field(default_factory=list)
+    items: list[ClientLimitItem] = Field(default_factory=list)
+    status: str | None = None
+
+
+class ClientLimitChangeRequestCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    limit_type: str = Field(..., min_length=1)
+    new_value: float
+    comment: str | None = None
+
+
+class ClientLimitChangeRequestResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    status: str
+    request_id: str | None = None
+    message: str | None = None
+
+
+class ClientUserDisableResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    status: str
+    user_id: str
+    disabled: bool = True
+
+
+class ClientServiceItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    partner: str | None = None
+    service: str | None = None
+    status: str | None = None
+    restrictions: str | None = None
+
+
+class ClientServicesResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[ClientServiceItem] = Field(default_factory=list)
+
+
+class ClientFeatureItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    key: str
+    description: str | None = None
+    status: str | None = None
+    scope: str | None = None
+
+
+class ClientFeaturesResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[ClientFeatureItem] = Field(default_factory=list)
+
+
 class ClientDocSummary(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -299,7 +381,7 @@ class ReportScheduleDeleteResponse(BaseModel):
 
 
 class ClientAnalyticsPeriod(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     from_: date = Field(..., alias="from")
     to: date

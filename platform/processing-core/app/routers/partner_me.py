@@ -8,6 +8,7 @@ from app.db import get_db
 from app.schemas.partner_me import PartnerMeOrg, PartnerMeResponse, PartnerMeUser
 from app.services.portal_me import build_portal_me
 
+# Compatibility projection over the canonical portal bootstrap source; reduced payload, not SSoT.
 router = APIRouter(prefix="/partner", tags=["partner-me"])
 
 

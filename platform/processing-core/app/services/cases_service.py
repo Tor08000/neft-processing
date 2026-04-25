@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import or_
+from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
 from app.models.cases import (
@@ -87,23 +87,33 @@ def _build_case_title(
 def create_case(
     db: Session,
     *,
+    case_id: str | None = None,
     tenant_id: int,
     kind: CaseKind,
+    entity_type: str | None,
     entity_id: str | None,
     kpi_key: str | None,
     window_days: int | None,
     title: str | None,
+    description: str | None,
     priority: CasePriority,
+    status: CaseStatus = CaseStatus.TRIAGE,
     note: str | None,
     explain: dict[str, Any] | None,
     diff: dict[str, Any] | None,
     selected_actions: list[dict[str, Any]] | None,
     mastery_snapshot: dict[str, Any] | None,
     created_by: str | None,
+    client_id: str | None = None,
+    partner_id: str | None = None,
+    case_source_ref_type: str | None = None,
+    case_source_ref_id: str | None = None,
+    queue: CaseQueue | None = None,
+    occurred_at: datetime | None = None,
     request_id: str | None = None,
     trace_id: str | None = None,
 ) -> Case:
-    now = datetime.now(timezone.utc)
+    now = occurred_at or datetime.now(timezone.utc)
     resolved_title = title or _build_case_title(
         kind=kind,
         entity_id=entity_id,
@@ -112,28 +122,37 @@ def create_case(
         diff=diff,
     )
     case = Case(
+        id=case_id,
         tenant_id=tenant_id,
         kind=kind,
+        entity_type=entity_type,
         entity_id=entity_id,
         kpi_key=kpi_key,
         window_days=window_days,
         title=resolved_title,
-        status=CaseStatus.TRIAGE,
+        description=description,
+        status=status,
+        queue=queue or CaseQueue.GENERAL,
         priority=priority,
+        client_id=client_id,
+        partner_id=partner_id,
         created_by=created_by,
+        case_source_ref_type=case_source_ref_type,
+        case_source_ref_id=case_source_ref_id,
+        created_at=now,
         updated_at=now,
         last_activity_at=now,
     )
     db.add(case)
     db.flush()
-    case_metrics.mark_support_ticket_created(case.priority.value)
 
     snapshot = CaseSnapshot(
         case_id=case.id,
         explain_snapshot=explain or {},
         diff_snapshot=diff,
         selected_actions=selected_actions,
-        note=note,
+        note=note or description,
+        created_at=now,
     )
     db.add(snapshot)
     db.add(
@@ -142,11 +161,14 @@ def create_case(
             author=created_by,
             type=CaseCommentType.SYSTEM,
             body="Кейс создан",
+            created_at=now,
         )
     )
     db.flush()
     classification = classify_case(case, explain, diff)
     apply_classification(db, case=case, result=classification, now=now)
+    if case.queue == CaseQueue.SUPPORT:
+        case_metrics.mark_support_ticket_created(case.priority.value)
     event = emit_case_event(
         db,
         case_id=case.id,
@@ -158,12 +180,15 @@ def create_case(
             CaseEventChange(field="status", before=None, after=case.status.value),
             CaseEventChange(field="priority", before=None, after=case.priority.value),
             CaseEventChange(field="queue", before=None, after=case.queue.value),
+            CaseEventChange(field="entity_type", before=None, after=entity_type),
+            CaseEventChange(field="entity_id", before=None, after=entity_id),
         ]
         + (
             [CaseEventChange(field="note", before=None, after=note)]
             if note is not None
             else []
         ),
+        at=now,
     )
     record_decision_memory(
         db,
@@ -219,8 +244,12 @@ def list_cases(
     *,
     tenant_id: int,
     created_by: str | None = None,
+    client_id: str | None = None,
+    include_unscoped_created_by: bool = False,
+    partner_id: str | None = None,
     status: list[CaseStatus] | None = None,
     kind: CaseKind | None = None,
+    entity_type: str | None = None,
     priority: list[CasePriority] | None = None,
     queue: CaseQueue | None = None,
     sla_state: CaseSlaState | None = None,
@@ -231,12 +260,25 @@ def list_cases(
     assigned_to: str | None = None,
 ) -> tuple[list[Case], int, str | None]:
     query = db.query(Case).filter(Case.tenant_id == tenant_id)
-    if created_by:
+    if client_id and created_by and include_unscoped_created_by:
+        query = query.filter(
+            or_(
+                Case.client_id == client_id,
+                and_(Case.client_id.is_(None), Case.created_by == created_by),
+            )
+        )
+    elif client_id:
+        query = query.filter(Case.client_id == client_id)
+    elif created_by:
         query = query.filter(Case.created_by == created_by)
+    if partner_id:
+        query = query.filter(Case.partner_id == partner_id)
     if status:
         query = query.filter(Case.status.in_(status))
     if kind:
         query = query.filter(Case.kind == kind)
+    if entity_type:
+        query = query.filter(Case.entity_type == entity_type)
     if priority:
         query = query.filter(Case.priority.in_(priority))
     if queue:
@@ -250,6 +292,8 @@ def list_cases(
         query = query.filter(
             or_(
                 Case.title.ilike(pattern),
+                Case.description.ilike(pattern),
+                Case.entity_type.ilike(pattern),
                 Case.entity_id.ilike(pattern),
                 Case.kpi_key.ilike(pattern),
             )
@@ -305,11 +349,12 @@ def update_case(
     assigned_to: str | None,
     priority: CasePriority | None,
     actor: str | None,
+    now: datetime | None = None,
     request_id: str | None = None,
     trace_id: str | None = None,
 ) -> Case:
     changed = False
-    now = datetime.now(timezone.utc)
+    resolved_now = now or datetime.now(timezone.utc)
     change_entries: list[CaseEventChange] = []
     status_changed = False
     if status and status != case.status:
@@ -321,13 +366,14 @@ def update_case(
             CaseEventChange(field="status", before=previous.value, after=status.value)
         )
         db.add(
-            CaseComment(
-                case_id=case.id,
-                author=actor,
-                type=CaseCommentType.SYSTEM,
-                body=f"Статус изменён {previous.value} → {status.value}",
+                CaseComment(
+                    case_id=case.id,
+                    author=actor,
+                    type=CaseCommentType.SYSTEM,
+                    body=f"Статус изменён {previous.value} → {status.value}",
+                    created_at=resolved_now,
+                )
             )
-        )
     if assigned_to is not None and assigned_to != case.assigned_to:
         previous_assigned = case.assigned_to
         case.assigned_to = assigned_to
@@ -342,6 +388,7 @@ def update_case(
                     author=actor,
                     type=CaseCommentType.SYSTEM,
                     body=f"Назначено на {assigned_to}",
+                    created_at=resolved_now,
                 )
             )
     if priority and priority != case.priority:
@@ -352,15 +399,16 @@ def update_case(
             CaseEventChange(field="priority", before=previous_priority.value, after=priority.value)
         )
         db.add(
-            CaseComment(
-                case_id=case.id,
-                author=actor,
-                body=f"Priority set to {priority.value}",
-            )
+                CaseComment(
+                    case_id=case.id,
+                    author=actor,
+                    body=f"Priority set to {priority.value}",
+                    created_at=resolved_now,
+                )
         )
     if changed:
-        case.updated_at = now
-        case.last_activity_at = now
+        case.updated_at = resolved_now
+        case.last_activity_at = resolved_now
         if status_changed:
             emit_case_event(
                 db,
@@ -370,6 +418,7 @@ def update_case(
                 request_id=request_id,
                 trace_id=trace_id,
                 changes=change_entries,
+                at=resolved_now,
             )
     return case
 
@@ -413,6 +462,7 @@ def close_case(
         request_id=request_id,
         trace_id=trace_id,
         changes=changes,
+        at=resolved_now,
     )
     record_decision_memory(
         db,
@@ -431,7 +481,8 @@ def close_case(
         mastery_snapshot=mastery_snapshot,
         audit_event_id=event.id,
     )
-    case_metrics.mark_support_ticket_closed()
+    if case.queue == CaseQueue.SUPPORT:
+        case_metrics.mark_support_ticket_closed()
     return case
 
 
@@ -441,12 +492,20 @@ def add_comment(
     case: Case,
     author: str | None,
     body: str,
+    comment_type: CaseCommentType = CaseCommentType.USER,
+    now: datetime | None = None,
 ) -> CaseComment:
-    now = datetime.now(timezone.utc)
-    comment = CaseComment(case_id=case.id, author=author, type=CaseCommentType.USER, body=body)
+    resolved_now = now or datetime.now(timezone.utc)
+    comment = CaseComment(
+        case_id=case.id,
+        author=author,
+        type=comment_type,
+        body=body,
+        created_at=resolved_now,
+    )
     db.add(comment)
-    case.updated_at = now
-    case.last_activity_at = now
+    case.updated_at = resolved_now
+    case.last_activity_at = resolved_now
     return comment
 
 

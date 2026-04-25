@@ -150,6 +150,7 @@ class UnifiedExplainSubject(BaseModel):
     client_id: str | None = None
     vehicle_id: str | None = None
     driver_id: str | None = None
+    station_id: str | None = None
 
 
 class UnifiedExplainResult(BaseModel):

@@ -42,17 +42,12 @@ export function MarketplaceCatalogPage() {
     q: "",
     category: "",
     type: "",
-    priceModel: "",
-    partnerId: "",
-    sort: "newest",
   });
   const [showAllCategories, setShowAllCategories] = useState(false);
   const canOrderProduct = canOrder(user);
   const initialSearchRef = useRef(true);
   const searchDebounceRef = useRef<number | null>(null);
-  const hasActiveFilters = Boolean(
-    filters.q || filters.category || filters.type || filters.priceModel || filters.partnerId,
-  );
+  const hasActiveFilters = Boolean(filters.q || filters.category || filters.type);
 
   const categories = useMemo(
     () =>
@@ -60,16 +55,7 @@ export function MarketplaceCatalogPage() {
         .sort((a, b) => a.localeCompare(b)),
     [items],
   );
-  const partners = useMemo(() => {
-    const entries = items
-      .map((item) => ({ id: item.partner_id, name: item.partner_name }))
-      .filter((item): item is { id: string; name: string } => Boolean(item.id && item.name));
-    const unique = new Map<string, string>();
-    entries.forEach((entry) => unique.set(entry.id, entry.name));
-    return Array.from(unique.entries())
-      .map(([id, name]) => ({ id, name }))
-      .sort((a, b) => a.name.localeCompare(b.name));
-  }, [items]);
+
   const visibleCategories = showAllCategories ? categories : categories.slice(0, 6);
 
   const loadCatalog = () => {
@@ -125,9 +111,6 @@ export function MarketplaceCatalogPage() {
             q: filters.q || null,
             category: filters.category || null,
             type: filters.type || null,
-            price_model: filters.priceModel || null,
-            partner_id: filters.partnerId || null,
-            sort: filters.sort || null,
           },
         },
       ]).catch(() => undefined);
@@ -139,10 +122,7 @@ export function MarketplaceCatalogPage() {
     };
   }, [
     filters.category,
-    filters.partnerId,
-    filters.priceModel,
     filters.q,
-    filters.sort,
     filters.type,
     location.pathname,
     user,
@@ -289,34 +269,7 @@ export function MarketplaceCatalogPage() {
               <option value="PRODUCT">{t("marketplaceCatalog.types.product")}</option>
             </select>
           </div>
-          <div className="filter">
-            <label htmlFor="priceModel">{t("marketplaceCatalog.filters.priceModel")}</label>
-            <select id="priceModel" name="priceModel" value={filters.priceModel} onChange={handleFilterChange}>
-              <option value="">{t("marketplaceCatalog.filters.all")}</option>
-              <option value="FIXED">{t("marketplaceCatalog.priceModels.fixed")}</option>
-              <option value="PER_UNIT">{t("marketplaceCatalog.priceModels.perUnit")}</option>
-              <option value="TIERED">{t("marketplaceCatalog.priceModels.tiered")}</option>
-            </select>
-          </div>
-          <div className="filter">
-            <label htmlFor="partnerId">{t("marketplaceCatalog.filters.partner")}</label>
-            <select id="partnerId" name="partnerId" value={filters.partnerId} onChange={handleFilterChange}>
-              <option value="">{t("marketplaceCatalog.filters.all")}</option>
-              {partners.map((partner) => (
-                <option key={partner.id} value={partner.id}>
-                  {partner.name}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="filter">
-            <label htmlFor="sort">{t("marketplaceCatalog.filters.sort")}</label>
-            <select id="sort" name="sort" value={filters.sort} onChange={handleFilterChange}>
-              <option value="newest">{t("marketplaceCatalog.sort.newest")}</option>
-              <option value="price_asc">{t("marketplaceCatalog.sort.priceAsc")}</option>
-              <option value="price_desc">{t("marketplaceCatalog.sort.priceDesc")}</option>
-            </select>
-          </div>
+
         </div>
       </div>
 

@@ -16,6 +16,8 @@ interface DataTableProps<T> {
   data: T[];
   columns: DataColumn<T>[];
   loading?: boolean;
+  toolbar?: React.ReactNode;
+  footer?: React.ReactNode;
   errorState?: {
     title: string;
     description?: string;
@@ -29,6 +31,16 @@ interface DataTableProps<T> {
   emptyState?: {
     title: string;
     description?: string;
+    hint?: string;
+    icon?: React.ReactNode;
+    primaryAction?: {
+      label: string;
+      onClick?: () => void;
+    };
+    secondaryAction?: {
+      label: string;
+      onClick?: () => void;
+    };
     actionLabel?: string;
     actionOnClick?: () => void;
   };
@@ -49,17 +61,28 @@ export function DataTable<T>({
   data,
   columns,
   loading,
+  toolbar,
+  footer,
   emptyMessage = "Нет данных",
   errorState,
   emptyState,
   onRowClick,
 }: DataTableProps<T>) {
   const { density, setDensity } = useTableDensity();
+  const footerNode = footer ? <div className="table-footer">{footer}</div> : null;
+  const header = toolbar ? (
+    <div className="surface-toolbar">
+      <div className="table-toolbar__content">{toolbar}</div>
+      <TableDensityToggle density={density} onChange={setDensity} />
+    </div>
+  ) : (
+    <TableDensityToggle density={density} onChange={setDensity} />
+  );
 
   if (loading) {
     return (
       <div className="table-shell">
-        <TableDensityToggle density={density} onChange={setDensity} />
+        {header}
         <div className={`table-container table-density-${density}`}>
           <div className="table-scroll">
             <table className="table neft-table">
@@ -74,6 +97,7 @@ export function DataTable<T>({
             </table>
           </div>
         </div>
+        {footerNode}
       </div>
     );
   }
@@ -81,7 +105,7 @@ export function DataTable<T>({
   if (errorState) {
     return (
       <div className="table-shell">
-        <TableDensityToggle density={density} onChange={setDensity} />
+        {header}
         <ErrorState
           title={errorState.title}
           description={errorState.description}
@@ -91,6 +115,7 @@ export function DataTable<T>({
           requestId={errorState.requestId}
           correlationId={errorState.correlationId}
         />
+        {footerNode}
       </div>
     );
   }
@@ -98,24 +123,29 @@ export function DataTable<T>({
   if (!data.length) {
     return (
       <div className="table-shell">
-        <TableDensityToggle density={density} onChange={setDensity} />
+        {header}
         {emptyState ? (
           <EmptyState
             title={emptyState.title}
             description={emptyState.description}
+            hint={emptyState.hint}
+            icon={emptyState.icon}
+            primaryAction={emptyState.primaryAction}
+            secondaryAction={emptyState.secondaryAction}
             actionLabel={emptyState.actionLabel}
             actionOnClick={emptyState.actionOnClick}
           />
         ) : (
           <div className="table-empty">{emptyMessage}</div>
         )}
+        {footerNode}
       </div>
     );
   }
 
   return (
     <div className="table-shell">
-      <TableDensityToggle density={density} onChange={setDensity} />
+      {header}
       <div className={`table-container table-density-${density}`}>
         <div className="table-scroll">
           <table className="table neft-table">
@@ -152,6 +182,7 @@ export function DataTable<T>({
           </table>
         </div>
       </div>
+      {footerNode}
     </div>
   );
 }

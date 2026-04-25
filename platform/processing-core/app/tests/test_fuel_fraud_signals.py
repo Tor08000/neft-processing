@@ -3,11 +3,7 @@ from uuid import uuid4
 
 import pytest
 
-from sqlalchemy import create_engine
-from sqlalchemy.orm import Session, sessionmaker
-from sqlalchemy.pool import StaticPool
-
-from app.db import Base
+from sqlalchemy.orm import Session
 from app.models.fleet import FleetDriver, FleetDriverStatus, FleetVehicle, FleetVehicleStatus
 from app.models.fuel import (
     FuelCard,
@@ -41,24 +37,13 @@ from app.schemas.fuel import DeclineCode, FuelAuthorizeRequest
 from app.services.fuel.authorize import authorize_fuel_tx
 from app.services.fuel.fraud import evaluate_fraud_signals
 from app.services.fuel.risk_context import build_risk_context_for_fuel_tx
+from app.tests._fuel_runtime_test_harness import FUEL_FRAUD_SIGNAL_TEST_TABLES, fuel_runtime_session_context
 
 
 @pytest.fixture()
 def session() -> Session:
-    engine = create_engine(
-        "sqlite://",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
-    SessionLocal = sessionmaker(autocommit=False, autoflush=False, expire_on_commit=False, bind=engine)
-    Base.metadata.create_all(bind=engine)
-    db = SessionLocal()
-    try:
+    with fuel_runtime_session_context(tables=FUEL_FRAUD_SIGNAL_TEST_TABLES) as db:
         yield db
-    finally:
-        db.close()
-        Base.metadata.drop_all(bind=engine)
-        engine.dispose()
 
 
 def _seed_core(db):
@@ -222,7 +207,9 @@ def test_detects_station_burst(session):
 
 def test_detects_repeated_night_refuel(session):
     vehicle, driver, station, card = _seed_core(session)
-    night_time = datetime(2024, 1, 1, 20, 30, tzinfo=timezone.utc)
+    # Keep the fixture robust even if SQLite returns naive datetimes during round-trips:
+    # 23:30 UTC remains a "night" timestamp under both UTC-local and MSK-aware interpretation.
+    night_time = datetime(2024, 1, 1, 23, 30, tzinfo=timezone.utc)
     for minute in (10, 20):
         session.add(
             FuelTransaction(

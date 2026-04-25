@@ -27,7 +27,7 @@ def upgrade() -> None:
         op.add_column("fuel_stations", sa.Column("lat", sa.Float(), nullable=True), schema=DB_SCHEMA)
     else:
         if is_postgres:
-            op.execute(f"UPDATE {DB_SCHEMA}.fuel_stations SET lat = NULL WHERE lat !~ '^-?[0-9]+(\.[0-9]+)?$'")
+            op.execute(f"UPDATE {DB_SCHEMA}.fuel_stations SET lat = NULL WHERE lat !~ '^-?[0-9]+(\\.[0-9]+)?$'")
             op.execute(f"ALTER TABLE {DB_SCHEMA}.fuel_stations ALTER COLUMN lat TYPE DOUBLE PRECISION USING lat::double precision")
         else:
             op.alter_column("fuel_stations", "lat", existing_type=sa.String(length=32), type_=sa.Float(), schema=DB_SCHEMA)
@@ -36,7 +36,7 @@ def upgrade() -> None:
         op.add_column("fuel_stations", sa.Column("lon", sa.Float(), nullable=True), schema=DB_SCHEMA)
     else:
         if is_postgres:
-            op.execute(f"UPDATE {DB_SCHEMA}.fuel_stations SET lon = NULL WHERE lon !~ '^-?[0-9]+(\.[0-9]+)?$'")
+            op.execute(f"UPDATE {DB_SCHEMA}.fuel_stations SET lon = NULL WHERE lon !~ '^-?[0-9]+(\\.[0-9]+)?$'")
             op.execute(f"ALTER TABLE {DB_SCHEMA}.fuel_stations ALTER COLUMN lon TYPE DOUBLE PRECISION USING lon::double precision")
         else:
             op.alter_column("fuel_stations", "lon", existing_type=sa.String(length=32), type_=sa.Float(), schema=DB_SCHEMA)

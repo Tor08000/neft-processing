@@ -32,6 +32,7 @@ from app.schemas.bi_dashboards import (
     PartnerPerformanceResponse,
 )
 from app.services.bi import dashboards as bi_dashboards
+from app.services.token_claims import DEFAULT_TENANT_ID, resolve_token_tenant_id
 
 
 router = APIRouter(prefix="/bi", tags=["bi-dashboards"])
@@ -56,18 +57,22 @@ def _require_admin_or_role(token: dict, required: set[str]) -> None:
     bi_dashboards._require_role(token, required)
 
 
+def _resolve_bi_tenant_id(token: dict, db: Session, *, client_id: str | None = None) -> int:
+    return resolve_token_tenant_id(token, db=db, client_id=client_id, default=DEFAULT_TENANT_ID)
+
+
 
 _CLIENT_EXPORT_DATASET_SPEND = "spend"
 _CLIENT_EXPORT_FORMAT_CSV = "CSV"
 _CLIENT_EXPORT_STATUS_DELIVERED = "DELIVERED"
 
 
-def _require_client_context(token: dict) -> tuple[int, str]:
+def _require_client_context(token: dict, db: Session) -> tuple[int, str]:
     resolved_client = token.get("client_id")
     if not resolved_client:
         raise HTTPException(status_code=403, detail="forbidden_client_scope")
     _enforce_scope(token, client_id=str(resolved_client), partner_id=None)
-    return int(token.get("tenant_id")), str(resolved_client)
+    return _resolve_bi_tenant_id(token, db, client_id=str(resolved_client)), str(resolved_client)
 
 
 def _encode_client_export_job(payload: dict[str, Any]) -> str:
@@ -113,8 +118,8 @@ def _build_client_export_job(*, tenant_id: int, client_id: str, dataset: str, da
     return _encode_client_export_job(payload), payload
 
 
-def _resolve_client_export_job(export_id: str, token: dict) -> tuple[str, dict[str, Any]]:
-    tenant_id, client_id = _require_client_context(token)
+def _resolve_client_export_job(export_id: str, token: dict, db: Session) -> tuple[str, dict[str, Any]]:
+    tenant_id, client_id = _require_client_context(token, db)
     payload = _decode_client_export_job(export_id)
     if int(payload["tenant_id"]) != tenant_id or str(payload["client_id"]) != client_id:
         raise HTTPException(status_code=403, detail="forbidden_client_scope")
@@ -160,7 +165,11 @@ def client_daily_metrics_endpoint(
         _enforce_scope(token, client_id=None, partner_id=scope_id)
     payload, _version = bi_dashboards.client_daily_metrics_summary(
         db,
-        tenant_id=int(token.get("tenant_id")),
+        tenant_id=_resolve_bi_tenant_id(
+            token,
+            db,
+            client_id=scope_id if scope_type == BiScopeType.CLIENT else None,
+        ),
         scope_type=scope_type,
         scope_id=scope_id,
         date_from=date_from,
@@ -187,7 +196,7 @@ def client_declines_endpoint(
     _enforce_scope(token, client_id=resolved_client, partner_id=None)
     payload = bi_dashboards.client_declines_summary(
         db,
-        tenant_id=int(token.get("tenant_id")),
+        tenant_id=_resolve_bi_tenant_id(token, db, client_id=resolved_client),
         client_id=resolved_client,
         date_from=date_from,
         date_to=date_to,
@@ -214,7 +223,7 @@ def client_orders_summary_endpoint(
     _enforce_scope(token, client_id=resolved_client, partner_id=None)
     payload = bi_dashboards.client_orders_summary(
         db,
-        tenant_id=int(token.get("tenant_id")),
+        tenant_id=_resolve_bi_tenant_id(token, db, client_id=resolved_client),
         client_id=resolved_client,
         date_from=date_from,
         date_to=date_to,
@@ -239,7 +248,7 @@ def client_documents_summary_endpoint(
     _enforce_scope(token, client_id=resolved_client, partner_id=None)
     payload = bi_dashboards.client_documents_summary(
         db,
-        tenant_id=int(token.get("tenant_id")),
+        tenant_id=_resolve_bi_tenant_id(token, db, client_id=resolved_client),
         client_id=resolved_client,
         date_from=date_from,
         date_to=date_to,
@@ -263,7 +272,7 @@ def client_exports_summary_endpoint(
     _enforce_scope(token, client_id=resolved_client, partner_id=None)
     payload = bi_dashboards.client_exports_summary(
         db,
-        tenant_id=int(token.get("tenant_id")),
+        tenant_id=_resolve_bi_tenant_id(token, db, client_id=resolved_client),
         client_id=resolved_client,
         date_from=date_from,
         date_to=date_to,
@@ -287,7 +296,7 @@ def client_spend_summary_endpoint(
     _enforce_scope(token, client_id=resolved_client, partner_id=None)
     payload = bi_dashboards.client_spend_summary(
         db,
-        tenant_id=int(token.get("tenant_id")),
+        tenant_id=_resolve_bi_tenant_id(token, db, client_id=resolved_client),
         client_id=resolved_client,
         date_from=date_from,
         date_to=date_to,
@@ -301,8 +310,9 @@ def client_spend_summary_endpoint(
 def client_create_export_endpoint(
     payload: ClientAnalyticsExportCreateRequest,
     token: dict = Depends(bi_user_dep),
+    db: Session = Depends(get_db),
 ) -> ClientAnalyticsExportJobResponse:
-    tenant_id, client_id = _require_client_context(token)
+    tenant_id, client_id = _require_client_context(token, db)
     if payload.dataset != _CLIENT_EXPORT_DATASET_SPEND:
         raise HTTPException(status_code=400, detail="unsupported_export_dataset")
     export_id, job_payload = _build_client_export_job(
@@ -319,8 +329,9 @@ def client_create_export_endpoint(
 def client_get_export_endpoint(
     export_id: str,
     token: dict = Depends(bi_user_dep),
+    db: Session = Depends(get_db),
 ) -> ClientAnalyticsExportJobResponse:
-    resolved_export_id, payload = _resolve_client_export_job(export_id, token)
+    resolved_export_id, payload = _resolve_client_export_job(export_id, token, db)
     return ClientAnalyticsExportJobResponse.model_validate(_serialize_client_export_job(resolved_export_id, payload))
 
 
@@ -331,7 +342,7 @@ def client_download_export_endpoint(
     token: dict = Depends(bi_user_dep),
     db: Session = Depends(get_db),
 ) -> ClientAnalyticsExportDownloadResponse:
-    resolved_export_id, payload = _resolve_client_export_job(export_id, token)
+    resolved_export_id, payload = _resolve_client_export_job(export_id, token, db)
     if payload["dataset"] != _CLIENT_EXPORT_DATASET_SPEND:
         raise HTTPException(status_code=404, detail="export_not_found")
     summary = bi_dashboards.client_spend_summary(
@@ -369,7 +380,7 @@ def cfo_overview_endpoint(
     db: Session = Depends(get_db),
 ) -> CfoOverviewResponse:
     _require_admin_or_role(token, bi_dashboards.CFO_ROLES)
-    tenant_id = int(token.get("tenant_id"))
+    tenant_id = _resolve_bi_tenant_id(token, db)
     totals, series, version = bi_dashboards.cfo_overview(
         db,
         tenant_id=tenant_id,
@@ -391,7 +402,7 @@ def cfo_cashflow_endpoint(
     db: Session = Depends(get_db),
 ) -> CfoCashflowResponse:
     _require_admin_or_role(token, bi_dashboards.CFO_ROLES)
-    tenant_id = int(token.get("tenant_id"))
+    tenant_id = _resolve_bi_tenant_id(token, db)
     totals, series, version = bi_dashboards.cfo_cashflow(
         db,
         tenant_id=tenant_id,
@@ -412,7 +423,7 @@ def ops_sla_endpoint(
     db: Session = Depends(get_db),
 ) -> OpsSlaResponse:
     _require_admin_or_role(token, bi_dashboards.OPS_ROLES)
-    tenant_id = int(token.get("tenant_id"))
+    tenant_id = _resolve_bi_tenant_id(token, db)
     totals, series, top_partners, version = bi_dashboards.ops_sla(
         db,
         tenant_id=tenant_id,
@@ -437,7 +448,7 @@ def partner_performance_endpoint(
     if not resolved_partner:
         _require_admin_or_role(token, bi_dashboards.PARTNER_ROLES)
     _enforce_scope(token, client_id=None, partner_id=resolved_partner)
-    tenant_id = int(token.get("tenant_id"))
+    tenant_id = _resolve_bi_tenant_id(token, db)
     items, version = bi_dashboards.partner_performance(
         db,
         tenant_id=tenant_id,
@@ -463,7 +474,7 @@ def client_spend_endpoint(
     if not resolved_client:
         _require_admin_or_role(token, bi_dashboards.CLIENT_ROLES)
     _enforce_scope(token, client_id=resolved_client, partner_id=None)
-    tenant_id = int(token.get("tenant_id"))
+    tenant_id = _resolve_bi_tenant_id(token, db, client_id=resolved_client)
     items, version = bi_dashboards.client_spend(
         db,
         tenant_id=tenant_id,

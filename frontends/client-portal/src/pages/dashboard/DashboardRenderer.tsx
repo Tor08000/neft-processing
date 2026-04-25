@@ -2,9 +2,15 @@ import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import type { ClientDashboardResponse, ClientDashboardWidget } from "../../types/portal";
 import { formatDate, formatDateTime, formatMoney } from "../../utils/format";
+import { EmptyState } from "@shared/brand/components";
 
 const EMPTY_LABEL = "Нет данных";
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+// Generic documents discovery from dashboard widgets must stay on the canonical /client/documents*
+// contour. Do not point new dashboard links at the legacy /documents* compatibility surface.
 const widgetLinks: Record<string, string> = {
   total_spend_30d: "/client/analytics",
   transactions_30d: "/client/analytics",
@@ -45,6 +51,7 @@ const widgetTitles: Record<string, { title: string; subtitle?: string }> = {
   card_limits: { title: "Лимиты карт" },
 };
 
+// Generic CTA entry points follow the same rule: use /client/documents for general discovery.
 const ctaActions: Record<string, Array<{ label: string; to: string; variant?: "primary" | "secondary" }>> = {
   owner_actions: [
     { label: "Создать отчёт", to: "/client/exports", variant: "primary" },
@@ -59,6 +66,65 @@ const ctaActions: Record<string, Array<{ label: string; to: string; variant?: "p
     { label: "Лимиты", to: "/limits/templates" },
   ],
   driver_actions: [{ label: "Мои карты", to: "/cards", variant: "primary" }],
+};
+
+const ctaMeta: Record<string, { title: string; subtitle: string }> = {
+  owner_actions: {
+    title: "Следующие шаги владельца",
+    subtitle: "Быстрые переходы в контуры, которые закрывают контроль расходов и отчётности.",
+  },
+  accountant_actions: {
+    title: "Следующие шаги бухгалтерии",
+    subtitle: "Документы, выгрузки и проверка периода без лишних кликов по меню.",
+  },
+  fleet_actions: {
+    title: "Следующие шаги fleet-контура",
+    subtitle: "Карты, лимиты и предупреждения, которые помогают удерживать парк в рабочем коридоре.",
+  },
+  driver_actions: {
+    title: "Следующие шаги по смене",
+    subtitle: "Самые частые действия для водителя вынесены в один понятный блок.",
+  },
+};
+
+const dashboardSpotlight: Record<
+  string,
+  {
+    title: string;
+    description: string;
+    hint: string;
+    primaryAction: { label: string; to: string };
+    secondaryAction: { label: string; to: string };
+  }
+> = {
+  OWNER: {
+    title: "Держите под контролем расходы и service health",
+    description: "Панель собрана вокруг owner-сценария: аналитика, поддержка и системные сигналы уже сведены в один рабочий обзор.",
+    hint: "Начните с аналитики, если нужно быстро проверить расход за период, затем спускайтесь к support и SLO.",
+    primaryAction: { label: "Открыть аналитику", to: "/client/analytics" },
+    secondaryAction: { label: "Перейти в поддержку", to: "/client/support" },
+  },
+  ACCOUNTANT: {
+    title: "Закройте документы и выгрузки за период",
+    description: "Для бухгалтерии мы держим рядом документы, экспортные задачи и сигналы по выставленным счетам без декоративных блоков.",
+    hint: "Если период ещё не закрыт, сначала проверьте документы, затем экспорт и billing-контур.",
+    primaryAction: { label: "Открыть документы", to: "/client/documents" },
+    secondaryAction: { label: "Открыть экспорты", to: "/client/exports" },
+  },
+  FLEET_MANAGER: {
+    title: "Проверьте парк и ограничения до того, как появятся инциденты",
+    description: "Главные сигналы fleet-контура собраны по картам, лимитам и предупреждениям, чтобы следующий шаг был виден сразу.",
+    hint: "Если предупреждений пока нет, используйте блок как быстрый вход в лимиты и уведомления.",
+    primaryAction: { label: "Открыть карты", to: "/cards" },
+    secondaryAction: { label: "Открыть лимиты", to: "/limits/templates" },
+  },
+  DRIVER: {
+    title: "Проверьте карту и последние операции перед поездкой",
+    description: "Для водителя остаются только рабочие сигналы: доступные карты, последние списания и текущие лимиты.",
+    hint: "Если лимиты не заполнены, откройте карту и уточните ограничения перед следующей операцией.",
+    primaryAction: { label: "Открыть карты", to: "/cards" },
+    secondaryAction: { label: "Открыть операции", to: "/operations" },
+  },
 };
 
 type DashboardRendererProps = {
@@ -143,6 +209,110 @@ function WidgetCard({
   );
 }
 
+function RoleSpotlight({ role }: { role: string }) {
+  const spotlight = dashboardSpotlight[role];
+  if (!spotlight) {
+    return null;
+  }
+
+  return (
+    <section className="card dashboard-widget">
+      <div className="card__header">
+        <div>
+          <h2>{spotlight.title}</h2>
+          <p className="muted">{spotlight.description}</p>
+        </div>
+        <span className="neft-chip neft-chip-info">{role}</span>
+      </div>
+      <div className="dashboard-actions">
+        <Link className="neft-button neft-btn-primary" to={spotlight.primaryAction.to}>
+          {spotlight.primaryAction.label}
+        </Link>
+        <Link className="ghost" to={spotlight.secondaryAction.to}>
+          {spotlight.secondaryAction.label}
+        </Link>
+      </div>
+      <div className="muted small">{spotlight.hint}</div>
+    </section>
+  );
+}
+
+function renderListEmptyState(key: string) {
+  if (key === "recent_documents") {
+    return (
+      <EmptyState
+        title="Документы появятся после закрытия периода"
+        description="Пока здесь пусто, вы можете открыть общий журнал документов и проверить, не ждут ли вас счета или акты."
+        primaryAction={{ label: "Открыть документы", to: "/client/documents" }}
+      />
+    );
+  }
+
+  if (key === "exports_recent") {
+    return (
+      <EmptyState
+        title="Экспорты ещё не запускались"
+        description="Когда появятся выгрузки, они будут видны здесь вместе со статусом и ETA."
+        primaryAction={{ label: "Создать экспорт", to: "/client/exports" }}
+      />
+    );
+  }
+
+  if (key === "recent_transactions") {
+    return (
+      <EmptyState
+        title="Операций пока нет"
+        description="После первых транзакций карточка покажет недавние списания и время операции."
+        primaryAction={{ label: "Открыть операции", to: "/operations" }}
+      />
+    );
+  }
+
+  if (key === "card_limits") {
+    return (
+      <EmptyState
+        title="Лимиты карт не настроены"
+        description="Настройте ограничения, чтобы следующий расход не уходил в ручной разбор."
+        primaryAction={{ label: "Открыть лимиты", to: "/limits/templates" }}
+      />
+    );
+  }
+
+  if (key === "alerts") {
+    return (
+      <EmptyState
+        title="Активных предупреждений нет"
+        description="Когда лимиты, аномалии или уведомления потребуют внимания, эта карточка станет рабочим inbox, а не пустой заглушкой."
+        primaryAction={{ label: "Открыть уведомления", to: "/fleet/notifications" }}
+        secondaryAction={{ label: "Проверить лимиты", to: "/limits/templates" }}
+      />
+    );
+  }
+
+  if (key === "top_cards") {
+    return (
+      <EmptyState
+        title="Пока нет лидеров по расходам"
+        description="Карточка наполнится, когда появится достаточно операций для ранжирования карт."
+        primaryAction={{ label: "Открыть аналитику", to: "/client/analytics" }}
+      />
+    );
+  }
+
+  return <EmptyState title="Пока нет данных" description="Карточка наполнится, когда owner начнёт возвращать реальные данные для этого контура." />;
+}
+
+function renderUnavailableWidgetState(key: string) {
+  const link = widgetLinks[key];
+  return (
+    <EmptyState
+      title="Данные временно недоступны"
+      description="Карточка появится, когда связанные операции будут доступны для расчёта."
+      primaryAction={link ? { label: "Открыть раздел", to: link } : undefined}
+    />
+  );
+}
+
 function Sparkline({ points }: { points: ChartPoint[] }) {
   if (!points.length) {
     return <div className="muted small">{EMPTY_LABEL}</div>;
@@ -179,7 +349,7 @@ function Sparkline({ points }: { points: ChartPoint[] }) {
 
 function renderListItems(data: unknown, timezone: string, key: string) {
   if (!Array.isArray(data) || data.length === 0) {
-    return <div className="muted small">{EMPTY_LABEL}</div>;
+    return renderListEmptyState(key);
   }
 
   if (key === "top_cards") {
@@ -271,10 +441,24 @@ function renderListItems(data: unknown, timezone: string, key: string) {
   }
 
   if (key === "alerts") {
-    return <div className="muted small">{EMPTY_LABEL}</div>;
+    return (
+      <ul className="dashboard-list">
+        {(data as Array<Record<string, unknown>>).map((item, index) => (
+          <li key={String(item.id ?? index)} className="dashboard-list__item">
+            <div>
+              <div className="dashboard-list__title">{String(item.title ?? item.message ?? "Предупреждение")}</div>
+              <div className="muted small">
+                {item.occurred_at ? formatDateTime(String(item.occurred_at), timezone) : "Требует внимания"}
+              </div>
+            </div>
+            <div className="dashboard-list__value">{String(item.severity ?? item.status ?? "OPEN")}</div>
+          </li>
+        ))}
+      </ul>
+    );
   }
 
-  return <div className="muted small">{EMPTY_LABEL}</div>;
+  return renderListEmptyState(key);
 }
 
 function TopDriversCards({ data }: { data: TopDriversCardsData }) {
@@ -386,12 +570,20 @@ function renderWidget(widget: ClientDashboardWidget, timezone: string) {
   const link = widgetLinks[widget.key];
 
   if (widget.type === "kpi") {
-    const data = widget.data as { value?: number; currency?: string } | undefined;
-    const value = typeof data?.value === "number" ? data.value : 0;
+    const data = isRecord(widget.data) ? widget.data : null;
+    if (typeof data?.value !== "number") {
+      return (
+        <WidgetCard title={meta.title} subtitle={meta.subtitle} link={link}>
+          {renderUnavailableWidgetState(widget.key)}
+        </WidgetCard>
+      );
+    }
+    const value = data.value;
+    const currency = typeof data.currency === "string" ? data.currency : undefined;
     return (
       <WidgetCard title={meta.title} subtitle={meta.subtitle} link={link}>
         <div className="kpi-card">
-          <div className="kpi-card__value">{formatKpiValue(value, data?.currency)}</div>
+          <div className="kpi-card__value">{formatKpiValue(value, currency)}</div>
         </div>
       </WidgetCard>
     );
@@ -446,12 +638,16 @@ function renderWidget(widget: ClientDashboardWidget, timezone: string) {
 
   if (widget.type === "cta") {
     const actions = ctaActions[widget.key] ?? [];
+    const meta = ctaMeta[widget.key] ?? {
+      title: "Следующие шаги",
+      subtitle: "Откройте нужный раздел без лишней навигации.",
+    };
     return (
       <section className="card dashboard-widget">
         <div className="card__header">
           <div>
-            <h2>Быстрые действия</h2>
-            <p className="muted">Откройте нужный раздел.</p>
+            <h2>{meta.title}</h2>
+            <p className="muted">{meta.subtitle}</p>
           </div>
         </div>
         <div className="dashboard-actions">
@@ -475,6 +671,7 @@ function renderWidget(widget: ClientDashboardWidget, timezone: string) {
 export function DashboardRenderer({ dashboard }: DashboardRendererProps) {
   return (
     <div className="dashboard-grid" aria-live="polite">
+      <RoleSpotlight role={dashboard.role} />
       {dashboard.widgets.map((widget) => (
         <div key={`${widget.type}-${widget.key}`}>{renderWidget(widget, dashboard.timezone)}</div>
       ))}

@@ -786,14 +786,14 @@ export const PARTNER_ROUTES: RouteConfig[] = [
 
 export const CREDENTIALS = {
   admin: {
-    email: normalizeCredential(process.env.NEFT_BOOTSTRAP_ADMIN_EMAIL, process.env.ADMIN_EMAIL || "admin@example.com"),
-    password: normalizeCredential(process.env.NEFT_BOOTSTRAP_ADMIN_PASSWORD, process.env.ADMIN_PASSWORD || "admin123"),
+    email: normalizeCredential(process.env.NEFT_BOOTSTRAP_ADMIN_EMAIL, process.env.ADMIN_EMAIL || "admin@neft.local"),
+    password: normalizeCredential(process.env.NEFT_BOOTSTRAP_ADMIN_PASSWORD, process.env.ADMIN_PASSWORD || "Neft123!"),
   },
   client: {
     email: normalizeCredential(process.env.NEFT_BOOTSTRAP_CLIENT_EMAIL, process.env.CLIENT_EMAIL || "client@neft.local"),
     password: normalizeCredential(
       process.env.NEFT_BOOTSTRAP_CLIENT_PASSWORD,
-      process.env.CLIENT_PASSWORD || "client",
+      process.env.CLIENT_PASSWORD || "Client123!",
     ),
   },
   partner: {

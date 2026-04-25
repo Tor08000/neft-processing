@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { FormEvent } from "react";
 import { useParams } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext";
 import { useI18n } from "../../i18n";
@@ -11,8 +12,10 @@ import {
   fetchTripSlaImpact,
   fetchTripTracking,
   fetchTripFuel,
+  writeFuelConsumption,
 } from "../../api/logistics";
 import type {
+  FuelConsumptionWriteResult,
   RouteDetail,
   TripDetail,
   TripDeviationEvent,
@@ -38,7 +41,7 @@ import { formatDateTime } from "../../utils/format";
 import { normalizeDeviation } from "../../utils/normalizeDeviation";
 import { useConditionalPolling } from "../../hooks/useConditionalPolling";
 
-const statusSteps: TripStatus[] = ["CREATED", "IN_PROGRESS", "COMPLETED"];
+const statusSteps: TripStatus[] = ["CREATED", "IN_PROGRESS", "COMPLETED", "CANCELLED"];
 const TRACKING_LIMIT = 200;
 const DEVIATIONS_LIMIT = 200;
 const DEVIATIONS_POLL_INTERVAL_MS = 30000;
@@ -166,6 +169,11 @@ export function TripDetailsPage() {
   const [slaImpact, setSlaImpact] = useState<TripSlaImpact | null>(null);
   const [selectedDeviation, setSelectedDeviation] = useState<TripDeviationEvent | null>(null);
   const [fuel, setFuel] = useState<TripFuelResponse | null>(null);
+  const [fuelDistanceKm, setFuelDistanceKm] = useState("");
+  const [fuelVehicleKind, setFuelVehicleKind] = useState("truck");
+  const [fuelWriteLoading, setFuelWriteLoading] = useState(false);
+  const [fuelWriteError, setFuelWriteError] = useState<string | null>(null);
+  const [fuelWriteResult, setFuelWriteResult] = useState<FuelConsumptionWriteResult | null>(null);
   const lastTsRef = useRef<string | null>(null);
   const lastDeviationRef = useRef<string | null>(null);
 
@@ -338,6 +346,43 @@ export function TripDetailsPage() {
     if (!fuelTabActive) return;
     void loadFuel();
   }, [fuelTabActive, loadFuel]);
+
+  useEffect(() => {
+    if (!fuelTabActive || fuelDistanceKm || typeof route?.distance_km !== "number") return;
+    setFuelDistanceKm(String(route.distance_km));
+  }, [fuelDistanceKm, fuelTabActive, route?.distance_km]);
+
+  const handleFuelConsumptionWrite = useCallback(
+    async (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      if (!user?.token || !tripId) return;
+      const distanceKm = Number(fuelDistanceKm.replace(",", "."));
+      if (!Number.isFinite(distanceKm) || distanceKm <= 0) {
+        setFuelWriteError("Enter a positive route distance before recording consumption.");
+        setFuelWriteResult(null);
+        return;
+      }
+      setFuelWriteLoading(true);
+      setFuelWriteError(null);
+      try {
+        const idempotencyKey = `client-ui-fuel:${tripId}:${distanceKm.toFixed(3)}:${fuelVehicleKind}`;
+        const result = await writeFuelConsumption(user.token, {
+          trip_id: tripId,
+          distance_km: distanceKm,
+          vehicle_kind: fuelVehicleKind,
+          idempotency_key: idempotencyKey,
+        });
+        setFuelWriteResult(result);
+        await loadFuel();
+      } catch (errorValue) {
+        setFuelWriteError(errorValue instanceof Error ? errorValue.message : "Unable to record fuel consumption.");
+        setFuelWriteResult(null);
+      } finally {
+        setFuelWriteLoading(false);
+      }
+    },
+    [fuelDistanceKm, fuelVehicleKind, loadFuel, tripId, user?.token],
+  );
 
   useConditionalPolling(fuelTabActive && inProgress, FUEL_POLL_INTERVAL_MS, () => {
     void loadFuel();
@@ -542,7 +587,9 @@ export function TripDetailsPage() {
                       ? t("logisticsTrips.statusCreated")
                       : step === "IN_PROGRESS"
                         ? t("logisticsTrips.statusInProgress")
-                        : t("logisticsTrips.statusCompleted")}
+                        : step === "COMPLETED"
+                          ? t("logisticsTrips.statusCompleted")
+                          : t("logisticsTrips.statusCancelled")}
                   </div>
                   {isCurrent ? <div className="small muted">{t("logisticsTrips.currentStatus")}</div> : null}
                 </div>
@@ -756,6 +803,45 @@ export function TripDetailsPage() {
 
       {activeTab === "fuel" ? (
         <div className="stack gap-12">
+          <form className="card stack" onSubmit={(event) => void handleFuelConsumptionWrite(event)}>
+            <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+              <h2>Record fuel consumption</h2>
+              <span className="neft-chip neft-chip-muted">Provider-backed write</span>
+            </div>
+            <div className="grid three">
+              <label className="stack">
+                <span className="muted small">Route distance, km</span>
+                <input
+                  aria-label="Fuel distance"
+                  type="number"
+                  min="0.001"
+                  step="0.001"
+                  value={fuelDistanceKm}
+                  onChange={(event) => setFuelDistanceKm(event.target.value)}
+                />
+              </label>
+              <label className="stack">
+                <span className="muted small">Vehicle kind</span>
+                <select aria-label="Fuel vehicle kind" value={fuelVehicleKind} onChange={(event) => setFuelVehicleKind(event.target.value)}>
+                  <option value="truck">Truck</option>
+                  <option value="van">Van</option>
+                  <option value="car">Car</option>
+                </select>
+              </label>
+              <div className="stack" style={{ justifyContent: "end" }}>
+                <button type="submit" className="secondary" disabled={fuelWriteLoading}>
+                  {fuelWriteLoading ? "Recording..." : "Record consumption"}
+                </button>
+              </div>
+            </div>
+            {fuelWriteError ? <div className="error-banner" role="alert">{fuelWriteError}</div> : null}
+            {fuelWriteResult ? (
+              <div className="success small">
+                Provider {fuelWriteResult.provider_mode ?? "unknown"} returned {fuelWriteResult.liters ?? 0} liters.
+                {fuelWriteResult.audit_event_id ? ` Audit ${fuelWriteResult.audit_event_id}.` : ""}
+              </div>
+            ) : null}
+          </form>
           <div className="grid grid-3">
             <article className="card"><h3>Total liters</h3><div>{fuel?.totals?.liters ?? 0}</div></article>
             <article className="card"><h3>Total amount</h3><div>{fuel?.totals?.amount ?? 0}</div></article>

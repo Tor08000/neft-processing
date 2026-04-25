@@ -4,7 +4,6 @@ import { usePortal, type PortalState } from "../auth/PortalContext";
 import { useAuth } from "../auth/AuthContext";
 import { AccessState, resolveAccessState } from "../access/accessState";
 import { ErrorState, ForbiddenState, LoadingState } from "./states";
-import { isDemoPartner } from "@shared/demo/demo";
 
 type AccessGateProps = {
   capability?: string;
@@ -183,7 +182,7 @@ const AccessStateView = ({
       title: "Завершите профиль партнёра",
       description: "Завершите онбординг, чтобы открыть раздел.",
       action: (
-        <Link className="ghost" to="/marketplace/profile">
+        <Link className="ghost" to="/onboarding">
           Завершить профиль
         </Link>
       ),
@@ -268,16 +267,6 @@ export const AccessGate = ({ capability, requiredRoles, title, children }: Acces
   }
 
   let decision = resolveAccessState({ portal, requiredRoles, capability });
-  const isDemoPartnerAccount = isDemoPartner(user.email ?? portal?.user?.email ?? null);
-  if (
-    isDemoPartnerAccount &&
-    [AccessState.NEEDS_PLAN, AccessState.NEEDS_ONBOARDING, AccessState.MODULE_DISABLED, AccessState.MISSING_CAPABILITY].includes(
-      decision.state,
-    )
-  ) {
-    // Demo-only bypass: unlock partner modules without altering production checks.
-    decision = { state: AccessState.ACTIVE };
-  }
   if (decision.state !== AccessState.ACTIVE) {
     return <AccessStateView state={decision.state} title={title} reason={decision.reason} />;
   }

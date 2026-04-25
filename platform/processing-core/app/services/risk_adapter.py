@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import dataclasses
+import hashlib
+import json
 import os
 import time
 from collections import Counter
@@ -95,6 +97,8 @@ class RiskEvaluation:
     score: Optional[float]
     source: str
     flags: dict[str, Any]
+    degraded: bool = False
+    pipeline: dict[str, Any] = field(default_factory=dict)
 
     def to_payload(self) -> dict[str, Any]:
         decision_payload = dataclasses.asdict(self.decision)
@@ -105,9 +109,12 @@ class RiskEvaluation:
             "flags": self.flags,
             "reason_codes": list(self.decision.reason_codes),
             "rules_fired": list(self.decision.rules_fired),
+            "degraded": self.degraded,
         }
         if self.score is not None:
             payload["score"] = self.score
+        if self.pipeline:
+            payload["pipeline"] = self.pipeline
         return payload
 
 
@@ -141,6 +148,39 @@ def _score_bucket(score: float) -> str:
     if score < 0.8:
         return "0.5-0.8"
     return "0.8-1.0"
+
+
+def _stable_trace_value(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {
+            str(key): _stable_trace_value(value[key])
+            for key in sorted(value, key=str)
+            if key not in {"latency_ms"}
+        }
+    if isinstance(value, list):
+        return [_stable_trace_value(item) for item in value]
+    if isinstance(value, tuple):
+        return [_stable_trace_value(item) for item in value]
+    if isinstance(value, float):
+        return round(value, 6)
+    return value
+
+
+def _decision_trace_hash(trace: dict[str, Any]) -> str:
+    payload = json.dumps(
+        _stable_trace_value(trace),
+        sort_keys=True,
+        separators=(",", ":"),
+        default=str,
+    ).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
+
+
+def _attach_decision_trace_hash(flags: dict[str, Any]) -> dict[str, Any]:
+    trace = flags.get("decision_trace")
+    if isinstance(trace, dict):
+        flags["decision_trace_hash"] = _decision_trace_hash(trace)
+    return flags
 
 
 @dataclass
@@ -196,6 +236,66 @@ async def _post_score(payload: dict) -> dict:
     return response.json()
 
 
+def _build_ai_fallback(
+    *,
+    error_type: str,
+    error_detail: str,
+    latency_ms: float,
+    retryable: bool,
+    response_data: dict[str, Any] | None = None,
+) -> RiskEvaluation:
+    flags: dict[str, Any] = {
+        "error": error_detail,
+        "error_type": error_type,
+        "retryable": retryable,
+        "degraded": True,
+        "provider": "ai-service",
+    }
+    if response_data is not None:
+        flags["ai_payload"] = response_data
+    return RiskEvaluation(
+        decision=RiskDecision(
+            level=RiskDecisionLevel.MEDIUM,
+            rules_fired=[],
+            reason_codes=[f"ai_{error_type}"],
+            ai_score=None,
+            ai_model_version=None,
+        ),
+        score=None,
+        source="FALLBACK",
+        flags=flags,
+        degraded=True,
+        pipeline={
+            "stage": "ai_score",
+            "provider": "ai-service",
+            "status": "degraded",
+            "error_type": error_type,
+            "retryable": retryable,
+            "latency_ms": round(latency_ms, 3),
+        },
+    )
+
+
+def _parse_ai_response(response_data: dict[str, Any]) -> tuple[float, str, list[str], str | None]:
+    raw_score = response_data.get("risk_score")
+    if raw_score is None:
+        raw_score = response_data.get("score")
+    if raw_score is None:
+        raise ValueError("score_missing")
+    try:
+        risk_score = float(raw_score)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("score_invalid") from exc
+    decision = response_data.get("risk_result") or response_data.get("decision")
+    if not decision:
+        raise ValueError("decision_missing")
+    raw_reasons = response_data.get("reason_codes") or response_data.get("reasons") or []
+    if not isinstance(raw_reasons, list):
+        raise ValueError("reason_codes_invalid")
+    reasons = [str(item) for item in raw_reasons if item]
+    return risk_score, str(decision), reasons, response_data.get("model_version")
+
+
 async def call_risk_engine(context: OperationContext) -> RiskEvaluation:
     payload: Dict[str, Any] = {
         "client_id": str(context.client_id),
@@ -227,26 +327,22 @@ async def call_risk_engine(context: OperationContext) -> RiskEvaluation:
         logger.warning(
             "AI risk scorer timeout", extra={"latency_ms": latency_ms, "payload_keys": list(payload.keys())}
         )
-        return RiskEvaluation(
-            decision=RiskDecision(
-                level=RiskDecisionLevel.MEDIUM, rules_fired=[], reason_codes=[], ai_score=None, ai_model_version=None
-            ),
-            score=None,
-            source="FALLBACK",
-            flags={"error": "timeout"},
+        return _build_ai_fallback(
+            error_type="timeout",
+            error_detail="timeout",
+            latency_ms=latency_ms,
+            retryable=True,
         )
     except httpx.RequestError as exc:
         latency_ms = (time.perf_counter() - started_at) * 1000
         metrics.observe_latency(latency_ms)
         metrics.inc_connection_error("request_error")
         logger.warning("AI risk scorer connection failed: %s", exc, extra={"latency_ms": latency_ms}, exc_info=exc)
-        return RiskEvaluation(
-            decision=RiskDecision(
-                level=RiskDecisionLevel.MEDIUM, rules_fired=[], reason_codes=[], ai_score=None, ai_model_version=None
-            ),
-            score=None,
-            source="FALLBACK",
-            flags={"error": str(exc)},
+        return _build_ai_fallback(
+            error_type="request_error",
+            error_detail=str(exc),
+            latency_ms=latency_ms,
+            retryable=True,
         )
     except httpx.HTTPStatusError as exc:
         latency_ms = (time.perf_counter() - started_at) * 1000
@@ -255,27 +351,33 @@ async def call_risk_engine(context: OperationContext) -> RiskEvaluation:
         logger.warning(
             "AI risk scorer returned bad status", extra={"status": exc.response.status_code, "latency_ms": latency_ms}
         )
-        return RiskEvaluation(
-            decision=RiskDecision(
-                level=RiskDecisionLevel.MEDIUM, rules_fired=[], reason_codes=[], ai_score=None, ai_model_version=None
-            ),
-            score=None,
-            source="FALLBACK",
-            flags={"error": str(exc)},
+        return _build_ai_fallback(
+            error_type="bad_status",
+            error_detail=str(exc),
+            latency_ms=latency_ms,
+            retryable=False,
         )
 
     latency_ms = (time.perf_counter() - started_at) * 1000
     metrics.observe_latency(latency_ms)
-    risk_score = float(
-        response_data.get("risk_score")
-        if "risk_score" in response_data
-        else response_data.get("score", 0.0)
-    )
-    decision = response_data.get("risk_result") or response_data.get("decision")
+    try:
+        risk_score, decision, reasons, ai_model_version = _parse_ai_response(response_data)
+    except ValueError as exc:
+        metrics.inc_connection_error("malformed_response")
+        logger.warning(
+            "AI risk scorer returned malformed payload",
+            extra={"error_type": str(exc), "latency_ms": latency_ms},
+        )
+        return _build_ai_fallback(
+            error_type="malformed_response",
+            error_detail=str(exc),
+            latency_ms=latency_ms,
+            retryable=False,
+            response_data=response_data,
+        )
+
     risk_level = _normalize_level(decision)
-    reasons = response_data.get("reason_codes") or response_data.get("reasons") or []
-    flags = {"ai_payload": response_data}
-    ai_model_version = response_data.get("model_version")
+    flags = {"ai_payload": response_data, "provider": "ai-service"}
     metrics.observe_score(risk_score)
     logger.info(
         "AI risk scorer responded", extra={"latency_ms": latency_ms, "risk_level": risk_level.value, "score": risk_score}
@@ -292,6 +394,14 @@ async def call_risk_engine(context: OperationContext) -> RiskEvaluation:
         score=risk_score,
         source="AI",
         flags=flags,
+        degraded=False,
+        pipeline={
+            "stage": "ai_score",
+            "provider": "ai-service",
+            "status": "ok",
+            "latency_ms": round(latency_ms, 3),
+            "model_version": ai_model_version,
+        },
     )
 
 
@@ -360,6 +470,15 @@ async def evaluate_risk(context: OperationContext, db=None) -> RiskEvaluation:
     rules_result = await risk_rules.evaluate_rules(context, db=db, rules=rules_from_db)
     rules_decision = _rules_to_decision(rules_result)
     combined_flags = dict(rules_result.flags)
+    combined_flags["decision_trace"] = {
+        "rules": {
+            "source": rules_result.source,
+            "risk_score": rules_result.risk_score,
+            "level": rules_decision.level.value,
+            "reason_codes": list(rules_decision.reason_codes),
+        },
+        "ai_enabled": _is_ai_enabled(),
+    }
 
     experimental_rule_set = getattr(settings, "RISK_EXPERIMENTAL_RULE_SET", "")
     if experimental_rule_set:
@@ -367,6 +486,8 @@ async def evaluate_risk(context: OperationContext, db=None) -> RiskEvaluation:
 
     if not _is_ai_enabled():
         combined_flags["ai_disabled"] = True
+        combined_flags["decision_trace"]["result"] = {"source": "RULES_ONLY", "degraded": False}
+        _attach_decision_trace_hash(combined_flags)
         return RiskEvaluation(
             decision=rules_decision,
             score=rules_result.risk_score,
@@ -379,20 +500,36 @@ async def evaluate_risk(context: OperationContext, db=None) -> RiskEvaluation:
     except Exception as exc:  # pragma: no cover - exercised in tests via fallback
         logger.warning("Risk engine unavailable, using rules only: %s", exc)
         combined_flags["ai_error"] = str(exc)
+        combined_flags["ai_error_type"] = "exception"
+        combined_flags["decision_trace"]["result"] = {"source": "RULES_FALLBACK", "degraded": True}
+        _attach_decision_trace_hash(combined_flags)
         return RiskEvaluation(
             decision=rules_decision,
             score=rules_result.risk_score,
             source="RULES_FALLBACK",
             flags=combined_flags,
+            degraded=True,
         )
 
-    if ai_result.source == "FALLBACK" or ai_result.flags.get("error"):
+    combined_flags["decision_trace"]["ai"] = {
+        "source": ai_result.source,
+        "degraded": ai_result.degraded,
+        "reason_codes": list(ai_result.decision.reason_codes),
+        "pipeline": ai_result.pipeline,
+    }
+
+    if ai_result.source == "FALLBACK" or ai_result.flags.get("error") or ai_result.degraded:
         combined_flags.update(ai_result.flags)
+        combined_flags["ai_error_type"] = ai_result.flags.get("error_type")
+        combined_flags["decision_trace"]["result"] = {"source": "RULES_FALLBACK", "degraded": True}
+        _attach_decision_trace_hash(combined_flags)
         return RiskEvaluation(
             decision=rules_decision,
             score=rules_result.risk_score,
             source="RULES_FALLBACK",
             flags=combined_flags,
+            degraded=True,
+            pipeline=ai_result.pipeline,
         )
 
     combined_level = ai_result.decision.level
@@ -412,11 +549,21 @@ async def evaluate_risk(context: OperationContext, db=None) -> RiskEvaluation:
     )
 
     source = "RULES_AND_AI" if rules_decision.reason_codes else ai_result.source
+    combined_flags["decision_trace"]["result"] = {"source": source, "degraded": False}
+    _attach_decision_trace_hash(combined_flags)
     return RiskEvaluation(
         decision=combined_decision,
         score=combined_score,
         source=source,
         flags=combined_flags,
+        degraded=False,
+        pipeline={
+            "stage": "risk_evaluation",
+            "status": "ok",
+            "rules_level": rules_decision.level.value,
+            "ai_level": ai_result.decision.level.value,
+            "combined_level": combined_level.value,
+        },
     )
 
 

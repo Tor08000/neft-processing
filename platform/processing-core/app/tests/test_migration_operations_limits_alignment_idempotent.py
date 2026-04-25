@@ -72,7 +72,7 @@ class DummyOp:
     def execute(self, statement):
         return self.connection.exec_driver_sql(statement)
 
-    def create_index(self, name, table_name, columns, unique=False):  # noqa: ARG002
+    def create_index(self, name, table_name, columns, unique=False, **kwargs):  # noqa: ARG002
         sql = f"CREATE {'UNIQUE ' if unique else ''}INDEX {name} ON {table_name} ({', '.join(columns)})"
         self.connection.exec_driver_sql(sql)
 
@@ -84,6 +84,31 @@ class DummyOp:
 def _prepare_migration(monkeypatch: pytest.MonkeyPatch, connection: DummyConnection):
     dummy_op = DummyOp(connection)
     monkeypatch.setattr(migration, "op", dummy_op)
+    inspector = SimpleNamespace(
+        get_indexes=lambda table_name, schema=None: [  # noqa: ARG005
+            {"name": name} for name in sorted(connection.indexes)
+        ],
+        get_table_names=lambda: ["operations", "limits_rules"],
+        get_columns=lambda table_name: [],  # noqa: ARG005
+        get_foreign_keys=lambda table_name, schema=None: [],  # noqa: ARG005
+        get_pk_constraint=lambda table_name, schema=None: {  # noqa: ARG005
+            "name": "operations_pkey",
+            "constrained_columns": ["id"],
+        },
+    )
+    monkeypatch.setattr(migration.sa, "inspect", lambda bind: inspector)
+    monkeypatch.setattr(
+        migration,
+        "table_exists",
+        lambda bind, table_name, schema=None: table_name in {"operations", "limits_rules"},
+    )
+    monkeypatch.setattr(migration, "constraint_exists", lambda *args, **kwargs: True)
+    monkeypatch.setattr(migration, "_add_column_if_missing", lambda *args, **kwargs: None)
+    monkeypatch.setattr(migration, "_get_operation_fks", lambda *args, **kwargs: [])
+    monkeypatch.setattr(migration, "_drop_fk_constraints", lambda *args, **kwargs: None)
+    monkeypatch.setattr(migration, "_recreate_fk_constraints", lambda *args, **kwargs: None)
+    monkeypatch.setattr(migration, "_ensure_operation_type_enum", lambda *args, **kwargs: None)
+    monkeypatch.setattr(migration, "_ensure_operation_status_enum", lambda *args, **kwargs: None)
 
     def _noop_create(*args, **kwargs):  # noqa: ARG002
         return None
@@ -116,7 +141,7 @@ def test_upgrade_is_idempotent(monkeypatch: pytest.MonkeyPatch):
         "ix_limits_rules_scope",
         "ix_limits_rules_product_type",
     }
-    assert all("IF NOT EXISTS" in sql for sql in connection.executed if "CREATE" in sql)
+    assert len([sql for sql in connection.executed if sql.startswith("CREATE")]) == 5
 
     connection.executed.clear()
 
@@ -129,4 +154,4 @@ def test_upgrade_is_idempotent(monkeypatch: pytest.MonkeyPatch):
         "ix_limits_rules_scope",
         "ix_limits_rules_product_type",
     }
-    assert all("IF NOT EXISTS" in sql for sql in connection.executed if "CREATE" in sql)
+    assert not [sql for sql in connection.executed if sql.startswith("CREATE")]

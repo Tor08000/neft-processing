@@ -56,6 +56,7 @@ class RecommendationResponse(BaseModel):
     items: list[RecommendationItem] = Field(default_factory=list)
     generated_at: datetime
     model: str
+    assumptions: list[str] = Field(default_factory=list)
 
 
 class RelatedProductsResponse(BaseModel):

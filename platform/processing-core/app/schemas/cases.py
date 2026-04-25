@@ -12,16 +12,20 @@ class CaseCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     kind: CaseKind
+    entity_type: str | None = Field(default=None, max_length=64)
     entity_id: str | None = None
     kpi_key: str | None = None
     window_days: int | None = Field(default=None, ge=1)
     title: str | None = Field(default=None, max_length=160)
+    description: str | None = None
     priority: CasePriority = CasePriority.MEDIUM
     note: str | None = None
     explain: dict[str, Any] | None = None
     diff: dict[str, Any] | None = None
     selected_actions: list[dict[str, Any]] | None = None
     mastery_snapshot: dict[str, Any] | None = None
+    client_id: str | None = Field(default=None, max_length=64)
+    partner_id: str | None = Field(default=None, max_length=64)
 
 
 class CaseUpdateRequest(BaseModel):
@@ -59,16 +63,25 @@ class CaseCommentOut(BaseModel):
     created_at: datetime
 
 
+class CaseTimelineEventOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    status: CaseStatus
+    occurred_at: datetime
+
+
 class CaseResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: str
     tenant_id: int
     kind: CaseKind
+    entity_type: str | None = None
     entity_id: str | None
     kpi_key: str | None
     window_days: int | None
     title: str
+    description: str | None = None
     status: CaseStatus
     queue: CaseQueue
     priority: CasePriority
@@ -76,8 +89,12 @@ class CaseResponse(BaseModel):
     first_response_due_at: datetime | None = None
     resolve_due_at: datetime | None = None
     sla_state: CaseSlaState | None = None
+    client_id: str | None = None
+    partner_id: str | None = None
     created_by: str | None
     assigned_to: str | None
+    case_source_ref_type: str | None = None
+    case_source_ref_id: str | None = None
     created_at: datetime
     updated_at: datetime
     last_activity_at: datetime
@@ -98,6 +115,7 @@ class CaseDetailsResponse(BaseModel):
     case: CaseResponse
     latest_snapshot: CaseSnapshotOut | None
     comments: list[CaseCommentOut]
+    timeline: list[CaseTimelineEventOut] = Field(default_factory=list)
     snapshots: list[CaseSnapshotOut] | None = None
 
 
@@ -109,5 +127,6 @@ __all__ = [
     "CaseListResponse",
     "CaseResponse",
     "CaseSnapshotOut",
+    "CaseTimelineEventOut",
     "CaseUpdateRequest",
 ]

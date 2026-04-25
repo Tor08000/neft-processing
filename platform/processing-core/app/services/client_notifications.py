@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import logging
+from uuid import UUID
 
-from sqlalchemy import and_, or_
+from sqlalchemy import MetaData, Table, and_, desc, inspect, or_, select
 from sqlalchemy.orm import Session
 
 from app.models.client import Client
@@ -40,11 +41,116 @@ def normalize_roles(token: dict) -> list[str]:
     return [str(role).upper() for role in roles]
 
 
-def resolve_client_email(db: Session, org_id: str) -> str | None:
-    client = db.query(Client).filter(Client.id == org_id).one_or_none()
-    if client and client.email:
-        return client.email
-    return None
+def _table_exists(db: Session, name: str) -> bool:
+    try:
+        return inspect(db.get_bind()).has_table(name)
+    except Exception:
+        return False
+
+
+def _table(db: Session, name: str) -> Table:
+    return Table(name, MetaData(), autoload_with=db.get_bind())
+
+
+def _column(table: Table, name: str):
+    return table.c.get(name)
+
+
+def _normalize_client_uuid(value: object | None) -> str | None:
+    if value in (None, ""):
+        return None
+    try:
+        return str(UUID(str(value).strip()))
+    except (TypeError, ValueError, AttributeError):
+        return None
+
+
+def _resolve_client_scope_id_from_orgs(db: Session, *, org_id: int) -> str | None:
+    if not _table_exists(db, "orgs"):
+        return None
+    try:
+        orgs = _table(db, "orgs")
+    except Exception:
+        return None
+
+    id_col = _column(orgs, "id")
+    client_col = _column(orgs, "client_id") or _column(orgs, "client_uuid")
+    if id_col is None or client_col is None:
+        return None
+
+    try:
+        record = db.execute(select(client_col).where(id_col == org_id)).scalar_one_or_none()
+    except Exception:
+        return None
+    return _normalize_client_uuid(record)
+
+
+def _resolve_client_scope_id_from_subscriptions(db: Session, *, org_id: int) -> str | None:
+    if not _table_exists(db, "client_subscriptions"):
+        return None
+    try:
+        client_subscriptions = _table(db, "client_subscriptions")
+    except Exception:
+        return None
+
+    tenant_col = _column(client_subscriptions, "tenant_id")
+    client_col = _column(client_subscriptions, "client_id")
+    if tenant_col is None or client_col is None:
+        return None
+
+    query = select(client_col).where(tenant_col == org_id)
+    created_at_col = _column(client_subscriptions, "created_at")
+    start_at_col = _column(client_subscriptions, "start_at")
+    if created_at_col is not None:
+        query = query.order_by(desc(created_at_col))
+    elif start_at_col is not None:
+        query = query.order_by(desc(start_at_col))
+    query = query.limit(1)
+
+    try:
+        record = db.execute(query).scalar_one_or_none()
+    except Exception:
+        return None
+    return _normalize_client_uuid(record)
+
+
+def resolve_client_scope_id(db: Session, org_id: str | None, *, client_id: str | None = None) -> str | None:
+    resolved_client_id = _normalize_client_uuid(client_id)
+    if resolved_client_id is not None:
+        return resolved_client_id
+
+    candidate = str(org_id).strip() if org_id not in (None, "") else ""
+    if not candidate:
+        return None
+
+    direct_uuid = _normalize_client_uuid(candidate)
+    if direct_uuid is not None:
+        return direct_uuid
+
+    try:
+        record = db.query(Client.id).filter(Client.external_id == candidate).scalar()
+    except Exception:
+        record = None
+    resolved_client_id = _normalize_client_uuid(record)
+    if resolved_client_id is not None:
+        return resolved_client_id
+
+    if not candidate.isdigit():
+        return None
+
+    org_id_int = int(candidate)
+    return _resolve_client_scope_id_from_orgs(db, org_id=org_id_int) or _resolve_client_scope_id_from_subscriptions(
+        db,
+        org_id=org_id_int,
+    )
+
+
+def resolve_client_email(db: Session, org_id: str, *, client_id: str | None = None) -> str | None:
+    resolved_client_id = resolve_client_scope_id(db, org_id, client_id=client_id)
+    if not resolved_client_id:
+        return None
+    email = db.query(Client.email).filter(Client.id == UUID(resolved_client_id)).scalar()
+    return str(email) if email else None
 
 
 def send_notification_email(
@@ -108,9 +214,31 @@ def create_notification(
     email_to: str | None = None,
     email_idempotency_key: str | None = None,
     email_context: dict[str, str] | None = None,
-) -> ClientNotification:
+) -> ClientNotification | None:
+    resolved_notification_org_id = resolve_client_scope_id(db, org_id)
+    if not resolved_notification_org_id:
+        logger.warning(
+            "client_notification_scope_unresolved",
+            extra={"org_id": org_id, "event_type": event_type, "entity_type": entity_type, "entity_id": entity_id},
+        )
+        if email_to:
+            send_notification_email(
+                db=db,
+                to_email=email_to,
+                title=title,
+                body=body,
+                link=link,
+                event_type=event_type,
+                org_id=str(org_id),
+                notification_id=None,
+                entity_id=entity_id,
+                idempotency_key=email_idempotency_key,
+                context=email_context,
+            )
+        return None
+
     notification = ClientNotification(
-        org_id=org_id,
+        org_id=resolved_notification_org_id,
         target_user_id=target_user_id,
         target_roles=target_roles or None,
         type=event_type,
@@ -182,4 +310,5 @@ __all__ = [
     "ensure_access",
     "normalize_roles",
     "resolve_client_email",
+    "resolve_client_scope_id",
 ]

@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.api.dependencies.admin import require_admin_user
+from app.api.dependencies.admin_rbac import extract_admin_roles
 from app.db import get_db
 from app.schemas.admin.revenue import (
     RevenueOverdueResponse,
@@ -13,24 +14,12 @@ from app.schemas.admin.revenue import (
     RevenueUsageResponse,
 )
 from app.services.admin_revenue import revenue_overdue_list, revenue_summary, revenue_usage_totals
-
-
-ALLOWED_ROLES = {"NEFT_SUPERADMIN", "NEFT_FINANCE", "NEFT_SALES"}
-
-
-def _extract_roles(token: dict) -> set[str]:
-    roles = token.get("roles") or []
-    if isinstance(roles, str):
-        roles = [roles]
-    role = token.get("role")
-    if role:
-        roles = [*roles, role]
-    return {str(value).upper() for value in roles}
+from app.services.admin_portal_access import admin_capability_allows
 
 
 def require_revenue_access(token: dict = Depends(require_admin_user)) -> dict:
-    roles = _extract_roles(token)
-    if not roles.intersection(ALLOWED_ROLES):
+    roles = extract_admin_roles(token)
+    if not admin_capability_allows(roles, "revenue", "read"):
         raise HTTPException(status_code=403, detail="forbidden_revenue_role")
     return token
 

@@ -3,7 +3,8 @@ from __future__ import annotations
 from fastapi import APIRouter, Request
 from fastapi.responses import RedirectResponse
 
-
+# Compatibility-only /api/partner/dashboard redirect tail.
+# Canonical partner finance owner stays under /api/core/partner/finance/*.
 router = APIRouter(prefix="/partner", tags=["partner-finance"])
 
 

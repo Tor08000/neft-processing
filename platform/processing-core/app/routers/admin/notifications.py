@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db import get_db
@@ -22,6 +23,15 @@ from app.schemas.notifications import (
 from app.services.notifications_v1 import dispatch_pending_notifications, enqueue_notification_message, replay_delivery
 
 router = APIRouter(prefix="/notifications", tags=["admin-notifications"])
+
+
+def _is_notification_template_code_conflict(exc: IntegrityError) -> bool:
+    message = str(getattr(exc, "orig", exc)).lower()
+    return (
+        "uq_notification_templates_code" in message
+        or "notification_templates_code_key" in message
+        or "unique constraint failed: notification_templates.code" in message
+    )
 
 
 @router.post("/preferences", response_model=NotificationPreferenceOut)
@@ -60,7 +70,13 @@ def create_notification_template(
 ) -> NotificationTemplateOut:
     template = NotificationTemplate(**payload.model_dump())
     db.add(template)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        if _is_notification_template_code_conflict(exc):
+            raise HTTPException(status_code=409, detail="notification_template_code_conflict") from exc
+        raise
     db.refresh(template)
     return NotificationTemplateOut.model_validate(template)
 

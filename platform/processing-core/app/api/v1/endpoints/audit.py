@@ -4,6 +4,7 @@ import os
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.api.dependencies.admin import require_admin_user
@@ -71,10 +72,15 @@ def search_audit(
     if actor_email:
         query = query.filter(AuditLog.actor_email == actor_email)
     if external_ref:
-        payload = {"external_ref": external_ref}
-        if provider:
-            payload["provider"] = provider
-        query = query.filter(AuditLog.external_refs.contains(payload))
+        if getattr(getattr(db.get_bind(), "dialect", None), "name", None) == "sqlite":
+            query = query.filter(func.json_extract(AuditLog.external_refs, "$.external_ref") == external_ref)
+            if provider:
+                query = query.filter(func.json_extract(AuditLog.external_refs, "$.provider") == provider)
+        else:
+            payload = {"external_ref": external_ref}
+            if provider:
+                payload["provider"] = provider
+            query = query.filter(AuditLog.external_refs.contains(payload))
 
     total = query.count()
     if sort == "ts.asc":

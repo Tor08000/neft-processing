@@ -10,6 +10,7 @@ testpaths = [
 norecursedirs = [
   ".git",
   ".venv",
+  ".hypothesis",
   "node_modules",
   "platform/ai-services",
   "platform/shared",
@@ -22,4 +23,10 @@ markers = [
   "contracts",
   "contracts_api",
   "contracts_events",
+]
+filterwarnings = [
+  "ignore:Please use `import python_multipart` instead\\.:PendingDeprecationWarning:starlette\\.formparsers",
+  "ignore:jsonschema\\.exceptions\\.RefResolutionError is deprecated.*:DeprecationWarning:schemathesis\\.generation\\.coverage",
+  "ignore:ast\\.NameConstant is deprecated and will be removed in Python 3\\.14.*:DeprecationWarning:reportlab\\.lib\\.rl_safe_eval",
+  "ignore:datetime\\.datetime\\.utcnow\\(\\) is deprecated and scheduled for removal in a future version.*:DeprecationWarning:jose\\.jwt",
 ]

@@ -11,6 +11,14 @@ from app.schemas import TerminalAuthRequest, TerminalCaptureRequest
 logger = get_logger(__name__)
 
 
+def _core_root_url() -> str:
+    normalized = CORE_API.rstrip("/")
+    for suffix in ("/api/core/v1", "/api/v1", "/api/core", "/api"):
+        if normalized.endswith(suffix):
+            return normalized[: -len(suffix)] or normalized
+    return normalized
+
+
 async def proxy_terminal_auth(payload: TerminalAuthRequest) -> dict:
     url = f"{CORE_API}/processing/terminal-auth"
     async with httpx.AsyncClient(timeout=5.0) as client:
@@ -51,6 +59,69 @@ def _extract_detail(response: httpx.Response) -> str:
         return detail if isinstance(detail, str) else response.text
     except Exception:
         return response.text
+
+
+async def emit_admin_user_audit_via_core_api(
+    *,
+    admin_bearer_token: str,
+    action: str,
+    user_id: str,
+    before: dict | None,
+    after: dict | None,
+    reason: str | None,
+    correlation_id: str | None,
+    request_id: str | None = None,
+    trace_id: str | None = None,
+) -> dict:
+    url = f"{_core_root_url()}/api/internal/admin/audit/users"
+    headers = {
+        "Authorization": admin_bearer_token,
+        "Content-Type": "application/json",
+    }
+    if request_id:
+        headers["x-request-id"] = request_id
+    if trace_id:
+        headers["x-trace-id"] = trace_id
+
+    payload = {
+        "action": action,
+        "user_id": user_id,
+        "before": before,
+        "after": after,
+        "reason": reason,
+        "correlation_id": correlation_id,
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            response = await client.post(url, json=payload, headers=headers)
+    except httpx.HTTPError as exc:
+        logger.warning(
+            "Core API admin-user audit write failed",
+            extra={
+                "reason": "request_error",
+                "action": action,
+                "user_id": user_id,
+                "correlation_id": correlation_id,
+            },
+        )
+        raise HTTPException(status_code=503, detail="core_audit_unavailable") from exc
+
+    if response.status_code >= 400:
+        detail = _extract_detail(response)
+        logger.warning(
+            "Core API admin-user audit rejected",
+            extra={
+                "status_code": response.status_code,
+                "detail": detail,
+                "action": action,
+                "user_id": user_id,
+                "correlation_id": correlation_id,
+            },
+        )
+        raise HTTPException(status_code=503, detail="core_audit_rejected")
+
+    return response.json()
 
 
 async def capture_operation_via_core_api(

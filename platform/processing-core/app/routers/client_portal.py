@@ -73,6 +73,7 @@ from app.services.document_chain import compute_ack_hash
 from app.services.crm import onboarding
 from app.services.s3_storage import S3Storage
 from app.services.settlement_allocations import list_settlement_summary
+from app.services.token_claims import DEFAULT_TENANT_ID, resolve_token_tenant_id, token_email
 from app.services.fuel.stations import resolve_station_nav_url
 
 router = APIRouter(prefix="/v1/client", tags=["client-portal"])
@@ -101,11 +102,14 @@ def _ensure_client_context(token: dict) -> str:
     return str(client_id)
 
 
-def _ensure_tenant_context(token: dict) -> int:
-    tenant_id = token.get("tenant_id")
-    if tenant_id is None:
-        raise HTTPException(status_code=403, detail="Missing tenant context")
-    return int(tenant_id)
+def _ensure_tenant_context(token: dict, *, db: Session | None = None) -> int:
+    return resolve_token_tenant_id(
+        token,
+        db=db,
+        client_id=str(token.get("client_id") or "") or None,
+        default=DEFAULT_TENANT_ID,
+        error_detail="Missing tenant context",
+    )
 
 
 def _ensure_client_action_allowed(token: dict) -> None:
@@ -217,6 +221,7 @@ def _audit_forbidden_access(
         visibility=AuditVisibility.INTERNAL,
         request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(token)),
     )
+    db.commit()
 
 
 def _sanitize_audit_snapshot(snapshot: dict | None) -> dict | None:
@@ -884,7 +889,7 @@ async def create_reconciliation_request(
 ) -> ReconciliationRequestOut:
     _ensure_client_action_allowed(token)
     client_id = _ensure_client_context(token)
-    tenant_id = _ensure_tenant_context(token)
+    tenant_id = _ensure_tenant_context(token, db=db)
 
     active_statuses = [
         ReconciliationRequestStatus.REQUESTED,
@@ -941,6 +946,7 @@ async def create_reconciliation_request(
         },
         request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(token)),
     )
+    db.commit()
 
     return ReconciliationRequestOut.model_validate(new_request)
 
@@ -1077,6 +1083,7 @@ async def acknowledge_reconciliation_request(
         after={"status": request_item.status.value, "acknowledged_at": request_item.acknowledged_at},
         request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(token)),
     )
+    db.commit()
 
     return ReconciliationRequestOut.model_validate(request_item)
 
@@ -1095,7 +1102,7 @@ async def acknowledge_document(
 ) -> DocumentAcknowledgementResponse:
     _ensure_client_action_allowed(token)
     client_id = _ensure_client_context(token)
-    tenant_id = _ensure_tenant_context(token)
+    tenant_id = _ensure_tenant_context(token, db=db)
 
     invoice = None
     reconciliation_request = None
@@ -1149,6 +1156,7 @@ async def acknowledge_document(
             after={"reason": "document_hash_missing", "document_type": document_type},
             request_ctx=request_ctx,
         )
+        db.commit()
         raise HTTPException(status_code=409, detail="document_hash_missing")
 
     existing = (
@@ -1174,6 +1182,7 @@ async def acknowledge_document(
                 },
                 request_ctx=request_ctx,
             )
+            db.commit()
             raise HTTPException(status_code=409, detail="ack_hash_mismatch")
         return DocumentAcknowledgementResponse(
             acknowledged=True,
@@ -1183,7 +1192,7 @@ async def acknowledge_document(
             document_hash=existing.document_hash,
         )
     ack_by_user_id = token.get("user_id") or token.get("sub")
-    ack_by_email = token.get("email")
+    ack_by_email = token_email(token)
     if not ack_by_user_id or not ack_by_email:
         AuditService(db).audit(
             event_type="DOCUMENT_IMMUTABILITY_VIOLATION",
@@ -1194,6 +1203,7 @@ async def acknowledge_document(
             after={"reason": "ack_actor_missing", "document_type": document_type},
             request_ctx=request_ctx,
         )
+        db.commit()
         raise HTTPException(status_code=409, detail="ack_actor_missing")
 
     acknowledgement = DocumentAcknowledgement(
@@ -1229,6 +1239,7 @@ async def acknowledge_document(
         },
         request_ctx=request_ctx,
     )
+    db.commit()
 
     return DocumentAcknowledgementResponse(
         acknowledged=True,
@@ -1249,7 +1260,7 @@ async def create_invoice_message(
 ) -> InvoiceMessageCreateResponse:
     _ensure_client_action_allowed(token)
     client_id = _ensure_client_context(token)
-    _ensure_tenant_context(token)
+    _ensure_tenant_context(token, db=db)
 
     invoice = db.query(Invoice).filter(Invoice.id == invoice_id).one_or_none()
     if invoice is None:
@@ -1328,6 +1339,7 @@ async def create_invoice_message(
         },
         request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(token)),
     )
+    db.commit()
 
     return InvoiceMessageCreateResponse(
         thread_id=str(thread.id),

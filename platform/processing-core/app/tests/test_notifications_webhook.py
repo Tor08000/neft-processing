@@ -7,12 +7,16 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from uuid import uuid4
 
 import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
-from app.db import Base, SessionLocal, engine
+from app.db import Base
 from app.models.notifications import (
     NotificationChannel,
     NotificationDelivery,
     NotificationDeliveryStatus,
+    NotificationMessage,
     NotificationPreference,
     NotificationPriority,
     NotificationSubjectType,
@@ -22,17 +26,23 @@ from app.models.notifications import (
 from app.services.notifications_v1 import dispatch_pending_notifications, enqueue_notification_message
 
 
-@pytest.fixture(autouse=True)
-def clean_db():
-    Base.metadata.drop_all(bind=engine)
-    Base.metadata.create_all(bind=engine)
-    yield
-    Base.metadata.drop_all(bind=engine)
+_TABLES = [
+    NotificationTemplate.__table__,
+    NotificationPreference.__table__,
+    NotificationDelivery.__table__,
+    NotificationMessage.__table__,
+]
 
 
 @pytest.fixture
 def db_session():
-    session = SessionLocal()
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(bind=engine, tables=_TABLES)
+    session = sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)()
     try:
         yield session
     finally:
@@ -65,6 +75,7 @@ def test_webhook_notification_delivery(db_session, monkeypatch):
     thread.start()
     try:
         url = f"http://127.0.0.1:{server.server_port}/webhook"
+        client_id = str(uuid4())
 
         template = NotificationTemplate(
             code="webhook_test",
@@ -79,7 +90,7 @@ def test_webhook_notification_delivery(db_session, monkeypatch):
         db_session.add(template)
         preference = NotificationPreference(
             subject_type=NotificationSubjectType.CLIENT,
-            subject_id="client-1",
+            subject_id=client_id,
             event_type="WEBHOOK_TEST",
             channel=NotificationChannel.WEBHOOK,
             enabled=True,
@@ -92,7 +103,7 @@ def test_webhook_notification_delivery(db_session, monkeypatch):
             db_session,
             event_type="WEBHOOK_TEST",
             subject_type=NotificationSubjectType.CLIENT,
-            subject_id="client-1",
+            subject_id=client_id,
             channels=[NotificationChannel.WEBHOOK],
             template_code="webhook_test",
             template_vars={"event": "ping"},

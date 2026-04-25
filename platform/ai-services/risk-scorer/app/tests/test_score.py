@@ -10,3 +10,9 @@ def test_score_basic_flow():
     data = response.json()
     assert "score" in data
     assert data["decision"] in {"allow", "review", "deny"}
+    assert data["provider"] == "local_heuristic"
+    assert data["score_source"] == "heuristic"
+    assert data["degraded"] is False
+    assert "heuristic_local_rules" in data["assumptions"]
+    assert data["trace"]["formula_version"] == "heuristic_local_rules_v1"
+    assert len(data["trace"]["trace_hash"]) == 64

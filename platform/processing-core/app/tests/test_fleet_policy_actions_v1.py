@@ -13,6 +13,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
+import app.main as app_main
 from app.db import get_db
 from app.main import app
 from app.models.cases import Case, CaseComment, CaseEvent, CaseEventType, CaseSnapshot
@@ -60,6 +61,14 @@ def signing_key() -> bytes:
         format=serialization.PrivateFormat.PKCS8,
         encryption_algorithm=serialization.NoEncryption(),
     )
+
+
+@pytest.fixture(autouse=True)
+def app_env_guardrails(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("APP_ENV", "dev")
+    monkeypatch.setenv("ALLOW_MOCK_PROVIDERS_IN_PROD", "1")
+    monkeypatch.setattr(app_main.settings, "APP_ENV", "dev", raising=False)
+    monkeypatch.setattr("app.routers.client_fleet.enforce_entitlement", lambda *args, **kwargs: None)
 
 
 @pytest.fixture(autouse=True)
@@ -131,7 +140,7 @@ def _make_client_admin_token(make_jwt, client_id: str) -> str:
         roles=("CLIENT_ADMIN",),
         client_id=client_id,
         sub=admin_user_id,
-        extra={"user_id": admin_user_id, "email": "admin@fleet.test", "tenant_id": 1},
+        extra={"user_id": admin_user_id, "email": "admin@fleet.test", "tenant_id": 1, "aud": "neft-client"},
     )
 
 

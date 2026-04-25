@@ -48,6 +48,5 @@ Use `app.services.money_flow.explain.build_explain_snapshot` to create a determi
 ```
 
 ## Admin endpoints
-- `GET /v1/admin/money/explain?flow_type=...&flow_ref_id=...`
-- `GET /v1/admin/money/health`
-
+- `GET /api/core/v1/admin/money/explain?flow_type=...&flow_ref_id=...`
+- `GET /api/core/v1/admin/money/health`

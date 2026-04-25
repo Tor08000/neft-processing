@@ -4,9 +4,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { App } from "../App";
 import type { AuthSession } from "../api/types";
 
+const TEST_ACCESS_TOKEN = "test.header.payload";
+
 const session: AuthSession = {
-  token: "token-1",
-  email: "client@demo.test",
+  token: TEST_ACCESS_TOKEN,
+  email: "client@corp.test",
   roles: ["CLIENT_OWNER"],
   subjectType: "CLIENT",
   clientId: "client-1",
@@ -22,15 +24,34 @@ const dashboardPayload = {
   ],
 };
 
+const portalMePayload = {
+  user: { id: "u-1", email: "client@corp.test" },
+  org: { id: "org-1", name: "ООО Тест", org_type: "LEGAL", status: "ACTIVE" },
+  org_status: "ACTIVE",
+  org_roles: ["CLIENT_OWNER"],
+  user_roles: ["CLIENT_OWNER"],
+  capabilities: ["CLIENT_DASHBOARD", "MARKETPLACE"],
+  nav_sections: [],
+  modules: { analytics: { enabled: true } },
+  features: { onboarding_enabled: true, legal_gate_enabled: false },
+  access_state: "ACTIVE",
+};
+
 describe("Client portal pages", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
     vi.restoreAllMocks();
   });
 
   it("renders dashboard without crashing", async () => {
+    vi.stubEnv("VITE_DEMO_MODE", "false");
+
     const fetchMock = vi.fn((input: RequestInfo) => {
       const url = input.toString();
+      if (url.includes("/portal/me")) {
+        return Promise.resolve(new Response(JSON.stringify(portalMePayload), { status: 200 }));
+      }
       if (url.includes("/client/dashboard")) {
         return Promise.resolve(new Response(JSON.stringify(dashboardPayload), { status: 200 }));
       }
@@ -44,8 +65,9 @@ describe("Client portal pages", () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByRole("heading", { name: /Обзор/i })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: /Быстрые действия/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Пополнить баланс/i })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: /Рабочий стол/i })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: /Общие расходы/i })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: /Следующие шаги владельца/i })).toBeInTheDocument();
+    expect(await screen.findByRole("link", { name: /Создать отчёт/i })).toBeInTheDocument();
   });
 });

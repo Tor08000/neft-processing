@@ -12,12 +12,14 @@ import {
   applyCatalogImport,
 } from "../../api/catalog";
 import { useAuth } from "../../auth/AuthContext";
+import { usePortal } from "../../auth/PortalContext";
 import { EmptyState } from "../../components/EmptyState";
 import { ForbiddenState } from "../../components/states";
 import { StatusBadge } from "../../components/StatusBadge";
 import { formatDateTime, formatNumber } from "../../utils/format";
 import { parseCatalogCsv } from "../../utils/csv";
 import { canManageServices, canReadServices } from "../../utils/roles";
+import { resolveEffectivePartnerRoles } from "../../access/partnerWorkspace";
 import type { CatalogItem, CatalogItemInput, CatalogItemKind, CatalogItemStatus, CatalogImportPreview } from "../../types/marketplace";
 import { PartnerErrorState } from "../../components/PartnerErrorState";
 import { ApiError } from "../../api/http";
@@ -47,6 +49,7 @@ const defaultFormState: CatalogFormState = {
 };
 
 const localStorageKey = "partner-services-catalog-filters";
+const DEBUG_SERVICE_CATALOG_ERRORS = Boolean(import.meta.env.DEV && import.meta.env.VITE_PARTNER_DEBUG_ERRORS === "true");
 
 const normalizeError = (error: unknown, fallback: string): ApiErrorState => {
   if (error instanceof ApiError) {
@@ -112,14 +115,17 @@ const getSummary = (preview: CatalogImportPreview | null, fallbackRows: number, 
 
 export function ServicesCatalogPageProd() {
   const { user } = useAuth();
+  const { portal } = usePortal();
   const { t } = useTranslation();
-  const canRead = canReadServices(user?.roles);
-  const canManage = canManageServices(user?.roles);
+  const effectiveRoles = resolveEffectivePartnerRoles(portal, user?.roles);
+  const canRead = canReadServices(effectiveRoles);
+  const canManage = canManageServices(effectiveRoles);
   const [items, setItems] = useState<CatalogItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [page, setPage] = useState(1);
   const [pageSize] = useState(10);
   const [total, setTotal] = useState(0);
+  const [reloadKey, setReloadKey] = useState(0);
   const [filters, setFilters] = useState({
     q: "",
     kind: "ALL",
@@ -181,7 +187,9 @@ export function ServicesCatalogPageProd() {
       setItems(response.items ?? []);
       setTotal(response.total ?? 0);
     } catch (err) {
-      console.error(err);
+      if (DEBUG_SERVICE_CATALOG_ERRORS) {
+        console.error(err);
+      }
       setError(err);
     } finally {
       setIsLoading(false);
@@ -193,11 +201,16 @@ export function ServicesCatalogPageProd() {
     setPage(1);
   };
 
+  const refreshCatalogList = () => {
+    setPage(1);
+    setReloadKey((value) => value + 1);
+  };
+
   useEffect(() => {
     if (!user || !canRead) return;
     fetchItems();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, canRead, page, pageSize, filters]);
+  }, [user, canRead, page, pageSize, filters, reloadKey]);
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
@@ -222,7 +235,7 @@ export function ServicesCatalogPageProd() {
   const handleSave = async (activate = false) => {
     if (!user) return;
     if (!formState.title.trim() || !formState.baseUom.trim()) {
-      setFormError({ message: t("servicesCatalogPage.errors.requiredFields") });
+      setFormError({ message: t("marketplace.servicesCatalogPage.errors.requiredFields") });
       return;
     }
     setFormError(null);
@@ -232,19 +245,19 @@ export function ServicesCatalogPageProd() {
       const payload = buildCatalogPayload({ ...formState, status: activate ? "ACTIVE" : formState.status });
       if (editingItem) {
         const result = await updateCatalogItem(user.token, editingItem.id, payload);
-        setActionNotice(t("servicesCatalogPage.notifications.saved"));
+        setActionNotice(t("marketplace.servicesCatalogPage.notifications.saved"));
         setActionCorrelation(result.correlationId ?? null);
         setItems((prev) => prev.map((item) => (item.id === editingItem.id ? result.data : item)));
       } else {
         const result = await createCatalogItem(user.token, payload);
-        setActionNotice(t("servicesCatalogPage.notifications.created"));
+        setActionNotice(t("marketplace.servicesCatalogPage.notifications.created"));
         setActionCorrelation(result.correlationId ?? null);
         setItems((prev) => [result.data, ...prev]);
         setTotal((prev) => prev + 1);
       }
       setModalOpen(false);
     } catch (err) {
-      setFormError(normalizeError(err, t("servicesCatalogPage.errors.saveFailed")));
+      setFormError(normalizeError(err, t("marketplace.servicesCatalogPage.errors.saveFailed")));
     }
   };
 
@@ -256,22 +269,22 @@ export function ServicesCatalogPageProd() {
       if (item.status === "ACTIVE") {
         const result = await disableCatalogItem(user.token, item.id);
         setItems((prev) => prev.map((entry) => (entry.id === item.id ? { ...entry, status: "DISABLED" } : entry)));
-        setActionNotice(t("servicesCatalogPage.notifications.disabled"));
+        setActionNotice(t("marketplace.servicesCatalogPage.notifications.disabled"));
         setActionCorrelation(result.correlationId ?? null);
       } else {
         const result = await activateCatalogItem(user.token, item.id);
         setItems((prev) => prev.map((entry) => (entry.id === item.id ? { ...entry, status: "ACTIVE" } : entry)));
-        setActionNotice(t("servicesCatalogPage.notifications.activated"));
+        setActionNotice(t("marketplace.servicesCatalogPage.notifications.activated"));
         setActionCorrelation(result.correlationId ?? null);
       }
     } catch (err) {
-      setError(normalizeError(err, t("servicesCatalogPage.errors.updateStatusFailed")));
+      setError(normalizeError(err, t("marketplace.servicesCatalogPage.errors.updateStatusFailed")));
     }
   };
 
   const handlePreviewImport = async () => {
     if (!user || !importFile) {
-      setImportError({ message: t("servicesCatalogPage.import.errors.selectCsv") });
+      setImportError({ message: t("marketplace.servicesCatalogPage.import.errors.selectCsv") });
       return;
     }
     setImportError(null);
@@ -284,7 +297,7 @@ export function ServicesCatalogPageProd() {
       const text = await importFile.text();
       const parsed = parseCatalogCsv(text);
       if (parsed.errors.length) {
-        setImportParsingErrors(parsed.errors.map((row) => t("servicesCatalogPage.import.errors.row", { row: row.row, message: row.message })));
+        setImportParsingErrors(parsed.errors.map((row) => t("marketplace.servicesCatalogPage.import.errors.row", { row: row.row, message: row.message })));
         setImportParsingRows(parsed.rows);
         return;
       }
@@ -297,7 +310,7 @@ export function ServicesCatalogPageProd() {
         summary: preview.summary ?? null,
       });
     } catch (err) {
-      setImportError(normalizeError(err, t("servicesCatalogPage.import.errors.previewFailed")));
+      setImportError(normalizeError(err, t("marketplace.servicesCatalogPage.import.errors.previewFailed")));
     } finally {
       setImportLoading(false);
     }
@@ -316,7 +329,7 @@ export function ServicesCatalogPageProd() {
       });
       setImportPreview(null);
     } catch (err) {
-      setImportError(normalizeError(err, t("servicesCatalogPage.import.errors.applyFailed")));
+      setImportError(normalizeError(err, t("marketplace.servicesCatalogPage.import.errors.applyFailed")));
     } finally {
       setImportApplyLoading(false);
     }
@@ -339,8 +352,8 @@ export function ServicesCatalogPageProd() {
         <div className="page-section">
           <div className="page-section__header">
             <div>
-              <h2>{t("servicesCatalogPage.title")}</h2>
-              <div className="muted">{t("servicesCatalogPage.subtitle")}</div>
+              <h2>{t("marketplace.servicesCatalogPage.title")}</h2>
+              <div className="muted">{t("marketplace.servicesCatalogPage.subtitle")}</div>
             </div>
             {canManage ? (
               <button type="button" className="primary" onClick={openCreateModal}>
@@ -351,10 +364,10 @@ export function ServicesCatalogPageProd() {
           <div className="page-section__content">
             <div className="filters neft-filters">
               <label className="filter neft-filter">
-                {t("servicesCatalogPage.filters.search")}
+                {t("marketplace.servicesCatalogPage.filters.search")}
                 <input
                   type="search"
-                  placeholder={t("servicesCatalogPage.filters.searchPlaceholder")}
+                  placeholder={t("marketplace.servicesCatalogPage.filters.searchPlaceholder")}
                   value={filters.q}
                   onChange={(event) => {
                     setFilters((prev) => ({ ...prev, q: event.target.value }));
@@ -363,7 +376,7 @@ export function ServicesCatalogPageProd() {
                 />
               </label>
               <label className="filter neft-filter">
-                {t("servicesCatalogPage.filters.kind")}
+                {t("marketplace.servicesCatalogPage.filters.kind")}
                 <select
                   value={filters.kind}
                   onChange={(event) => {
@@ -372,12 +385,12 @@ export function ServicesCatalogPageProd() {
                   }}
                 >
                   <option value="ALL">{t("common.all")}</option>
-                  <option value="SERVICE">{t("servicesCatalogPage.filters.kindOptions.service")}</option>
-                  <option value="PRODUCT">{t("servicesCatalogPage.filters.kindOptions.product")}</option>
+                  <option value="SERVICE">{t("marketplace.servicesCatalogPage.filters.kindOptions.service")}</option>
+                  <option value="PRODUCT">{t("marketplace.servicesCatalogPage.filters.kindOptions.product")}</option>
                 </select>
               </label>
               <label className="filter neft-filter">
-                {t("servicesCatalogPage.filters.status")}
+                {t("marketplace.servicesCatalogPage.filters.status")}
                 <select
                   value={filters.status}
                   onChange={(event) => {
@@ -386,17 +399,17 @@ export function ServicesCatalogPageProd() {
                   }}
                 >
                   <option value="ALL">{t("common.all")}</option>
-                  <option value="DRAFT">{t("servicesCatalogPage.filters.statusOptions.draft")}</option>
-                  <option value="ACTIVE">{t("servicesCatalogPage.filters.statusOptions.active")}</option>
-                  <option value="DISABLED">{t("servicesCatalogPage.filters.statusOptions.disabled")}</option>
-                  <option value="ARCHIVED">{t("servicesCatalogPage.filters.statusOptions.archived")}</option>
+                  <option value="DRAFT">{t("marketplace.servicesCatalogPage.filters.statusOptions.draft")}</option>
+                  <option value="ACTIVE">{t("marketplace.servicesCatalogPage.filters.statusOptions.active")}</option>
+                  <option value="DISABLED">{t("marketplace.servicesCatalogPage.filters.statusOptions.disabled")}</option>
+                  <option value="ARCHIVED">{t("marketplace.servicesCatalogPage.filters.statusOptions.archived")}</option>
                 </select>
               </label>
               <label className="filter neft-filter">
-                {t("servicesCatalogPage.filters.category")}
+                {t("marketplace.servicesCatalogPage.filters.category")}
                 <input
                   type="text"
-                  placeholder={t("servicesCatalogPage.filters.categoryPlaceholder")}
+                  placeholder={t("marketplace.servicesCatalogPage.filters.categoryPlaceholder")}
                   value={filters.category}
                   onChange={(event) => {
                     setFilters((prev) => ({ ...prev, category: event.target.value }));
@@ -419,18 +432,23 @@ export function ServicesCatalogPageProd() {
             <div className="skeleton-line" />
           </div>
         ) : error ? (
-          <PartnerErrorState error={error} />
+          <PartnerErrorState
+            title={t("errors.unavailableTitle")}
+            description={t("errors.unavailableDescription")}
+            error={error}
+            onRetry={refreshCatalogList}
+          />
         ) : items.length === 0 ? (
           <EmptyState
             icon={<Wrench />}
-            title={hasFilters ? t("servicesCatalogPage.empty.filteredTitle") : t("emptyStates.servicesCatalog.title")}
+            title={hasFilters ? t("marketplace.servicesCatalogPage.empty.filteredTitle") : t("emptyStates.servicesCatalog.title")}
             description={
-              hasFilters ? t("servicesCatalogPage.empty.filteredDescription") : t("emptyStates.servicesCatalog.description")
+              hasFilters ? t("marketplace.servicesCatalogPage.empty.filteredDescription") : t("emptyStates.servicesCatalog.description")
             }
             primaryAction={
               hasFilters
                 ? {
-                    label: t("servicesCatalogPage.actions.resetFilters"),
+                    label: t("marketplace.servicesCatalogPage.actions.resetFilters"),
                     onClick: resetFilters,
                     variant: "secondary",
                   }
@@ -441,6 +459,14 @@ export function ServicesCatalogPageProd() {
                   }
                 : undefined
             }
+            secondaryAction={
+              hasFilters
+                ? undefined
+                : {
+                    label: t("marketplace.servicesCatalogPage.import.refreshList"),
+                    onClick: refreshCatalogList,
+                  }
+            }
           />
         ) : (
           <div className="page-section">
@@ -448,13 +474,13 @@ export function ServicesCatalogPageProd() {
               <table className="data-table">
                 <thead>
                   <tr>
-                    <th>{t("servicesCatalogPage.table.title")}</th>
-                    <th>{t("servicesCatalogPage.table.kind")}</th>
-                    <th>{t("servicesCatalogPage.table.category")}</th>
-                    <th>{t("servicesCatalogPage.table.status")}</th>
-                    <th>{t("servicesCatalogPage.table.activeOffers")}</th>
-                    <th>{t("servicesCatalogPage.table.updatedAt")}</th>
-                    <th>{t("servicesCatalogPage.table.actions")}</th>
+                    <th>{t("marketplace.servicesCatalogPage.table.title")}</th>
+                    <th>{t("marketplace.servicesCatalogPage.table.kind")}</th>
+                    <th>{t("marketplace.servicesCatalogPage.table.category")}</th>
+                    <th>{t("marketplace.servicesCatalogPage.table.status")}</th>
+                    <th>{t("marketplace.servicesCatalogPage.table.activeOffers")}</th>
+                    <th>{t("marketplace.servicesCatalogPage.table.updatedAt")}</th>
+                    <th>{t("marketplace.servicesCatalogPage.table.actions")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -479,7 +505,7 @@ export function ServicesCatalogPageProd() {
                                 {t("actions.edit")}
                               </button>
                               <button type="button" className="ghost" onClick={() => handleToggleStatus(item)}>
-                                {item.status === "ACTIVE" ? t("servicesCatalogPage.actions.disable") : t("servicesCatalogPage.actions.activate")}
+                                {item.status === "ACTIVE" ? t("marketplace.servicesCatalogPage.actions.disable") : t("marketplace.servicesCatalogPage.actions.activate")}
                               </button>
                             </>
                           ) : null}
@@ -490,21 +516,26 @@ export function ServicesCatalogPageProd() {
                 </tbody>
               </table>
             </div>
-            <div className="pagination pagination-wrapper">
-              <button type="button" className="secondary" onClick={() => setPage((prev) => Math.max(prev - 1, 1))} disabled={page <= 1}>
-                {t("servicesCatalogPage.pagination.prev")}
-              </button>
-              <div className="muted">
-                {t("servicesCatalogPage.pagination.page")} {page} / {totalPages}
+            <div className="table-footer">
+              <div className="table-footer__content">
+                <span className="muted">{items.length} / {total}</span>
+                <div className="pagination pagination-wrapper">
+                  <button type="button" className="secondary" onClick={() => setPage((prev) => Math.max(prev - 1, 1))} disabled={page <= 1}>
+                    {t("marketplace.servicesCatalogPage.pagination.prev")}
+                  </button>
+                  <div className="muted">
+                    {t("marketplace.servicesCatalogPage.pagination.page")} {page} / {totalPages}
+                  </div>
+                  <button
+                    type="button"
+                    className="secondary"
+                    onClick={() => setPage((prev) => Math.min(prev + 1, totalPages))}
+                    disabled={page >= totalPages}
+                  >
+                    {t("marketplace.servicesCatalogPage.pagination.next")}
+                  </button>
+                </div>
               </div>
-              <button
-                type="button"
-                className="secondary"
-                onClick={() => setPage((prev) => Math.min(prev + 1, totalPages))}
-                disabled={page >= totalPages}
-              >
-                {t("servicesCatalogPage.pagination.next")}
-              </button>
             </div>
           </div>
         )}
@@ -513,21 +544,21 @@ export function ServicesCatalogPageProd() {
       <section className="card import-section">
         <div className="page-section__header">
           <div>
-            <h3>{t("servicesCatalogPage.import.title")}</h3>
-            <div className="muted">{t("servicesCatalogPage.import.subtitle")}</div>
+            <h3>{t("marketplace.servicesCatalogPage.import.title")}</h3>
+            <div className="muted">{t("marketplace.servicesCatalogPage.import.subtitle")}</div>
           </div>
         </div>
         {!canManage ? (
           <EmptyState
             icon={<Wrench />}
-            title={t("servicesCatalogPage.import.unavailableTitle")}
-            description={t("servicesCatalogPage.import.unavailableDescription")}
+            title={t("marketplace.servicesCatalogPage.import.unavailableTitle")}
+            description={t("marketplace.servicesCatalogPage.import.unavailableDescription")}
           />
         ) : (
           <div className="page-section__content">
             <div className="form-grid neft-import-grid">
               <label className="form-field">
-                {t("servicesCatalogPage.import.csvFile")}
+                {t("marketplace.servicesCatalogPage.import.csvFile")}
                 <input
                   type="file"
                   accept=".csv,text/csv"
@@ -535,15 +566,15 @@ export function ServicesCatalogPageProd() {
                 />
               </label>
               <label className="form-field">
-                {t("servicesCatalogPage.import.mode")}
+                {t("marketplace.servicesCatalogPage.import.mode")}
                 <select value={importMode} onChange={(event) => setImportMode(event.target.value as ImportMode)}>
-                  <option value="create">{t("servicesCatalogPage.import.modes.create")}</option>
-                  <option value="upsert">{t("servicesCatalogPage.import.modes.upsert")}</option>
+                  <option value="create">{t("marketplace.servicesCatalogPage.import.modes.create")}</option>
+                  <option value="upsert">{t("marketplace.servicesCatalogPage.import.modes.upsert")}</option>
                 </select>
               </label>
               <div className="form-grid__actions">
                 <button type="button" className="secondary" onClick={handlePreviewImport} disabled={importLoading}>
-                  {t("servicesCatalogPage.import.preview")}
+                  {t("marketplace.servicesCatalogPage.import.preview")}
                 </button>
               </div>
             </div>
@@ -554,7 +585,7 @@ export function ServicesCatalogPageProd() {
             ) : null}
             {importParsingErrors.length ? (
               <div className="notice error">
-                <div>{t("servicesCatalogPage.import.csvError")}</div>
+                <div>{t("marketplace.servicesCatalogPage.import.csvError")}</div>
                 <ul>
                   {importParsingErrors.map((message) => (
                     <li key={message}>{message}</li>
@@ -565,22 +596,22 @@ export function ServicesCatalogPageProd() {
             {importPreview ? (
               <div className="stack">
                 <div className="notice">
-                  <div className="label">{t("servicesCatalogPage.import.previewSummary")}</div>
+                  <div className="label">{t("marketplace.servicesCatalogPage.import.previewSummary")}</div>
                   <div className="grid two">
-                    <div>{t("servicesCatalogPage.import.rowsParsed", { count: toNum(previewSummary.rowsParsed) })}</div>
-                    <div>{t("servicesCatalogPage.import.willCreate", { count: toNum(previewSummary.willCreate) })}</div>
-                    <div>{t("servicesCatalogPage.import.willUpdate", { count: toNum(previewSummary.willUpdate) })}</div>
-                    <div>{t("servicesCatalogPage.import.errorsCount", { count: toNum(previewSummary.errorsCount) })}</div>
+                    <div>{t("marketplace.servicesCatalogPage.import.rowsParsed", { count: toNum(previewSummary.rowsParsed) })}</div>
+                    <div>{t("marketplace.servicesCatalogPage.import.willCreate", { count: toNum(previewSummary.willCreate) })}</div>
+                    <div>{t("marketplace.servicesCatalogPage.import.willUpdate", { count: toNum(previewSummary.willUpdate) })}</div>
+                    <div>{t("marketplace.servicesCatalogPage.import.errorsCount", { count: toNum(previewSummary.errorsCount) })}</div>
                   </div>
                 </div>
                 {importPreview.errors.length ? (
                   <div className="notice error">
-                    <div className="label">{t("servicesCatalogPage.import.errorsTitle")}</div>
+                    <div className="label">{t("marketplace.servicesCatalogPage.import.errorsTitle")}</div>
                     <table className="data-table">
                       <thead>
                         <tr>
-                          <th>{t("servicesCatalogPage.import.table.row")}</th>
-                          <th>{t("servicesCatalogPage.import.table.description")}</th>
+                          <th>{t("marketplace.servicesCatalogPage.import.table.row")}</th>
+                          <th>{t("marketplace.servicesCatalogPage.import.table.description")}</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -596,7 +627,7 @@ export function ServicesCatalogPageProd() {
                 ) : null}
                 {importPreview.rows.length ? (
                   <div>
-                    <div className="label">{t("servicesCatalogPage.import.sampleTitle")}</div>
+                    <div className="label">{t("marketplace.servicesCatalogPage.import.sampleTitle")}</div>
                     <table className="data-table">
                       <thead>
                         <tr>
@@ -624,30 +655,30 @@ export function ServicesCatalogPageProd() {
                     onClick={handleApplyImport}
                     disabled={importApplyLoading || importPreview.errors.length > 0}
                   >
-                    {t("servicesCatalogPage.import.apply")}
+                    {t("marketplace.servicesCatalogPage.import.apply")}
                   </button>
                 </div>
               </div>
             ) : null}
             {importApplyResult ? (
               <div className="notice">
-                <div className="label">{t("servicesCatalogPage.import.resultTitle")}</div>
+                <div className="label">{t("marketplace.servicesCatalogPage.import.resultTitle")}</div>
                 <div className="grid two">
-                  <div>{t("servicesCatalogPage.import.resultCreated", { count: importApplyResult.created })}</div>
-                  <div>{t("servicesCatalogPage.import.resultUpdated", { count: importApplyResult.updated })}</div>
-                  <div>{t("servicesCatalogPage.import.resultSkipped", { count: importApplyResult.skipped })}</div>
+                  <div>{t("marketplace.servicesCatalogPage.import.resultCreated", { count: importApplyResult.created })}</div>
+                  <div>{t("marketplace.servicesCatalogPage.import.resultUpdated", { count: importApplyResult.updated })}</div>
+                  <div>{t("marketplace.servicesCatalogPage.import.resultSkipped", { count: importApplyResult.skipped })}</div>
                 </div>
-                <button type="button" className="link-button" onClick={fetchItems}>
-                  {t("servicesCatalogPage.import.refreshList")}
+                <button type="button" className="link-button" onClick={refreshCatalogList}>
+                  {t("marketplace.servicesCatalogPage.import.refreshList")}
                 </button>
               </div>
             ) : null}
             <div className="notice">
-              <div className="label">{t("servicesCatalogPage.import.csvFormat")}</div>
-              <div className="muted">{t("servicesCatalogPage.import.requiredFields")}</div>
+              <div className="label">{t("marketplace.servicesCatalogPage.import.csvFormat")}</div>
+              <div className="muted">{t("marketplace.servicesCatalogPage.import.requiredFields")}</div>
               <pre className="code-block">
                 kind,title,category,uom,description,status{"\n"}
-                {t("servicesCatalogPage.import.sampleRow")}
+                {t("marketplace.servicesCatalogPage.import.sampleRow")}
               </pre>
             </div>
           </div>
@@ -659,7 +690,7 @@ export function ServicesCatalogPageProd() {
           <div className="modal">
             <div className="card__header">
               <h3>
-                {editingItem ? t("servicesCatalogPage.modal.editTitle") : t("servicesCatalogPage.modal.createTitle")}
+                {editingItem ? t("marketplace.servicesCatalogPage.modal.editTitle") : t("marketplace.servicesCatalogPage.modal.createTitle")}
               </h3>
               <button type="button" className="ghost" onClick={() => setModalOpen(false)}>
                 {t("actions.close")}
@@ -667,7 +698,7 @@ export function ServicesCatalogPageProd() {
             </div>
             <div className="form-grid">
               <label className="form-field">
-                {t("servicesCatalogPage.modal.fields.title")}
+                {t("marketplace.servicesCatalogPage.modal.fields.title")}
                 <input
                   type="text"
                   value={formState.title}
@@ -675,14 +706,14 @@ export function ServicesCatalogPageProd() {
                 />
               </label>
               <label className="form-field">
-                {t("servicesCatalogPage.modal.fields.kind")}
+                {t("marketplace.servicesCatalogPage.modal.fields.kind")}
                 <select value={formState.kind} onChange={(event) => setFormState((prev) => ({ ...prev, kind: event.target.value as CatalogItemKind }))}>
                   <option value="SERVICE">SERVICE</option>
                   <option value="PRODUCT">PRODUCT</option>
                 </select>
               </label>
               <label className="form-field">
-                {t("servicesCatalogPage.modal.fields.category")}
+                {t("marketplace.servicesCatalogPage.modal.fields.category")}
                 <input
                   type="text"
                   value={formState.category}
@@ -690,16 +721,16 @@ export function ServicesCatalogPageProd() {
                 />
               </label>
               <label className="form-field">
-                {t("servicesCatalogPage.modal.fields.uom")}
+                {t("marketplace.servicesCatalogPage.modal.fields.uom")}
                 <input
                   type="text"
-                  placeholder={t("servicesCatalogPage.modal.fields.uomPlaceholder")}
+                  placeholder={t("marketplace.servicesCatalogPage.modal.fields.uomPlaceholder")}
                   value={formState.baseUom}
                   onChange={(event) => setFormState((prev) => ({ ...prev, baseUom: event.target.value }))}
                 />
               </label>
               <label className="form-field form-grid__full">
-                {t("servicesCatalogPage.modal.fields.description")}
+                {t("marketplace.servicesCatalogPage.modal.fields.description")}
                 <textarea
                   className="textarea"
                   rows={3}
@@ -708,7 +739,7 @@ export function ServicesCatalogPageProd() {
                 />
               </label>
               <label className="form-field">
-                {t("servicesCatalogPage.modal.fields.status")}
+                {t("marketplace.servicesCatalogPage.modal.fields.status")}
                 <select
                   value={formState.status}
                   onChange={(event) => setFormState((prev) => ({ ...prev, status: event.target.value as CatalogItemStatus }))}
@@ -729,7 +760,7 @@ export function ServicesCatalogPageProd() {
               </button>
               {canManage ? (
                 <button type="button" className="secondary" onClick={() => handleSave(true)}>
-                  {t("servicesCatalogPage.modal.actions.saveActivate")}
+                  {t("marketplace.servicesCatalogPage.modal.actions.saveActivate")}
                 </button>
               ) : null}
               <button type="button" className="ghost" onClick={() => setModalOpen(false)}>

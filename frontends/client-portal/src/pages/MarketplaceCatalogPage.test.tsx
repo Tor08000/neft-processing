@@ -1,12 +1,12 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "../App";
 import type { AuthSession } from "../api/types";
 
 const session: AuthSession = {
-  token: "token-1",
+  token: "test.header.payload",
   email: "client@demo.test",
   roles: ["CLIENT_OWNER"],
   subjectType: "CLIENT",
@@ -15,8 +15,13 @@ const session: AuthSession = {
 };
 
 describe("MarketplaceCatalogPage", () => {
+  beforeEach(() => {
+    vi.stubEnv("VITE_DEMO_MODE", "true");
+  });
+
   afterEach(() => {
     vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
     vi.restoreAllMocks();
   });
 
@@ -117,5 +122,55 @@ describe("MarketplaceCatalogPage", () => {
 
     const dialog = await screen.findByRole("dialog");
     await waitFor(() => expect(within(dialog).getByText("Похоже на то, что вы смотрели")).toBeInTheDocument());
+  });
+
+  it("renders live product card fields and does not send legacy sort filter", async () => {
+    const fetchMock = vi.fn((input: RequestInfo) => {
+      const url = input.toString();
+      if (url.includes("/v1/marketplace/client/recommendations")) {
+        return Promise.resolve(new Response(JSON.stringify({ items: [] }), { status: 200 }));
+      }
+      if (url.includes("/client/marketplace/products")) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              items: [
+                {
+                  id: "product-1",
+                  partner_id: "partner-1",
+                  type: "SERVICE",
+                  title: "Диагностика двигателя",
+                  short_description: "Полная диагностика двигателя за один визит.",
+                  category: "Auto",
+                  price_model: "FIXED",
+                  price_summary: "12 000 ₽",
+                  partner_name: "ООО Диагностика",
+                },
+              ],
+            }),
+            { status: 200 },
+          ),
+        );
+      }
+      return Promise.resolve(new Response(JSON.stringify({ items: [] }), { status: 200 }));
+    });
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+
+    render(
+      <MemoryRouter initialEntries={["/marketplace"]}>
+        <App initialSession={session} />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("Диагностика двигателя")).toBeInTheDocument();
+    expect(screen.getByText("ООО Диагностика")).toBeInTheDocument();
+    expect(screen.getByText("Полная диагностика двигателя за один визит.")).toBeInTheDocument();
+    expect(screen.getByText(/12 000 ₽/)).toBeInTheDocument();
+
+    const productCall = fetchMock.mock.calls
+      .map(([input]) => input.toString())
+      .find((url) => url.includes("/client/marketplace/products"));
+    expect(productCall).toBeDefined();
+    expect(productCall).not.toContain("sort=");
   });
 });

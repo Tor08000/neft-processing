@@ -13,6 +13,8 @@
 - Table: `risk_decisions` (core-api).
 - ORM guards prevent updates/deletes (`app/models/risk_decision.py`).
 - Audit linkage via `audit_id` records an event for every decision.
+- `risk_decisions.features_snapshot.audit` stores both decision-level and risk-decision-level audit ids/hashes when persistence is available.
+- `risk_decisions.features_snapshot.graph` stores legal graph write status and link identifiers when the subject type has a graph node owner; unsupported subject types are explicit rather than silently ignored.
 
 ## Required fields
 - `subject_type` / `subject_id`
@@ -25,6 +27,9 @@
 ## Audit expectations
 - Event types: `RISK_DECISION_MADE`, `RISK_DECISION_BLOCKED`, `RISK_DECISION_ESCALATED`.
 - Public reporting uses the same `risk_decision` identifiers to ensure traceability.
+- Provider-assisted risk payloads must keep source and reproducibility explicit: the current `ai-service` scorer identifies itself as `heuristic_rules` / `local_heuristic` and returns a stable trace hash; the legacy `risk_adapter` adds `decision_trace_hash` to its flags while excluding volatile latency from that hash.
+- If the DecisionEngine falls back to its default scorer, the explain payload must mark it as the `decision_engine_default_scorer` compatibility tail with the configured default score and `not_ml=true`; this preserves existing outcome semantics while making the limitation auditable.
+- Persisted explain linkage (`record_refs`, audit hashes, legal graph ids) is not part of `decision_hash`; it is used to navigate runtime evidence without changing replay reproducibility.
 
 ## What happens when BLOCK
 - **Where the block is enforced:** the decision_engine returns `BLOCK`, and the calling workflow (payment, payout, document finalize) halts before executing the final action.

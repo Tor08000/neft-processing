@@ -16,10 +16,18 @@ class RuntimeHealth(BaseModel):
     core_api: HealthStatus
     auth_host: HealthStatus
     gateway: HealthStatus
+    integration_hub: HealthStatus
+    document_service: HealthStatus
+    logistics_service: HealthStatus
+    ai_service: HealthStatus
     postgres: HealthStatus
     redis: HealthStatus
     minio: HealthStatus
     clickhouse: HealthStatus
+    prometheus: HealthStatus
+    grafana: HealthStatus
+    loki: HealthStatus
+    otel_collector: HealthStatus
 
 
 class RuntimeQueueState(BaseModel):
@@ -66,6 +74,28 @@ class RuntimeEvents(BaseModel):
     critical_last_10: list[RuntimeEvent]
 
 
+class ExternalProviderStatus(str, Enum):
+    DISABLED = "DISABLED"
+    CONFIGURED = "CONFIGURED"
+    HEALTHY = "HEALTHY"
+    DEGRADED = "DEGRADED"
+    AUTH_FAILED = "AUTH_FAILED"
+    TIMEOUT = "TIMEOUT"
+    UNSUPPORTED = "UNSUPPORTED"
+    RATE_LIMITED = "RATE_LIMITED"
+
+
+class ExternalProviderHealth(BaseModel):
+    service: str
+    provider: str
+    mode: str
+    status: ExternalProviderStatus
+    configured: bool = False
+    last_success_at: str | None = None
+    last_error_code: str | None = None
+    message: str | None = None
+
+
 class RuntimeSummaryResponse(BaseModel):
     ts: datetime
     environment: str
@@ -75,10 +105,15 @@ class RuntimeSummaryResponse(BaseModel):
     violations: RuntimeViolations
     money_risk: RuntimeMoneyRisk
     events: RuntimeEvents
+    warnings: list[str] = []
+    missing_tables: list[str] = []
+    external_providers: list[ExternalProviderHealth] = []
 
 
 __all__ = [
     "HealthStatus",
+    "ExternalProviderHealth",
+    "ExternalProviderStatus",
     "RuntimeHealth",
     "RuntimeQueues",
     "RuntimeViolations",

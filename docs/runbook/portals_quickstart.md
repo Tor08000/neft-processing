@@ -19,7 +19,8 @@ docker compose up -d --build
 scripts\seed_e2e.cmd
 ```
 
-> Uses default demo accounts (`client@neft.local`, `partner@neft.local`, `admin@example.com`). Override via `NEFT_BOOTSTRAP_*` or `CLIENT_*/PARTNER_*/ADMIN_*` environment variables if needed.
+> Uses canonical seeded accounts (`client@neft.local`, `partner@neft.local`, `admin@neft.local`) with passwords `Client123!`, `Partner123!`, `Neft123!`. Override via `NEFT_BOOTSTRAP_*` or `CLIENT_*/PARTNER_*/ADMIN_*` environment variables if needed.
+> The credentials are for seed/smoke automation. Login pages expose demo chips only in explicit demo builds: `VITE_DEMO_MODE=true` for client/partner, `NEFT_DEMO_LOGIN_ENABLED=true` plus explicit `NEFT_DEMO_ADMIN_*` for admin.
 
 ## 3) Unified portal smoke
 

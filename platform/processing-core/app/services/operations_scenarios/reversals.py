@@ -152,7 +152,7 @@ class ReversalService:
 
     def _platform_adjustment(self, currency: str) -> int:
         return self.accounts_repo.get_or_create_account(
-            client_id="platform",
+            client_id=PLATFORM_OWNER_ID,
             owner_type=AccountOwnerType.PLATFORM,
             owner_id=PLATFORM_OWNER_ID,
             currency=currency,

@@ -5,6 +5,7 @@ import { Table, type Column } from "../../components/Table/Table";
 import { formatDateTime } from "../../utils/format";
 import type { BillingPaymentIntake, BillingPaymentIntakeStatus } from "../../types/paymentIntakes";
 import { formatMoney } from "./billingUtils";
+import { billingPaymentIntakesCopy } from "../operatorKeyPageCopy";
 
 const STATUS_OPTIONS: BillingPaymentIntakeStatus[] = ["SUBMITTED", "UNDER_REVIEW", "APPROVED", "REJECTED"];
 
@@ -39,7 +40,7 @@ const BillingPaymentIntakesPage: React.FC = () => {
 
   const handleReject = useCallback(
     async (intake: BillingPaymentIntake) => {
-      const reason = window.prompt("Причина отклонения");
+      const reason = window.prompt(billingPaymentIntakesCopy.rejectPrompt);
       if (!reason) return;
       await rejectPaymentIntake(intake.id, { review_note: reason });
       load();

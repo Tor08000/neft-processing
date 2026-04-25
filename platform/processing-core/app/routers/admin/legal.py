@@ -3,10 +3,10 @@ from __future__ import annotations
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from sqlalchemy import or_
+from sqlalchemy import String, cast, inspect, or_
 from sqlalchemy.orm import Session
 
-from app.api.dependencies.admin import require_admin_user
+from app.api.dependencies.admin_capability import require_admin_capability
 from app.db import get_db
 from app.models.legal_acceptance import LegalAcceptance, LegalSubjectType
 from app.models.legal_document import LegalDocument, LegalDocumentStatus
@@ -26,6 +26,7 @@ from app.schemas.legal import (
     LegalDocumentResponse,
     LegalDocumentUpdateRequest,
 )
+from app.services.partner_context import resolve_partner_by_id
 from app.services.audit_service import request_context_from_request
 from app.services.legal import LegalService
 from app.services.partner_legal_service import PartnerLegalError, PartnerLegalService
@@ -34,27 +35,31 @@ from app.services.partner_legal_service import PartnerLegalError, PartnerLegalSe
 router = APIRouter(prefix="/legal", tags=["admin-legal"])
 
 
-_ALLOWED_LEGAL_ROLES = {"SUPERADMIN", "PLATFORM_ADMIN", "LEGAL_ADMIN", "ADMIN"}
+def _table_exists(db: Session, model) -> bool:
+    try:
+        bind = db.get_bind()
+        inspector = inspect(bind)
+        table = model.__table__
+        if inspector.has_table(table.name, schema=table.schema):
+            return True
+        if bind.dialect.name != "postgresql":
+            return inspector.has_table(table.name)
+        return False
+    except Exception:
+        return False
 
 
-def _ensure_legal_admin(token: dict) -> None:
-    roles = token.get("roles") or []
-    role = token.get("role")
-    if role:
-        roles = [*roles, role]
-    normalized = {str(item).upper() for item in roles}
-    if not normalized.intersection(_ALLOWED_LEGAL_ROLES):
-        raise HTTPException(status_code=403, detail="legal_admin_required")
+def _tables_exist(db: Session, *models) -> bool:
+    return all(_table_exists(db, model) for model in models)
 
 
 @router.post("/documents", response_model=LegalDocumentResponse)
 def create_document(
     payload: LegalDocumentCreateRequest,
     request: Request,
-    token: dict = Depends(require_admin_user),
+    token: dict = Depends(require_admin_capability("legal", "operate")),
     db: Session = Depends(get_db),
 ) -> LegalDocumentResponse:
-    _ensure_legal_admin(token)
     service = LegalService(db)
     document = service.create_document(
         payload=payload.model_dump(),
@@ -70,10 +75,9 @@ def update_document(
     document_id: str,
     payload: LegalDocumentUpdateRequest,
     request: Request,
-    token: dict = Depends(require_admin_user),
+    token: dict = Depends(require_admin_capability("legal", "operate")),
     db: Session = Depends(get_db),
 ) -> LegalDocumentResponse:
-    _ensure_legal_admin(token)
     document = db.query(LegalDocument).filter(LegalDocument.id == document_id).first()
     if not document:
         raise HTTPException(status_code=404, detail="legal_document_not_found")
@@ -93,10 +97,9 @@ def update_document(
 def publish_document(
     document_id: str,
     request: Request,
-    token: dict = Depends(require_admin_user),
+    token: dict = Depends(require_admin_capability("legal", "approve")),
     db: Session = Depends(get_db),
 ) -> LegalDocumentResponse:
-    _ensure_legal_admin(token)
     document = db.query(LegalDocument).filter(LegalDocument.id == document_id).first()
     if not document:
         raise HTTPException(status_code=404, detail="legal_document_not_found")
@@ -114,10 +117,12 @@ def list_documents(
     code: str | None = Query(None),
     status: str | None = Query(None),
     locale: str | None = Query(None),
-    token: dict = Depends(require_admin_user),
+    token: dict = Depends(require_admin_capability("legal")),
     db: Session = Depends(get_db),
 ) -> LegalDocumentListResponse:
-    _ensure_legal_admin(token)
+    _ = token
+    if not _table_exists(db, LegalDocument):
+        return LegalDocumentListResponse(items=[])
     query = db.query(LegalDocument)
     if code:
         query = query.filter(LegalDocument.code == code)
@@ -137,10 +142,12 @@ def list_acceptances(
     document_code: str | None = Query(None),
     date_from: datetime | None = Query(None),
     date_to: datetime | None = Query(None),
-    token: dict = Depends(require_admin_user),
+    token: dict = Depends(require_admin_capability("legal")),
     db: Session = Depends(get_db),
 ) -> LegalAcceptanceListResponse:
-    _ensure_legal_admin(token)
+    _ = token
+    if not _table_exists(db, LegalAcceptance):
+        return LegalAcceptanceListResponse(items=[])
     query = db.query(LegalAcceptance)
     if subject_type:
         query = query.filter(LegalAcceptance.subject_type == subject_type)
@@ -162,10 +169,12 @@ def list_legal_partners(
     search: str | None = Query(None),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
-    token: dict = Depends(require_admin_user),
+    token: dict = Depends(require_admin_capability("legal")),
     db: Session = Depends(get_db),
 ) -> LegalPartnerListResponse:
-    _ensure_legal_admin(token)
+    _ = token
+    if not _tables_exist(db, Partner, PartnerLegalProfile):
+        return LegalPartnerListResponse(items=[], total=0, limit=limit, offset=offset, cursor=None)
     query = db.query(Partner, PartnerLegalProfile).outerjoin(
         PartnerLegalProfile, PartnerLegalProfile.partner_id == Partner.id
     )
@@ -177,7 +186,7 @@ def list_legal_partners(
         query = query.filter(PartnerLegalProfile.legal_status == status_enum)
     if search:
         like = f"%{search}%"
-        query = query.filter(or_(Partner.id.ilike(like), Partner.name.ilike(like)))
+        query = query.filter(or_(cast(Partner.id, String).ilike(like), Partner.name.ilike(like)))
     total = query.count()
     rows = query.order_by(Partner.created_at.desc()).offset(offset).limit(limit).all()
     items: list[LegalPartnerSummary] = []
@@ -204,11 +213,10 @@ def list_legal_partners(
 @router.get("/partners-legacy/{partner_id}", response_model=LegalPartnerDetail)
 def get_legal_partner(
     partner_id: str,
-    token: dict = Depends(require_admin_user),
+    token: dict = Depends(require_admin_capability("legal")),
     db: Session = Depends(get_db),
 ) -> LegalPartnerDetail:
-    _ensure_legal_admin(token)
-    partner = db.query(Partner).filter(Partner.id == partner_id).one_or_none()
+    partner = resolve_partner_by_id(db, partner_id=partner_id)
     if not partner:
         raise HTTPException(status_code=404, detail="partner_not_found")
     service = PartnerLegalService(db, request_ctx=request_context_from_request(None, token=token))
@@ -265,10 +273,9 @@ def update_legal_partner_status(
     partner_id: str,
     payload: LegalPartnerStatusUpdate,
     request: Request,
-    token: dict = Depends(require_admin_user),
+    token: dict = Depends(require_admin_capability("legal", "approve")),
     db: Session = Depends(get_db),
 ) -> LegalPartnerDetail:
-    _ensure_legal_admin(token)
     service = PartnerLegalService(db, request_ctx=request_context_from_request(request, token=token))
     try:
         status_enum = PartnerLegalStatus(payload.status)

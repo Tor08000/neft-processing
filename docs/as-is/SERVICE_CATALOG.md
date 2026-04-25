@@ -16,8 +16,8 @@
 | gateway | `neft-processing-gateway-1` | `gateway/Dockerfile` | `80:80` | `GET /health` | `GET /metrics` | core-api, auth-host, ai-service | Routes `/api/core`, `/api/auth`, `/api/ai`, `/api/logistics`, `/api/docs`, `/api/int`, `/api/integrations`, `/admin/`, `/client/`, `/partner/`. (`gateway/nginx.conf`) |
 | core-api | `neft-processing-core-api-1` | `platform/processing-core/Dockerfile` | `8001:8000` | `GET /api/core/health` | `GET /metrics` | postgres, redis, minio-init | Main FastAPI API. (`platform/processing-core/app/main.py`) |
 | auth-host | `neft-processing-auth-host-1` | `platform/auth-host/Dockerfile` | `8002:8000` | `GET /api/auth/health` | `GET /api/v1/metrics` | postgres, redis | JWT/identity/bootstrap. Demo users seeded via `DEMO_SEED_ENABLED=1` + `python -m app.cli.reset_passwords --demo --force`. (`platform/auth-host/app/main.py`) |
-| ai-service | `neft-processing-ai-service-1` | `platform/ai-services/risk-scorer/Dockerfile` | `8003:8000` | `GET /api/v1/health` | `GET /metrics` | redis | Risk scoring stub. (`platform/ai-services/risk-scorer/app/main.py`) |
-| integration-hub | `neft-processing-integration-hub-1` | `platform/integration-hub/Dockerfile` | `8010:8000` | `GET /health` | `GET /metrics` | postgres, redis, minio-init, gateway | Webhooks + EDO stub. (`platform/integration-hub/neft_integration_hub/main.py`) |
+| ai-service | `neft-processing-ai-service-1` | `platform/ai-services/risk-scorer/Dockerfile` | `8003:8000` | `GET /api/v1/health` | `GET /metrics` | redis | Heuristic risk scoring provider with explicit source/degraded semantics and deterministic trace hashes, not a trained-model owner. (`platform/ai-services/risk-scorer/app/main.py`) |
+| integration-hub | `neft-processing-integration-hub-1` | `platform/integration-hub/Dockerfile` | `8010:8000` | `GET /health` | `GET /metrics` | postgres, redis, minio-init, gateway | Webhooks + explicit EDO transport owner; stub remains available only in explicit mode, while default provider modes are real/degraded/disabled. (`platform/integration-hub/neft_integration_hub/main.py`) |
 | workers | `neft-processing-workers-1` | `platform/billing-clearing/Dockerfile` | internal only | Celery ping (healthcheck in compose) | n/a | core-api, redis, minio-init | Celery workers for billing/pdf/clearing. (`platform/billing-clearing`) |
 | beat | `neft-processing-beat-1` | `platform/billing-clearing/Dockerfile` | internal only | Celery connection check | n/a | core-api, redis, minio-init | Celery beat scheduler. |
 | flower | `neft-processing-flower-1` | `services/flower/Dockerfile` | `5555:5555` | Flower API check | Flower UI (same port) | redis, workers | Monitoring UI for Celery. |
@@ -27,16 +27,16 @@
 
 | Service | Container | Build/Image | Ports | Health | Metrics | Deps | Notes |
 |---|---|---|---|---|---|---|---|
-| admin-web | `neft-processing-admin-web-1` | `frontends/admin-ui/Dockerfile` | `4173:80` | `GET /health` | n/a | none | Served via gateway `/admin/`. (`gateway/nginx.conf`) |
-| client-web | `neft-processing-client-web-1` | `frontends/client-portal/Dockerfile` | `4174:80` | `GET /health` | n/a | none | Served via gateway `/client/`. (`gateway/nginx.conf`) |
-| partner-web | `neft-processing-partner-web-1` | `frontends/partner-portal/Dockerfile` | `4175:80` | `GET /health` | n/a | gateway | Served via gateway `/partner/`. (`gateway/nginx.conf`) |
+| admin-web | `neft-processing-admin-web-1` | `frontends/admin-ui/Dockerfile` | internal only (`80`) | `GET /health` | n/a | none | Served via gateway `/admin/`; current compose does not publish the container directly. Vite dev server uses `8080`. (`gateway/nginx.conf`, `frontends/admin-ui/vite.config.ts`) |
+| client-web | `neft-processing-client-web-1` | `frontends/client-portal/Dockerfile` | internal only (`80`) | `GET /health` | n/a | none | Served via gateway `/client/`; current compose does not publish the container directly. Vite dev server uses `4174`. (`gateway/nginx.conf`, `frontends/client-portal/vite.config.ts`) |
+| partner-web | `neft-processing-partner-web-1` | `frontends/partner-portal/Dockerfile` | internal only (`80`) | `GET /health` | n/a | none | Served via gateway `/partner/`; current compose does not publish the container directly. Vite dev server uses `4176`. (`gateway/nginx.conf`, `frontends/partner-portal/vite.config.ts`) |
 
 ## Peripheral API services
 
 | Service | Container | Build/Image | Ports | Health | Metrics | Deps | Notes |
 |---|---|---|---|---|---|---|---|
-| crm-service | `neft-processing-crm-1` | `platform/crm-service/Dockerfile` | internal only (`8000`) | `GET /health` | `GET /metrics` | none | Stub service. (`platform/crm-service/app/main.py`) |
-| logistics-service | `neft-processing-logistics-1` | `platform/logistics-service/Dockerfile` | internal only (`8000`) | `GET /health` | `GET /metrics` | none | Mock logistics provider by default. (`platform/logistics-service/neft_logistics_service/main.py`) |
+| crm-service | `neft-processing-crm-1` | `platform/crm-service/Dockerfile` | internal only (`8000`) | `GET /health` | `GET /metrics` | none | Compatibility/shadow CRM service; canonical CRM control plane owner is `processing-core` admin CRM. (`platform/crm-service/app/main.py`) |
+| logistics-service | `neft-processing-logistics-1` | `platform/logistics-service/Dockerfile` | internal only (`8000`) | `GET /health` | `GET /metrics` | none | Default transport owner is `integration_hub`; default compute provider is `osrm`, while mock remains explicit dev/test wiring only. (`platform/logistics-service/neft_logistics_service/main.py`) |
 | document-service | `neft-processing-document-1` | `platform/document-service/Dockerfile` | internal only (`8000`) | `GET /health` | `GET /metrics` | none | PDF render/sign/verify. (`platform/document-service/app/main.py`) |
 
 ## Data + infra services

@@ -8,7 +8,7 @@ from sqlalchemy import and_
 from sqlalchemy.orm import Session
 
 from app.db.types import new_uuid_str
-from app.models.cases import Case, CaseEventType, CaseKind, CasePriority
+from app.models.cases import Case, CaseEventType, CaseKind, CasePriority, CaseQueue
 from app.models.marketplace_catalog import (
     MarketplaceProduct,
     MarketplaceProductModerationStatus,
@@ -25,6 +25,7 @@ from app.models.marketplace_orders import (
 from app.services.audit_service import RequestContext
 from app.services.case_event_redaction import redact_deep
 from app.services.case_events_service import CaseEventActor, emit_case_event
+from app.services.cases_service import create_case
 from app.services.decision_memory.records import record_decision_memory
 from app.services.marketplace_promotion_service import MarketplacePromotionService, MarketplacePromotionServiceError
 from app.services.marketplace_commission_service import MarketplaceCommissionService
@@ -136,17 +137,33 @@ class MarketplaceOrderService:
         if existing:
             return existing
         tenant_id = self.request_ctx.tenant_id if self.request_ctx and self.request_ctx.tenant_id is not None else 0
-        case = Case(
-            id=new_uuid_str(),
+        case = create_case(
+            self.db,
+            case_id=new_uuid_str(),
             tenant_id=tenant_id,
             kind=CaseKind.ORDER,
+            entity_type="ORDER",
             entity_id=str(order.id),
+            kpi_key=None,
+            window_days=None,
             title=f"Marketplace order {order.id}",
+            description=None,
             priority=CasePriority.MEDIUM,
+            note="Marketplace order case",
+            explain={"surface": "marketplace_order"},
+            diff=None,
+            selected_actions=None,
+            mastery_snapshot=None,
             created_by=self.request_ctx.actor_id if self.request_ctx else None,
+            client_id=str(order.client_id) if order.client_id else None,
+            partner_id=str(order.partner_id) if order.partner_id else None,
+            case_source_ref_type="MARKETPLACE_ORDER",
+            case_source_ref_id=str(order.id),
+            queue=CaseQueue.SUPPORT,
+            occurred_at=order.created_at or self._now(),
+            request_id=self.request_ctx.request_id if self.request_ctx else None,
+            trace_id=self.request_ctx.trace_id if self.request_ctx else None,
         )
-        self.db.add(case)
-        self.db.flush()
         return case
 
     def _case_actor(self) -> CaseEventActor | None:

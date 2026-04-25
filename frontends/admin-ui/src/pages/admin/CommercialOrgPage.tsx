@@ -17,6 +17,10 @@ import type {
   CommercialOrgState,
   CommercialOverride,
 } from "../../types/commercial";
+import { EmptyState } from "../../components/common/EmptyState";
+import { ErrorState } from "../../components/common/ErrorState";
+import { Loader } from "../../components/Loader/Loader";
+import { commercialOrgCopy } from "./commercialOrgCopy";
 
 type DiffEntry = {
   path: string;
@@ -25,6 +29,10 @@ type DiffEntry = {
 };
 
 const MAX_DIFF_ENTRIES = 40;
+const EMPTY_VALUE = "-";
+const DEBUG_COMMERCIAL_CONTROL = Boolean(
+  import.meta.env.DEV && import.meta.env.VITE_ADMIN_DEBUG_COMMERCIAL === "true",
+);
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -107,6 +115,8 @@ export const CommercialOrgPage: React.FC = () => {
       if (!accessToken) return;
       setLoading(true);
       setError(null);
+      setState(null);
+      setSnapshots([]);
       try {
         const [stateResponse, entitlementsResponse] = await Promise.all([
           getCommercialState(accessToken, targetOrgId),
@@ -119,12 +129,14 @@ export const CommercialOrgPage: React.FC = () => {
         ];
         setSnapshots(snapshotList);
       } catch (err) {
-        console.error("Ошибка загрузки коммерции", err);
+        if (DEBUG_COMMERCIAL_CONTROL) {
+          console.error(commercialOrgCopy.errors.loadLog, err);
+        }
         if (err instanceof UnauthorizedError) {
           logout();
           return;
         }
-        setError("Не удалось загрузить коммерческое состояние.");
+        setError(commercialOrgCopy.errors.load);
       } finally {
         setLoading(false);
       }
@@ -167,7 +179,7 @@ export const CommercialOrgPage: React.FC = () => {
     event.preventDefault();
     const parsed = Number(orgIdInput);
     if (Number.isNaN(parsed) || parsed <= 0) {
-      setError("Введите корректный org_id.");
+      setError(commercialOrgCopy.errors.invalidOrg);
       return;
     }
     setOrgId(parsed);
@@ -178,7 +190,7 @@ export const CommercialOrgPage: React.FC = () => {
 
   const handlePlanUpdate = async () => {
     if (!accessToken || !orgId) return;
-    if (!requireConfirm("Изменить план организации?")) return;
+    if (!requireConfirm(commercialOrgCopy.confirm.changePlan)) return;
     try {
       await changeCommercialPlan(accessToken, orgId, {
         plan_code: planForm.plan_code.trim(),
@@ -189,14 +201,16 @@ export const CommercialOrgPage: React.FC = () => {
       });
       await loadOrg(orgId);
     } catch (err) {
-      console.error("Ошибка смены плана", err);
-      setError("Не удалось изменить план.");
+      if (DEBUG_COMMERCIAL_CONTROL) {
+        console.error(commercialOrgCopy.errors.changePlanLog, err);
+      }
+      setError(commercialOrgCopy.errors.changePlan);
     }
   };
 
   const handleAddonUpdate = async () => {
     if (!accessToken || !orgId) return;
-    if (!requireConfirm("Обновить add-on?")) return;
+    if (!requireConfirm(commercialOrgCopy.confirm.addon)) return;
     try {
       if (addonForm.status === "ACTIVE") {
         await enableCommercialAddon(accessToken, orgId, {
@@ -212,16 +226,18 @@ export const CommercialOrgPage: React.FC = () => {
       }
       await loadOrg(orgId);
     } catch (err) {
-      console.error("Ошибка обновления add-on", err);
-      setError("Не удалось обновить add-on.");
+      if (DEBUG_COMMERCIAL_CONTROL) {
+        console.error(commercialOrgCopy.errors.addonLog, err);
+      }
+      setError(commercialOrgCopy.errors.addon);
     }
   };
 
   const handleOverrideUpsert = async () => {
     if (!accessToken || !orgId) return;
-    if (!requireConfirm("Применить override?")) return;
+    if (!requireConfirm(commercialOrgCopy.confirm.override)) return;
     if (!overrideForm.reason.trim() || !overrideForm.confirm) {
-      setError("Укажите reason и подтвердите override.");
+      setError(commercialOrgCopy.errors.overrideReason);
       return;
     }
     try {
@@ -237,16 +253,18 @@ export const CommercialOrgPage: React.FC = () => {
       });
       await loadOrg(orgId);
     } catch (err) {
-      console.error("Ошибка override", err);
-      setError("Не удалось применить override.");
+      if (DEBUG_COMMERCIAL_CONTROL) {
+        console.error(commercialOrgCopy.errors.overrideLog, err);
+      }
+      setError(commercialOrgCopy.errors.override);
     }
   };
 
   const handleOverrideRemove = async () => {
     if (!accessToken || !orgId) return;
-    if (!requireConfirm("Удалить override?")) return;
+    if (!requireConfirm(commercialOrgCopy.confirm.overrideRemove)) return;
     if (!overrideRemoveForm.reason.trim() || !overrideRemoveForm.confirm) {
-      setError("Укажите reason и подтвердите удаление override.");
+      setError(commercialOrgCopy.errors.overrideRemoveReason);
       return;
     }
     try {
@@ -258,20 +276,24 @@ export const CommercialOrgPage: React.FC = () => {
       );
       await loadOrg(orgId);
     } catch (err) {
-      console.error("Ошибка удаления override", err);
-      setError("Не удалось удалить override.");
+      if (DEBUG_COMMERCIAL_CONTROL) {
+        console.error(commercialOrgCopy.errors.overrideRemoveLog, err);
+      }
+      setError(commercialOrgCopy.errors.overrideRemove);
     }
   };
 
   const handleRecompute = async () => {
     if (!accessToken || !orgId) return;
-    if (!requireConfirm("Пересчитать entitlements snapshot?")) return;
+    if (!requireConfirm(commercialOrgCopy.confirm.recompute)) return;
     try {
       await recomputeCommercialEntitlements(accessToken, orgId, { reason: recomputeReason.trim() || null });
       await loadOrg(orgId);
     } catch (err) {
-      console.error("Ошибка recompute", err);
-      setError("Не удалось пересчитать entitlements.");
+      if (DEBUG_COMMERCIAL_CONTROL) {
+        console.error(commercialOrgCopy.errors.recomputeLog, err);
+      }
+      setError(commercialOrgCopy.errors.recompute);
     }
   };
 
@@ -288,14 +310,14 @@ export const CommercialOrgPage: React.FC = () => {
       <div className="page-header">
         <div>
           <h2>Commercial control</h2>
-          <p className="muted">Single source of truth для коммерции и доступов.</p>
+          <p className="muted">{commercialOrgCopy.page.subtitle}</p>
         </div>
         <button
           type="button"
           className={editMode ? "button neft-btn-primary" : "button neft-btn-secondary"}
           onClick={() => setEditMode((prev) => !prev)}
         >
-          {editMode ? "Режим чтения" : "Режим редактирования"}
+          {editMode ? commercialOrgCopy.page.readMode : commercialOrgCopy.page.editMode}
         </button>
       </div>
 
@@ -312,32 +334,51 @@ export const CommercialOrgPage: React.FC = () => {
           style={{ maxWidth: 200 }}
         />
         <button type="submit" className="button neft-btn-primary">
-          Загрузить
+          {commercialOrgCopy.page.load}
         </button>
       </form>
 
-      {error && <div className="card error-state">{error}</div>}
+      {!orgId && !loading && !error && !state ? (
+        <EmptyState
+          title={commercialOrgCopy.page.firstUseTitle}
+          description={commercialOrgCopy.page.firstUseDescription}
+          hint={commercialOrgCopy.page.firstUseHint}
+        />
+      ) : null}
 
-      {loading && <div className="card">Загрузка...</div>}
+      {error ? (
+        <ErrorState
+          title={commercialOrgCopy.page.errorTitle}
+          description={error}
+          actionLabel={orgId ? commercialOrgCopy.page.reloadAction : undefined}
+          onAction={orgId ? () => void loadOrg(orgId) : undefined}
+        />
+      ) : null}
+
+      {loading ? (
+        <div className="card">
+          <Loader label={commercialOrgCopy.page.loading} />
+        </div>
+      ) : null}
 
       {state && (
         <>
           <div className="card stack">
-            <h3>Организация</h3>
+            <h3>{commercialOrgCopy.page.orgTitle}</h3>
             <div>Org ID: {state.org.id}</div>
-            <div>Название: {state.org.name ?? "—"}</div>
-            <div>Статус: {state.org.status ?? "—"}</div>
+            <div>{commercialOrgCopy.page.orgName}: {state.org.name ?? EMPTY_VALUE}</div>
+            <div>{commercialOrgCopy.page.orgStatus}: {state.org.status ?? EMPTY_VALUE}</div>
           </div>
 
           <div className="card stack">
-            <h3>Текущий план</h3>
-            <div>Код: {state.subscription?.plan_code ?? "—"}</div>
-            <div>Версия: {state.subscription?.plan_version ?? "—"}</div>
-            <div>Billing: {state.subscription?.billing_cycle ?? "—"}</div>
-            <div>Статус: {state.subscription?.status ?? "—"}</div>
-            <div>Support: {state.subscription?.support_plan ?? "—"}</div>
-            <div>SLO tier: {state.subscription?.slo_tier ?? "—"}</div>
-            <p className="muted">Изменения вступают в силу после recompute entitlements.</p>
+            <h3>{commercialOrgCopy.page.planTitle}</h3>
+            <div>{commercialOrgCopy.page.planCode}: {state.subscription?.plan_code ?? EMPTY_VALUE}</div>
+            <div>{commercialOrgCopy.page.planVersion}: {state.subscription?.plan_version ?? EMPTY_VALUE}</div>
+            <div>Billing: {state.subscription?.billing_cycle ?? EMPTY_VALUE}</div>
+            <div>{commercialOrgCopy.page.planStatus}: {state.subscription?.status ?? EMPTY_VALUE}</div>
+            <div>Support: {state.subscription?.support_plan ?? EMPTY_VALUE}</div>
+            <div>SLO tier: {state.subscription?.slo_tier ?? EMPTY_VALUE}</div>
+            <p className="muted">{commercialOrgCopy.page.recomputeNote}</p>
             <div className="grid" style={{ gap: 12 }}>
               <div>
                 <label className="label">Plan code</label>
@@ -384,14 +425,14 @@ export const CommercialOrgPage: React.FC = () => {
               disabled={!editMode}
             />
             <button type="button" className="button neft-btn-primary" disabled={!editMode} onClick={handlePlanUpdate}>
-              Изменить план
+              {commercialOrgCopy.page.updatePlan}
             </button>
           </div>
 
           <div className="card stack">
             <h3>Add-ons</h3>
             {state.addons.length === 0 ? (
-              <div className="muted">Add-ons отсутствуют.</div>
+              <div className="muted">{commercialOrgCopy.page.addonsEmpty}</div>
             ) : (
               <ul>
                 {state.addons.map((addon) => (
@@ -401,7 +442,7 @@ export const CommercialOrgPage: React.FC = () => {
                 ))}
               </ul>
             )}
-            <p className="muted">Изменения вступают в силу после recompute entitlements.</p>
+            <p className="muted">{commercialOrgCopy.page.recomputeNote}</p>
             <div className="grid" style={{ gap: 12 }}>
               <div>
                 <label className="label">Add-on code</label>
@@ -433,14 +474,14 @@ export const CommercialOrgPage: React.FC = () => {
               disabled={!editMode}
             />
             <button type="button" className="button neft-btn-primary" disabled={!editMode} onClick={handleAddonUpdate}>
-              Обновить add-on
+              {commercialOrgCopy.page.updateAddon}
             </button>
           </div>
 
           <div className="card stack">
             <h3>Overrides</h3>
             {state.overrides.length === 0 ? (
-              <div className="muted">Overrides отсутствуют.</div>
+              <div className="muted">{commercialOrgCopy.page.overridesEmpty}</div>
             ) : (
               <table className="table">
                 <thead>
@@ -456,14 +497,14 @@ export const CommercialOrgPage: React.FC = () => {
                       <td>{override.feature_key}</td>
                       <td>{override.availability}</td>
                       <td>
-                        <pre style={{ margin: 0 }}>{override.limits_json ? formatJson(override.limits_json) : "—"}</pre>
+                        <pre style={{ margin: 0 }}>{override.limits_json ? formatJson(override.limits_json) : EMPTY_VALUE}</pre>
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             )}
-            <p className="muted">Override требует reason и подтверждения.</p>
+            <p className="muted">{commercialOrgCopy.page.overrideNote}</p>
             <div className="grid" style={{ gap: 12 }}>
               <div>
                 <label className="label">Feature</label>
@@ -506,10 +547,10 @@ export const CommercialOrgPage: React.FC = () => {
                 onChange={(event) => setOverrideForm((prev) => ({ ...prev, confirm: event.target.checked }))}
                 disabled={!editMode}
               />
-              Подтверждаю override
+              {commercialOrgCopy.page.overrideConfirm}
             </label>
             <button type="button" className="button neft-btn-primary" disabled={!editMode} onClick={handleOverrideUpsert}>
-              Применить override
+              {commercialOrgCopy.page.overrideApply}
             </button>
 
             <hr />
@@ -541,7 +582,7 @@ export const CommercialOrgPage: React.FC = () => {
                 onChange={(event) => setOverrideRemoveForm((prev) => ({ ...prev, confirm: event.target.checked }))}
                 disabled={!editMode}
               />
-              Подтверждаю удаление override
+              {commercialOrgCopy.page.overrideRemoveConfirm}
             </label>
             <button
               type="button"
@@ -549,15 +590,15 @@ export const CommercialOrgPage: React.FC = () => {
               disabled={!editMode || !overrideRemoveForm.confirm}
               onClick={handleOverrideRemove}
             >
-              Удалить override
+              {commercialOrgCopy.page.overrideRemoveAction}
             </button>
           </div>
 
           <div className="card stack">
             <h3>Entitlements snapshots</h3>
             <div>
-              Текущий snapshot: {state.entitlements_snapshot?.hash ?? "—"} (версия{" "}
-              {state.entitlements_snapshot?.version ?? "—"})
+              {commercialOrgCopy.page.currentSnapshot}: {state.entitlements_snapshot?.hash ?? EMPTY_VALUE} ({commercialOrgCopy.page.snapshotVersion}{" "}
+              {state.entitlements_snapshot?.version ?? EMPTY_VALUE})
             </div>
             <label className="label">Reason for recompute</label>
             <input
@@ -566,19 +607,19 @@ export const CommercialOrgPage: React.FC = () => {
               onChange={(event) => setRecomputeReason(event.target.value)}
               disabled={!editMode}
             />
-            <button type="button" className="button neft-btn-primary" disabled={!editMode} onClick={handleRecompute}>
-              Recompute entitlements
-            </button>
+              <button type="button" className="button neft-btn-primary" disabled={!editMode} onClick={handleRecompute}>
+                Recompute entitlements
+              </button>
             {currentSnapshot ? (
               <div className="stack">
                 <h4>Current snapshot</h4>
                 <div className="muted">
-                  Version {currentSnapshot.version} • {new Date(currentSnapshot.computed_at).toLocaleString()}
+                  Version {currentSnapshot.version} | {new Date(currentSnapshot.computed_at).toLocaleString()}
                 </div>
                 <pre>{formatJson(currentSnapshot.entitlements)}</pre>
               </div>
             ) : (
-              <div className="muted">Нет snapshot.</div>
+              <div className="muted">{commercialOrgCopy.page.noSnapshot}</div>
             )}
             {previousSnapshots.length > 0 && (
               <div className="stack">
@@ -586,7 +627,7 @@ export const CommercialOrgPage: React.FC = () => {
                 {previousSnapshots.map((snapshot, index) => (
                   <div key={snapshot.hash} className="card">
                     <div className="muted">
-                      Version {snapshot.version} • {new Date(snapshot.computed_at).toLocaleString()}
+                      Version {snapshot.version} | {new Date(snapshot.computed_at).toLocaleString()}
                     </div>
                     <details>
                       <summary>Snapshot JSON</summary>
@@ -595,12 +636,13 @@ export const CommercialOrgPage: React.FC = () => {
                     <details>
                       <summary>Diff to newer snapshot</summary>
                       {diffs[index].length === 0 ? (
-                        <div className="muted">Без изменений.</div>
+                        <div className="muted">{commercialOrgCopy.page.noDiff}</div>
                       ) : (
                         <ul>
                           {diffs[index].map((entry) => (
                             <li key={`${snapshot.hash}-${entry.path}`}>
-                              <strong>{entry.path}</strong>: {formatJson(entry.before)} →{" "}
+                              <strong>{entry.path}</strong>: {formatJson(entry.before)}
+                              {" -> "}
                               {formatJson(entry.after)}
                             </li>
                           ))}
@@ -616,10 +658,10 @@ export const CommercialOrgPage: React.FC = () => {
           <div className="card stack">
             <h3>Effective entitlements summary</h3>
             <div>
-              Snapshot hash: {state.entitlements_snapshot?.hash ?? "—"} • computed{" "}
+              Snapshot hash: {state.entitlements_snapshot?.hash ?? EMPTY_VALUE} | computed{" "}
               {state.entitlements_snapshot?.computed_at
                 ? new Date(state.entitlements_snapshot.computed_at).toLocaleString()
-                : "—"}
+                : EMPTY_VALUE}
             </div>
             <div>Overrides active: {overridesByKey.size}</div>
           </div>

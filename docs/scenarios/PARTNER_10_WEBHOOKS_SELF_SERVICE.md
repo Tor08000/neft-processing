@@ -7,7 +7,7 @@ Partner registers webhooks, rotates secrets, and replays deliveries.
 - Partner Admin
 
 ## Prerequisites
-- Integration-hub running with DB.
+- Integration-hub running with DB; local/dev compose should expose `INTEGRATION_HUB_AUTO_CREATE_SCHEMA=true` or the service healthcheck must fail until webhook tables exist.
 
 ## UI Flow
 **Partner portal**
@@ -33,5 +33,5 @@ Partner registers webhooks, rotates secrets, and replays deliveries.
 
 ## VERIFIED
 - pytest: `platform/integration-hub/neft_integration_hub/tests/test_webhooks.py`.
-- smoke cmd: `scripts/smoke_partner_webhooks.cmd` (placeholder).
-- PASS: endpoint created and delivery stored.
+- smoke cmd: `scripts/smoke_partner_webhooks.cmd`.
+- PASS: endpoint created, test delivery enqueued, replay rows stored.

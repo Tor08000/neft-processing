@@ -30,8 +30,35 @@ export interface FinanceInvoiceSummary {
   currency?: string | null;
 }
 
+export interface AdminTimelineEvent {
+  ts?: string | null;
+  event_type: string;
+  entity_type: string;
+  entity_id: string;
+  action: string;
+  reason?: string | null;
+  actor_id?: string | null;
+  actor_email?: string | null;
+  correlation_id?: string | null;
+  before?: Record<string, unknown> | null;
+  after?: Record<string, unknown> | null;
+}
+
+export interface FinanceInvoiceStateExplain {
+  current_status: string;
+  pdf_status?: string | null;
+  has_pdf: boolean;
+  is_overdue: boolean;
+  payment_intakes_total: number;
+  payment_intakes_pending: number;
+  latest_payment_intake_status?: string | null;
+  reconciliation_request_id?: string | null;
+}
+
 export interface FinanceInvoiceDetail extends FinanceInvoiceSummary {
   pdf_url?: string | null;
+  state_explain?: FinanceInvoiceStateExplain | null;
+  timeline?: AdminTimelineEvent[];
 }
 
 export interface FinanceInvoiceListResponse {
@@ -44,7 +71,7 @@ export interface FinanceInvoiceListResponse {
 export interface PaymentIntakeDetail {
   id: number;
   org_id: number;
-  invoice_id: number;
+  invoice_id: string;
   status: string;
   amount: number | string;
   currency: string;
@@ -65,7 +92,9 @@ export interface PaymentIntakeDetail {
   reviewed_at?: string | null;
   review_note?: string | null;
   created_at?: string | null;
+  invoice_status?: string | null;
   invoice_link?: string | null;
+  timeline?: AdminTimelineEvent[];
 }
 
 export interface PaymentIntakeListResponse {

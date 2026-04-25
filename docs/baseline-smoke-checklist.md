@@ -8,7 +8,8 @@ Use this checklist to validate the frozen baseline before/after client mode chan
 - [ ] **Signup (new email)**: create a new account; confirm session is authenticated automatically.
 - [ ] **Signup (existing email)**: submit existing email; confirm conflict is shown in-page and remains local.
 - [ ] **Demo showcase**: login as demo client; confirm showcase dashboard renders.
-- [ ] **Connect flow entry**: from authenticated client without completed onboarding, open `/connect` and continue to plan/type steps.
+- [ ] **Onboarding entry**: from authenticated client without completed onboarding, open `/onboarding` and continue through plan/contract steps.
+- [ ] **Connect compatibility redirect**: open `/connect`; confirm it redirects into the canonical onboarding flow instead of rendering a separate wizard.
 - [ ] **Partner login**: authenticate partner user and verify partner cabinet opens.
 
 ## Quick command checks (client portal)

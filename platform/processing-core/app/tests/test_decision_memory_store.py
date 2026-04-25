@@ -3,12 +3,10 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 import pytest
-from sqlalchemy import create_engine
-from sqlalchemy.orm import Session, sessionmaker
-from sqlalchemy.pool import StaticPool
+from sqlalchemy.orm import Session
 
-from app.db import Base
 from app.db.types import new_uuid_str
+from app.models.decision_memory import DecisionActionStatsDaily, DecisionOutcome
 from app.models.fleet_intelligence_actions import (
     FAppliedActionStatus,
     FIActionCode,
@@ -24,24 +22,21 @@ from app.models.fleet_intelligence_actions import (
 from app.models.unified_explain import PrimaryReason
 from app.services.decision_memory import repository as memory_repository
 from app.services.decision_memory import store as memory_store
+from app.tests._scoped_router_harness import scoped_session_context
+
+
+DECISION_MEMORY_STORE_TEST_TABLES = (
+    FIInsight.__table__,
+    FIAppliedAction.__table__,
+    DecisionOutcome.__table__,
+    DecisionActionStatsDaily.__table__,
+)
 
 
 @pytest.fixture()
 def db_session() -> Session:
-    engine = create_engine(
-        "sqlite://",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
-    SessionLocal = sessionmaker(autocommit=False, autoflush=False, expire_on_commit=False, bind=engine)
-    Base.metadata.create_all(bind=engine)
-    session = SessionLocal()
-    try:
+    with scoped_session_context(tables=DECISION_MEMORY_STORE_TEST_TABLES) as session:
         yield session
-    finally:
-        session.close()
-        Base.metadata.drop_all(bind=engine)
-        engine.dispose()
 
 
 def test_outcome_recorded_once(db_session: Session) -> None:

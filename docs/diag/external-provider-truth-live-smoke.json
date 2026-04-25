@@ -1,0 +1,84 @@
+{
+  "captured_at": "2026-04-25T09:43:24.9053515Z",
+  "scope": "external-provider-truth",
+  "commands": [
+    "docker compose up -d --build integration-hub document-service",
+    "docker compose ps integration-hub document-service",
+    "docker compose exec -T integration-hub python -c \"import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5).read().decode())\"",
+    "docker compose exec -T document-service python -c \"import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5).read().decode())\""
+  ],
+  "containers": {
+    "integration-hub": "up_healthy",
+    "document-service": "up_healthy"
+  },
+  "integration_hub": {
+    "status": "ok",
+    "database_ready": true,
+    "provider_modes": {
+      "diadok": "real",
+      "otp": "degraded",
+      "notifications": "degraded",
+      "email": "disabled"
+    },
+    "providers": [
+      {
+        "provider": "diadok",
+        "mode": "production",
+        "status": "DEGRADED",
+        "configured": false,
+        "last_error_code": "diadok_not_configured"
+      },
+      {
+        "provider": "sbis",
+        "mode": "unsupported",
+        "status": "UNSUPPORTED",
+        "configured": false,
+        "last_error_code": "sbis_not_wired"
+      },
+      {
+        "provider": "smtp_email",
+        "mode": "disabled",
+        "status": "DISABLED",
+        "configured": false,
+        "last_error_code": null
+      },
+      {
+        "provider": "otp_sms",
+        "mode": "degraded",
+        "status": "DEGRADED",
+        "configured": false,
+        "last_error_code": "otp_transport_not_implemented"
+      },
+      {
+        "provider": "notifications",
+        "mode": "degraded",
+        "status": "DEGRADED",
+        "configured": false,
+        "last_error_code": "notification_transport_not_configured"
+      },
+      {
+        "provider": "webhook_intake",
+        "mode": "dev_unsigned_allowed",
+        "status": "DEGRADED",
+        "configured": false,
+        "last_error_code": "webhook_signature_policy_degraded"
+      }
+    ]
+  },
+  "document_service": {
+    "status": "ok",
+    "provider_modes": {
+      "provider_x": "degraded",
+      "esign_provider": "degraded"
+    },
+    "providers": [
+      {
+        "provider": "esign_provider",
+        "mode": "degraded",
+        "status": "DEGRADED",
+        "configured": false,
+        "last_error_code": "esign_provider_degraded"
+      }
+    ]
+  }
+}

@@ -3,45 +3,21 @@ from datetime import datetime, timedelta, timezone
 from typing import Tuple
 
 import pytest
-from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import Session, sessionmaker
-from sqlalchemy.pool import StaticPool
+from sqlalchemy.orm import sessionmaker
 
 os.environ["DISABLE_CELERY"] = "1"
 
-from app.api.v1.endpoints.logistics import router as logistics_router
-from app.db import Base, get_db
-from app.fastapi_utils import generate_unique_id
 from app.models import fuel as fuel_models
 from app.models.fleet import FleetDriver, FleetDriverStatus, FleetVehicle, FleetVehicleStatus
 from app.models.fuel import FuelCard, FuelCardStatus, FuelNetwork, FuelStation, FuelTransaction, FuelTransactionStatus
+from app.tests._logistics_route_harness import logistics_fuel_client_context
 
 
 @pytest.fixture()
 def logistics_client() -> Tuple[TestClient, sessionmaker]:
-    engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
-    TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, expire_on_commit=False, bind=engine, class_=Session)
-    Base.metadata.create_all(bind=engine)
-
-    app = FastAPI(generate_unique_id_function=generate_unique_id)
-    app.include_router(logistics_router, prefix="")
-
-    def override_get_db():
-        db = TestingSessionLocal()
-        try:
-            yield db
-        finally:
-            db.close()
-
-    app.dependency_overrides[get_db] = override_get_db
-
-    with TestClient(app) as client:
-        yield client, TestingSessionLocal
-
-    Base.metadata.drop_all(bind=engine)
-    engine.dispose()
+    with logistics_fuel_client_context() as ctx:
+        yield ctx
 
 
 def test_run_linker_and_fetch_trip_fuel(logistics_client: Tuple[TestClient, sessionmaker]):

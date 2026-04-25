@@ -2,13 +2,11 @@ from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import Session, sessionmaker
-from sqlalchemy.pool import StaticPool
+from sqlalchemy.orm import Session
 
-from app.db import get_db
-from app.main import app
+from app.routers.explain_v2 import router as explain_v2_router
 from app.models.unified_explain import UnifiedExplainSnapshot
+from app.tests._scoped_router_harness import router_client_context, scoped_session_context
 
 
 def _auth_headers(token: str) -> dict[str, str]:
@@ -17,34 +15,18 @@ def _auth_headers(token: str) -> dict[str, str]:
 
 @pytest.fixture()
 def db_session() -> Session:
-    engine = create_engine(
-        "sqlite://",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
-    SessionLocal = sessionmaker(autocommit=False, autoflush=False, expire_on_commit=False, bind=engine)
-    UnifiedExplainSnapshot.__table__.create(bind=engine)
-    session = SessionLocal()
-    try:
+    with scoped_session_context(tables=(UnifiedExplainSnapshot.__table__,)) as session:
         yield session
-    finally:
-        session.close()
-        UnifiedExplainSnapshot.__table__.drop(bind=engine)
-        engine.dispose()
 
 
 @pytest.fixture()
 def client(db_session: Session):
-    def _override():
-        try:
-            yield db_session
-        finally:
-            pass
-
-    app.dependency_overrides[get_db] = _override
-    with TestClient(app) as test_client:
+    with router_client_context(
+        router=explain_v2_router,
+        prefix="/api/core",
+        db_session=db_session,
+    ) as test_client:
         yield test_client
-    app.dependency_overrides.pop(get_db, None)
 
 
 def _insert_snapshot(db_session: Session, *, snapshot_json: dict, snapshot_hash: str, subject_id: str) -> str:

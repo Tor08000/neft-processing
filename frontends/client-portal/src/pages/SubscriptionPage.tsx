@@ -1,387 +1,435 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-
-import { useAuth } from "../auth/AuthContext";
+import { EmptyState, FinanceOverview } from "@shared/brand/components";
+import { getPlanByCode, getPlansByAudience } from "@shared/subscriptions/catalog";
+import { resolveClientKind, resolveClientSubscriptionTier } from "../access/clientWorkspace";
 import { fetchGamificationSummary, fetchMySubscription, fetchSubscriptionBenefits } from "../api/subscriptions";
+import { useAuth } from "../auth/AuthContext";
+import { useClient } from "../auth/ClientContext";
+import { AppErrorState, AppLoadingState } from "../components/states";
 import type { ClientSubscription, GamificationSummary, SubscriptionBenefits } from "../types/subscriptions";
-import { useI18n } from "../i18n";
+
+const BASE_MODULE_LABELS: Record<string, string> = {
+  dashboard: "Дашборд",
+  documents: "Документы",
+  analytics: "Аналитика",
+  marketplace: "Маркетплейс",
+  cards: "Карты",
+  expenses: "Операции и расходы",
+  reports: "Отчёты",
+  limits: "Лимиты",
+  users: "Команда",
+  fleet: "Автопарк",
+  logistics: "Логистика",
+  stationsMap: "Карта станций",
+  support: "Поддержка",
+  apiAccess: "API доступ",
+  webhooks: "Webhooks",
+  whiteLabel: "White-label",
+  payouts: "Payouts",
+  crmExport: "Экспорт в CRM/ERP",
+};
+
+const MODULE_LABELS = Object.entries(BASE_MODULE_LABELS).reduce<Record<string, string>>((lookup, [key, label]) => {
+  const snakeUpperKey = key.replace(/([a-z0-9])([A-Z])/g, "$1_$2").toUpperCase();
+  lookup[key] = label;
+  lookup[key.toLowerCase()] = label;
+  lookup[snakeUpperKey] = label;
+  lookup[snakeUpperKey.toLowerCase()] = label;
+  return lookup;
+}, {});
+
+const EMPTY_VALUE = "—";
+const STATUS_LABELS: Record<string, string> = {
+  ACTIVE: "Активна",
+  FREE: "Free / trial",
+  PAUSED: "Приостановлена",
+  GRACE: "Grace period",
+  EXPIRED: "Истекла",
+  CANCELLED: "Остановлена",
+};
+
+const resolveModuleLabel = (code: string) => MODULE_LABELS[code] ?? MODULE_LABELS[code.toLowerCase()] ?? code;
+
+const formatMoney = (value?: number | null, currency = "RUB") => {
+  if (typeof value !== "number") return "По запросу";
+  return new Intl.NumberFormat("ru-RU", { style: "currency", currency, maximumFractionDigits: 0 }).format(value);
+};
+
+const formatDate = (value?: string | null) => {
+  if (!value) return EMPTY_VALUE;
+  return new Date(value).toLocaleDateString("ru-RU");
+};
+
+const asRecord = (value: unknown): Record<string, unknown> | null => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  return value as Record<string, unknown>;
+};
+
+const asRecordArray = (value: unknown): Record<string, unknown>[] =>
+  Array.isArray(value)
+    ? value.filter((item): item is Record<string, unknown> => Boolean(asRecord(item)))
+    : [];
+
+const mapCollectionTitles = (items: Record<string, unknown>[], fallback: string) =>
+  items.map((item, index) => {
+    const title = typeof item.title === "string" ? item.title : typeof item.name === "string" ? item.name : null;
+    return title ?? `${fallback} ${index + 1}`;
+  });
+
+const resolveCollectionTitles = (primary: unknown, fallback: unknown, label: string) => {
+  const primaryItems = asRecordArray(primary);
+  if (primaryItems.length) {
+    return mapCollectionTitles(primaryItems, label);
+  }
+  return mapCollectionTitles(asRecordArray(fallback), label);
+};
+
+const resolveVisiblePlanModules = (planCode?: string | null) => {
+  const catalogPlan = getPlanByCode(planCode);
+  if (!catalogPlan) return [];
+  return Object.entries(catalogPlan.modules)
+    .filter(([, enabled]) => Boolean(enabled))
+    .map(([code]) => resolveModuleLabel(code));
+};
 
 export function SubscriptionPage() {
   const { user } = useAuth();
-  const { t } = useI18n();
+  const { client } = useClient();
   const [subscription, setSubscription] = useState<ClientSubscription | null>(null);
   const [benefits, setBenefits] = useState<SubscriptionBenefits | null>(null);
   const [gamification, setGamification] = useState<GamificationSummary | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [retryKey, setRetryKey] = useState(0);
 
   useEffect(() => {
+    let active = true;
     setLoading(true);
+    setError(null);
     Promise.all([fetchMySubscription(user), fetchSubscriptionBenefits(user), fetchGamificationSummary(user)])
       .then(([subscriptionResponse, benefitsResponse, gamificationResponse]) => {
+        if (!active) return;
         setSubscription(subscriptionResponse);
         setBenefits(benefitsResponse);
         setGamification(gamificationResponse);
       })
-      .finally(() => setLoading(false));
-  }, [user]);
+      .catch((err) => {
+        if (!active) return;
+        setError(err instanceof Error ? err.message : "Не удалось загрузить подписку");
+      })
+      .finally(() => {
+        if (active) {
+          setLoading(false);
+        }
+      });
 
-  const getRecordString = (value: unknown, key: string): string | undefined => {
-    if (!value || typeof value !== "object") return undefined;
-    const record = value as Record<string, unknown>;
-    const candidate = record[key];
-    return typeof candidate === "string" ? candidate : undefined;
-  };
-  const previewModules = gamification?.preview?.modules as
-    | { module_code: string; enabled: boolean; tier?: string | null }[]
-    | undefined;
-  const previewAvailable = gamification?.preview?.available as
-    | { achievements?: { title: string }[]; streaks?: { title: string }[]; bonuses?: { title: string }[] }
-    | undefined;
+    return () => {
+      active = false;
+    };
+  }, [retryKey, user]);
 
-  const savings = useMemo(() => {
-    if (!gamification?.bonuses?.length) return t("subscription.savingsFallback");
-    return t("subscription.savingsValue", { value: gamification.bonuses.length });
-  }, [gamification, t]);
+  const clientKind = resolveClientKind({ client });
+  const currentPlanCode = subscription?.plan?.code ?? subscription?.plan_id ?? client?.subscription?.plan_code ?? null;
+  const subscriptionTier = resolveClientSubscriptionTier(currentPlanCode);
+  const availablePlans = useMemo(() => {
+    const plans = getPlansByAudience("CLIENT");
+    return plans.filter((plan) => {
+      if (clientKind === "INDIVIDUAL") {
+        return plan.availableCustomerTypes?.includes("INDIVIDUAL") ?? true;
+      }
+      return (plan.availableCustomerTypes?.some((item) => item !== "INDIVIDUAL") ?? true) || !plan.availableCustomerTypes;
+    });
+  }, [clientKind]);
 
-  const planHeaders = [
-    { key: "FREE", label: "FREE / BASIC" },
-    { key: "CONTROL", label: "CONTROL" },
-    { key: "INTEGRATE", label: "INTEGRATE" },
-    { key: "ENTERPRISE", label: "ENTERPRISE" },
-  ];
-  const tableSections = [
-    {
-      title: "📊 Таблица: Feature × Plan",
-      rows: [
-        { key: "feature.portal.core", feature: "Client Portal (основа)", values: ["✅", "✅", "✅", "✅"] },
-        {
-          key: "feature.portal.entities",
-          feature: "Карты / Пользователи / Документы",
-          values: ["✅", "✅", "✅", "✅"],
-        },
-        { key: "feature.export.async_csv", feature: "Асинхронные экспорты (CSV)", values: ["✅", "✅", "✅", "✅"] },
-        { key: "feature.notifications.in_app", feature: "Уведомления (in-app)", values: ["✅", "✅", "✅", "✅"] },
-        { key: "feature.access.rbac_abac", feature: "Role-based access (RBAC/ABAC)", values: ["✅", "✅", "✅", "✅"] },
-        { key: "feature.audit.basic", feature: "Audit (базовый)", values: ["✅", "✅", "✅", "✅"] },
-      ],
-    },
-    {
-      title: "📈 Аналитика и отчёты",
-      rows: [
-        { key: "feature.analytics.summary", feature: "BI Analytics (summary)", values: ["✅", "✅", "✅", "✅"] },
-        {
-          key: "feature.analytics.drilldown",
-          feature: "BI Drill-down (day/card/driver/support)",
-          values: ["❌", "✅", "✅", "✅"],
-        },
-        {
-          key: "feature.analytics.advanced",
-          feature: "Advanced analytics (trends, comparisons)",
-          values: ["❌", "❌", "❌", "✅"],
-        },
-        { key: "feature.reports.csv", feature: "Scheduled reports (CSV)", values: ["❌", "✅", "✅", "✅"] },
-        { key: "feature.reports.xlsx", feature: "Scheduled reports (XLSX)", values: ["❌", "❌", "✅", "✅"] },
-        { key: "feature.reports.retention", feature: "Report retention (extended)", values: ["❌", "❌", "✅", "✅"] },
-      ],
-    },
-    {
-      title: "⏱ Экспорты и производительность",
-      rows: [
-        { key: "feature.export.async", feature: "Async exports", values: ["✅", "✅", "✅", "✅"] },
-        { key: "feature.export.progress", feature: "Export progress %", values: ["❌", "✅", "✅", "✅"] },
-        { key: "feature.export.eta", feature: "Export ETA (predictive)", values: ["❌", "✅", "✅", "✅"] },
-        { key: "feature.export.large_100k", feature: "Large exports (100k+)", values: ["❌", "❌", "✅", "✅"] },
-        {
-          key: "feature.export.streaming_priority",
-          feature: "Streaming / priority exports",
-          values: ["❌", "❌", "❌", "✅"],
-        },
-      ],
-    },
-    {
-      title: "🧠 Дашборды и персонализация",
-      rows: [
-        { key: "feature.dashboards.user", feature: "User dashboards (role-based)", values: ["❌", "✅", "✅", "✅"] },
-        { key: "feature.dashboards.health", feature: "Dashboard health widgets", values: ["❌", "❌", "✅", "✅"] },
-        { key: "feature.dashboards.custom", feature: "Custom dashboards", values: ["❌", "❌", "❌", "✅"] },
-      ],
-    },
-    {
-      title: "🔗 Интеграции (платные add-ons)",
-      rows: [
-        {
-          key: "integration.helpdesk.outbound",
-          feature: "Helpdesk outbound (tickets → helpdesk)",
-          values: ["❌", "❌", "✅", "✅"],
-        },
-        {
-          key: "integration.helpdesk.inbound",
-          feature: "Helpdesk inbound (sync from helpdesk)",
-          values: ["❌", "❌", "✅", "✅"],
-        },
-        {
-          key: "integration.erp.accounting",
-          feature: "ERP / Accounting integrations",
-          values: ["❌", "❌", "❌", "🔧 Add-on"],
-        },
-        { key: "integration.api.webhooks", feature: "API / Webhooks расширенные", values: ["❌", "❌", "❌", "🔧 Add-on"] },
-      ],
-    },
-    {
-      title: "🛡 SLO / SLA и поддержка",
-      rows: [
-        { key: "support.internal", feature: "Internal support", values: ["✅", "✅", "✅", "✅"] },
-        { key: "support.email_notifications", feature: "Email notifications", values: ["LIMITED", "✅", "✅", "✅"] },
-        { key: "slo.monitoring.readonly", feature: "SLO monitoring (read-only)", values: ["❌", "❌", "✅", "✅"] },
-        { key: "slo.tiers", feature: "SLO tiers (A/B/C)", values: ["❌", "❌", "❌", "✅"] },
-        { key: "sla.contractual", feature: "Contractual SLA", values: ["❌", "❌", "❌", "✅"] },
-        { key: "support.priority", feature: "Priority support", values: ["❌", "❌", "❌", "✅"] },
-        { key: "support.incident_escalation", feature: "Incident management / escalation", values: ["❌", "❌", "❌", "✅"] },
-      ],
-    },
-  ];
-  const normalizePlanKey = (value?: string | null) => {
-    if (!value) return null;
-    const upper = value.toUpperCase();
-    if (upper.includes("FREE") || upper.includes("BASIC")) return "FREE";
-    if (upper.includes("CONTROL")) return "CONTROL";
-    if (upper.includes("INTEGRATE")) return "INTEGRATE";
-    if (upper.includes("ENTERPRISE")) return "ENTERPRISE";
-    return null;
-  };
+  const enabledModules = useMemo(() => {
+    if (benefits?.modules?.length) {
+      return benefits.modules.map((module) => resolveModuleLabel(module.module_code));
+    }
+    return resolveVisiblePlanModules(currentPlanCode);
+  }, [benefits?.modules, currentPlanCode]);
+
+  const unavailableModules = useMemo(
+    () => (benefits?.unavailable_modules ?? []).map((module) => resolveModuleLabel(module.module_code)),
+    [benefits?.unavailable_modules],
+  );
+
+  const preview = useMemo(() => asRecord(gamification?.preview), [gamification]);
+  const previewAvailable = useMemo(() => asRecord(preview?.["available"]), [preview]);
+  const previewPlanTitle = typeof preview?.["plan_title"] === "string" ? preview["plan_title"] : null;
+  const previewModules = useMemo(
+    () =>
+      asRecordArray(preview?.["modules"])
+        .map((item) => (typeof item.module_code === "string" ? resolveModuleLabel(item.module_code) : null))
+        .filter((item): item is string => Boolean(item)),
+    [preview],
+  );
+
   if (loading) {
-    return <div>{t("common.loading")}</div>;
+    return <AppLoadingState label="Загружаем подписку..." />;
   }
 
-  if (!subscription || !benefits) {
-    return <div>{t("subscription.empty")}</div>;
+  if (error) {
+    return <AppErrorState message={error} onRetry={() => setRetryKey((current) => current + 1)} />;
   }
 
-  const disabledModules = benefits.unavailable_modules ?? [];
-  const enabledModules = benefits.modules ?? [];
-  const currentPlanLabel = subscription.plan?.title ?? subscription.plan_id;
-  const currentPlanKey = normalizePlanKey(subscription.plan?.code ?? subscription.plan_id);
-  const highlightStyle = { background: "rgba(58, 130, 255, 0.12)" };
+  if (!subscription) {
+    return (
+      <div className="stack subscription-page">
+        <div className="page-header">
+          <div>
+            <h1>Подписка и тариф</h1>
+            <p className="muted">Коммерческий контур, доступные возможности и следующий шаг без скрытой магии.</p>
+          </div>
+        </div>
+        <EmptyState
+          title="Подписка пока не назначена"
+          description="Сначала завершите онбординг, чтобы портал назначил базовый тариф и открыл доступные модули."
+          primaryAction={{ label: "Перейти к онбордингу", to: "/onboarding" }}
+          secondaryAction={{ label: "Написать в поддержку", to: "/client/support/new?topic=subscription_change" }}
+        />
+      </div>
+    );
+  }
+
+  const achievementTitles = resolveCollectionTitles(gamification?.achievements, previewAvailable?.["achievements"], "Механика");
+  const bonusTitles = resolveCollectionTitles(gamification?.bonuses, previewAvailable?.["bonuses"], "Бонус");
+  const streakTitles = resolveCollectionTitles(gamification?.streaks, previewAvailable?.["streaks"], "Серия");
+  const subscriptionStatus = STATUS_LABELS[subscription.status] ?? subscription.status;
+  const supportPlan = client?.subscription?.support_plan?.toUpperCase() ?? EMPTY_VALUE;
+  const programTitle = preview ? "Что откроется после апгрейда" : "Программа активности";
+  const programDescription = preview
+    ? `Страница честно показывает, какие бонусы и механики откроет ${previewPlanTitle ?? "расширенный тариф"}, без декоративных достижений и пустых обещаний.`
+    : "Портал показывает, какие бонусы и механики поддерживает ваш тариф. Реальный прогресс появляется по мере использования сервисов.";
 
   return (
-    <div style={{ display: "grid", gap: 16 }}>
-      <section className="card" style={{ padding: 16 }}>
-        <h2>Client Portal — Тарифы и возможности (vC)</h2>
-        <p className="muted">
-          Принцип: мы продаём не функции, а уровень контроля, интеграции, ответственности и SLA. Функции — инструмент
-          внутри пакета.
-        </p>
-        <div style={{ display: "grid", gap: 8 }}>
-          <h3>🧩 Линейка тарифов</h3>
-          <ul>
-            <li>FREE / BASIC — вход и ознакомление</li>
-            <li>CONTROL — операционный контроль</li>
-            <li>INTEGRATE — интеграция и масштаб</li>
-            <li>ENTERPRISE — ответственность и гарантии</li>
-          </ul>
-          <div className="neft-badge info">Вы сейчас на плане: {currentPlanLabel}</div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-            <span className="neft-badge success">✅ включено</span>
-            <span className="neft-badge neutral">❌ недоступно</span>
-            <span className="neft-badge warning">🔧 add-on</span>
-            <span className="neft-badge info">LIMITED — только critical events (email)</span>
+    <div className="stack subscription-page">
+      <div className="page-header">
+        <div>
+          <h1>Подписка и тариф</h1>
+          <p className="muted">Коммерческий контур, доступные возможности и следующий шаг без скрытой магии.</p>
+        </div>
+      </div>
+
+      <div className="surface-toolbar subscription-page__toolbar">
+        <div className="stack subscription-page__toolbar-copy">
+          <strong>Коммерческий workflow</strong>
+          <span className="muted small">
+            Портал показывает текущий договор и entitlements. Смена тарифа и модулей идёт через действующий support/commercial contour.
+          </span>
+        </div>
+        <div className="toolbar-actions">
+          <Link className="primary" to="/client/support/new?topic=subscription_change">
+            Запросить изменение тарифа
+          </Link>
+          <Link className="ghost" to="/legal">
+            Юридические условия
+          </Link>
+        </div>
+      </div>
+
+      <FinanceOverview
+        items={[
+          {
+            id: "client-kind",
+            label: "Тип клиента",
+            value: clientKind === "BUSINESS" ? "BUSINESS" : "INDIVIDUAL",
+            meta: clientKind === "BUSINESS" ? "Коммерческий кабинет" : "Личный контур клиента",
+            tone: "info",
+          },
+          {
+            id: "plan",
+            label: "Текущий тариф",
+            value: subscription.plan?.title ?? currentPlanCode ?? EMPTY_VALUE,
+            meta: currentPlanCode ?? EMPTY_VALUE,
+            tone: "premium",
+          },
+          {
+            id: "tier",
+            label: "Tier",
+            value: subscriptionTier,
+          },
+          {
+            id: "status",
+            label: "Статус",
+            value: subscriptionStatus,
+            tone: subscription.status === "ACTIVE" ? "success" : "warning",
+          },
+          {
+            id: "period",
+            label: "Период",
+            value: `${formatDate(subscription.start_at)} → ${formatDate(subscription.end_at)}`,
+          },
+          {
+            id: "support",
+            label: "Support plan",
+            value: supportPlan,
+          },
+        ]}
+      />
+
+      <section className="card">
+        <div className="card__header">
+          <div>
+            <h3>Доступные планы</h3>
+            <p className="muted">Портал показывает только планы, поддержанные текущим client kind.</p>
           </div>
         </div>
-      </section>
+        <div className="subscription-page__plans">
+          {availablePlans.map((plan) => {
+            const isCurrent = plan.code === currentPlanCode;
+            const moduleList = Object.entries(plan.modules)
+              .filter(([, enabled]) => Boolean(enabled))
+              .map(([code]) => resolveModuleLabel(code));
 
-      {tableSections.map((section) => (
-        <section key={section.title} className="card" style={{ padding: 16 }}>
-          <h3>{section.title}</h3>
-          <div style={{ overflowX: "auto" }}>
-            <table className="neft-table">
-              <thead>
-                <tr>
-                  <th>Категория</th>
-                  {planHeaders.map((header) => (
-                    <th key={header.key} style={currentPlanKey === header.key ? highlightStyle : undefined}>
-                      {header.label}
-                    </th>
+            return (
+              <article key={plan.code} className={`card subscription-page__plan${isCurrent ? " is-current" : ""}`}>
+                <div className="subscription-page__plan-header">
+                  <div>
+                    <h4>{plan.title}</h4>
+                    <div className="muted small">{plan.code}</div>
+                  </div>
+                  {isCurrent ? <span className="badge success">Текущий</span> : null}
+                </div>
+                <p className="muted">{plan.description}</p>
+                <div className="subscription-page__price">
+                  <strong>{formatMoney(plan.monthlyPrice ?? null)}</strong>
+                  <div className="muted small">
+                    {plan.yearlyPrice ? `или ${formatMoney(plan.yearlyPrice)} / год` : "Годовая цена по договору"}
+                  </div>
+                </div>
+                <ul className="subscription-page__list">
+                  {plan.bullets.map((item) => (
+                    <li key={item}>{item}</li>
                   ))}
-                </tr>
-              </thead>
-              <tbody>
-                {section.rows.map((row) => (
-                  <tr key={row.key} data-key={row.key}>
-                    <td>
-                      <div>{row.feature}</div>
-                      <div className="muted" style={{ fontSize: 11 }}>
-                        {row.key}
-                      </div>
-                    </td>
-                    {row.values.map((value, index) => (
-                      <td
-                        key={`${row.key}-${index}`}
-                        style={currentPlanKey === planHeaders[index]?.key ? highlightStyle : undefined}
-                      >
-                        {value}
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          {section.title.includes("add-ons") ? (
-            <p className="muted" style={{ marginTop: 12 }}>
-              🔧 Add-on — оплачивается отдельно, даже для Enterprise (по договору).
-            </p>
-          ) : null}
-        </section>
-      ))}
-
-      <section className="card" style={{ padding: 16 }}>
-        <h3>🧾 Пояснения для понимания условий</h3>
-        <ul>
-          <li>
-            <strong>FREE / BASIC</strong> — предоставляется «как есть», без гарантий SLA и интеграций.
-          </li>
-          <li>
-            <strong>CONTROL</strong> — предоставляет инструменты контроля и аналитики, без интеграционных обязательств.
-          </li>
-          <li>
-            <strong>INTEGRATE</strong> — включает интеграционные возможности и мониторинг SLO без контрактных гарантий.
-          </li>
-          <li>
-            <strong>ENTERPRISE</strong> — предоставляется на основании индивидуального договора, включая SLA, SLO tiers,
-            поддержку и ответственность.
-          </li>
-        </ul>
-        <p className="muted">Фактические условия определяются договором/счетом/спецификацией.</p>
-        <Link className="ghost neft-btn-secondary" to="/legal">
-          Юридические условия
-        </Link>
-      </section>
-
-      <section className="card" style={{ padding: 16 }}>
-        <h3>💰 Модель продаж (коротко)</h3>
-        <ul>
-          <li>FREE / CONTROL — self-serve</li>
-          <li>INTEGRATE — self-serve + sales assist</li>
-          <li>ENTERPRISE — только через менеджера</li>
-        </ul>
-        <p className="muted">Интеграции и SLO tiers могут быть включены в пакет или оформлены как отдельные add-ons.</p>
-        <Link className="neft-button" to="/client/support/new?topic=sales_enterprise">
-          Связаться с менеджером
-        </Link>
-      </section>
-
-      <section className="card" style={{ padding: 16 }}>
-        <h2>{t("subscription.title")}</h2>
-        <div style={{ display: "grid", gap: 8 }}>
-          <div>
-            {t("subscription.currentPlan")}: <strong>{subscription.plan?.title ?? subscription.plan_id}</strong>
-          </div>
-          <div>
-            {t("subscription.status")}: <strong>{subscription.status}</strong>
-          </div>
-          <div>
-            {t("subscription.period")}:
-            <strong>
-              {subscription.start_at} → {subscription.end_at ?? t("common.notAvailable")}
-            </strong>
-          </div>
+                </ul>
+                <div className="muted small">Модули: {moduleList.join(", ") || EMPTY_VALUE}</div>
+              </article>
+            );
+          })}
         </div>
       </section>
 
-      <section className="card" style={{ padding: 16 }}>
-        <h3>{t("subscription.includes")}</h3>
-        <ul>
-          {enabledModules.map((module) => (
-            <li key={module.module_code}>
-              {module.module_code} · {t("subscription.active")}
-            </li>
-          ))}
-        </ul>
-      </section>
-
-      <section className="card" style={{ padding: 16 }}>
-        <h3>{t("subscription.unavailable")}</h3>
-        {disabledModules.length ? (
-          <ul>
-            {disabledModules.map((module) => (
-              <li key={module.module_code} style={{ opacity: 0.6 }}>
-                {module.module_code} · {t("subscription.availableInPro")}
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <div>{t("subscription.allEnabled")}</div>
-        )}
-      </section>
-
-      <section className="card" style={{ padding: 16 }}>
-        <h3>{t("subscription.savingsTitle")}</h3>
-        <div>{savings}</div>
-      </section>
-
-      <section className="card" style={{ padding: 16 }}>
-        <h3>{t("subscription.bonuses")}</h3>
-        {gamification?.bonuses?.length ? (
-          <ul>
-            {gamification.bonuses.map((bonus, index) => {
-              const title = getRecordString(bonus, "title");
-              return <li key={index}>{title ?? t("subscription.bonusUnlocked")}</li>;
-            })}
-          </ul>
-        ) : (
-          <div>{t("subscription.bonusesEmpty")}</div>
-        )}
-        {gamification?.preview && subscription.status === "FREE" ? (
-          <div style={{ marginTop: 12 }}>
-            <strong>{t("subscription.previewTitle")}</strong>
-            <div>
-              {t("subscription.previewSubtitle", {
-                plan: getRecordString(gamification.preview, "plan_title") ?? t("common.notAvailable"),
-              })}
-            </div>
-            {previewModules ? (
-              <ul>
-                {previewModules.map((module, index) => (
-                  <li key={`${module.module_code}-${index}`}>{module.module_code}</li>
+      <section className="card">
+        <div className="card__header">
+          <div>
+            <h3>Активные возможности</h3>
+            <p className="muted">Только реальные entitlements: что уже доступно и что требует смены тарифа.</p>
+          </div>
+        </div>
+        <div className="subscription-page__program-grid">
+          <div className="subscription-page__program-card">
+            <div className="muted small">Включено сейчас</div>
+            {enabledModules.length ? (
+              <ul className="subscription-page__list">
+                {enabledModules.map((module) => (
+                  <li key={module}>{module}</li>
                 ))}
               </ul>
-            ) : null}
-            {previewAvailable?.bonuses?.length ? (
-              <div style={{ marginTop: 8 }}>{t("subscription.availableByPlan")}</div>
-            ) : null}
+            ) : (
+              <p className="muted">Активные модули пока не назначены.</p>
+            )}
+          </div>
+          <div className="subscription-page__program-card">
+            <div className="muted small">Требует апгрейда</div>
+            {unavailableModules.length ? (
+              <ul className="subscription-page__list">
+                {unavailableModules.map((module) => (
+                  <li key={module}>{module}</li>
+                ))}
+              </ul>
+            ) : (
+              <p className="muted">Все доступные модули уже включены.</p>
+            )}
+          </div>
+        </div>
+      </section>
+
+      <section className="card">
+        <div className="card__header">
+          <div>
+            <h3>{programTitle}</h3>
+            <p className="muted">{programDescription}</p>
+          </div>
+        </div>
+        <div className="subscription-page__program-grid">
+          <div className="subscription-page__program-card">
+            <div className="muted small">Достижения</div>
+            {achievementTitles.length ? (
+              <ul className="subscription-page__list">
+                {achievementTitles.map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+            ) : (
+              <p className="muted">Для этого тарифа дополнительные механики пока не настроены.</p>
+            )}
+          </div>
+          <div className="subscription-page__program-card">
+            <div className="muted small">Бонусы и скидки</div>
+            {bonusTitles.length ? (
+              <ul className="subscription-page__list">
+                {bonusTitles.map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+            ) : (
+              <p className="muted">Бонусные механики появятся после активации подходящего тарифа.</p>
+            )}
+          </div>
+          <div className="subscription-page__program-card">
+            <div className="muted small">Серии активности</div>
+            {streakTitles.length ? (
+              <ul className="subscription-page__list">
+                {streakTitles.map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+            ) : (
+              <p className="muted">Серии появятся после первых регулярных действий в продукте.</p>
+            )}
+          </div>
+        </div>
+        {previewPlanTitle || previewModules.length ? (
+          <div className="subscription-page__preview">
+            <strong>Preview апгрейда</strong>
+            <div className="muted small">
+              {previewPlanTitle
+                ? `Что будет доступно в плане ${previewPlanTitle}.`
+                : "Расширенный тариф откроет дополнительные модули и сценарии."}
+            </div>
+            {previewModules.length ? <div className="muted">Модули: {previewModules.join(", ")}</div> : null}
           </div>
         ) : null}
       </section>
 
-      <section className="card" style={{ padding: 16 }}>
-        <h3>{t("subscription.streaks")}</h3>
-        {gamification?.streaks?.length ? (
-          <ul>
-            {gamification.streaks.map((streak, index) => {
-              const title = getRecordString(streak, "title");
-              return <li key={index}>{title ?? t("subscription.streakActive")}</li>;
-            })}
-          </ul>
-        ) : (
-          <div>{t("subscription.streaksEmpty")}</div>
-        )}
-      </section>
-
-      <section className="card" style={{ padding: 16 }}>
-        <h3>{t("subscription.achievements")}</h3>
-        {gamification?.achievements?.length ? (
-          <ul>
-            {gamification.achievements.map((achievement, index) => {
-              const title = getRecordString(achievement, "title");
-              return <li key={index}>{title ?? t("subscription.achievementUnlocked")}</li>;
-            })}
-          </ul>
-        ) : (
-          <div>{t("subscription.achievementsEmpty")}</div>
-        )}
-        {subscription.status === "FREE" && previewAvailable?.achievements?.length ? (
-          <div style={{ marginTop: 8 }}>{t("subscription.availableByPlan")}</div>
-        ) : null}
+      <section className="card">
+        <div className="card__header">
+          <div>
+            <h3>Следующий шаг</h3>
+            <p className="muted">
+              Страница не обещает self-service billing change там, где owner находится в коммерческом процессе.
+            </p>
+          </div>
+        </div>
+        <div className="subscription-page__workflow">
+          <div className="subscription-page__workflow-step">
+            <strong>1. Опишите сценарий</strong>
+            <span className="muted small">Какие модули, команда или объём документов вам нужны.</span>
+          </div>
+          <div className="subscription-page__workflow-step">
+            <strong>2. Подтвердите условия</strong>
+            <span className="muted small">
+              Менеджер сверит тариф, поддержку и ограничения без скрытых изменений billing semantics.
+            </span>
+          </div>
+          <div className="subscription-page__workflow-step">
+            <strong>3. Получите обновлённые права</strong>
+            <span className="muted small">После подтверждения портал покажет новые entitlements и модули.</span>
+          </div>
+        </div>
       </section>
     </div>
   );

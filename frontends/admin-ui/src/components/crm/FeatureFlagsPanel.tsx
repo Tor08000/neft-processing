@@ -7,10 +7,13 @@ interface FeatureFlagsPanelProps {
 }
 
 const FEATURE_LABELS: Record<string, string> = {
-  fuel: "Fuel",
-  logistics: "Logistics",
-  docs: "Docs",
-  risk: "Risk",
+  FUEL_ENABLED: "Fuel access",
+  LOGISTICS_ENABLED: "Logistics access",
+  DOCUMENTS_ENABLED: "Documents access",
+  RISK_BLOCKING_ENABLED: "Risk blocking",
+  ACCOUNTING_EXPORT_ENABLED: "Accounting export",
+  SUBSCRIPTION_METER_FUEL_ENABLED: "Subscription fuel metering",
+  CASES_ENABLED: "Cases integration",
 };
 
 export const FeatureFlagsPanel: React.FC<FeatureFlagsPanelProps> = ({ flags, onToggle, disabled }) => {

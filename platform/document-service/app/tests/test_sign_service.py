@@ -128,3 +128,40 @@ def test_sign_provider_failure(monkeypatch):
     assert response.status_code == 502
     assert response.json()["detail"] == "sign_failed"
     main.app.dependency_overrides.clear()
+
+
+def test_sign_provider_degraded_returns_structured_503(monkeypatch):
+    class DegradedProvider:
+        def sign(self, payload: bytes, meta: dict | None = None):
+            from app.sign.providers.base import SignProviderDegradedError
+
+            raise SignProviderDegradedError(
+                "Provider X transport is disabled or degraded in document-service",
+                code="provider_x_degraded",
+            )
+
+    monkeypatch.setattr(main, "S3Storage", DummyStorage)
+    main.app.dependency_overrides[main.get_sign_registry] = lambda: ProviderRegistry(
+        providers={"provider_x": DegradedProvider()}
+    )
+    monkeypatch.setenv("PROVIDER_X_MODE", "degraded")
+
+    client = TestClient(main.app)
+    input_payload = b"PDF-BYTES"
+    _seed_input("in-bucket", "documents/tenant-1/INVOICE/2024/05/doc-1/v1.pdf", input_payload)
+
+    response = client.post(
+        "/v1/sign",
+        json={
+            "document_id": "doc-1",
+            "provider": "provider_x",
+            "input": {"bucket": "in-bucket", "object_key": "documents/tenant-1/INVOICE/2024/05/doc-1/v1.pdf"},
+            "output": {"bucket": "out-bucket-fail", "prefix": "documents/tenant-1/INVOICE/2024/05/doc-1"},
+            "idempotency_key": "idem-1",
+        },
+    )
+
+    assert response.status_code == 503
+    assert response.json()["detail"]["category"] == "degraded"
+    assert response.json()["detail"]["error"] == "provider_x_degraded"
+    main.app.dependency_overrides.clear()

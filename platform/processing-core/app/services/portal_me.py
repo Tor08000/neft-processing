@@ -3,7 +3,6 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timezone
 from decimal import Decimal
-import os
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -17,6 +16,7 @@ from app.models.crm import CRMClient
 from app.models.partner import Partner
 from app.models.fleet import ClientEmployee
 from app.models.client_user_roles import ClientUserRole
+from app.models.partner_management import PartnerUserRole
 from app.models.legal_acceptance import LegalAcceptance, LegalSubjectType
 from app.models.subscriptions_v1 import SubscriptionPlan
 from app.schemas.portal_me import (
@@ -26,6 +26,7 @@ from app.schemas.portal_me import (
     PortalMePartnerLegalState,
     PortalMePartnerProfile,
     PortalMePartnerSlaState,
+    PortalMePartnerWorkspace,
     PortalMeLegal,
     PortalMeFeatures,
     PortalMeGating,
@@ -38,12 +39,19 @@ from app.schemas.portal_me import (
     PortalMeBillingInvoice,
 )
 from app.models.partner_finance import PartnerLedgerEntry, PartnerLedgerEntryType
+from app.models.partner_legal import PartnerLegalDetails
 from app.models.partner_legal import PartnerLegalStatus
-from app.services.entitlements_v2_service import get_org_entitlements_snapshot
+from app.domains.client.onboarding.repo import ClientOnboardingRepository
+from app.services.entitlements_v2_service import get_client_entitlements_snapshot, get_org_entitlements_snapshot
 from app.services.jwt_support import parse_scopes
 from app.services.legal import LegalService, legal_gate_required_codes, subject_from_request
 from app.config import settings
 from app.services.partner_core_service import ensure_partner_profile
+from app.services.partner_context import (
+    resolve_partner_by_id,
+    resolve_partner_from_link,
+    resolve_partner_user_link,
+)
 from app.services.partner_finance_service import PartnerFinanceService
 from app.services.partner_legal_service import PartnerLegalError, PartnerLegalService
 from app.services.portal_access_state import resolve_access_state
@@ -53,13 +61,24 @@ logger = logging.getLogger(__name__)
 
 
 def _table(db: Session, name: str) -> Table:
-    return Table(name, MetaData(), autoload_with=db.get_bind(), schema=DB_SCHEMA)
+    bind = db.get_bind()
+    try:
+        return Table(name, MetaData(), autoload_with=bind, schema=DB_SCHEMA)
+    except Exception:
+        if bind.dialect.name == "postgresql":
+            raise
+        return Table(name, MetaData(), autoload_with=bind)
 
 
 def _table_exists(db: Session, name: str) -> bool:
+    bind = db.get_bind()
     try:
-        inspector = inspect(db.get_bind())
-        return inspector.has_table(name, schema=DB_SCHEMA)
+        inspector = inspect(bind)
+        if inspector.has_table(name, schema=DB_SCHEMA):
+            return True
+        if bind.dialect.name == "postgresql":
+            return False
+        return inspector.has_table(name)
     except Exception:
         return False
 
@@ -81,15 +100,16 @@ def _resolve_org_id(token: dict) -> str | None:
     return token.get("org_id") or token.get("client_id") or token.get("partner_id")
 
 
-def _is_demo_partner(org_id: int | None) -> bool:
-    if org_id is None:
-        return False
-    demo_org_id = os.getenv("NEFT_DEMO_ORG_ID") or os.getenv("DEMO_ORG_ID") or "1"
-    try:
-        return int(demo_org_id) == int(org_id)
-    except (TypeError, ValueError):
-        return False
-
+def _normalize_subscription_status(status: Any) -> str | None:
+    if status is None:
+        return None
+    value = getattr(status, "value", None)
+    if value not in (None, ""):
+        return str(value)
+    text = str(status)
+    if text.startswith("SubscriptionStatus."):
+        return text.split(".", 1)[1]
+    return text
 
 def _extract_entitlements_org_id(token: dict) -> str | int | None:
     entitlements = token.get("entitlements_snapshot") or token.get("entitlements") or token.get("entitlements_payload")
@@ -109,9 +129,39 @@ def _resolve_org_id_from_client(db: Session, *, client_id: str | None) -> int | 
     if client_col is None and _column_exists(orgs, "client_uuid"):
         client_col = orgs.c.client_uuid
     if client_col is None or not _column_exists(orgs, "id"):
-        return None
+        return _resolve_org_id_from_client_subscription(db, client_id=client_id)
     try:
         record = db.execute(select(orgs.c.id).where(client_col == client_id)).scalar()
+    except Exception:
+        return _resolve_org_id_from_client_subscription(db, client_id=client_id)
+    if record is None:
+        return _resolve_org_id_from_client_subscription(db, client_id=client_id)
+    try:
+        return int(record)
+    except (TypeError, ValueError):
+        return _resolve_org_id_from_client_subscription(db, client_id=client_id)
+
+
+def _resolve_org_id_from_client_subscription(db: Session, *, client_id: str | None) -> int | None:
+    if not client_id or not _table_exists(db, "client_subscriptions"):
+        return None
+    try:
+        client_subscriptions = _table(db, "client_subscriptions")
+    except Exception:
+        return None
+    tenant_col = client_subscriptions.c.tenant_id if _column_exists(client_subscriptions, "tenant_id") else None
+    client_col = client_subscriptions.c.client_id if _column_exists(client_subscriptions, "client_id") else None
+    if tenant_col is None or client_col is None:
+        return None
+    query = select(tenant_col).where(cast(client_col, String) == str(client_id))
+    created_at_col = client_subscriptions.c.created_at if _column_exists(client_subscriptions, "created_at") else None
+    start_at_col = client_subscriptions.c.start_at if _column_exists(client_subscriptions, "start_at") else None
+    if created_at_col is not None:
+        query = query.order_by(created_at_col.desc())
+    elif start_at_col is not None:
+        query = query.order_by(start_at_col.desc())
+    try:
+        record = db.execute(query.limit(1)).scalar_one_or_none()
     except Exception:
         return None
     if record is None:
@@ -120,6 +170,83 @@ def _resolve_org_id_from_client(db: Session, *, client_id: str | None) -> int | 
         return int(record)
     except (TypeError, ValueError):
         return None
+
+
+def _org_id_has_role(db: Session, *, org_id: int, role: str) -> bool:
+    if db is None or not _table_exists(db, "orgs"):
+        return True
+    try:
+        orgs = _table(db, "orgs")
+    except Exception:
+        return True
+    if "roles" not in orgs.c:
+        return True
+    try:
+        row = db.execute(select(orgs.c.roles).where(orgs.c.id == org_id)).mappings().first()
+    except Exception:
+        return True
+    if not row:
+        return False
+    roles = row.get("roles") or []
+    if isinstance(roles, str):
+        roles = [roles]
+    normalized = {str(item).strip().upper() for item in roles if str(item).strip()}
+    return role.upper() in normalized
+
+
+def _resolve_partner_entitlements_org_id(
+    db: Session,
+    *,
+    partner_id: str | None,
+    org_id_raw: str | None,
+) -> int | None:
+    for candidate in (org_id_raw, partner_id):
+        try:
+            if candidate not in (None, ""):
+                return int(str(candidate))
+        except (TypeError, ValueError):
+            continue
+
+    normalized_partner_id = str(partner_id or "").strip()
+    if not normalized_partner_id or not _table_exists(db, "partner_legal_details"):
+        return None
+
+    alias_details = (
+        db.query(PartnerLegalDetails)
+        .filter(PartnerLegalDetails.partner_id == normalized_partner_id)
+        .one_or_none()
+    )
+    if alias_details is None:
+        return None
+
+    candidate_filters = [PartnerLegalDetails.partner_id != normalized_partner_id]
+    if alias_details.inn:
+        candidate_filters.append(PartnerLegalDetails.inn == alias_details.inn)
+    elif alias_details.legal_name:
+        candidate_filters.append(PartnerLegalDetails.legal_name == alias_details.legal_name)
+    else:
+        return None
+
+    candidate_ids = [
+        str(candidate_partner_id)
+        for candidate_partner_id, in db.query(PartnerLegalDetails.partner_id).filter(*candidate_filters).all()
+    ]
+    numeric_candidates = [int(candidate_partner_id) for candidate_partner_id in candidate_ids if str(candidate_partner_id).isdigit()]
+    if not numeric_candidates:
+        return None
+
+    for candidate_org_id in numeric_candidates:
+        try:
+            snapshot = get_org_entitlements_snapshot(db, org_id=candidate_org_id)
+        except Exception:
+            continue
+        payload = snapshot.entitlements if snapshot is not None else {}
+        capabilities = {str(item).upper() for item in (payload.get("capabilities") or []) if item}
+        org_roles = {str(item).upper() for item in (payload.get("org_roles") or []) if item}
+        if "PARTNER" in org_roles or any(item.startswith("PARTNER_") for item in capabilities):
+            return candidate_org_id
+
+    return numeric_candidates[0]
 
 
 def _is_uuid(value: str | None) -> bool:
@@ -135,16 +262,24 @@ def _is_uuid(value: str | None) -> bool:
 def _resolve_actor_type(token: dict, org_roles: list[str]) -> str:
     normalized_org_roles = {str(role).upper() for role in org_roles if role}
     token_roles = {str(role).upper() for role in _normalize_roles(token)}
+    portal = str(token.get("portal") or "").strip().lower()
+    subject_type = str(token.get("subject_type") or "").strip().lower()
 
-    if token.get("client_id") or token.get("subject_type") == "client_user" or "CLIENT" in normalized_org_roles:
+    if portal == "client" or subject_type == "client_user" or token.get("client_id"):
         return "client"
-    if token.get("partner_id") or "PARTNER" in normalized_org_roles:
+    if portal == "partner" or subject_type == "partner_user" or token.get("partner_id"):
         return "partner"
+
+    if (
+        any(role.startswith("PARTNER") for role in token_roles)
+        or "PARTNER" in normalized_org_roles
+    ):
+        return "partner"
+    if "CLIENT" in normalized_org_roles:
+        return "client"
 
     if any(role.startswith("CLIENT") for role in token_roles):
         return "client"
-    if any(role.startswith("PARTNER") for role in token_roles):
-        return "partner"
 
     return "admin"
 
@@ -251,9 +386,11 @@ def _map_client_to_portal_org(
     onboarding_profile: dict[str, Any] | None,
     onboarding_org_type: str | None,
     onboarding_status: str | None,
+    approved_application_org_type: str | None = None,
 ) -> PortalMeOrg:
     profile = onboarding_profile or {}
-    org_type = profile.get("org_type") or onboarding_org_type
+    org_type = profile.get("org_type") or onboarding_org_type or client.org_type or approved_application_org_type
+    org_type = str(org_type).strip() if org_type else None
     crm_client = None
     if _table_exists(db, "crm_clients"):
         try:
@@ -263,7 +400,12 @@ def _map_client_to_portal_org(
     name = client.legal_name or client.name or profile.get("name")
     inn = client.inn or profile.get("inn")
     status = str(client.status) if client.status is not None else None
-    if onboarding_profile is not None or onboarding_org_type is not None or onboarding_status is not None:
+    normalized_client_status = status.strip().upper() if status else None
+    normalized_onboarding_status = str(onboarding_status).strip().upper() if onboarding_status else None
+    has_onboarding = onboarding_profile is not None or onboarding_org_type is not None or onboarding_status is not None
+    if normalized_client_status == "ACTIVE" or normalized_onboarding_status == "ACTIVE":
+        status = "ACTIVE"
+    elif has_onboarding and normalized_onboarding_status in {None, "DRAFT", "PENDING", "IN_PROGRESS", "ONBOARDING"}:
         status = "ONBOARDING"
     return PortalMeOrg(
         id=str(client.id),
@@ -284,7 +426,7 @@ def _load_org_fallback(
     partner_id: str | None,
 ) -> PortalMeOrg | None:
     if partner_id:
-        partner = db.query(Partner).filter(Partner.id == str(partner_id)).one_or_none()
+        partner = resolve_partner_by_id(db, partner_id=partner_id)
         if partner:
             return PortalMeOrg(
                 id=str(partner.id),
@@ -292,6 +434,130 @@ def _load_org_fallback(
                 status=str(partner.status),
             )
     return None
+
+
+def _resolve_partner_link(
+    db: Session,
+    *,
+    user_id: str | None,
+    partner_id: str | None,
+) -> PartnerUserRole | None:
+    if not user_id or not _table_exists(db, "partner_user_roles"):
+        return None
+    try:
+        query = db.query(PartnerUserRole).filter(PartnerUserRole.user_id == str(user_id))
+        if partner_id and _is_uuid(str(partner_id)):
+            query = query.filter(cast(PartnerUserRole.partner_id, String) == str(partner_id))
+        return query.first()
+    except Exception:
+        return None
+
+
+def _resolve_partner_user_roles(
+    db: Session,
+    *,
+    user_id: str | None,
+    link: PartnerUserRole | None,
+) -> list[str]:
+    if not user_id:
+        return []
+    if link is not None:
+        return sorted({str(role).upper() for role in (link.roles or []) if role})
+    if not _table_exists(db, "partner_user_roles"):
+        return []
+    try:
+        rows = db.query(PartnerUserRole).filter(PartnerUserRole.user_id == str(user_id)).all()
+    except Exception:
+        return []
+    roles: set[str] = set()
+    for row in rows:
+        roles.update({str(role).upper() for role in (row.roles or []) if role})
+    return sorted(roles)
+
+
+def _normalize_partner_role_labels(raw_roles: list[str]) -> list[str]:
+    ordered_labels = [
+        ("PARTNER_OWNER", "OWNER"),
+        ("PARTNER_ACCOUNTANT", "FINANCE_MANAGER"),
+        ("PARTNER_MANAGER", "MANAGER"),
+        ("PARTNER_SERVICE_MANAGER", "MANAGER"),
+        ("PARTNER_OPERATOR", "OPERATOR"),
+        ("PARTNER_VIEWER", "ANALYST"),
+        ("PARTNER_ANALYST", "ANALYST"),
+    ]
+    role_set = {str(role).upper() for role in raw_roles if role}
+    labels: list[str] = []
+    for source_role, normalized in ordered_labels:
+        if source_role in role_set and normalized not in labels:
+            labels.append(normalized)
+    return labels
+
+
+def _resolve_partner_kind(*, partner: Partner | None, capabilities: list[str], partner_roles: list[str]) -> str | None:
+    capability_set = {str(cap).upper() for cap in capabilities if cap}
+    partner_type = str(getattr(partner, "partner_type", "") or "").upper()
+    finance_caps = {
+        "PARTNER_FINANCE_VIEW",
+        "PARTNER_PAYOUT_REQUEST",
+        "PARTNER_PAYOUT_APPROVAL",
+        "PARTNER_SETTLEMENTS",
+        "PARTNER_DOCUMENTS_LIST",
+    }
+    has_finance = bool(capability_set.intersection(finance_caps))
+    if partner_type == "FUEL_NETWORK":
+        return "FUEL_PARTNER"
+    if partner_type == "LOGISTICS_PROVIDER":
+        return "LOGISTICS_PARTNER"
+    if partner_type == "SERVICE_PROVIDER":
+        return "SERVICE_PARTNER"
+    if partner_type == "MERCHANT":
+        return "MARKETPLACE_PARTNER"
+    if partner_type == "EDO_PROVIDER":
+        return "GENERAL_PARTNER"
+    if (
+        partner_type in {"", "OTHER"}
+        and has_finance
+        and capability_set.isdisjoint({"PARTNER_PRICING", "PARTNER_CATALOG", "PARTNER_ORDERS", "PARTNER_ANALYTICS"})
+        and {"OWNER", "FINANCE_MANAGER", "ANALYST"}.intersection(_normalize_partner_role_labels(partner_roles))
+    ):
+        return "FINANCE_PARTNER"
+    if has_finance and capability_set.isdisjoint({"PARTNER_PRICING", "PARTNER_CATALOG", "PARTNER_ORDERS"}):
+        return "FINANCE_PARTNER"
+    if capability_set.intersection({"PARTNER_PRICING", "PARTNER_CATALOG", "PARTNER_ORDERS"}):
+        return "MARKETPLACE_PARTNER"
+    return "GENERAL_PARTNER" if partner is not None or has_finance else None
+
+
+def _resolve_partner_workspaces(*, kind: str | None, capabilities: list[str]) -> tuple[list[PortalMePartnerWorkspace], str]:
+    capability_set = {str(cap).upper() for cap in capabilities if cap}
+    workspace_defs: list[PortalMePartnerWorkspace] = []
+
+    def append_workspace(code: str, label: str, default_route: str) -> None:
+        if any(item.code == code for item in workspace_defs):
+            return
+        workspace_defs.append(
+            PortalMePartnerWorkspace(code=code, label=label, default_route=default_route)
+        )
+
+    has_finance = bool(
+        capability_set.intersection(
+            {"PARTNER_FINANCE_VIEW", "PARTNER_SETTLEMENTS", "PARTNER_PAYOUT_REQUEST", "PARTNER_DOCUMENTS_LIST"}
+        )
+    )
+    if kind == "MARKETPLACE_PARTNER":
+        append_workspace("marketplace", "Marketplace", "/products")
+    if kind == "SERVICE_PARTNER":
+        append_workspace("services", "Services", "/services")
+    if has_finance:
+        append_workspace("finance", "Finance", "/finance")
+    append_workspace("support", "Support", "/support/requests")
+    append_workspace("profile", "Profile", "/partner/profile")
+    default_route = workspace_defs[0].default_route if workspace_defs else "/partner/profile"
+    if has_finance and kind == "FINANCE_PARTNER":
+        default_route = "/finance"
+    elif kind in {"MARKETPLACE_PARTNER", "SERVICE_PARTNER"}:
+        default_route = "/dashboard"
+    return workspace_defs, default_route
 
 
 def _empty_entitlements_snapshot(*, org_id: str | int | None) -> dict[str, Any]:
@@ -403,6 +669,21 @@ def _resolve_client_contract_status(db: Session, *, client_id: str | None) -> st
     return contract.status
 
 
+def _resolve_client_contract_status_with_legacy_active_fallback(
+    *,
+    client: Client | None,
+    subscription: PortalMeSubscription | None,
+    contract_status: str | None,
+) -> str | None:
+    if contract_status:
+        return contract_status
+    if client is None or subscription is None or not subscription.plan_code:
+        return None
+    if str(client.status or "").strip().upper() != "ACTIVE":
+        return None
+    return "SIGNED_LEGACY_ACTIVE"
+
+
 def _resolve_overdue_invoices(db: Session, *, org_id: int | None) -> list[PortalMeBillingInvoice]:
     if org_id is None or not _table_exists(db, "billing_invoices"):
         return []
@@ -471,6 +752,34 @@ def _resolve_onboarding_client_id(db: Session, token: dict) -> str | None:
     return str(onboarding.client_id)
 
 
+def _resolve_client_id_from_user_roles(db: Session, *, user_id: str | None) -> str | None:
+    if not user_id or not _table_exists(db, "client_user_roles"):
+        return None
+    try:
+        row = (
+            db.query(ClientUserRole.client_id)
+            .filter(ClientUserRole.user_id == str(user_id))
+            .order_by(ClientUserRole.created_at.desc())
+            .first()
+        )
+    except Exception:
+        return None
+    if not row:
+        return None
+    return str(row[0])
+
+
+def _normalize_db_roles(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return sorted({str(item).strip().upper() for item in value if str(item).strip()})
+    if isinstance(value, tuple | set):
+        return sorted({str(item).strip().upper() for item in value if str(item).strip()})
+    raw = str(value)
+    return sorted({item.strip().upper() for item in raw.replace(";", ",").split(",") if item.strip()})
+
+
 def _resolve_client_user_roles(
     db: Session,
     *,
@@ -489,9 +798,7 @@ def _resolve_client_user_roles(
         return []
     if not role_row or not role_row.roles:
         return []
-    raw_roles = str(role_row.roles)
-    roles = [item.strip().upper() for item in raw_roles.replace(";", ",").split(",") if item.strip()]
-    return roles
+    return _normalize_db_roles(role_row.roles)
 
 
 def _resolve_client_subscription(
@@ -519,12 +826,56 @@ def _resolve_client_subscription(
         plan_code = plan.code if plan else None
     return PortalMeSubscription(
         plan_code=plan_code,
-        status=str(subscription.status),
+        status=_normalize_subscription_status(subscription.status),
         billing_cycle=None,
         support_plan=None,
         slo_tier=None,
         addons=None,
     )
+
+
+def _resolve_client_org_context(
+    db: Session,
+    *,
+    token: dict,
+    client_id: str | None,
+) -> tuple[str | None, str | None, int | None]:
+    resolved_client_id = client_id
+    if not resolved_client_id:
+        candidate_id = token.get("org_id") or _extract_entitlements_org_id(token)
+        if candidate_id and _is_uuid(str(candidate_id)):
+            resolved_client_id = str(candidate_id)
+    if not resolved_client_id:
+        resolved_client_id = _resolve_client_id_from_user_roles(
+            db,
+            user_id=str(token.get("user_id") or token.get("sub") or "") or None,
+        )
+    if not resolved_client_id:
+        resolved_client_id = _resolve_onboarding_client_id(db, token)
+
+    org_id_raw = token.get("org_id") or _extract_entitlements_org_id(token)
+    if org_id_raw in (None, "") and resolved_client_id:
+        resolved_org_id = _resolve_org_id_from_client(db, client_id=str(resolved_client_id))
+        if resolved_org_id is not None:
+            org_id_raw = resolved_org_id
+    if org_id_raw in (None, "") and resolved_client_id:
+        org_id_raw = resolved_client_id
+
+    org_id_int = None
+    if org_id_raw is not None:
+        try:
+            org_id_int = int(org_id_raw)
+        except (TypeError, ValueError):
+            org_id_int = None
+    if (
+        resolved_client_id
+        and org_id_int is not None
+        and not _org_id_has_role(db, org_id=org_id_int, role="CLIENT")
+    ):
+        org_id_raw = resolved_client_id
+        org_id_int = None
+
+    return resolved_client_id, (str(org_id_raw) if org_id_raw is not None else None), org_id_int
 
 
 def _resolve_onboarding_profile(
@@ -553,15 +904,33 @@ def _resolve_onboarding_profile(
     return onboarding, profile
 
 
+def _resolve_approved_application_org_type(
+    db: Session,
+    *,
+    client_id: str | None,
+) -> str | None:
+    if not client_id:
+        return None
+    try:
+        application = ClientOnboardingRepository(db=db).find_latest_approved_by_client_id(str(client_id))
+    except Exception:
+        return None
+    if not application or not application.org_type:
+        return None
+    org_type = str(application.org_type).strip()
+    return org_type or None
+
+
 def _is_client_profile_complete(
     *,
     client: Client | None,
     onboarding_profile: dict[str, Any] | None,
     onboarding: ClientOnboarding | None,
+    approved_application_org_type: str | None = None,
 ) -> bool | None:
     if client is None:
         return False
-    name = (client.name or "").strip()
+    name = (client.legal_name or client.full_name or client.name or "").strip()
     inn = (client.inn or "").strip()
     if not name and onboarding_profile:
         name = str(onboarding_profile.get("name") or "").strip()
@@ -572,7 +941,13 @@ def _is_client_profile_complete(
         org_type = onboarding_profile.get("org_type")
     if not org_type and onboarding and onboarding.client_type:
         org_type = onboarding.client_type
-    org_type = str(org_type).strip() if org_type else ""
+    if not org_type and client.org_type:
+        org_type = client.org_type
+    if not org_type and approved_application_org_type:
+        org_type = approved_application_org_type
+    org_type = str(org_type).strip().upper() if org_type else ""
+    if org_type == "INDIVIDUAL":
+        return bool(name and org_type)
     return bool(name and inn and org_type)
 
 
@@ -587,33 +962,31 @@ def _build_portal_me_payload(db: Session, *, token: dict) -> PortalMeResponse:
 
     org_id_raw = None
     if actor_type == "client":
-        if not client_id:
-            candidate_id = token.get("org_id") or _extract_entitlements_org_id(token)
-            if candidate_id and _is_uuid(str(candidate_id)):
-                client_id = str(candidate_id)
-        if not client_id:
-            client_id = _resolve_onboarding_client_id(db, token)
-        org_id_raw = client_id
+        client_id, org_id_raw, org_id_int = _resolve_client_org_context(
+            db,
+            token=token,
+            client_id=client_id,
+        )
     else:
         org_id_raw = _resolve_org_id(token)
         if not org_id_raw:
             entitlements_org_id = _extract_entitlements_org_id(token)
             if entitlements_org_id is not None:
                 org_id_raw = str(entitlements_org_id)
-    if not client_id and org_id_raw and _is_uuid(str(org_id_raw)):
-        client_id = str(org_id_raw)
+        if not client_id and org_id_raw and _is_uuid(str(org_id_raw)):
+            client_id = str(org_id_raw)
 
-    org_id_int = None
-    if org_id_raw is not None:
-        try:
-            org_id_int = int(org_id_raw)
-        except (TypeError, ValueError):
-            org_id_int = None
-    if actor_type != "client" and org_id_int is None and client_id:
-        org_id_int = _resolve_org_id_from_client(db, client_id=client_id)
+        org_id_int = None
+        if org_id_raw is not None:
+            try:
+                org_id_int = int(org_id_raw)
+            except (TypeError, ValueError):
+                org_id_int = None
+        if org_id_int is None and client_id:
+            org_id_int = _resolve_org_id_from_client(db, client_id=client_id)
 
     entitlements_snapshot = None
-    if actor_type != "client" and org_id_int is not None:
+    if org_id_int is not None:
         try:
             snapshot = get_org_entitlements_snapshot(db, org_id=org_id_int)
         except Exception:
@@ -627,7 +1000,7 @@ def _build_portal_me_payload(db: Session, *, token: dict) -> PortalMeResponse:
             if subscription and "CLIENT" in org_roles:
                 subscription_payload = PortalMeSubscription(
                     plan_code=subscription.get("plan_code"),
-                    status=subscription.get("status"),
+                    status=_normalize_subscription_status(subscription.get("status")),
                     billing_cycle=subscription.get("billing_cycle"),
                     support_plan=subscription.get("support_plan"),
                     slo_tier=subscription.get("slo_tier"),
@@ -645,12 +1018,20 @@ def _build_portal_me_payload(db: Session, *, token: dict) -> PortalMeResponse:
             if subscription and "CLIENT" in org_roles:
                 subscription_payload = PortalMeSubscription(
                     plan_code=subscription.get("plan_code"),
-                    status=subscription.get("status"),
+                    status=_normalize_subscription_status(subscription.get("status")),
                     billing_cycle=subscription.get("billing_cycle"),
                     support_plan=subscription.get("support_plan"),
                     slo_tier=subscription.get("slo_tier"),
                     addons=subscription.get("addons"),
                 )
+    else:
+        snapshot_payload = token.get("entitlements_snapshot") or token.get("entitlements") or token.get(
+            "entitlements_payload"
+        )
+        if isinstance(snapshot_payload, dict):
+            entitlements_snapshot = dict(snapshot_payload)
+            org_roles = entitlements_snapshot.get("org_roles") or []
+            capabilities = entitlements_snapshot.get("capabilities") or []
 
     try:
         subscription_payload = _resolve_client_subscription(
@@ -660,6 +1041,40 @@ def _build_portal_me_payload(db: Session, *, token: dict) -> PortalMeResponse:
         )
     except Exception:
         subscription_payload = subscription_payload
+
+    if actor_type == "client" and client_id:
+        has_runtime_entitlements = bool(
+            isinstance(entitlements_snapshot, dict)
+            and (
+                entitlements_snapshot.get("capabilities")
+                or entitlements_snapshot.get("modules")
+                or entitlements_snapshot.get("features")
+            )
+        )
+        if not has_runtime_entitlements:
+            try:
+                client_snapshot = get_client_entitlements_snapshot(
+                    db,
+                    client_id=str(client_id),
+                    org_id=org_id_int if org_id_int is not None else str(client_id),
+                )
+            except Exception:
+                logger.exception("portal_me_client_entitlements_failed", extra={"client_id": str(client_id)})
+                client_snapshot = None
+            if client_snapshot is not None:
+                entitlements_snapshot = client_snapshot.entitlements
+                org_roles = entitlements_snapshot.get("org_roles") or org_roles
+                capabilities = entitlements_snapshot.get("capabilities") or capabilities
+                subscription = entitlements_snapshot.get("subscription") or None
+                if subscription and "CLIENT" in org_roles:
+                    subscription_payload = PortalMeSubscription(
+                        plan_code=subscription.get("plan_code"),
+                        status=_normalize_subscription_status(subscription.get("status")),
+                        billing_cycle=subscription.get("billing_cycle"),
+                        support_plan=subscription.get("support_plan"),
+                        slo_tier=subscription.get("slo_tier"),
+                        addons=subscription.get("addons"),
+                    )
 
     owner_user_id = token.get("user_id") or token.get("sub")
     try:
@@ -671,13 +1086,19 @@ def _build_portal_me_payload(db: Session, *, token: dict) -> PortalMeResponse:
     except Exception:
         onboarding = None
         onboarding_profile = None
+    approved_application_org_type = None
     onboarding_profile_complete = None
     if actor_type == "client":
+        approved_application_org_type = _resolve_approved_application_org_type(
+            db,
+            client_id=str(client_id) if client_id else None,
+        )
         client_record = _load_client_record(db, client_id=str(client_id) if client_id else None)
         onboarding_profile_complete = _is_client_profile_complete(
             client=client_record,
             onboarding_profile=onboarding_profile,
             onboarding=onboarding,
+            approved_application_org_type=approved_application_org_type,
         )
     else:
         client_record = None
@@ -691,6 +1112,7 @@ def _build_portal_me_payload(db: Session, *, token: dict) -> PortalMeResponse:
                 onboarding_profile=onboarding_profile,
                 onboarding_org_type=onboarding.client_type if onboarding else None,
                 onboarding_status=onboarding.status if onboarding else None,
+                approved_application_org_type=approved_application_org_type,
             )
         elif client_id and onboarding_profile is not None:
             org_payload = PortalMeOrg(
@@ -725,7 +1147,7 @@ def _build_portal_me_payload(db: Session, *, token: dict) -> PortalMeResponse:
 
     if entitlements_snapshot is not None and isinstance(entitlements_snapshot, dict):
         if actor_type == "client":
-            entitlements_org_id = client_id or (org_payload.id if org_payload else None)
+            entitlements_org_id = str(org_id_int) if org_id_int is not None else client_id or (org_payload.id if org_payload else None)
             entitlements_snapshot = {
                 **entitlements_snapshot,
                 "org_id": entitlements_org_id,
@@ -748,9 +1170,16 @@ def _build_portal_me_payload(db: Session, *, token: dict) -> PortalMeResponse:
             contract_status = _resolve_client_contract_status(db, client_id=client_id)
     except Exception:
         contract_status = None
+    contract_status = _resolve_client_contract_status_with_legacy_active_fallback(
+        client=client_record,
+        subscription=subscription_payload,
+        contract_status=contract_status,
+    )
     if entitlements_snapshot is None:
         org_id_value = None
-        if actor_type == "client" and client_id:
+        if actor_type == "client" and org_id_int is not None:
+            org_id_value = str(org_id_int)
+        elif actor_type == "client" and client_id:
             org_id_value = str(client_id)
         elif org_payload and org_payload.id:
             org_id_value = org_payload.id
@@ -783,6 +1212,8 @@ def _build_portal_me_payload(db: Session, *, token: dict) -> PortalMeResponse:
         employee_timezone = employee.timezone if employee else None
 
     user_roles = _normalize_roles(token)
+    linked_partner: Partner | None = None
+    linked_partner_roles: list[str] = []
     if actor_type == "client":
         db_roles = _resolve_client_user_roles(db, client_id=str(client_id) if client_id else None, user_id=user_id)
         if db_roles:
@@ -790,24 +1221,62 @@ def _build_portal_me_payload(db: Session, *, token: dict) -> PortalMeResponse:
         if "CLIENT_OWNER" not in {str(role).upper() for role in user_roles if role}:
             user_roles.append("CLIENT_OWNER")
             user_roles = sorted({str(role) for role in user_roles if role})
-
-    if actor_type == "partner" and _is_demo_partner(org_id_int):
-        required_caps = {
-            "partner_dashboard_read",
-            "partner_ledger_read",
-            "partner_payout_request",
-            "partner_docs_read",
-        }
-        capabilities = sorted({*capabilities, *required_caps})
-        if isinstance(entitlements_snapshot, dict):
-            entitlements_snapshot = {
-                **entitlements_snapshot,
-                "capabilities": sorted({*(entitlements_snapshot.get("capabilities") or []), *required_caps}),
+    elif actor_type == "partner":
+        partner_link = resolve_partner_user_link(db, claims=token)
+        if partner_link is None:
+            partner_link = _resolve_partner_link(
+                db,
+                user_id=str(user_id) if user_id else None,
+                partner_id=str(partner_id) if partner_id else None,
+            )
+        linked_partner = resolve_partner_from_link(db, link=partner_link)
+        if linked_partner is None:
+            linked_partner = resolve_partner_by_id(db, partner_id=partner_id)
+        if linked_partner is not None:
+            partner_id = str(linked_partner.id)
+            org_payload = _load_org_fallback(db, partner_id=str(linked_partner.id)) or org_payload
+            entitlements_org_id_int = _resolve_partner_entitlements_org_id(
+                db,
+                partner_id=str(linked_partner.id),
+                org_id_raw=str(org_id_raw) if org_id_raw not in (None, "") else None,
+            )
+            if entitlements_org_id_int is not None and entitlements_org_id_int != org_id_int:
+                try:
+                    snapshot = get_org_entitlements_snapshot(db, org_id=entitlements_org_id_int)
+                except Exception:
+                    snapshot = None
+                if snapshot is not None:
+                    org_id_int = entitlements_org_id_int
+                    entitlements_snapshot = snapshot.entitlements
+                    org_roles = entitlements_snapshot.get("org_roles") or []
+                    capabilities = entitlements_snapshot.get("capabilities") or []
+            entitlements_roles = {
+                str(role).upper() for role in ((entitlements_snapshot or {}).get("org_roles") or []) if role
             }
+            if entitlements_snapshot is not None and "PARTNER" not in entitlements_roles:
+                entitlements_snapshot = _empty_entitlements_snapshot(org_id=str(linked_partner.id))
+                capabilities = []
+                subscription_payload = None
+                org_roles = []
+        db_roles = _resolve_partner_user_roles(
+            db,
+            user_id=str(user_id) if user_id else None,
+            link=partner_link,
+        )
+        if db_roles:
+            linked_partner_roles = db_roles
+            user_roles = sorted({*{str(role).upper() for role in user_roles if role}, *db_roles})
+        else:
+            user_roles = sorted({str(role).upper() for role in user_roles if role})
+        org_roles = sorted({*{str(role).upper() for role in org_roles if role}, "PARTNER"})
+    else:
+        user_roles = sorted({str(role).upper() for role in user_roles if role})
+
     nav_sections = _resolve_nav_sections(capabilities)
     scopes = parse_scopes(token)
     actor_type = _resolve_actor_type(token, org_roles)
-    legal = _resolve_legal_status(db, token)
+    legal_token = {**token, "partner_id": str(linked_partner.id)} if actor_type == "partner" and linked_partner is not None else token
+    legal = _resolve_legal_status(db, legal_token)
     features = PortalMeFeatures(
         onboarding_enabled=settings.CORE_ONBOARDING_ENABLED,
         legal_gate_enabled=settings.LEGAL_GATE_ENABLED,
@@ -823,7 +1292,17 @@ def _build_portal_me_payload(db: Session, *, token: dict) -> PortalMeResponse:
     payout_block_reasons: list[str] = []
     sla_penalties_total = Decimal("0")
     sla_penalties_count = 0
-    if "PARTNER" in {str(role).upper() for role in org_roles} and org_id_int is not None:
+    partner_kind = None
+    partner_role_labels: list[str] = []
+    partner_default_route = None
+    partner_workspaces: list[PortalMePartnerWorkspace] = []
+    linked_partner_status = str(getattr(linked_partner, "status", "") or "").upper() if linked_partner is not None else None
+    if (
+        actor_type == "partner"
+        and linked_partner is not None
+        and linked_partner_status == "ACTIVE"
+        and org_id_int is not None
+    ):
         try:
             if _table_exists(db, "partner_profiles"):
                 profile = ensure_partner_profile(
@@ -910,6 +1389,13 @@ def _build_portal_me_payload(db: Session, *, token: dict) -> PortalMeResponse:
                     penalty_amount=sla_penalties_total,
                 )
                 partner_payload = PortalMePartner(
+                    partner_id=str(linked_partner.id) if linked_partner is not None else (str(partner_id) if partner_id else None),
+                    partner_type=str(linked_partner.partner_type) if linked_partner is not None else None,
+                    kind=None,
+                    partner_role=None,
+                    partner_roles=None,
+                    default_route=None,
+                    workspaces=None,
                     status=profile.status.value if hasattr(profile.status, "value") else str(profile.status),
                     profile=PortalMePartnerProfile(
                         display_name=profile.display_name,
@@ -922,13 +1408,68 @@ def _build_portal_me_payload(db: Session, *, token: dict) -> PortalMeResponse:
                     sla_state=sla_state,
                 )
         except Exception:
+            db.rollback()
+            if partner_id:
+                linked_partner = resolve_partner_by_id(db, partner_id=partner_id)
             partner_payload = None
 
+    if actor_type == "partner":
+        if linked_partner is None:
+            linked_partner = resolve_partner_by_id(db, partner_id=partner_id)
+        partner_kind = _resolve_partner_kind(
+            partner=linked_partner,
+            capabilities=capabilities,
+            partner_roles=linked_partner_roles or user_roles,
+        )
+        partner_role_labels = _normalize_partner_role_labels(linked_partner_roles or user_roles)
+        partner_workspaces, partner_default_route = _resolve_partner_workspaces(
+            kind=partner_kind,
+            capabilities=capabilities,
+        )
+        if partner_payload is None:
+            partner_payload = PortalMePartner(
+                partner_id=str(linked_partner.id) if linked_partner is not None else (str(partner_id) if partner_id else None),
+                partner_type=str(linked_partner.partner_type) if linked_partner is not None else None,
+                kind=partner_kind,
+                partner_role=partner_role_labels[0] if partner_role_labels else None,
+                partner_roles=partner_role_labels or None,
+                default_route=partner_default_route,
+                workspaces=partner_workspaces or None,
+                status=str(linked_partner.status) if linked_partner is not None and getattr(linked_partner, "status", None) else None,
+                profile=None,
+                finance_state=partner_finance_state,
+                legal=partner_legal_state,
+                legal_state=partner_legal_state,
+                sla_state=PortalMePartnerSlaState(
+                    penalty_active=sla_penalties_count > 0,
+                    penalty_amount=sla_penalties_total,
+                )
+                if sla_penalties_count or sla_penalties_total
+                else None,
+            )
+        else:
+            partner_payload.partner_id = str(linked_partner.id) if linked_partner is not None else (str(partner_id) if partner_id else None)
+            partner_payload.partner_type = str(linked_partner.partner_type) if linked_partner is not None else None
+            partner_payload.kind = partner_kind
+            partner_payload.partner_role = partner_role_labels[0] if partner_role_labels else None
+            partner_payload.partner_roles = partner_role_labels or None
+            partner_payload.default_route = partner_default_route
+            partner_payload.workspaces = partner_workspaces or None
+
     resolved_timezone = employee_timezone or (org_payload.timezone if org_payload else None) or "UTC"
+    access_org_roles = org_roles
+    if actor_type == "partner":
+        access_org_roles = sorted(
+            {
+                *{str(role).upper() for role in org_roles if role and str(role).upper() != "CLIENT"},
+                "PARTNER",
+            }
+        )
+
     access_state, access_reason = resolve_access_state(
         actor_type=actor_type,
         org_status=org_payload.status if org_payload else None,
-        org_roles=org_roles,
+        org_roles=access_org_roles,
         subscription=subscription_payload,
         legal=legal,
         partner=partner_payload,
@@ -938,7 +1479,10 @@ def _build_portal_me_payload(db: Session, *, token: dict) -> PortalMeResponse:
         onboarding_profile_complete=onboarding_profile_complete,
     )
     if actor_type == "partner" and partner_payload:
-        if partner_legal_state and partner_legal_state.required_enabled:
+        partner_onboarding_block = (
+            access_state == PortalAccessState.NEEDS_ONBOARDING and access_reason == "partner_onboarding"
+        )
+        if not partner_onboarding_block and partner_legal_state and partner_legal_state.required_enabled:
             if partner_legal_state.status == "PENDING":
                 access_state = PortalAccessState.LEGAL_PENDING
                 access_reason = partner_legal_state.block_reason or "legal_pending"

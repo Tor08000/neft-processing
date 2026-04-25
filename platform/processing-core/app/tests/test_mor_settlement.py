@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.models.audit_log import AuditLog
-from app.models.cases import Case, CaseEvent
+from app.models.cases import Case, CaseComment, CaseEvent, CaseSnapshot
 from app.models.decision_memory import DecisionMemoryRecord
 from app.models.marketplace_catalog import (
     MarketplaceProduct,
@@ -41,6 +41,8 @@ def db_session() -> Session:
         AuditLog.__table__,
         DecisionMemoryRecord.__table__,
         Case.__table__,
+        CaseSnapshot.__table__,
+        CaseComment.__table__,
         CaseEvent.__table__,
         MarketplaceProduct.__table__,
         MarketplaceOrder.__table__,

@@ -8,10 +8,10 @@ from uuid import uuid4
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.models.billing_period import BillingPeriod, BillingPeriodStatus
+from app.models.billing_period import BillingPeriod, BillingPeriodStatus, BillingPeriodType
 from app.models.invoice import Invoice, InvoiceLine, InvoicePdfStatus, InvoiceStatus
 from app.services.internal_ledger import InternalLedgerService
-from app.services.billing_periods import BillingPeriodConflict
+from app.services.billing_periods import BillingPeriodConflict, BillingPeriodService, period_bounds_for_dates
 from app.services.invoice_state_machine import InvoiceStateMachine
 
 
@@ -70,23 +70,39 @@ class BillingRepository:
         amount_paid = 0
         amount_due = total_with_tax - amount_paid
 
-        if data.billing_period_id:
+        billing_period_id = data.billing_period_id
+        if billing_period_id:
             period = (
                 self.db.query(BillingPeriod)
-                .filter(BillingPeriod.id == data.billing_period_id)
+                .filter(BillingPeriod.id == billing_period_id)
                 .one_or_none()
             )
             if not period:
                 raise ValueError("billing period not found")
             if period.status != BillingPeriodStatus.OPEN:
                 raise BillingPeriodConflict(f"Billing period {period.id} is {period.status.value}")
+        else:
+            period_start, period_end = period_bounds_for_dates(
+                date_from=data.period_from,
+                date_to=data.period_to,
+                tz="UTC",
+            )
+            period = BillingPeriodService(self.db).get_or_create(
+                period_type=BillingPeriodType.ADHOC,
+                start_at=period_start,
+                end_at=period_end,
+                tz="UTC",
+            )
+            if period.status != BillingPeriodStatus.OPEN:
+                raise BillingPeriodConflict(f"Billing period {period.id} is {period.status.value}")
+            billing_period_id = str(period.id)
 
         invoice = Invoice(
             client_id=data.client_id,
             period_from=data.period_from,
             period_to=data.period_to,
             currency=data.currency,
-            billing_period_id=data.billing_period_id,
+            billing_period_id=billing_period_id,
             status=InvoiceStatus.DRAFT,
             total_amount=total_amount,
             tax_amount=tax_amount,

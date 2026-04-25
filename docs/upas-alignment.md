@@ -4,7 +4,7 @@
 - **Gateway** (nginx) routes `/api/v1/*`, `/admin/api/v1/*`, `/client/api/v1/*` plus `/health`, `/metrics`, and SPA assets.
 - **Auth Host** (FastAPI, platform/auth-host): authentication, demo users, JWT issuance.
 - **Core API** (FastAPI, platform/processing-core): processing pipeline, admin APIs, migrations.
-- **AI Risk scorer** (platform/ai-services/risk-scorer): stubbed risk response for tests.
+- **AI Risk scorer** (platform/ai-services/risk-scorer): heuristic risk scorer with explicit source/degraded semantics and deterministic trace hashes; it is not a trained-model owner.
 - **Workers/Beat** (platform/billing-clearing): Celery worker images re-used for async jobs.
 - **Observability**: otel-collector, Jaeger, Prometheus, Grafana dashboards.
 - **Frontends**: admin-ui and client-portal builds served via gateway.
@@ -13,7 +13,7 @@
 - **Billing/Clearing flows**: only partial Celery scaffolding; no end-to-end settlement clearing yet.
 - **Eventing**: no dedicated event bus or audit stream outside of DB tables/logs.
 - **Security hardening**: JWT/secret rotation minimal; RBAC rules limited.
-- **AI service depth**: risk-scorer is static; no adaptive/feedback loop.
+- **AI service depth**: risk-scorer is deterministic heuristic only; no adaptive/feedback loop or trained model lifecycle beyond explicit registry metadata.
 
 ## MVP E2E processing next steps
 1. **Authorize → capture → reverse path**

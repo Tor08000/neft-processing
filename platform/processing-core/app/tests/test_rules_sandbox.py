@@ -8,7 +8,9 @@ from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.api.routes.rules import router as rules_router
-from app.db import Base, get_db
+from app.db import Base
+from app.deps.db import get_db
+from app.models.fuel import FuelStation
 from app.models.operation import Operation, OperationStatus, OperationType
 from app.models.unified_rule import (
     RuleSetActive,
@@ -18,6 +20,14 @@ from app.models.unified_rule import (
     UnifiedRuleMetric,
     UnifiedRulePolicy,
     UnifiedRuleScope,
+)
+
+RULES_SANDBOX_TEST_TABLES = (
+    FuelStation.__table__,
+    Operation.__table__,
+    RuleSetVersion.__table__,
+    RuleSetActive.__table__,
+    UnifiedRule.__table__,
 )
 
 
@@ -35,7 +45,7 @@ def sandbox_client() -> tuple[TestClient, sessionmaker]:
         bind=engine,
         class_=Session,
     )
-    Base.metadata.create_all(bind=engine)
+    Base.metadata.create_all(bind=engine, tables=list(RULES_SANDBOX_TEST_TABLES))
 
     app = FastAPI()
     app.include_router(rules_router)
@@ -52,7 +62,7 @@ def sandbox_client() -> tuple[TestClient, sessionmaker]:
     with TestClient(app) as client:
         yield client, TestingSessionLocal
 
-    Base.metadata.drop_all(bind=engine)
+    Base.metadata.drop_all(bind=engine, tables=list(RULES_SANDBOX_TEST_TABLES))
     engine.dispose()
 
 

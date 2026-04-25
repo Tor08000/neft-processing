@@ -1,13 +1,9 @@
 from datetime import datetime, timedelta, timezone
-from typing import Tuple
 from uuid import uuid4
 
 import pytest
-from sqlalchemy import create_engine
-from sqlalchemy.orm import Session, sessionmaker
-from sqlalchemy.pool import StaticPool
+from sqlalchemy.orm import Session
 
-from app.db import Base
 from app.models.crm import CRMClient, CRMClientStatus
 from app.models.fleet_intelligence import DriverBehaviorLevel, FIDriverScore
 from app.models.fleet_intelligence_actions import (
@@ -22,24 +18,14 @@ from app.models.fleet_intelligence_actions import (
 )
 from app.models.unified_explain import PrimaryReason
 from app.services.fleet_intelligence.control import effects, repository
+from app.tests._fleet_intelligence_test_harness import FLEET_INTELLIGENCE_CONTROL_TEST_TABLES
+from app.tests._scoped_router_harness import scoped_session_context
 
 
 @pytest.fixture()
-def db_session() -> Tuple[Session, sessionmaker]:
-    engine = create_engine(
-        "sqlite://",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
-    SessionLocal = sessionmaker(autocommit=False, autoflush=False, expire_on_commit=False, bind=engine)
-    Base.metadata.create_all(bind=engine)
-    session = SessionLocal()
-    try:
-        yield session, SessionLocal
-    finally:
-        session.close()
-        Base.metadata.drop_all(bind=engine)
-        engine.dispose()
+def db_session() -> Session:
+    with scoped_session_context(tables=FLEET_INTELLIGENCE_CONTROL_TEST_TABLES) as session:
+        yield session
 
 
 def _seed_client(db: Session) -> CRMClient:
@@ -56,9 +42,8 @@ def _seed_client(db: Session) -> CRMClient:
     return client
 
 
-def test_effect_measurement_label(db_session: Tuple[Session, sessionmaker]):
-    db, _ = db_session
-    _seed_client(db)
+def test_effect_measurement_label(db_session: Session):
+    _seed_client(db_session)
     driver_id = str(uuid4())
     insight = FIInsight(
         tenant_id=1,
@@ -71,8 +56,8 @@ def test_effect_measurement_label(db_session: Tuple[Session, sessionmaker]):
         status=FIInsightStatus.MONITORING,
         primary_reason=PrimaryReason.POLICY,
     )
-    db.add(insight)
-    db.flush()
+    db_session.add(insight)
+    db_session.flush()
     applied = FIAppliedAction(
         insight_id=insight.id,
         action_code=FIActionCode.SUGGEST_RESTRICT_NIGHT_FUELING,
@@ -83,8 +68,8 @@ def test_effect_measurement_label(db_session: Tuple[Session, sessionmaker]):
         before_state={"driver_score_7d": 80},
         status=FAppliedActionStatus.SUCCESS,
     )
-    db.add(applied)
-    db.add(
+    db_session.add(applied)
+    db_session.add(
         FIDriverScore(
             tenant_id=1,
             client_id="client-1",
@@ -95,11 +80,11 @@ def test_effect_measurement_label(db_session: Tuple[Session, sessionmaker]):
             level=DriverBehaviorLevel.MEDIUM,
         )
     )
-    db.commit()
+    db_session.commit()
 
-    results = effects.measure_action_effects(db, as_of=datetime.now(timezone.utc))
-    db.commit()
+    results = effects.measure_action_effects(db_session, as_of=datetime.now(timezone.utc))
+    db_session.commit()
 
     assert results
-    effect = repository.list_action_effects(db, applied_action_id=str(applied.id))[0]
+    effect = repository.list_action_effects(db_session, applied_action_id=str(applied.id))[0]
     assert effect.effect_label.value == "IMPROVED"

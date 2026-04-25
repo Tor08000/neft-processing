@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.db.schema import DB_SCHEMA
 from app.models.audit_log import ActorType, AuditVisibility
+from app.models.cases import CaseKind, CaseQueue
 from app.models.billing_dunning import (
     BillingDunningChannel,
     BillingDunningEvent,
@@ -38,6 +39,7 @@ from app.services.support_ticket_sla import (
     initialize_support_ticket_sla,
     load_support_ticket_sla_config,
 )
+from app.services.support_cases import sync_support_ticket_case
 from neft_shared.logging_setup import get_logger
 
 logger = get_logger(__name__)
@@ -312,6 +314,20 @@ def _maybe_create_support_ticket_for_suspend(
     initialize_support_ticket_sla(ticket, sla_config)
     db.add(ticket)
     db.flush()
+    sync_support_ticket_case(
+        db,
+        ticket=ticket,
+        tenant_id=None,
+        client_id=None,
+        partner_id=None,
+        actor_id="billing_dunning",
+        request_id=None,
+        trace_id=None,
+        kind=CaseKind.DISPUTE,
+        entity_type="INVOICE",
+        entity_id=str(ctx.invoice_id),
+        queue=CaseQueue.FINANCE_OPS,
+    )
     AuditService(db).audit(
         event_type="support_ticket_created",
         entity_type="support_ticket",

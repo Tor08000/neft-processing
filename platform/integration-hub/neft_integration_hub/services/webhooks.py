@@ -6,7 +6,7 @@ import hmac
 import json
 import logging
 import secrets
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from typing import Iterable
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -150,6 +150,43 @@ def create_subscription(
     return subscription
 
 
+def update_endpoint(
+    db: Session,
+    endpoint: WebhookEndpoint,
+    *,
+    status: str | None = None,
+    url: str | None = None,
+) -> WebhookEndpoint:
+    if status is not None:
+        endpoint.status = status
+    if url is not None:
+        endpoint.url = url
+    db.add(endpoint)
+    db.commit()
+    db.refresh(endpoint)
+    return endpoint
+
+
+def list_subscriptions(db: Session, *, endpoint_id: str | None = None) -> list[WebhookSubscription]:
+    query = db.query(WebhookSubscription)
+    if endpoint_id:
+        query = query.filter(WebhookSubscription.endpoint_id == endpoint_id)
+    return query.order_by(WebhookSubscription.event_type.asc()).all()
+
+
+def update_subscription(db: Session, subscription: WebhookSubscription, *, enabled: bool) -> WebhookSubscription:
+    subscription.enabled = enabled
+    db.add(subscription)
+    db.commit()
+    db.refresh(subscription)
+    return subscription
+
+
+def delete_subscription(db: Session, subscription: WebhookSubscription) -> None:
+    db.delete(subscription)
+    db.commit()
+
+
 def list_endpoints(db: Session, *, owner_type: str | None = None, owner_id: str | None = None) -> list[WebhookEndpoint]:
     query = db.query(WebhookEndpoint)
     if owner_type:
@@ -159,18 +196,49 @@ def list_endpoints(db: Session, *, owner_type: str | None = None, owner_id: str 
     return query.order_by(WebhookEndpoint.created_at.desc()).all()
 
 
+def _parse_delivery_filter_datetime(value: str | None, *, end_of_day: bool = False) -> datetime | None:
+    if not value:
+        return None
+    raw = value.strip()
+    if not raw:
+        return None
+    if len(raw) == 10 and "T" not in raw:
+        parsed_date = date.fromisoformat(raw)
+        return datetime.combine(parsed_date, time.max if end_of_day else time.min, tzinfo=timezone.utc)
+    parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed
+
+
 def list_deliveries(
     db: Session,
     *,
     endpoint_id: str | None = None,
     status: str | None = None,
+    from_value: str | None = None,
+    to_value: str | None = None,
+    limit: int | None = None,
+    event_type: str | None = None,
+    event_id: str | None = None,
 ) -> list[WebhookDelivery]:
     query = db.query(WebhookDelivery)
     if endpoint_id:
         query = query.filter(WebhookDelivery.endpoint_id == endpoint_id)
     if status:
         query = query.filter(WebhookDelivery.status == status)
-    return query.order_by(WebhookDelivery.created_at.desc()).all()
+    if from_value:
+        query = query.filter(WebhookDelivery.occurred_at >= _parse_delivery_filter_datetime(from_value))
+    if to_value:
+        query = query.filter(WebhookDelivery.occurred_at <= _parse_delivery_filter_datetime(to_value, end_of_day=True))
+    if event_type:
+        query = query.filter(WebhookDelivery.event_type == event_type)
+    if event_id:
+        query = query.filter(WebhookDelivery.event_id == event_id)
+    query = query.order_by(WebhookDelivery.created_at.desc())
+    if limit is not None and limit > 0:
+        query = query.limit(limit)
+    return query.all()
 
 
 def enqueue_delivery(
@@ -307,6 +375,23 @@ def deliver_webhook(db: Session, delivery: WebhookDelivery) -> WebhookDelivery:
             delivery.status = WebhookDeliveryStatus.FAILED.value
             delivery.next_retry_at = next_retry
 
+    db.add(delivery)
+    db.commit()
+    db.refresh(delivery)
+    return delivery
+
+
+def retry_delivery(db: Session, delivery: WebhookDelivery) -> WebhookDelivery:
+    endpoint = db.query(WebhookEndpoint).filter(WebhookEndpoint.id == delivery.endpoint_id).first()
+    if endpoint is None:
+        raise ValueError("endpoint_not_found")
+
+    delivery.status = WebhookDeliveryStatus.PAUSED.value if endpoint.delivery_paused else WebhookDeliveryStatus.PENDING.value
+    delivery.last_http_status = None
+    delivery.last_error = None
+    delivery.next_retry_at = None if endpoint.delivery_paused else datetime.now(timezone.utc)
+    delivery.delivered_at = None
+    delivery.latency_ms = None
     db.add(delivery)
     db.commit()
     db.refresh(delivery)
@@ -547,6 +632,7 @@ __all__ = [
     "build_event_envelope",
     "create_endpoint",
     "create_subscription",
+    "delete_subscription",
     "decrypt_secret",
     "deliver_webhook",
     "encrypt_secret",
@@ -555,10 +641,14 @@ __all__ = [
     "generate_secret",
     "list_deliveries",
     "list_endpoints",
+    "list_subscriptions",
     "pending_deliveries",
     "pause_endpoint",
     "resume_endpoint",
+    "retry_delivery",
     "rotate_secret",
     "schedule_replay",
+    "update_endpoint",
+    "update_subscription",
     "compute_sla",
 ]

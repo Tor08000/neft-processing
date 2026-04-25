@@ -1,22 +1,25 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
-import { getMarketplaceProduct, sendMarketplaceClientEvents } from "../api/marketplace";
+import {
+  fetchMarketplaceProductOffers,
+  getMarketplaceProduct,
+  sendMarketplaceClientEvents,
+} from "../api/marketplace";
 import { ApiError } from "../api/http";
 import { useAuth } from "../auth/AuthContext";
+import { CreateMarketplaceOrderModal } from "../components/CreateMarketplaceOrderModal";
 import { AppEmptyState, AppErrorState, AppForbiddenState } from "../components/states";
-import type { MarketplaceProductDetails } from "../types/marketplace";
-import { useI18n } from "../i18n";
-import { canOrder } from "../utils/marketplacePermissions";
 import { Toast } from "../components/Toast/Toast";
 import { useToast } from "../components/Toast/useToast";
+import { useI18n } from "../i18n";
+import type { MarketplaceOffer, MarketplaceProductDetails } from "../types/marketplace";
+import { canOrder } from "../utils/marketplacePermissions";
 
 interface ProductErrorState {
   message: string;
   status?: number;
   correlationId?: string | null;
 }
-
-const ORDERING_ENABLED = import.meta.env.VITE_MARKETPLACE_ORDERING === "1";
 
 export function MarketplaceProductDetailsPage() {
   const { productId } = useParams<{ productId: string }>();
@@ -25,7 +28,10 @@ export function MarketplaceProductDetailsPage() {
   const { t } = useI18n();
   const { toast, showToast } = useToast();
   const [product, setProduct] = useState<MarketplaceProductDetails | null>(null);
+  const [offers, setOffers] = useState<MarketplaceOffer[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isOrderModalOpen, setIsOrderModalOpen] = useState(false);
+  const [isOpeningOrderFlow, setIsOpeningOrderFlow] = useState(false);
   const [error, setError] = useState<ProductErrorState | null>(null);
 
   const canOrderProduct = canOrder(user);
@@ -49,6 +55,11 @@ export function MarketplaceProductDetailsPage() {
       })
       .finally(() => setIsLoading(false));
   };
+
+  useEffect(() => {
+    setOffers([]);
+    setIsOrderModalOpen(false);
+  }, [productId]);
 
   useEffect(() => {
     loadProduct();
@@ -85,12 +96,35 @@ export function MarketplaceProductDetailsPage() {
     ]).catch(() => undefined);
   }, [location.pathname, product, user]);
 
-  const handleOrderClick = () => {
-    if (!ORDERING_ENABLED) {
-      showToast({ text: t("marketplaceProduct.orderingSoon"), kind: "info" });
+  const handleOrderClick = async () => {
+    if (!user || !product || !productId) {
       return;
     }
-    showToast({ text: t("marketplaceProduct.orderingEnabled"), kind: "success" });
+    if (offers.length > 0) {
+      setIsOrderModalOpen(true);
+      return;
+    }
+    setIsOpeningOrderFlow(true);
+    try {
+      const response = await fetchMarketplaceProductOffers(user, productId);
+      if (!response.items?.length) {
+        showToast({ text: t("marketplaceProduct.orderingSoon"), kind: "info" });
+        return;
+      }
+      setOffers(response.items);
+      setIsOrderModalOpen(true);
+    } catch (err) {
+      if (err instanceof ApiError) {
+        showToast({ text: err.message || t("marketplaceProduct.errors.loadFailed"), kind: "error" });
+      } else {
+        showToast({
+          text: err instanceof Error ? err.message : t("marketplaceProduct.errors.loadFailed"),
+          kind: "error",
+        });
+      }
+    } finally {
+      setIsOpeningOrderFlow(false);
+    }
   };
 
   if (!user) {
@@ -160,8 +194,8 @@ export function MarketplaceProductDetailsPage() {
                 <div className="section-title">
                   <h3>{product.price_summary ?? t("marketplaceProduct.priceFallback")}</h3>
                   {canOrderProduct ? (
-                    <button type="button" className="primary" onClick={handleOrderClick}>
-                      {t("marketplaceProduct.order")}
+                    <button type="button" className="primary" onClick={handleOrderClick} disabled={isOpeningOrderFlow}>
+                      {isOpeningOrderFlow ? `${t("marketplaceProduct.order")}...` : t("marketplaceProduct.order")}
                     </button>
                   ) : null}
                 </div>
@@ -209,6 +243,15 @@ export function MarketplaceProductDetailsPage() {
 
       {!isLoading && !error && !product ? (
         <AppEmptyState title={t("marketplaceProduct.notFoundTitle")} description={t("marketplaceProduct.notFoundDescription")} />
+      ) : null}
+
+      {product && isOrderModalOpen ? (
+        <CreateMarketplaceOrderModal
+          subjectId={product.id}
+          subjectTitle={product.title}
+          offers={offers}
+          onClose={() => setIsOrderModalOpen(false)}
+        />
       ) : null}
 
       <Toast toast={toast} />

@@ -63,8 +63,6 @@ def list_order_sla_consequences(
         .order_by(OrderSlaConsequence.created_at.desc())
         .all()
     )
-    if not consequences:
-        raise HTTPException(status_code=404, detail="order_sla_consequences_not_found")
     return OrderSlaConsequencesResponse(
         items=[
             OrderSlaConsequenceOut(
@@ -85,4 +83,3 @@ def list_order_sla_consequences(
             for item in consequences
         ]
     )
-

@@ -3,7 +3,6 @@ from uuid import uuid4
 
 import pytest
 
-from app.db import Base, SessionLocal, engine
 from app.models.fleet import FleetVehicle, FleetVehicleStatus
 from app.models.fuel import (
     FuelCard,
@@ -15,23 +14,13 @@ from app.models.fuel import (
 )
 from app.schemas.fuel import DeclineCode, FuelAuthorizeRequest
 from app.services.fuel.authorize import authorize_fuel_tx
-
-
-@pytest.fixture(autouse=True)
-def _setup_db():
-    Base.metadata.drop_all(bind=engine)
-    Base.metadata.create_all(bind=engine)
-    yield
-    Base.metadata.drop_all(bind=engine)
+from app.tests._fuel_runtime_test_harness import FUEL_FRAUD_SIGNAL_TEST_TABLES, fuel_runtime_session_context
 
 
 @pytest.fixture
 def session():
-    db = SessionLocal()
-    try:
+    with fuel_runtime_session_context(tables=FUEL_FRAUD_SIGNAL_TEST_TABLES) as db:
         yield db
-    finally:
-        db.close()
 
 
 def _seed_refs(db, *, card_status: FuelCardStatus = FuelCardStatus.ACTIVE, tank_capacity_liters: int = 60):

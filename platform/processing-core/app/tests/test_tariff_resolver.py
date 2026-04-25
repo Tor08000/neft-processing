@@ -3,38 +3,46 @@ from decimal import Decimal
 from uuid import uuid4
 
 import pytest
+from sqlalchemy import Column, MetaData, String, Table, create_engine
+from sqlalchemy.orm import Session
+from sqlalchemy.pool import StaticPool
 
-from app.db import Base, SessionLocal, engine
 from app.models.client import Client
 from app.models.contract_limits import ClientTariff, CommissionRule, TariffPlan, TariffPrice
 from app.services.tariffs.resolver import resolve_tariff_snapshot
 
 
-@pytest.fixture(autouse=True)
-def _use_sqlite(monkeypatch: pytest.MonkeyPatch):
-    import app.db as db
-
-    monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
-    monkeypatch.setattr(db, "DATABASE_URL", "sqlite:///:memory:", raising=False)
-    monkeypatch.setattr(db, "raw_db_url", "sqlite:///:memory:", raising=False)
-    db.reset_engine()
-
-
-@pytest.fixture(autouse=True)
-def _prepare_db(_use_sqlite):
-    Base.metadata.drop_all(bind=engine)
-    Base.metadata.create_all(bind=engine)
-    yield
-    Base.metadata.drop_all(bind=engine)
+TARIFF_RESOLVER_TEST_TABLES = (
+    TariffPlan.__table__,
+    TariffPrice.__table__,
+    ClientTariff.__table__,
+    CommissionRule.__table__,
+    Client.__table__,
+)
 
 
 @pytest.fixture
 def session():
-    db = SessionLocal()
+    stub_metadata = MetaData()
+    Table("fleet_offline_profiles", stub_metadata, Column("id", String(36), primary_key=True))
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    stub_metadata.create_all(bind=engine)
+    for table in TARIFF_RESOLVER_TEST_TABLES:
+        table.create(bind=engine, checkfirst=True)
+
+    db = Session(bind=engine, expire_on_commit=False)
     try:
         yield db
     finally:
         db.close()
+        for table in reversed(TARIFF_RESOLVER_TEST_TABLES):
+            table.drop(bind=engine, checkfirst=True)
+        stub_metadata.drop_all(bind=engine, checkfirst=True)
+        engine.dispose()
 
 
 def _add_tariff_price(

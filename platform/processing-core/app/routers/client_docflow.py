@@ -166,8 +166,10 @@ def create_documents_package(
     svc: ClientDocflowService = Depends(_docflow),
 ) -> CreateDocumentsPackageResponse:
     client_id = str(token_payload.get("client_id") or token_payload.get("app_id"))
+    application_id = str(token_payload.get("app_id")) if token_payload.get("app_id") else None
     package = svc.packages.create_documents_package(
         client_id=client_id,
+        application_id=application_id,
         created_by_user_id=_user_id(token_payload),
         doc_ids=payload.ids,
     )

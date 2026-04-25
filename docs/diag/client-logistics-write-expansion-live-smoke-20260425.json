@@ -1,0 +1,64 @@
+{
+  "captured_at_utc": "2026-04-25T12:38:00Z",
+  "status": "SUPERSEDED_BY_FUEL_WRITE_PROOF",
+  "superseded_by": "docs/diag/client-logistics-fuel-write-live-smoke-20260425.json",
+  "scope": "client logistics write expansion",
+  "services": {
+    "core_api": "healthy after image rebuild",
+    "client_web": "rebuilt in the same wave",
+    "logistics_service": "healthy"
+  },
+  "smoke": {
+    "command": "cmd /c scripts\\smoke_client_logistics.cmd",
+    "result": "PASS",
+    "checks": {
+      "fleet": 200,
+      "trips": 200,
+      "fuel": 200,
+      "trip_create": 201,
+      "trip_detail_created": 200,
+      "fuel_consumption": 200,
+      "fuel_consumption_write_frozen": "SUPERSEDED_BY_200_PROVIDER_BACKED_WRITE",
+      "trip_detail_missing": 404
+    }
+  },
+  "created_trip": {
+    "id": "2fc6e03b-e768-491c-989d-741dbde1b245",
+    "route_id": "d648caaa-a04f-48b6-8aa1-2c179d90ac42",
+    "status": "CREATED",
+    "write_owner": "processing_core",
+    "route_preview_owner": "logistics_service",
+    "distance_km": 174.352,
+    "eta_minutes": 218
+  },
+  "external_preview_probe": {
+    "health_status": "ok",
+    "compute_mode": "osrm",
+    "compute_provider_status": "CONFIGURED",
+    "request": "POST http://localhost:8006/api/int/v1/routes/preview",
+    "status": 502,
+    "body": {
+      "detail": "provider_error"
+    }
+  },
+  "persisted_snapshot_evidence": {
+    "provider": "noop",
+    "distance_km": 174.352,
+    "eta_minutes": 218,
+    "explain": {
+      "navigator": "noop",
+      "method": "straight_line",
+      "assumptions": [
+        "no traffic",
+        "avg_speed=48kmh",
+        "preview_fallback=logistics_service_error"
+      ]
+    }
+  },
+  "truth": {
+    "processing_core": "persists durable order, route, stops, audit/legal graph, snapshot, and explain evidence",
+    "logistics_service": "owns stateless external preview compute and fails explicitly when provider compute fails",
+    "no_silent_fallback": "core persisted preview_fallback=logistics_service_error instead of presenting external preview success",
+    "remaining_tail": "production fuel-provider credentials remain out of repo; provider-backed sandbox write is verified in client-logistics-fuel-write-live-smoke-20260425.json"
+  }
+}

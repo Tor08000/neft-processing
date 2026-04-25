@@ -2,6 +2,8 @@ import React, { useEffect, useMemo, useState } from "react";
 import { CopyButton } from "../CopyButton/CopyButton";
 import { createCorrelationId } from "../../utils/correlationId";
 
+const DEBUG_ADMIN_WRITES = Boolean(import.meta.env.DEV && import.meta.env.VITE_ADMIN_DEBUG_WRITES === "true");
+
 interface AdminWriteActionModalProps {
   isOpen: boolean;
   title?: string;
@@ -47,11 +49,13 @@ export const AdminWriteActionModal: React.FC<AdminWriteActionModalProps> = ({
     const trimmedReason = reason.trim();
     if (!trimmedReason) return;
     if (!correlationId.trim()) return;
-    console.info("admin.write.attempt", {
-      reason: trimmedReason,
-      correlation_id: correlationId,
-      request_id: requestId ?? null,
-    });
+    if (DEBUG_ADMIN_WRITES) {
+      console.info("admin.write.attempt", {
+        reason: trimmedReason,
+        correlation_id: correlationId,
+        request_id: requestId ?? null,
+      });
+    }
     onConfirm({ reason: trimmedReason, correlationId, requestId });
   };
 

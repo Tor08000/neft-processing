@@ -61,10 +61,12 @@ def test_postgres_upgrade_creates_core_relations() -> None:
 
 @pytest.mark.integration
 def test_ensure_db_ready_bootstraps_empty_schema(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> None:
+    database_url = test_conftest._ensure_psycopg_driver(get_test_dsn_or_fail())
+    if not database_url.startswith("postgresql"):
+        pytest.skip("Postgres is required for schema bootstrap smoke")
+
     schema = f"processing_core_bootstrap_{uuid4().hex[:8]}"
     monkeypatch.setenv("NEFT_DB_SCHEMA", schema)
 
-    test_conftest.ensure_db_ready(request)
-
-    database_url = test_conftest._ensure_psycopg_driver(get_test_dsn_or_fail())
+    test_conftest._ensure_db_ready_for_request(request)
     test_conftest._check_required_tables(database_url, schema)

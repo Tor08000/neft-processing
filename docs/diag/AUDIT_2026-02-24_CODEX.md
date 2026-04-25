@@ -14,7 +14,7 @@
 - Docker недоступен -> невозможно выполнить обязательный full-stack smoke.
 - Alembic import-path зависит от внешнего `PYTHONPATH`.
 - Alembic env жёстко PostgreSQL-oriented, локальная проверка SQLite невозможна.
-- Много mock/stub путей с default-режимами в integration-hub/logistics/document-service.
+- Исторически было много mock/stub путей с default-режимами в integration-hub/logistics/document-service; часть integration-hub drift позже выправлена в explicit degraded/mock-only semantics.
 
 ### Quick wins (low effort)
 - Внести нормализованный import в миграции (`from app.alembic_helpers import ...`) или package-level shim.
@@ -82,7 +82,7 @@
 |11 | Prices active | `GET /api/v1/prices/active` | processing-core api routes -> pricing service | Yes | Possible fallback | pricing source |
 |12 | Transactions list | `GET /api/v1/transactions` | endpoint module `transactions` -> storage | Yes | No | DB required |
 |13 | Operations read | `GET /api/v1/operations` | operations router -> service -> ORM | Yes | No | DB required |
-|14 | Reports billing | `GET /api/v1/reports/billing/*` | reports router -> billing services | Yes | No | background jobs |
+|14 | Reports billing | `GET /api/v1/reports/billing/*` | reports router -> billing services | Yes | No | compatibility tail; no repo caller proof, internal jobs use service layer directly |
 |15 | Internal pricing resolve | `POST /api/v1/internal/pricing/resolve` | internal route -> rules/pricing service | Yes | No | model data |
 |16 | Internal rules evaluate | `POST /api/v1/internal/rules/evaluate` | route -> rules engine | Yes | No | rules config |
 |17 | Client portal profile | `/api/client/*` | client portal router -> service | Yes | No | auth guard |
@@ -95,9 +95,9 @@
 |24 | Client documents v1 | `/api/client/documents/v1/*` | document router -> document service client | Yes | Yes (stub links) | provider mode |
 |25 | Admin documents v1 | `/api/admin/documents/v1/*` | admin docs router -> templates/sign flow | Yes | Mock optional | external signer |
 |26 | EDO partner dispatch | `/api/partner/edo/*` | partner edo router -> EDO provider | Yes | Yes (stub option) | provider real mode |
-|27 | Notifications send | integration-hub `/api/int/v1/notifications/send` | main route -> notifications mode switch | Yes | Yes (default mock) | prod mode config |
-|28 | OTP send | integration-hub `/api/int/v1/otp/send` | route -> otp provider | Yes | mock/real switch | external otp |
-|29 | Email send | integration-hub `/api/int/notify/email/send` | route -> email provider | Yes | default mock | real SMTP/API |
+|27 | Notifications send | integration-hub `/api/int/v1/notifications/send` | main route -> explicit mock/degraded switch | Yes | Explicit mock only | real provider still absent |
+|28 | OTP send | integration-hub `/api/int/v1/otp/send` | route -> explicit mock/degraded switch | Yes | Explicit mock only | external otp transport not wired |
+|29 | Email send | integration-hub `/api/int/notify/email/send` | route -> email provider | Yes | Explicit mock only | real SMTP/API |
 |30 | Logistics ETA | logistics `/v1/eta` | route -> provider factory -> osrm/integration/mock | Yes | mock fallback | external API |
 |31 | Logistics trips create | logistics `/v1/trips/create` | route -> provider -> storage | Yes | mock fallback | external API |
 |32 | Logistics fuel consumption | logistics `/v1/fuel/consumption` | route -> provider | Yes | mock fallback | ext deps |
@@ -112,9 +112,9 @@
 |---|---|---|---|---|---|
 | `NotImplementedError` in EDO base provider methods | `platform/processing-core/app/integrations/edo/provider.py` | D | EDO integrations | abstract base chosen by provider selector | keep abstract + enforce non-base instantiation tests |
 | `NotImplementedError` in helpdesk service interface | `platform/processing-core/app/services/helpdesk_service.py` | D | helpdesk adapters | provider binding | add concrete default provider + startup assert |
-| mock notifications default | `platform/integration-hub/neft_integration_hub/settings.py` | C | `main.py` notification route | `NOTIFICATIONS_MODE` default=`mock` | change default in prod profile; startup warning |
-| mock email default | `platform/integration-hub/neft_integration_hub/settings.py` | C | `main.py` email route | `EMAIL_PROVIDER_MODE` default=`mock` | same as above |
-| diadok_mode default mock | `platform/integration-hub/neft_integration_hub/settings.py` | D | EDO send/status | `DIADOK_MODE` | enforce explicit provider in prod |
+| historical mock notifications default | `platform/integration-hub/neft_integration_hub/settings.py` | C | `main.py` notification route | fixed later to explicit degraded default | docs only |
+| historical mock email default | `platform/integration-hub/neft_integration_hub/settings.py` | C | `main.py` email route | fixed later to explicit disabled default | docs only |
+| historical diadok_mode default mock | `platform/integration-hub/neft_integration_hub/settings.py` | D | EDO send/status | fixed later to `real` default | docs only |
 | provider_x mock mode | `platform/document-service/app/settings.py` | D | sign registry | `PROVIDER_X_MODE` | explicit prod fail-fast on mock |
 | logistics provider mock fallback | `platform/logistics-service/neft_logistics_service/settings.py` | D | provider factory | `LOGISTICS_PROVIDER` | prod policy deny mock |
 | OSRM provider fallback to mock | `platform/logistics-service/neft_logistics_service/providers/osrm.py` | D | main provider chain | runtime fallback path | metrics + alert when fallback used |

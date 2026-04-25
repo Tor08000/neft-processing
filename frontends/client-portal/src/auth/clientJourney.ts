@@ -36,13 +36,13 @@ export type JourneyDraft = {
 export const JOURNEY_ROUTE_BY_STATE: Record<ClientJourneyState, string> = {
   ANON: "/login",
   DEMO_SHOWCASE: "/dashboard",
-  AUTHENTICATED_UNCONNECTED: "/connect",
-  NEEDS_PLAN: "/connect/plan",
-  NEEDS_CUSTOMER_TYPE: "/connect/type",
-  NEEDS_PROFILE: "/connect/profile",
-  NEEDS_DOCUMENTS: "/connect/documents",
-  NEEDS_SIGNATURE: "/connect/sign",
-  NEEDS_PAYMENT: "/connect/payment",
+  AUTHENTICATED_UNCONNECTED: "/onboarding",
+  NEEDS_PLAN: "/onboarding/plan",
+  NEEDS_CUSTOMER_TYPE: "/onboarding",
+  NEEDS_PROFILE: "/onboarding",
+  NEEDS_DOCUMENTS: "/onboarding/contract",
+  NEEDS_SIGNATURE: "/onboarding/contract",
+  NEEDS_PAYMENT: "/onboarding/contract",
   TRIAL_ACTIVE: "/dashboard",
   ACTIVE: "/dashboard",
   ERROR: "/dashboard",
@@ -69,6 +69,9 @@ export function resolveClientJourneyState(params: {
 
   if (client?.access_state === AccessState.ACTIVE || isPaymentCompleted(draft.subscriptionState)) return "ACTIVE";
   if (draft.subscriptionState === "TRIAL_ACTIVE") return "TRIAL_ACTIVE";
+  if (client?.access_state === AccessState.NEEDS_CONTRACT) return "NEEDS_SIGNATURE";
+  if (client?.access_state === AccessState.NEEDS_PLAN) return "NEEDS_PLAN";
+  if (client?.access_state === AccessState.NEEDS_ONBOARDING && client?.org) return "NEEDS_PROFILE";
 
   if (!client?.org && !draft.selectedPlan && !draft.customerType && !draft.profileCompleted) return "AUTHENTICATED_UNCONNECTED";
   if (!draft.selectedPlan) return "NEEDS_PLAN";

@@ -1,12 +1,14 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
 import type { AuthSession } from "./api/types";
+import { AuthProvider } from "./auth/AuthContext";
+import { ClientCardsPage } from "./pages/ClientCardsPage";
 
 const session: AuthSession = {
-  token: "token-1",
+  token: "test.header.payload",
   email: "client@demo.test",
   roles: ["CLIENT_USER"],
   subjectType: "CLIENT",
@@ -14,14 +16,19 @@ const session: AuthSession = {
   expiresAt: Date.now() + 1000 * 60 * 60,
 };
 
+const noPermission = "\u041d\u0435\u0434\u043e\u0441\u0442\u0430\u0442\u043e\u0447\u043d\u043e \u043f\u0440\u0430\u0432 \u0434\u043b\u044f \u043f\u0440\u043e\u0441\u043c\u043e\u0442\u0440\u0430 \u043e\u043f\u0435\u0440\u0430\u0446\u0438\u0439.";
+const blockLabel = "\u0417\u0430\u0431\u043b\u043e\u043a\u0438\u0440\u043e\u0432\u0430\u0442\u044c";
+
 const emptyResponse = new Response(JSON.stringify({ items: [] }), { status: 200 });
 
 beforeEach(() => {
+  vi.stubEnv("VITE_DEMO_MODE", "true");
   vi.stubGlobal("fetch", vi.fn(() => Promise.resolve(emptyResponse)) as unknown as typeof fetch);
 });
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
   vi.restoreAllMocks();
 });
 
@@ -33,11 +40,11 @@ describe("Client portal shell", () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByText(/Клиентский портал/i)).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: /Обзор/i })).toBeInTheDocument();
-    expect(screen.getAllByRole("link", { name: /Документы/i }).length).toBeGreaterThan(0);
-    expect(screen.getAllByRole("link", { name: /Настройки/i }).length).toBeGreaterThan(0);
-    expect(screen.getAllByRole("link", { name: /Пользователи/i }).length).toBeGreaterThan(0);
+    expect(await screen.findByText(/Client portal/i)).toBeInTheDocument();
+    expect(screen.getAllByRole("link", { name: "\u041e\u0431\u0437\u043e\u0440" }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("link", { name: "\u0414\u043e\u043a\u0443\u043c\u0435\u043d\u0442\u044b" }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("link", { name: "\u041d\u0430\u0441\u0442\u0440\u043e\u0439\u043a\u0438" }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("link", { name: "\u041f\u043e\u043b\u044c\u0437\u043e\u0432\u0430\u0442\u0435\u043b\u0438" }).length).toBeGreaterThan(0);
   });
 
   it("blocks operations for read-only users", async () => {
@@ -47,7 +54,7 @@ describe("Client portal shell", () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByText(/Недостаточно прав/)).toBeInTheDocument();
+    expect(await screen.findByText(noPermission)).toBeInTheDocument();
   });
 
   it("loads cards and allows blocking", async () => {
@@ -65,15 +72,23 @@ describe("Client portal shell", () => {
 
     render(
       <MemoryRouter initialEntries={["/cards"]}>
-        <App initialSession={session} />
+        <AuthProvider initialSession={session}>
+          <ClientCardsPage />
+        </AuthProvider>
       </MemoryRouter>,
     );
 
-    expect(await screen.findByText("card-1")).toBeInTheDocument();
+    const cardRow = (await screen.findByText("card-1")).closest("tr");
+    expect(cardRow).not.toBeNull();
 
-    await userEvent.click(screen.getAllByRole("button", { name: /Заблокировать/i })[0]);
+    await userEvent.click(within(cardRow as HTMLElement).getByRole("button", { name: blockLabel }));
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining("/cards/card-1"), expect.objectContaining({ method: "PATCH" })));
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringContaining("/cards/card-1"),
+        expect.objectContaining({ method: "PATCH" }),
+      ),
+    );
     await waitFor(() => expect(screen.getAllByText(/BLOCKED/)).not.toHaveLength(0));
   });
 });

@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from difflib import SequenceMatcher
+from uuid import UUID
 
 from sqlalchemy.orm import Session
 
@@ -57,12 +58,18 @@ def _amount_matches(expected: Decimal, actual: Decimal) -> bool:
 
 def _invoice_date(invoice: Invoice) -> datetime:
     if invoice.issued_at:
-        return invoice.issued_at
+        return _as_utc(invoice.issued_at)
     return datetime.combine(invoice.period_to, datetime.min.time(), tzinfo=timezone.utc)
 
 
+def _as_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
 def _date_matches(invoice: Invoice, tx_date: datetime) -> bool:
-    delta = abs(_invoice_date(invoice) - tx_date)
+    delta = abs(_invoice_date(invoice) - _as_utc(tx_date))
     return delta <= timedelta(days=DATE_TOLERANCE_DAYS)
 
 
@@ -71,6 +78,15 @@ def _similarity(purpose: str, invoice: Invoice, client: Client | None) -> float:
     if client and client.name:
         candidate = f"{candidate} {client.name}"
     return SequenceMatcher(None, purpose, candidate.upper()).ratio()
+
+
+def _load_client_for_invoice(db: Session, *, client_id: str | None) -> Client | None:
+    if not client_id:
+        return None
+    try:
+        return db.get(Client, UUID(str(client_id)))
+    except (TypeError, ValueError, AttributeError):
+        return None
 
 
 def run_bank_reconciliation(db: Session, *, statement_id: str, actor: RequestContext) -> str:
@@ -112,7 +128,7 @@ def run_bank_reconciliation(db: Session, *, statement_id: str, actor: RequestCon
         if expected_invoice:
             client = client_cache.setdefault(
                 expected_invoice.client_id,
-                db.query(Client).filter(Client.id == expected_invoice.client_id).one_or_none(),
+                _load_client_for_invoice(db, client_id=expected_invoice.client_id),
             )
             if purpose_norm.inn_values and client and client.inn and client.inn not in purpose_norm.inn_values:
                 db.add(
@@ -151,7 +167,7 @@ def run_bank_reconciliation(db: Session, *, statement_id: str, actor: RequestCon
             for invoice in invoices:
                 client = client_cache.setdefault(
                     invoice.client_id,
-                    db.query(Client).filter(Client.id == invoice.client_id).one_or_none(),
+                    _load_client_for_invoice(db, client_id=invoice.client_id),
                 )
                 if purpose_norm.inn_values and client and client.inn and client.inn not in purpose_norm.inn_values:
                     continue

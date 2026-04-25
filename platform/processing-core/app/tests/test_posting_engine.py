@@ -3,7 +3,6 @@ from uuid import uuid4
 
 import pytest
 
-from app.db import Base, SessionLocal, engine
 from app.models.account import AccountType
 from app.models.ledger_entry import LedgerDirection
 from app.repositories.accounts_repository import AccountsRepository
@@ -14,24 +13,15 @@ from app.services.posting_engine import (
     PostingOperationType,
     REVENUE_TARIFF_ID,
     SETTLEMENT_TARIFF_ID,
+    TECHNICAL_CLIENT_ID,
 )
-
-
-@pytest.fixture(autouse=True)
-def _prepare_db():
-    Base.metadata.drop_all(bind=engine)
-    Base.metadata.create_all(bind=engine)
-    yield
-    Base.metadata.drop_all(bind=engine)
+from ._money_router_harness import ACCOUNT_LEDGER_TEST_TABLES, money_session_context
 
 
 @pytest.fixture
 def session():
-    db = SessionLocal()
-    try:
+    with money_session_context(tables=ACCOUNT_LEDGER_TEST_TABLES) as db:
         yield db
-    finally:
-        db.close()
 
 
 @pytest.fixture
@@ -53,11 +43,11 @@ def test_fuel_purchase_posting_creates_expected_entries(
     posting_engine: PostingEngine, accounts_repo: AccountsRepository
 ):
     context = PostingContext(
-        client_id="client-123",
+        client_id="11111111-1111-1111-1111-111111111123",
         card_id="card-1",
         amount=Decimal("150.50"),
         currency="RUB",
-        operation_id=uuid4(),
+        operation_id=None,
     )
 
     result = posting_engine.post(PostingOperationType.FUEL_PURCHASE, context)
@@ -75,7 +65,7 @@ def test_fuel_purchase_posting_creates_expected_entries(
         account_type=AccountType.CLIENT_MAIN,
     )
     revenue_account = accounts_repo.get_or_create_account(
-        client_id="NEFT_TECHNICAL",
+        client_id=TECHNICAL_CLIENT_ID,
         card_id=None,
         currency=context.currency,
         account_type=AccountType.TECHNICAL,
@@ -90,11 +80,11 @@ def test_topup_and_refund_update_balances(
     posting_engine: PostingEngine, accounts_repo: AccountsRepository
 ):
     topup_context = PostingContext(
-        client_id="client-topup",
+        client_id="22222222-2222-2222-2222-222222222222",
         card_id=None,
         amount=Decimal("200.00"),
         currency="USD",
-        operation_id=uuid4(),
+        operation_id=None,
     )
     topup_result = posting_engine.post(PostingOperationType.TOPUP, topup_context)
 
@@ -105,7 +95,7 @@ def test_topup_and_refund_update_balances(
         account_type=AccountType.CLIENT_MAIN,
     )
     settlement_account = accounts_repo.get_or_create_account(
-        client_id="NEFT_TECHNICAL",
+        client_id=TECHNICAL_CLIENT_ID,
         card_id=None,
         currency=topup_context.currency,
         account_type=AccountType.TECHNICAL,
@@ -120,13 +110,13 @@ def test_topup_and_refund_update_balances(
         card_id=None,
         amount=Decimal("50.00"),
         currency=topup_context.currency,
-        operation_id=uuid4(),
+        operation_id=None,
     )
     posting_engine.post(PostingOperationType.REFUND, refund_context)
 
     client_balance = accounts_repo.get_balance(client_account.id)
     revenue_account = accounts_repo.get_or_create_account(
-        client_id="NEFT_TECHNICAL",
+        client_id=TECHNICAL_CLIENT_ID,
         card_id=None,
         currency=topup_context.currency,
         account_type=AccountType.TECHNICAL,
@@ -142,18 +132,18 @@ def test_posting_separates_accounts_by_currency(
     posting_engine: PostingEngine, accounts_repo: AccountsRepository
 ):
     rub_context = PostingContext(
-        client_id="client-multi",
+        client_id="33333333-3333-3333-3333-333333333333",
         card_id="card-multi",
         amount=Decimal("100.00"),
         currency="RUB",
-        operation_id=uuid4(),
+        operation_id=None,
     )
     usd_context = PostingContext(
-        client_id="client-multi",
+        client_id="33333333-3333-3333-3333-333333333333",
         card_id="card-multi",
         amount=Decimal("75.00"),
         currency="USD",
-        operation_id=uuid4(),
+        operation_id=None,
     )
 
     posting_engine.post(PostingOperationType.FUEL_PURCHASE, rub_context)

@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from typing import Iterable
+from uuid import uuid4
 
 from sqlalchemy import desc
 from sqlalchemy.orm import Session
@@ -195,6 +196,28 @@ class ClosingDocumentsService:
             .first()
         )
 
+    def _find_existing_document(
+        self,
+        *,
+        tenant_id: int,
+        client_id: str,
+        period_from: date,
+        period_to: date,
+        document_type: DocumentType,
+        version: int,
+    ) -> Document | None:
+        return (
+            self.db.query(Document)
+            .filter(Document.tenant_id == tenant_id)
+            .filter(Document.client_id == client_id)
+            .filter(Document.period_from == period_from)
+            .filter(Document.period_to == period_to)
+            .filter(Document.document_type == document_type)
+            .filter(Document.version == version)
+            .order_by(desc(Document.created_at), desc(Document.id))
+            .first()
+        )
+
     def finalize_package(self, package: ClosingPackage, *, actor: RequestContext) -> ClosingPackage:
         if package.status == ClosingPackageStatus.FINALIZED:
             return package
@@ -268,9 +291,25 @@ class ClosingDocumentsService:
         source_entity_id: str | None = None,
         number: str | None = None,
     ) -> Document:
-        document = Document(
+        existing = self._find_existing_document(
             tenant_id=tenant_id,
             client_id=client_id,
+            period_from=period_from,
+            period_to=period_to,
+            document_type=document_type,
+            version=version,
+        )
+        if existing is not None:
+            self.db.refresh(existing)
+            self.db.expire(existing, ["files"])
+            return existing
+
+        document = Document(
+            id=str(uuid4()),
+            tenant_id=tenant_id,
+            client_id=client_id,
+            direction="INBOUND",
+            title=document_type.value.replace("_", " ").title(),
             document_type=document_type,
             period_from=period_from,
             period_to=period_to,
@@ -309,12 +348,13 @@ class ClosingDocumentsService:
             content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
         document.document_hash = pdf_file.sha256
-        document.files.extend([pdf_file, xlsx_file])
+        self.db.add_all([pdf_file, xlsx_file])
         self.db.commit()
         self.db.refresh(document)
+        self.db.expire(document, ["files"])
 
         pdf_hash = next(
-            (file.sha256 for file in document.files if file.file_type == DocumentFileType.PDF),
+            (file.sha256 for file in (pdf_file, xlsx_file) if file.file_type == DocumentFileType.PDF),
             None,
         )
         AuditService(self.db).audit(

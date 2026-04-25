@@ -21,6 +21,11 @@ from app.services.integration_monitoring import log_external_request
 logger = get_logger(__name__)
 
 
+def _partner_is_active(partner: Partner) -> bool:
+    status_value = getattr(partner.status, "value", partner.status)
+    return str(status_value or "").upper() == "ACTIVE"
+
+
 def _client_ip(request: Request) -> str:
     forwarded = request.headers.get("x-forwarded-for")
     if forwarded:
@@ -35,7 +40,7 @@ def validate_partner_request(db: Session, request: Request, partner_id: str) -> 
 
 def _validate_partner(db: Session, partner_id: str, token: Optional[str], client_ip: str) -> Partner:
     partner = db.query(Partner).filter(Partner.id == partner_id).first()
-    if partner is None or partner.status != "active":
+    if partner is None or not _partner_is_active(partner):
         metrics.mark_partner_error()
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="partner_not_active")
 

@@ -115,6 +115,7 @@ class AccountingExportService:
         if decision.outcome != DecisionOutcome.ALLOW:
             reason = "manual_review_required" if decision.outcome == DecisionOutcome.MANUAL_REVIEW else "risk_decline"
             raise AccountingExportRiskDeclined(reason)
+        self._require_period_finalized(period, request_ctx=request_ctx)
         policy_decision = self.policy_engine.check(
             actor=actor,
             action=Action.ACCOUNTING_EXPORT_CREATE,
@@ -130,8 +131,6 @@ class AccountingExportService:
                 token=token,
             )
             raise PolicyAccessDenied(policy_decision)
-        self._require_period_finalized(period, request_ctx=request_ctx)
-
         profile = self._load_profile(profile_id) if profile_id else None
         export_format = self._resolve_export_format(export_format, profile=profile)
         idempotency_key = self._build_idempotency_key(
@@ -232,6 +231,21 @@ class AccountingExportService:
             raise AccountingExportRiskDeclined(reason)
 
         self._require_period_finalized(period, request_ctx=request_ctx)
+        decision = self.policy_engine.check(
+            actor=actor,
+            action=Action.ACCOUNTING_EXPORT_CREATE,
+            resource=resource,
+        )
+        if not decision.allowed:
+            audit_access_denied(
+                self.db,
+                actor=actor,
+                action=Action.ACCOUNTING_EXPORT_CREATE,
+                resource=resource,
+                decision=decision,
+                token=token,
+            )
+            raise PolicyAccessDenied(decision)
 
         generated_at = self._stable_generated_at(period, batch)
         batch.generated_at = generated_at

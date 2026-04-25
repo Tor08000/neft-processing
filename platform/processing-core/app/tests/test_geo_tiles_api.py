@@ -156,3 +156,28 @@ def test_build_geo_tiles_for_day_from_station_metrics() -> None:
         assert tile.tx_count == 5
         assert tile.captured_count == 4
         assert float(tile.amount_sum) == 150.5
+
+
+def test_geo_tiles_endpoint_returns_empty_when_cached_tables_are_missing() -> None:
+    engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+    testing_session_local = sessionmaker(autocommit=False, autoflush=False, expire_on_commit=False, bind=engine, class_=Session)
+
+    app = FastAPI(generate_unique_id_function=generate_unique_id)
+    app.include_router(geo_tiles_router, prefix="")
+
+    def override_get_db():
+        db = testing_session_local()
+        try:
+            yield db
+        finally:
+            db.close()
+
+    app.dependency_overrides[get_db] = override_get_db
+
+    with TestClient(app) as client:
+        response = client.get(
+            "/api/v1/geo/tiles?date_from=2026-02-11&date_to=2026-02-12&min_lat=55.70&min_lon=37.50&max_lat=55.80&max_lon=37.70&zoom=10&metric=tx_count&limit_tiles=2000"
+        )
+
+    assert response.status_code == 200
+    assert response.json()["items"] == []

@@ -18,7 +18,7 @@ export type ClientDashboardSnapshot = {
   documents?: Array<{
     id: string;
     type: string;
-    status: string;
+    status?: string | null;
     date: string;
   }> | null;
   activity?: Array<{
@@ -39,9 +39,10 @@ export type PortalMeResponse = {
   };
   org?: {
     id: string;
-    name: string;
+    name?: string | null;
     inn?: string | null;
-    status: string;
+    org_type?: "LEGAL" | "IP" | "INDIVIDUAL" | string | null;
+    status?: string | null;
     timezone?: string | null;
   } | null;
   org_status?: string | null;

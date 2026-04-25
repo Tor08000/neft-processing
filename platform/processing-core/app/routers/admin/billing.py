@@ -101,13 +101,20 @@ def admin_generate_subscription_invoices(
 ) -> SubscriptionInvoiceGenerateResponse:
     request_ctx = request_context_from_request(request, token=_sanitize_token_for_audit(token))
     target_date = body.target_date or datetime.now(timezone.utc).date()
-    invoice_ids = generate_subscription_invoices_for_period(
-        db,
-        target_date=target_date,
-        org_id=body.org_id,
-        subscription_id=body.subscription_id,
-        request_ctx=request_ctx,
-    )
+    try:
+        invoice_ids = generate_subscription_invoices_for_period(
+            db,
+            target_date=target_date,
+            org_id=body.org_id,
+            subscription_id=body.subscription_id,
+            request_ctx=request_ctx,
+        )
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"reason_code": str(exc), "message": "subscription_invoice_generation_rejected"},
+        ) from exc
     for invoice_id in invoice_ids:
         try:
             generate_subscription_invoice_pdf(db, invoice_id=invoice_id)
@@ -122,7 +129,7 @@ def admin_generate_subscription_invoices(
 
 @router.post("/invoices/{invoice_id}/mark-paid", response_model=SubscriptionInvoiceStatusResponse)
 def admin_mark_subscription_invoice_paid(
-    invoice_id: int,
+    invoice_id: str,
     request: Request,
     token: dict = Depends(require_admin_user),
     db: Session = Depends(get_db),
@@ -146,7 +153,7 @@ def admin_mark_subscription_invoice_paid(
 
 @router.post("/invoices/{invoice_id}/void", response_model=SubscriptionInvoiceStatusResponse)
 def admin_void_subscription_invoice(
-    invoice_id: int,
+    invoice_id: str,
     request: Request,
     token: dict = Depends(require_admin_user),
     db: Session = Depends(get_db),
@@ -414,6 +421,7 @@ def admin_seed_billing(idempotency_key: str | None = Query(None), db: Session = 
         )
         result = seeder.seed()
         job_service.succeed(job_run, metrics={"billing_period_id": result.get("billing_period_id")}, result_ref=result)
+        db.commit()
         return result
 
 
@@ -454,6 +462,7 @@ def admin_run_billing(
     except BillingRunInProgress as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="already running") from exc
 
+    db.commit()
     return BillingRunResponse(
         billing_period_id=str(result.billing_period.id),
         period_from=result.period_from,
@@ -479,6 +488,7 @@ def admin_list_billing_summaries(
     offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
 ) -> BillingSummaryPage:
+    # Canonical admin read owner for detailed billing_summary rows.
     items, total = get_billing_summaries(
         db,
         date_from=date_from,
@@ -501,6 +511,7 @@ def admin_list_billing_summaries(
 
 @router.get("/summary/{summary_id}", response_model=BillingSummaryItem)
 def admin_get_summary(summary_id: str, db: Session = Depends(get_db)) -> BillingSummaryItem:
+    # Canonical admin detail owner; /api/v1/reports/billing/summary is compatibility projection only.
     summary = db.query(BillingSummary).filter_by(id=summary_id).first()
     if summary is None:
         raise HTTPException(status_code=404, detail="summary not found")

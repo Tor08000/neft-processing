@@ -3,26 +3,21 @@ from decimal import Decimal
 
 import pytest
 
-from app.db import Base, SessionLocal, engine
 from app.models.contract_limits import TariffPlan, TariffPrice
 from app.services.pricing_service import get_effective_price
+from app.tests._money_router_harness import money_session_context
 
 
-@pytest.fixture(autouse=True)
-def _prepare_db():
-    Base.metadata.drop_all(bind=engine)
-    Base.metadata.create_all(bind=engine)
-    yield
-    Base.metadata.drop_all(bind=engine)
+PRICING_TEST_TABLES = (
+    TariffPlan.__table__,
+    TariffPrice.__table__,
+)
 
 
 @pytest.fixture
 def session():
-    db = SessionLocal()
-    try:
+    with money_session_context(tables=PRICING_TEST_TABLES) as db:
         yield db
-    finally:
-        db.close()
 
 
 def _add_tariff_price(

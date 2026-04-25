@@ -26,7 +26,10 @@ class Settings:
     s3_region: str = os.getenv("S3_REGION", os.getenv("NEFT_S3_REGION", "us-east-1"))
     s3_bucket_docs: str = os.getenv(
         "S3_BUCKET_DOCS",
-        os.getenv("NEFT_S3_BUCKET_DOCUMENTS", os.getenv("NEFT_S3_BUCKET", "neft-documents")),
+        os.getenv(
+            "NEFT_S3_BUCKET_DOCUMENTS",
+            os.getenv("MINIO_BUCKET_CLIENT_DOCS", os.getenv("NEFT_S3_BUCKET", "client-documents")),
+        ),
     )
 
     celery_broker_url: str = os.getenv("CELERY_BROKER_URL", "redis://redis:6379/0")
@@ -38,8 +41,9 @@ class Settings:
     edo_max_attempts: int = int(os.getenv("EDO_MAX_ATTEMPTS", "10"))
     edo_poll_interval_seconds: int = int(os.getenv("EDO_POLL_INTERVAL_SECONDS", "30"))
 
-    diadok_mode: str = os.getenv("DIADOK_MODE", "mock")
-    diadok_base_url: str = os.getenv("DIADOK_BASE_URL", "https://diadok.example.com")
+    diadok_mode: str = os.getenv("DIADOK_MODE", "sandbox")
+    sbis_mode: str = os.getenv("SBIS_MODE", "sandbox").lower()
+    diadok_base_url: str = os.getenv("DIADOK_BASE_URL", "")
     diadok_api_token: str = os.getenv("DIADOK_API_TOKEN", "")
     diadok_timeout_seconds: int = int(os.getenv("DIADOK_TIMEOUT_SECONDS", "10"))
 
@@ -49,22 +53,24 @@ class Settings:
     webhook_sla_seconds: int = int(os.getenv("WEBHOOK_SLA_SECONDS", "300"))
     webhook_alert_failure_threshold: int = int(os.getenv("WEBHOOK_ALERT_FAILURE_THRESHOLD", "10"))
     webhook_intake_secret: str = os.getenv("WEBHOOK_INTAKE_SECRET", "change-me")
-    webhook_allow_unsigned: bool = os.getenv("WEBHOOK_ALLOW_UNSIGNED", "true").lower() == "true"
+    webhook_intake_next_secret: str = os.getenv("WEBHOOK_INTAKE_NEXT_SECRET", "")
+    webhook_signature_grace_seconds: int = int(os.getenv("WEBHOOK_SIGNATURE_GRACE_SECONDS", "0"))
+    webhook_allow_unsigned: bool = os.getenv("WEBHOOK_ALLOW_UNSIGNED", "false").lower() == "true"
 
     edo_stub_delivered_after_seconds: int = int(os.getenv("EDO_STUB_DELIVERED_AFTER_SECONDS", "20"))
     edo_stub_signed_after_seconds: int = int(os.getenv("EDO_STUB_SIGNED_AFTER_SECONDS", "60"))
     internal_token: str = os.getenv("INTEGRATION_HUB_INTERNAL_TOKEN", "")
 
 
-    otp_provider_mode: str = os.getenv("OTP_PROVIDER_MODE", "prod").lower()
+    otp_provider_mode: str = os.getenv("OTP_PROVIDER_MODE", "sandbox").lower()
     otp_sms_provider: str = os.getenv("OTP_SMS_PROVIDER", "")
     otp_telegram_provider: str = os.getenv("OTP_TELEGRAM_PROVIDER", "bot")
     otp_sender_name: str = os.getenv("OTP_SENDER_NAME", "NEFT")
     otp_tg_bot_token: str = os.getenv("OTP_TG_BOT_TOKEN", "")
-    notifications_mode: str = os.getenv("NOTIFICATIONS_MODE", "mock").lower()
+    notifications_mode: str = os.getenv("NOTIFICATIONS_MODE", "sandbox").lower()
     notifications_email_provider: str = os.getenv("NOTIFICATIONS_EMAIL_PROVIDER", "")
 
-    email_provider_mode: str = os.getenv("EMAIL_PROVIDER_MODE", "mock").lower()
+    email_provider_mode: str = os.getenv("EMAIL_PROVIDER_MODE", "sandbox").lower()
     smtp_host: str = os.getenv("SMTP_HOST", "")
     smtp_port: int = int(os.getenv("SMTP_PORT", "587"))
     smtp_user: str = os.getenv("SMTP_USER", "")
@@ -72,6 +78,11 @@ class Settings:
     smtp_from_email: str = os.getenv("SMTP_FROM_EMAIL", "no-reply@neft.local")
     smtp_from_name: str = os.getenv("SMTP_FROM_NAME", "NEFT")
     smtp_tls: bool = _env_bool("SMTP_TLS", "1")
+
+    bank_api_mode: str = os.getenv("BANK_API_MODE", "sandbox").lower()
+    erp_1c_mode: str = os.getenv("ERP_1C_MODE", "sandbox").lower()
+    fuel_provider_mode: str = os.getenv("FUEL_PROVIDER_MODE", "sandbox").lower()
+    logistics_provider_mode: str = os.getenv("LOGISTICS_PROVIDER_MODE", "sandbox").lower()
 
 
 _settings: Settings | None = None

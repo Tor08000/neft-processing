@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { AppEmptyState } from "./states";
+import { translate } from "../i18n";
 
 type DemoEmptyStateProps = {
   title?: string;
@@ -10,8 +11,8 @@ type DemoEmptyStateProps = {
 export function DemoEmptyState({ title, description, action }: DemoEmptyStateProps) {
   return (
     <AppEmptyState
-      title={title ?? "Раздел в демо недоступен"}
-      description={description ?? "В рабочем контуре здесь будут доступны все данные и сценарии."}
+      title={title ?? translate("demoEmptyState.title")}
+      description={description ?? translate("demoEmptyState.description")}
       action={action}
     />
   );

@@ -1,18 +1,19 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AuthProvider } from "../../auth/AuthContext";
 import { TripsPage } from "./TripsPage";
 import type { AuthSession } from "../../api/types";
-import { fetchTrips } from "../../api/logistics";
+import { createTrip, fetchTrips } from "../../api/logistics";
 
 vi.mock("../../api/logistics", () => ({
+  createTrip: vi.fn(),
   fetchTrips: vi.fn(),
 }));
 
 const session: AuthSession = {
-  token: "token-1",
+  token: "test.header.payload",
   email: "client@demo.test",
   roles: ["CLIENT_OWNER"],
   subjectType: "CLIENT",
@@ -133,5 +134,47 @@ describe("TripsPage", () => {
       session.token,
       expect.objectContaining({ status: "IN_PROGRESS" }),
     );
+  });
+
+  it("creates a trip and reloads the list", async () => {
+    vi.mocked(fetchTrips).mockResolvedValue({ items: [], total: 0, limit: 10, offset: 0 });
+    vi.mocked(createTrip).mockResolvedValue({
+      id: "trip-created",
+      status: "CREATED",
+      title: "Moscow to Tula",
+      origin: { label: "Moscow", lat: 55.75, lon: 37.61 },
+      destination: { label: "Tula", lat: 54.2, lon: 37.62 },
+      updated_at: "2026-02-08T10:00:00Z",
+    });
+
+    render(
+      <MemoryRouter initialEntries={["/logistics/trips"]}>
+        <AuthProvider initialSession={session}>
+          <TripsPage />
+        </AuthProvider>
+      </MemoryRouter>,
+    );
+
+    await screen.findByText(/Р РµР№СЃРѕРІ РЅРµС‚|Рейсов нет|No trips/);
+    await userEvent.click(screen.getByRole("button", { name: /РЎРѕР·РґР°С‚СЊ СЂРµР№СЃ|Создать рейс|Create trip/ }));
+    const dialog = within(screen.getByRole("dialog"));
+    await userEvent.type(dialog.getByLabelText(/РќР°Р·РІР°РЅРёРµ|Название|Title/), "Moscow to Tula");
+    await userEvent.type(dialog.getByLabelText(/РћС‚РєСѓРґР°|Откуда|Origin/), "Moscow");
+    await userEvent.type(dialog.getByLabelText(/РљСѓРґР°|Куда|Destination/), "Tula");
+    await userEvent.type(dialog.getByLabelText(/РЁРёСЂРѕС‚Р° РѕС‚РїСЂР°РІР»РµРЅРёСЏ|Широта отправления|Origin latitude/), "55.75");
+    await userEvent.type(dialog.getByLabelText(/Р”РѕР»РіРѕС‚Р° РѕС‚РїСЂР°РІР»РµРЅРёСЏ|Долгота отправления|Origin longitude/), "37.61");
+    await userEvent.type(dialog.getByLabelText(/РЁРёСЂРѕС‚Р° РЅР°Р·РЅР°С‡РµРЅРёСЏ|Широта назначения|Destination latitude/), "54.2");
+    await userEvent.type(dialog.getByLabelText(/Р”РѕР»РіРѕС‚Р° РЅР°Р·РЅР°С‡РµРЅРёСЏ|Долгота назначения|Destination longitude/), "37.62");
+    await userEvent.click(dialog.getByRole("button", { name: /РЎРѕР·РґР°С‚СЊ СЂРµР№СЃ|Создать рейс|Create trip/ }));
+
+    expect(createTrip).toHaveBeenCalledWith(
+      session.token,
+      expect.objectContaining({
+        title: "Moscow to Tula",
+        origin: { label: "Moscow", lat: 55.75, lon: 37.61 },
+        destination: { label: "Tula", lat: 54.2, lon: 37.62 },
+      }),
+    );
+    expect(fetchTrips).toHaveBeenCalledTimes(2);
   });
 });

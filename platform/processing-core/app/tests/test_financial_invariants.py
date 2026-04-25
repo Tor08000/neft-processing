@@ -5,41 +5,33 @@ from datetime import date, datetime, time, timezone
 import pytest
 
 from app.config import settings
-from app.db import Base, SessionLocal, engine, reset_engine
 from app.models.audit_log import AuditLog
 from app.models.billing_period import BillingPeriod, BillingPeriodStatus, BillingPeriodType
+from app.models.finance import InvoiceSettlementAllocation
 from app.models.invoice import Invoice, InvoicePdfStatus, InvoiceStatus
 from app.services.billing_periods import period_bounds_for_dates
 from app.services.finance import FinanceService
 from app.services.finance_invariants.errors import FinancialInvariantViolation
+from app.tests._finance_test_harness import finance_invariant_session_context, seed_default_finance_thresholds
 
 
 @pytest.fixture(autouse=True)
-def _use_sqlite(monkeypatch: pytest.MonkeyPatch):
-    import app.db as db
+def _disable_legal_graph(monkeypatch: pytest.MonkeyPatch):
+    class _NoopGraphBuilder:
+        def __init__(self, *args, **kwargs) -> None:
+            pass
 
-    monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
-    monkeypatch.setenv("TEST_DATABASE_URL", "sqlite:///:memory:")
-    monkeypatch.setattr(db, "DATABASE_URL", "sqlite:///:memory:", raising=False)
-    monkeypatch.setattr(db, "raw_db_url", "sqlite:///:memory:", raising=False)
-    reset_engine()
+        def ensure_settlement_allocation_graph(self, *args, **kwargs) -> None:
+            return None
 
-
-@pytest.fixture(autouse=True)
-def _reset_db(_use_sqlite):
-    Base.metadata.drop_all(bind=engine)
-    Base.metadata.create_all(bind=engine)
-    yield
-    Base.metadata.drop_all(bind=engine)
+    monkeypatch.setattr("app.services.finance.LegalGraphBuilder", _NoopGraphBuilder)
 
 
 @pytest.fixture
 def session():
-    db = SessionLocal()
-    try:
+    with finance_invariant_session_context() as db:
+        seed_default_finance_thresholds(db)
         yield db
-    finally:
-        db.close()
 
 
 def _create_period(session, *, target_date: date, status: BillingPeriodStatus, period_type: BillingPeriodType) -> BillingPeriod:
@@ -179,6 +171,19 @@ def test_settlement_allocation_blocked_in_locked_period(session):
             idempotency_key="pay-locked",
             token={"roles": ["ADMIN", "ADMIN_FINANCE"], "sub": "tester"},
         )
+
+    session.expire_all()
+    refreshed_invoice = session.get(Invoice, invoice.id)
+    assert refreshed_invoice is not None
+    assert refreshed_invoice.status == InvoiceStatus.SENT
+    assert refreshed_invoice.amount_paid == 0
+    assert refreshed_invoice.amount_due == 1000
+    assert (
+        session.query(InvoiceSettlementAllocation)
+        .filter(InvoiceSettlementAllocation.invoice_id == invoice.id)
+        .count()
+        == 0
+    )
 
     audit = _latest_audit(session)
     assert audit.event_type == "FINANCIAL_INVARIANT_VIOLATION"

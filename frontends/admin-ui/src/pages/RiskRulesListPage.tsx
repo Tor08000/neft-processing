@@ -6,6 +6,7 @@ import { Loader } from "../components/Loader/Loader";
 import { Table, type Column } from "../components/Table/Table";
 import { formatDateTime } from "../utils/format";
 import { type RiskRule, type RiskRulesQuery } from "../types/riskRules";
+import { EmptyState as BrandEmptyState } from "@shared/brand/components";
 
 const SCOPES = ["GLOBAL", "CLIENT", "CARD", "TARIFF"] as const;
 
@@ -14,7 +15,9 @@ export const RiskRulesListPage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const [scope, setScope] = useState<string>(searchParams.get("scope") || "ANY");
   const [enabled, setEnabled] = useState<string>(searchParams.get("enabled") || "ANY");
-  const [subjectId, setSubjectId] = useState<string>(searchParams.get("subject_id") || "");
+  const [subjectRef, setSubjectRef] = useState<string>(
+    searchParams.get("subject_ref") || searchParams.get("subject_id") || "",
+  );
   const [reason, setReason] = useState<string>(searchParams.get("reason") || "");
   const [limit] = useState<number>(20);
   const [offset, setOffset] = useState<number>(0);
@@ -23,10 +26,10 @@ export const RiskRulesListPage: React.FC = () => {
     const params: Record<string, string> = {};
     if (scope !== "ANY") params.scope = scope;
     if (enabled !== "ANY") params.enabled = enabled;
-    if (subjectId) params.subject_id = subjectId;
+    if (subjectRef) params.subject_ref = subjectRef;
     if (reason) params.reason = reason;
     setSearchParams(params, { replace: true });
-  }, [enabled, reason, scope, setSearchParams, subjectId]);
+  }, [enabled, reason, scope, setSearchParams, subjectRef]);
 
   const filters = useMemo<RiskRulesQuery>(
     () => ({
@@ -34,18 +37,26 @@ export const RiskRulesListPage: React.FC = () => {
       offset,
       scope: scope !== "ANY" ? (scope as RiskRulesQuery["scope"]) : undefined,
       enabled: enabled === "ANY" ? undefined : enabled === "true",
-      subject_id: subjectId || undefined,
-      reason: reason || undefined,
+      subject_ref: subjectRef || undefined,
     }),
-    [enabled, limit, offset, reason, scope, subjectId],
+    [enabled, limit, offset, scope, subjectRef],
   );
 
-  const { data, isFetching, isLoading, error } = useQuery({
+  const { data, isFetching, isLoading, error, refetch } = useQuery({
     queryKey: ["risk-rules", filters],
     queryFn: () => fetchRiskRules(filters),
     staleTime: 30_000,
     placeholderData: (prev) => prev,
   });
+
+  const visibleItems = useMemo(() => {
+    const items = data?.items ?? [];
+    const normalizedReason = reason.trim().toLowerCase();
+    if (!normalizedReason) {
+      return items;
+    }
+    return items.filter((rule) => (rule.dsl.reason ?? "").toLowerCase().includes(normalizedReason));
+  }, [data?.items, reason]);
 
   const columns: Column<RiskRule>[] = [
     {
@@ -79,13 +90,22 @@ export const RiskRulesListPage: React.FC = () => {
         <button
           type="button"
           className="neft-btn-secondary"
-          onClick={() => navigate("/risk/sandbox")}
+          onClick={() => navigate("/rules/sandbox")}
         >
           Rules sandbox
         </button>
         {(isLoading || isFetching) && <Loader label="Загружаем правила" />}
-        {error && <span style={{ color: "#dc2626" }}>{(error as Error).message}</span>}
       </div>
+
+      {error && (
+        <div className="card card--error">
+          <strong>Risk rules unavailable</strong>
+          <div>{(error as Error).message}</div>
+          <button type="button" className="neft-btn-secondary" onClick={() => void refetch()}>
+            Retry
+          </button>
+        </div>
+      )}
 
       <div className="filters">
         <div className="filter">
@@ -109,17 +129,24 @@ export const RiskRulesListPage: React.FC = () => {
         </div>
         <div className="filter">
           <span className="label">Subject</span>
-          <input value={subjectId} onChange={(e) => setSubjectId(e.target.value)} placeholder="client / tariff" />
+          <input value={subjectRef} onChange={(e) => setSubjectRef(e.target.value)} placeholder="client / tariff" />
         </div>
         <div className="filter">
-          <span className="label">Reason</span>
+          <span className="label">Reason (local)</span>
           <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="velocity / geo" />
         </div>
       </div>
 
       <Suspense fallback={<Loader label="Загружаем список" />}>
-        <Table columns={columns} data={data?.items ?? []} />
+        <Table columns={columns} data={visibleItems} />
       </Suspense>
+
+      {!error && !isLoading && visibleItems.length === 0 && (
+        <BrandEmptyState
+          title="No risk rules found"
+          description="No persisted rule matches the selected filters."
+        />
+      )}
 
       {data && data.total > limit && (
         <div style={{ marginTop: 12 }}>

@@ -37,6 +37,7 @@ from app.schemas.crm import (
     CRMClientUpdate,
     CRMContractCreate,
     CRMContractOut,
+    CRMContractUpdate,
     CRMDealCreate,
     CRMDealOut,
     CRMDealUpdate,
@@ -55,6 +56,7 @@ from app.schemas.crm import (
     CRMSubscriptionPreviewOut,
     CRMSubscriptionPreviewSegment,
     CRMSubscriptionPreviewUsage,
+    CRMSubscriptionUpdate,
     CRMTaskCreate,
     CRMTaskOut,
     CRMTaskUpdate,
@@ -65,7 +67,9 @@ from app.schemas.crm import (
     CRMTariffUpdate,
 )
 from app.services.abac import AbacResourceData, require_abac
-from app.security.rbac.guard import require_permission
+from app.security.rbac.policy import has_permission
+from app.security.rbac.principal import Principal, get_principal
+from app.services.admin_portal_access import admin_capability_allows
 from app.services.audit_service import request_context_from_request
 from app.services.crm import (
     clients,
@@ -99,15 +103,64 @@ def require_control_plane_version(
         raise HTTPException(status_code=409, detail="crm_control_plane_frozen")
 
 
+def _principal_roles(principal: Principal) -> list[str]:
+    raw_claims = principal.raw_claims if isinstance(principal.raw_claims, dict) else {}
+    roles: list[str] = []
+    raw_roles = raw_claims.get("roles") or []
+    if isinstance(raw_roles, str):
+        raw_roles = [raw_roles]
+    roles.extend(str(role) for role in raw_roles if str(role).strip())
+    raw_role = raw_claims.get("role")
+    if raw_role:
+        roles.append(str(raw_role))
+    roles.extend(principal.roles)
+    return roles
+
+
+def require_crm_access(action: str = "read"):
+    def dep(principal: Principal = Depends(get_principal)) -> Principal:
+        if has_permission(principal, "admin:contracts:*"):
+            return principal
+        if admin_capability_allows(_principal_roles(principal), "crm", action):
+            return principal
+        raise HTTPException(
+            status_code=403,
+            detail={"error": "forbidden", "reason": "missing_admin_crm_capability", "capability": "crm", "action": action},
+        )
+
+    return dep
+
+
+require_crm_read = require_crm_access("read")
+require_crm_operate = require_crm_access("operate")
+CRM_OPERATE_DEPENDENCIES = [Depends(require_crm_operate)]
+
+
+def _get_client_or_404(db: Session, *, client_id: str, tenant_id: int | None = None):
+    client = (
+        repository.get_client(db, tenant_id=tenant_id, client_id=client_id)
+        if tenant_id is not None
+        else repository.get_client_by_id(db, client_id=client_id)
+    )
+    if client is None:
+        raise HTTPException(status_code=404, detail="client not found")
+    return client
+
+
+def _resolve_client_tenant_id(db: Session, *, client_id: str, tenant_id: int | None = None) -> int:
+    return _get_client_or_404(db, client_id=client_id, tenant_id=tenant_id).tenant_id
+
+
 def _load_crm_client_abac(
     client_id: str,
-    tenant_id: int = Query(..., ge=1),
+    tenant_id: int | None = Query(default=None, ge=1),
     db: Session = Depends(get_db),
 ) -> AbacResourceData:
+    client = _get_client_or_404(db, client_id=client_id, tenant_id=tenant_id)
     entitlements = get_entitlements(db, client_id=client_id)
     return AbacResourceData(
         type="CLIENT",
-        attributes={"client_id": client_id, "tenant_id": tenant_id},
+        attributes={"client_id": client_id, "tenant_id": client.tenant_id},
         entitlements={
             "plan": entitlements.plan_code,
             "modules": entitlements.modules,
@@ -119,11 +172,11 @@ def _load_crm_client_abac(
 router = APIRouter(
     prefix="/crm",
     tags=["admin", "crm"],
-    dependencies=[Depends(require_control_plane_version), Depends(require_permission("admin:contracts:*"))],
+    dependencies=[Depends(require_control_plane_version), Depends(require_crm_read)],
 )
 
 
-@router.post("/leads", response_model=CRMLeadOut)
+@router.post("/leads", response_model=CRMLeadOut, dependencies=CRM_OPERATE_DEPENDENCIES)
 def create_lead_endpoint(
     request: Request,
     payload: CRMLeadCreate,
@@ -146,7 +199,7 @@ def list_leads_endpoint(
     return [CRMLeadOut.model_validate(item) for item in items]
 
 
-@router.post("/leads/{lead_id}/qualify", response_model=CRMClientOut)
+@router.post("/leads/{lead_id}/qualify", response_model=CRMClientOut, dependencies=CRM_OPERATE_DEPENDENCIES)
 def qualify_lead_endpoint(
     request: Request,
     lead_id: str,
@@ -161,7 +214,7 @@ def qualify_lead_endpoint(
     return CRMClientOut.model_validate(client)
 
 
-@router.post("/clients", response_model=CRMClientOut)
+@router.post("/clients", response_model=CRMClientOut, dependencies=CRM_OPERATE_DEPENDENCIES)
 def create_client_endpoint(
     request: Request,
     payload: CRMClientCreate,
@@ -174,38 +227,46 @@ def create_client_endpoint(
 
 @router.get("/clients", response_model=list[CRMClientOut])
 def list_clients_endpoint(
-    tenant_id: int = Query(..., ge=1),
+    tenant_id: int | None = Query(default=None, ge=1),
+    status: CRMClientStatus | None = Query(default=None),
+    search: str | None = Query(default=None, min_length=1),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
 ) -> list[CRMClientOut]:
-    items = repository.list_clients(db, tenant_id=tenant_id, limit=limit, offset=offset)
+    items = repository.list_clients(
+        db,
+        tenant_id=tenant_id,
+        status=status,
+        search=search,
+        limit=limit,
+        offset=offset,
+    )
     return [CRMClientOut.model_validate(item) for item in items]
 
 
 @router.get("/clients/{client_id}", response_model=CRMClientOut)
 def get_client_endpoint(
     client_id: str,
-    tenant_id: int = Query(..., ge=1),
+    tenant_id: int | None = Query(default=None, ge=1),
     _abac=Depends(require_abac("crm:read", _load_crm_client_abac)),
     db: Session = Depends(get_db),
 ) -> CRMClientOut:
-    client = repository.get_client(db, tenant_id=tenant_id, client_id=client_id)
-    if not client:
-        raise HTTPException(status_code=404, detail="client not found")
+    client = _get_client_or_404(db, client_id=client_id, tenant_id=tenant_id)
     return CRMClientOut.model_validate(client)
 
 
 @router.get("/clients/{client_id}/decision-context", response_model=CRMDecisionContextResponse)
 def get_decision_context_endpoint(
     client_id: str,
-    tenant_id: int = Query(..., ge=1),
+    tenant_id: int | None = Query(default=None, ge=1),
     _abac=Depends(require_abac("crm:read", _load_crm_client_abac)),
     db: Session = Depends(get_db),
 ) -> CRMDecisionContextResponse:
     assert_module_enabled(db, client_id=client_id, module_code="CRM")
+    resolved_tenant_id = _resolve_client_tenant_id(db, client_id=client_id, tenant_id=tenant_id)
     try:
-        payload = decision_context.build_decision_context(db, tenant_id=tenant_id, client_id=client_id)
+        payload = decision_context.build_decision_context(db, tenant_id=resolved_tenant_id, client_id=client_id)
     except decision_context.DecisionContextNotFound as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return CRMDecisionContextResponse(
@@ -220,17 +281,15 @@ def get_decision_context_endpoint(
     )
 
 
-@router.patch("/clients/{client_id}", response_model=CRMClientOut)
+@router.patch("/clients/{client_id}", response_model=CRMClientOut, dependencies=CRM_OPERATE_DEPENDENCIES)
 def update_client_endpoint(
     request: Request,
     client_id: str,
-    tenant_id: int = Query(..., ge=1),
+    tenant_id: int | None = Query(default=None, ge=1),
     payload: CRMClientUpdate = Body(...),
     db: Session = Depends(get_db),
 ) -> CRMClientOut:
-    client = repository.get_client(db, tenant_id=tenant_id, client_id=client_id)
-    if not client:
-        raise HTTPException(status_code=404, detail="client not found")
+    client = _get_client_or_404(db, client_id=client_id, tenant_id=tenant_id)
     ctx = request_context_from_request(request)
     updated = clients.update_client(db, client=client, payload=payload, request_ctx=ctx)
     return CRMClientOut.model_validate(updated)
@@ -247,7 +306,7 @@ def get_client_profile_endpoint(
     return CRMClientProfileOut.model_validate(profile)
 
 
-@router.patch("/clients/{client_id}/profile", response_model=CRMClientProfileOut)
+@router.patch("/clients/{client_id}/profile", response_model=CRMClientProfileOut, dependencies=CRM_OPERATE_DEPENDENCIES)
 def update_client_profile_endpoint(
     request: Request,
     client_id: str,
@@ -268,7 +327,7 @@ def list_ticket_links_endpoint(
     return [CRMTicketLinkOut.model_validate(item) for item in links]
 
 
-@router.post("/clients/{client_id}/tickets", response_model=CRMTicketLinkOut)
+@router.post("/clients/{client_id}/tickets", response_model=CRMTicketLinkOut, dependencies=CRM_OPERATE_DEPENDENCIES)
 def create_ticket_link_endpoint(
     request: Request,
     client_id: str,
@@ -320,7 +379,11 @@ def get_onboarding_status_endpoint(
     )
 
 
-@router.post("/clients/{client_id}/onboarding/actions/{action}", response_model=CRMClientOnboardingStatus)
+@router.post(
+    "/clients/{client_id}/onboarding/actions/{action}",
+    response_model=CRMClientOnboardingStatus,
+    dependencies=CRM_OPERATE_DEPENDENCIES,
+)
 def apply_onboarding_action_endpoint(
     request: Request,
     client_id: str,
@@ -340,7 +403,11 @@ def apply_onboarding_action_endpoint(
     )
 
 
-@router.post("/clients/{client_id}/onboarding/recompute", response_model=CRMClientOnboardingStatus)
+@router.post(
+    "/clients/{client_id}/onboarding/recompute",
+    response_model=CRMClientOnboardingStatus,
+    dependencies=CRM_OPERATE_DEPENDENCIES,
+)
 def recompute_onboarding_endpoint(
     request: Request,
     client_id: str,
@@ -389,7 +456,7 @@ def get_client_timeline_endpoint(
     return timeline
 
 
-@router.post("/deals", response_model=CRMDealOut)
+@router.post("/deals", response_model=CRMDealOut, dependencies=CRM_OPERATE_DEPENDENCIES)
 def create_deal_endpoint(
     request: Request,
     payload: CRMDealCreate,
@@ -400,7 +467,7 @@ def create_deal_endpoint(
     return CRMDealOut.model_validate(deal)
 
 
-@router.patch("/deals/{deal_id}", response_model=CRMDealOut)
+@router.patch("/deals/{deal_id}", response_model=CRMDealOut, dependencies=CRM_OPERATE_DEPENDENCIES)
 def update_deal_endpoint(
     request: Request,
     deal_id: str,
@@ -415,7 +482,7 @@ def update_deal_endpoint(
     return CRMDealOut.model_validate(updated)
 
 
-@router.post("/tasks", response_model=CRMTaskOut)
+@router.post("/tasks", response_model=CRMTaskOut, dependencies=CRM_OPERATE_DEPENDENCIES)
 def create_task_endpoint(
     request: Request,
     payload: CRMTaskCreate,
@@ -450,7 +517,7 @@ def list_tasks_endpoint(
     return [CRMTaskOut.model_validate(item) for item in items]
 
 
-@router.patch("/tasks/{task_id}", response_model=CRMTaskOut)
+@router.patch("/tasks/{task_id}", response_model=CRMTaskOut, dependencies=CRM_OPERATE_DEPENDENCIES)
 def update_task_endpoint(
     request: Request,
     task_id: str,
@@ -465,7 +532,7 @@ def update_task_endpoint(
     return CRMTaskOut.model_validate(updated)
 
 
-@router.post("/clients/{client_id}/contracts", response_model=CRMContractOut)
+@router.post("/clients/{client_id}/contracts", response_model=CRMContractOut, dependencies=CRM_OPERATE_DEPENDENCIES)
 def create_contract_endpoint(
     request: Request,
     client_id: str,
@@ -489,7 +556,37 @@ def list_contracts_endpoint(
     return [CRMContractOut.model_validate(item) for item in items]
 
 
-@router.post("/contracts/{contract_id}/activate", response_model=CRMContractOut)
+@router.get("/contracts/{contract_id}", response_model=CRMContractOut)
+def get_contract_endpoint(
+    contract_id: str,
+    db: Session = Depends(get_db),
+) -> CRMContractOut:
+    contract = repository.get_contract(db, contract_id=contract_id)
+    if not contract:
+        raise HTTPException(status_code=404, detail="contract not found")
+    return CRMContractOut.model_validate(contract)
+
+
+@router.patch("/contracts/{contract_id}", response_model=CRMContractOut, dependencies=CRM_OPERATE_DEPENDENCIES)
+def update_contract_endpoint(
+    request: Request,
+    contract_id: str,
+    payload: CRMContractUpdate,
+    db: Session = Depends(get_db),
+) -> CRMContractOut:
+    contract = repository.get_contract(db, contract_id=contract_id)
+    if not contract:
+        raise HTTPException(status_code=404, detail="contract not found")
+    updated = contracts.update_contract(
+        db,
+        contract=contract,
+        payload=payload,
+        request_ctx=request_context_from_request(request),
+    )
+    return CRMContractOut.model_validate(updated)
+
+
+@router.post("/contracts/{contract_id}/activate", response_model=CRMContractOut, dependencies=CRM_OPERATE_DEPENDENCIES)
 def activate_contract_endpoint(
     request: Request,
     contract_id: str,
@@ -508,7 +605,7 @@ def activate_contract_endpoint(
     return CRMContractOut.model_validate(updated)
 
 
-@router.post("/contracts/{contract_id}/pause", response_model=CRMContractOut)
+@router.post("/contracts/{contract_id}/pause", response_model=CRMContractOut, dependencies=CRM_OPERATE_DEPENDENCIES)
 def pause_contract_endpoint(
     request: Request,
     contract_id: str,
@@ -527,7 +624,7 @@ def pause_contract_endpoint(
     return CRMContractOut.model_validate(updated)
 
 
-@router.post("/contracts/{contract_id}/terminate", response_model=CRMContractOut)
+@router.post("/contracts/{contract_id}/terminate", response_model=CRMContractOut, dependencies=CRM_OPERATE_DEPENDENCIES)
 def terminate_contract_endpoint(
     request: Request,
     contract_id: str,
@@ -546,7 +643,7 @@ def terminate_contract_endpoint(
     return CRMContractOut.model_validate(updated)
 
 
-@router.post("/contracts/{contract_id}/apply", response_model=dict)
+@router.post("/contracts/{contract_id}/apply", response_model=dict, dependencies=CRM_OPERATE_DEPENDENCIES)
 def apply_contract_endpoint(
     request: Request,
     contract_id: str,
@@ -560,7 +657,7 @@ def apply_contract_endpoint(
     return {"status": "ok", "contract_id": str(contract.id)}
 
 
-@router.post("/tariffs", response_model=CRMTariffOut)
+@router.post("/tariffs", response_model=CRMTariffOut, dependencies=CRM_OPERATE_DEPENDENCIES)
 def create_tariff_endpoint(
     request: Request,
     payload: CRMTariffCreate,
@@ -581,7 +678,18 @@ def list_tariffs_endpoint(
     return [CRMTariffOut.model_validate(item) for item in items]
 
 
-@router.patch("/tariffs/{tariff_id}", response_model=CRMTariffOut)
+@router.get("/tariffs/{tariff_id}", response_model=CRMTariffOut)
+def get_tariff_endpoint(
+    tariff_id: str,
+    db: Session = Depends(get_db),
+) -> CRMTariffOut:
+    tariff = repository.get_tariff(db, tariff_id=tariff_id)
+    if not tariff:
+        raise HTTPException(status_code=404, detail="tariff not found")
+    return CRMTariffOut.model_validate(tariff)
+
+
+@router.patch("/tariffs/{tariff_id}", response_model=CRMTariffOut, dependencies=CRM_OPERATE_DEPENDENCIES)
 def update_tariff_endpoint(
     request: Request,
     tariff_id: str,
@@ -595,7 +703,7 @@ def update_tariff_endpoint(
     return CRMTariffOut.model_validate(updated)
 
 
-@router.post("/clients/{client_id}/subscriptions", response_model=CRMSubscriptionOut)
+@router.post("/clients/{client_id}/subscriptions", response_model=CRMSubscriptionOut, dependencies=CRM_OPERATE_DEPENDENCIES)
 def create_subscription_endpoint(
     request: Request,
     client_id: str,
@@ -657,7 +765,37 @@ def list_subscriptions_endpoint(
     return [CRMSubscriptionOut.model_validate(item) for item in items]
 
 
-@router.post("/subscriptions/{subscription_id}/suspend", response_model=CRMSubscriptionOut)
+@router.get("/subscriptions/{subscription_id}", response_model=CRMSubscriptionOut)
+def get_subscription_endpoint(
+    subscription_id: str,
+    db: Session = Depends(get_db),
+) -> CRMSubscriptionOut:
+    subscription = repository.get_subscription(db, subscription_id=subscription_id)
+    if not subscription:
+        raise HTTPException(status_code=404, detail="subscription not found")
+    return CRMSubscriptionOut.model_validate(subscription)
+
+
+@router.patch("/subscriptions/{subscription_id}", response_model=CRMSubscriptionOut, dependencies=CRM_OPERATE_DEPENDENCIES)
+def update_subscription_endpoint(
+    request: Request,
+    subscription_id: str,
+    payload: CRMSubscriptionUpdate,
+    db: Session = Depends(get_db),
+) -> CRMSubscriptionOut:
+    subscription = repository.get_subscription(db, subscription_id=subscription_id)
+    if not subscription:
+        raise HTTPException(status_code=404, detail="subscription not found")
+    updated = subscriptions.update_subscription(
+        db,
+        subscription=subscription,
+        payload=payload,
+        request_ctx=request_context_from_request(request),
+    )
+    return CRMSubscriptionOut.model_validate(updated)
+
+
+@router.post("/subscriptions/{subscription_id}/suspend", response_model=CRMSubscriptionOut, dependencies=CRM_OPERATE_DEPENDENCIES)
 def suspend_subscription_endpoint(
     request: Request,
     subscription_id: str,
@@ -674,7 +812,7 @@ def suspend_subscription_endpoint(
     return CRMSubscriptionOut.model_validate(updated)
 
 
-@router.post("/subscriptions/{subscription_id}/resume", response_model=CRMSubscriptionOut)
+@router.post("/subscriptions/{subscription_id}/resume", response_model=CRMSubscriptionOut, dependencies=CRM_OPERATE_DEPENDENCIES)
 def resume_subscription_endpoint(
     request: Request,
     subscription_id: str,
@@ -779,7 +917,7 @@ def subscription_cfo_explain_endpoint(
     return SubscriptionCFOExplainResponse.model_validate(payload)
 
 
-@router.post("/subscriptions/{subscription_id}/change-tariff", response_model=CRMSubscriptionOut)
+@router.post("/subscriptions/{subscription_id}/change-tariff", response_model=CRMSubscriptionOut, dependencies=CRM_OPERATE_DEPENDENCIES)
 def change_subscription_tariff_endpoint(
     request: Request,
     subscription_id: str,
@@ -815,7 +953,7 @@ def change_subscription_tariff_endpoint(
     return CRMSubscriptionOut.model_validate(updated)
 
 
-@router.post("/subscriptions/{subscription_id}/pause", response_model=CRMSubscriptionOut)
+@router.post("/subscriptions/{subscription_id}/pause", response_model=CRMSubscriptionOut, dependencies=CRM_OPERATE_DEPENDENCIES)
 def pause_subscription_v2_endpoint(
     request: Request,
     subscription_id: str,
@@ -844,7 +982,7 @@ def pause_subscription_v2_endpoint(
     return CRMSubscriptionOut.model_validate(updated)
 
 
-@router.post("/subscriptions/{subscription_id}/cancel", response_model=CRMSubscriptionOut)
+@router.post("/subscriptions/{subscription_id}/cancel", response_model=CRMSubscriptionOut, dependencies=CRM_OPERATE_DEPENDENCIES)
 def cancel_subscription_v2_endpoint(
     request: Request,
     subscription_id: str,
@@ -873,7 +1011,7 @@ def cancel_subscription_v2_endpoint(
     return CRMSubscriptionOut.model_validate(updated)
 
 
-@router.post("/limit-profiles", response_model=CRMProfileOut)
+@router.post("/limit-profiles", response_model=CRMProfileOut, dependencies=CRM_OPERATE_DEPENDENCIES)
 def create_limit_profile_endpoint(payload: CRMProfileCreate, db: Session = Depends(get_db)) -> CRMProfileOut:
     profile = settings.create_limit_profile(db, payload=payload)
     return CRMProfileOut.model_validate(profile)
@@ -890,7 +1028,7 @@ def list_limit_profiles_endpoint(
     return [CRMProfileOut.model_validate(item) for item in items]
 
 
-@router.post("/risk-profiles", response_model=CRMRiskProfileOut)
+@router.post("/risk-profiles", response_model=CRMRiskProfileOut, dependencies=CRM_OPERATE_DEPENDENCIES)
 def create_risk_profile_endpoint(payload: CRMRiskProfileCreate, db: Session = Depends(get_db)) -> CRMRiskProfileOut:
     profile = settings.create_risk_profile(db, payload=payload)
     return CRMRiskProfileOut.model_validate(profile)
@@ -910,25 +1048,31 @@ def list_risk_profiles_endpoint(
 @router.get("/clients/{client_id}/features", response_model=list[CRMFeatureFlagOut])
 def list_feature_flags_endpoint(
     client_id: str,
-    tenant_id: int = Query(..., ge=1),
+    tenant_id: int | None = Query(default=None, ge=1),
     db: Session = Depends(get_db),
 ) -> list[CRMFeatureFlagOut]:
-    items = repository.list_feature_flags(db, tenant_id=tenant_id, client_id=client_id)
+    resolved_tenant_id = _resolve_client_tenant_id(db, client_id=client_id, tenant_id=tenant_id)
+    items = repository.list_feature_flags(db, tenant_id=resolved_tenant_id, client_id=client_id)
     return [CRMFeatureFlagOut.model_validate(item) for item in items]
 
 
-@router.post("/clients/{client_id}/features/{feature}/enable", response_model=CRMFeatureFlagOut)
+@router.post(
+    "/clients/{client_id}/features/{feature}/enable",
+    response_model=CRMFeatureFlagOut,
+    dependencies=CRM_OPERATE_DEPENDENCIES,
+)
 def enable_feature_flag_endpoint(
     request: Request,
     client_id: str,
     feature: CRMFeatureFlagType,
-    tenant_id: int = Query(..., ge=1),
+    tenant_id: int | None = Query(default=None, ge=1),
     db: Session = Depends(get_db),
 ) -> CRMFeatureFlagOut:
     ctx = request_context_from_request(request)
+    resolved_tenant_id = _resolve_client_tenant_id(db, client_id=client_id, tenant_id=tenant_id)
     record = settings.set_feature_flag(
         db,
-        tenant_id=tenant_id,
+        tenant_id=resolved_tenant_id,
         client_id=client_id,
         feature=feature,
         enabled=True,
@@ -945,18 +1089,23 @@ def enable_feature_flag_endpoint(
     return CRMFeatureFlagOut.model_validate(record)
 
 
-@router.post("/clients/{client_id}/features/{feature}/disable", response_model=CRMFeatureFlagOut)
+@router.post(
+    "/clients/{client_id}/features/{feature}/disable",
+    response_model=CRMFeatureFlagOut,
+    dependencies=CRM_OPERATE_DEPENDENCIES,
+)
 def disable_feature_flag_endpoint(
     request: Request,
     client_id: str,
     feature: CRMFeatureFlagType,
-    tenant_id: int = Query(..., ge=1),
+    tenant_id: int | None = Query(default=None, ge=1),
     db: Session = Depends(get_db),
 ) -> CRMFeatureFlagOut:
     ctx = request_context_from_request(request)
+    resolved_tenant_id = _resolve_client_tenant_id(db, client_id=client_id, tenant_id=tenant_id)
     record = settings.set_feature_flag(
         db,
-        tenant_id=tenant_id,
+        tenant_id=resolved_tenant_id,
         client_id=client_id,
         feature=feature,
         enabled=False,

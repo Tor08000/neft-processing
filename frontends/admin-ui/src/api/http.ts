@@ -1,10 +1,13 @@
-import { ADMIN_API_BASE, AUTH_API_BASE, normalizeAdminPath } from "./base";
+import { ADMIN_API_BASE, AUTH_ADMIN_API_BASE, AUTH_API_BASE, normalizeAdminPath } from "./base";
 
-type ApiBase = "core" | "auth";
+type ApiBase = "core" | "auth" | "authAdmin";
 
 export type HttpHeaders = Record<string, string>;
+
+const isDebugHttpEnabled = () => Boolean(import.meta.env.DEV && import.meta.env.VITE_ADMIN_DEBUG_HTTP === "true");
+
 const logErrorUrl = (url: string, status: number) => {
-  if (import.meta.env.DEV && status >= 400) {
+  if (isDebugHttpEnabled() && status >= 400) {
     console.info("[api-error]", { final_url: url, status });
   }
 };
@@ -127,15 +130,15 @@ export async function request<T>(
     ...(init.headers as HttpHeaders | undefined),
   };
 
-  const apiBase = base === "auth" ? AUTH_API_BASE : ADMIN_API_BASE;
-  const resolvedPath = base === "auth" ? path : normalizeAdminPath(path);
+  const apiBase = base === "auth" ? AUTH_API_BASE : base === "authAdmin" ? AUTH_ADMIN_API_BASE : ADMIN_API_BASE;
+  const resolvedPath = base === "core" ? normalizeAdminPath(path) : path;
   const url = `${apiBase}${resolvedPath}`;
   const response = await fetch(url, { ...init, headers });
   const correlationId = response.headers.get("x-correlation-id") ?? response.headers.get("x-request-id");
   const contentType = response.headers.get("content-type") ?? "";
   const isJson = contentType.includes("application/json");
   const isAuthLogin = base === "auth" && path.includes("/login");
-  const shouldLogAuth = import.meta.env.DEV && isAuthLogin;
+  const shouldLogAuth = isDebugHttpEnabled() && isAuthLogin;
   let responseText: string | null = null;
 
   const readResponseText = async () => {

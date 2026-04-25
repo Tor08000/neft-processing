@@ -442,47 +442,18 @@ class InternalLedgerService:
         total_due = int(invoice.total_with_tax or total_net + total_tax)
         posted_at = invoice.issued_at or datetime.now(timezone.utc)
 
-        transaction, is_replay = self._get_or_create_transaction(
-            tenant_id=tenant_id,
-            transaction_type=InternalLedgerTransactionType.INVOICE_ISSUED,
-            external_ref_type="INVOICE",
-            external_ref_id=invoice.id,
-            idempotency_key=f"invoice:{invoice.id}:issued:v1",
-            total_amount=total_due,
-            currency=currency,
-            posted_at=posted_at,
-            meta={"invoice_id": invoice.id},
-        )
-        if is_replay:
-            return
-
-        account_ar = self._ensure_account(
-            tenant_id=tenant_id,
-            client_id=invoice.client_id,
-            account_type=InternalLedgerAccountType.CLIENT_AR,
-            currency=currency,
-        )
-        account_revenue = self._ensure_account(
-            tenant_id=tenant_id,
-            client_id=None,
-            account_type=InternalLedgerAccountType.PLATFORM_REVENUE,
-            currency=currency,
-        )
-
         entries = [
-            self._build_entry(
-                tenant_id=tenant_id,
-                transaction=transaction,
-                account=account_ar,
+            InternalLedgerLine(
+                account_type=InternalLedgerAccountType.CLIENT_AR,
+                client_id=invoice.client_id,
                 direction=InternalLedgerEntryDirection.DEBIT,
                 amount=total_due,
                 currency=currency,
                 meta={"invoice_id": invoice.id, "kind": "invoice_issued"},
             ),
-            self._build_entry(
-                tenant_id=tenant_id,
-                transaction=transaction,
-                account=account_revenue,
+            InternalLedgerLine(
+                account_type=InternalLedgerAccountType.PLATFORM_REVENUE,
+                client_id=None,
                 direction=InternalLedgerEntryDirection.CREDIT,
                 amount=total_net,
                 currency=currency,
@@ -491,17 +462,10 @@ class InternalLedgerService:
         ]
 
         if total_tax:
-            account_tax = self._ensure_account(
-                tenant_id=tenant_id,
-                client_id=None,
-                account_type=InternalLedgerAccountType.TAX_VAT,
-                currency=currency,
-            )
             entries.append(
-                self._build_entry(
-                    tenant_id=tenant_id,
-                    transaction=transaction,
-                    account=account_tax,
+                InternalLedgerLine(
+                    account_type=InternalLedgerAccountType.TAX_VAT,
+                    client_id=None,
                     direction=InternalLedgerEntryDirection.CREDIT,
                     amount=total_tax,
                     currency=currency,
@@ -509,7 +473,16 @@ class InternalLedgerService:
                 )
             )
 
-        self._post_entries(transaction=transaction, entries=entries, expected_currency=currency)
+        self.post_transaction(
+            tenant_id=tenant_id,
+            transaction_type=InternalLedgerTransactionType.INVOICE_ISSUED,
+            external_ref_type="INVOICE",
+            external_ref_id=invoice.id,
+            idempotency_key=f"invoice:{invoice.id}:issued:v1",
+            posted_at=posted_at,
+            meta={"invoice_id": invoice.id},
+            entries=entries,
+        )
 
     def post_fuel_settlement(
         self,
@@ -521,54 +494,34 @@ class InternalLedgerService:
         currency: str,
         posted_at: datetime | None = None,
     ) -> InternalLedgerTransaction:
-        transaction, is_replay = self._get_or_create_transaction(
+        result = self.post_transaction(
             tenant_id=tenant_id,
             transaction_type=InternalLedgerTransactionType.FUEL_SETTLEMENT,
             external_ref_type="FUEL_TRANSACTION",
             external_ref_id=fuel_transaction_id,
             idempotency_key=f"fuel_tx:{fuel_transaction_id}:settlement:v1",
-            total_amount=amount,
-            currency=currency,
             posted_at=posted_at,
             meta={"fuel_transaction_id": fuel_transaction_id},
+            entries=[
+                InternalLedgerLine(
+                    account_type=InternalLedgerAccountType.CLIENT_AR,
+                    client_id=client_id,
+                    direction=InternalLedgerEntryDirection.DEBIT,
+                    amount=amount,
+                    currency=currency,
+                    meta={"fuel_transaction_id": fuel_transaction_id},
+                ),
+                InternalLedgerLine(
+                    account_type=InternalLedgerAccountType.PROVIDER_PAYABLE,
+                    client_id=None,
+                    direction=InternalLedgerEntryDirection.CREDIT,
+                    amount=amount,
+                    currency=currency,
+                    meta={"fuel_transaction_id": fuel_transaction_id},
+                ),
+            ],
         )
-        if is_replay:
-            return transaction
-
-        account_ar = self._ensure_account(
-            tenant_id=tenant_id,
-            client_id=client_id,
-            account_type=InternalLedgerAccountType.CLIENT_AR,
-            currency=currency,
-        )
-        account_payable = self._ensure_account(
-            tenant_id=tenant_id,
-            client_id=None,
-            account_type=InternalLedgerAccountType.PROVIDER_PAYABLE,
-            currency=currency,
-        )
-        entries = [
-            self._build_entry(
-                tenant_id=tenant_id,
-                transaction=transaction,
-                account=account_ar,
-                direction=InternalLedgerEntryDirection.DEBIT,
-                amount=amount,
-                currency=currency,
-                meta={"fuel_transaction_id": fuel_transaction_id},
-            ),
-            self._build_entry(
-                tenant_id=tenant_id,
-                transaction=transaction,
-                account=account_payable,
-                direction=InternalLedgerEntryDirection.CREDIT,
-                amount=amount,
-                currency=currency,
-                meta={"fuel_transaction_id": fuel_transaction_id},
-            ),
-        ]
-        self._post_entries(transaction=transaction, entries=entries, expected_currency=currency)
-        return transaction
+        return result.transaction
 
     def post_fuel_reversal(
         self,
@@ -580,54 +533,34 @@ class InternalLedgerService:
         currency: str,
         posted_at: datetime | None = None,
     ) -> InternalLedgerTransaction:
-        transaction, is_replay = self._get_or_create_transaction(
+        result = self.post_transaction(
             tenant_id=tenant_id,
             transaction_type=InternalLedgerTransactionType.FUEL_REVERSAL,
             external_ref_type="FUEL_TRANSACTION",
             external_ref_id=fuel_transaction_id,
             idempotency_key=f"fuel_tx:{fuel_transaction_id}:reversal:v1",
-            total_amount=amount,
-            currency=currency,
             posted_at=posted_at,
             meta={"fuel_transaction_id": fuel_transaction_id},
+            entries=[
+                InternalLedgerLine(
+                    account_type=InternalLedgerAccountType.PROVIDER_PAYABLE,
+                    client_id=None,
+                    direction=InternalLedgerEntryDirection.DEBIT,
+                    amount=amount,
+                    currency=currency,
+                    meta={"fuel_transaction_id": fuel_transaction_id},
+                ),
+                InternalLedgerLine(
+                    account_type=InternalLedgerAccountType.CLIENT_AR,
+                    client_id=client_id,
+                    direction=InternalLedgerEntryDirection.CREDIT,
+                    amount=amount,
+                    currency=currency,
+                    meta={"fuel_transaction_id": fuel_transaction_id},
+                ),
+            ],
         )
-        if is_replay:
-            return transaction
-
-        account_ar = self._ensure_account(
-            tenant_id=tenant_id,
-            client_id=client_id,
-            account_type=InternalLedgerAccountType.CLIENT_AR,
-            currency=currency,
-        )
-        account_payable = self._ensure_account(
-            tenant_id=tenant_id,
-            client_id=None,
-            account_type=InternalLedgerAccountType.PROVIDER_PAYABLE,
-            currency=currency,
-        )
-        entries = [
-            self._build_entry(
-                tenant_id=tenant_id,
-                transaction=transaction,
-                account=account_payable,
-                direction=InternalLedgerEntryDirection.DEBIT,
-                amount=amount,
-                currency=currency,
-                meta={"fuel_transaction_id": fuel_transaction_id},
-            ),
-            self._build_entry(
-                tenant_id=tenant_id,
-                transaction=transaction,
-                account=account_ar,
-                direction=InternalLedgerEntryDirection.CREDIT,
-                amount=amount,
-                currency=currency,
-                meta={"fuel_transaction_id": fuel_transaction_id},
-            ),
-        ]
-        self._post_entries(transaction=transaction, entries=entries, expected_currency=currency)
-        return transaction
+        return result.transaction
 
     def post_payment_applied(
         self,
@@ -646,54 +579,33 @@ class InternalLedgerService:
         )
         if existing:
             return
-        transaction, is_replay = self._get_or_create_transaction(
+        self.post_transaction(
             tenant_id=tenant_id,
             transaction_type=InternalLedgerTransactionType.PAYMENT_APPLIED,
             external_ref_type="PAYMENT",
             external_ref_id=str(payment.id),
             idempotency_key=f"payment:{payment.idempotency_key}:applied:v1",
-            total_amount=amount,
-            currency=currency,
             posted_at=payment.created_at,
             meta={"invoice_id": invoice.id, "payment_id": str(payment.id)},
+            entries=[
+                InternalLedgerLine(
+                    account_type=InternalLedgerAccountType.CLIENT_CASH,
+                    client_id=invoice.client_id,
+                    direction=InternalLedgerEntryDirection.DEBIT,
+                    amount=amount,
+                    currency=currency,
+                    meta={"invoice_id": invoice.id, "payment_id": str(payment.id)},
+                ),
+                InternalLedgerLine(
+                    account_type=InternalLedgerAccountType.CLIENT_AR,
+                    client_id=invoice.client_id,
+                    direction=InternalLedgerEntryDirection.CREDIT,
+                    amount=amount,
+                    currency=currency,
+                    meta={"invoice_id": invoice.id, "payment_id": str(payment.id)},
+                ),
+            ],
         )
-        if is_replay:
-            return
-
-        account_cash = self._ensure_account(
-            tenant_id=tenant_id,
-            client_id=invoice.client_id,
-            account_type=InternalLedgerAccountType.CLIENT_CASH,
-            currency=currency,
-        )
-        account_ar = self._ensure_account(
-            tenant_id=tenant_id,
-            client_id=invoice.client_id,
-            account_type=InternalLedgerAccountType.CLIENT_AR,
-            currency=currency,
-        )
-
-        entries = [
-            self._build_entry(
-                tenant_id=tenant_id,
-                transaction=transaction,
-                account=account_cash,
-                direction=InternalLedgerEntryDirection.DEBIT,
-                amount=amount,
-                currency=currency,
-                meta={"invoice_id": invoice.id, "payment_id": str(payment.id)},
-            ),
-            self._build_entry(
-                tenant_id=tenant_id,
-                transaction=transaction,
-                account=account_ar,
-                direction=InternalLedgerEntryDirection.CREDIT,
-                amount=amount,
-                currency=currency,
-                meta={"invoice_id": invoice.id, "payment_id": str(payment.id)},
-            ),
-        ]
-        self._post_entries(transaction=transaction, entries=entries, expected_currency=currency)
 
     def post_credit_note_applied(
         self,
@@ -704,54 +616,33 @@ class InternalLedgerService:
     ) -> None:
         currency = credit_note.currency
         amount = int(credit_note.amount)
-        transaction, is_replay = self._get_or_create_transaction(
+        self.post_transaction(
             tenant_id=tenant_id,
             transaction_type=InternalLedgerTransactionType.CREDIT_NOTE_APPLIED,
             external_ref_type="CREDIT_NOTE",
             external_ref_id=str(credit_note.id),
             idempotency_key=f"credit_note:{credit_note.id}:applied:v1",
-            total_amount=amount,
-            currency=currency,
             posted_at=credit_note.created_at,
             meta={"invoice_id": invoice.id, "credit_note_id": str(credit_note.id)},
+            entries=[
+                InternalLedgerLine(
+                    account_type=InternalLedgerAccountType.PLATFORM_REVENUE,
+                    client_id=None,
+                    direction=InternalLedgerEntryDirection.DEBIT,
+                    amount=amount,
+                    currency=currency,
+                    meta={"invoice_id": invoice.id, "credit_note_id": str(credit_note.id)},
+                ),
+                InternalLedgerLine(
+                    account_type=InternalLedgerAccountType.CLIENT_AR,
+                    client_id=invoice.client_id,
+                    direction=InternalLedgerEntryDirection.CREDIT,
+                    amount=amount,
+                    currency=currency,
+                    meta={"invoice_id": invoice.id, "credit_note_id": str(credit_note.id)},
+                ),
+            ],
         )
-        if is_replay:
-            return
-
-        account_revenue = self._ensure_account(
-            tenant_id=tenant_id,
-            client_id=None,
-            account_type=InternalLedgerAccountType.PLATFORM_REVENUE,
-            currency=currency,
-        )
-        account_ar = self._ensure_account(
-            tenant_id=tenant_id,
-            client_id=invoice.client_id,
-            account_type=InternalLedgerAccountType.CLIENT_AR,
-            currency=currency,
-        )
-
-        entries = [
-            self._build_entry(
-                tenant_id=tenant_id,
-                transaction=transaction,
-                account=account_revenue,
-                direction=InternalLedgerEntryDirection.DEBIT,
-                amount=amount,
-                currency=currency,
-                meta={"invoice_id": invoice.id, "credit_note_id": str(credit_note.id)},
-            ),
-            self._build_entry(
-                tenant_id=tenant_id,
-                transaction=transaction,
-                account=account_ar,
-                direction=InternalLedgerEntryDirection.CREDIT,
-                amount=amount,
-                currency=currency,
-                meta={"invoice_id": invoice.id, "credit_note_id": str(credit_note.id)},
-            ),
-        ]
-        self._post_entries(transaction=transaction, entries=entries, expected_currency=currency)
 
     def post_refund_applied(
         self,
@@ -762,54 +653,33 @@ class InternalLedgerService:
     ) -> None:
         currency = refund.currency
         amount = int(refund.amount)
-        transaction, is_replay = self._get_or_create_transaction(
+        self.post_transaction(
             tenant_id=tenant_id,
             transaction_type=InternalLedgerTransactionType.REFUND_APPLIED,
             external_ref_type="REFUND",
             external_ref_id=str(refund.id),
             idempotency_key=f"refund:{refund.id}:applied:v1",
-            total_amount=amount,
-            currency=currency,
             posted_at=refund.created_at,
             meta={"invoice_id": invoice.id, "refund_id": str(refund.id)},
+            entries=[
+                InternalLedgerLine(
+                    account_type=InternalLedgerAccountType.CLIENT_AR,
+                    client_id=invoice.client_id,
+                    direction=InternalLedgerEntryDirection.DEBIT,
+                    amount=amount,
+                    currency=currency,
+                    meta={"invoice_id": invoice.id, "refund_id": str(refund.id)},
+                ),
+                InternalLedgerLine(
+                    account_type=InternalLedgerAccountType.CLIENT_CASH,
+                    client_id=invoice.client_id,
+                    direction=InternalLedgerEntryDirection.CREDIT,
+                    amount=amount,
+                    currency=currency,
+                    meta={"invoice_id": invoice.id, "refund_id": str(refund.id)},
+                ),
+            ],
         )
-        if is_replay:
-            return
-
-        account_ar = self._ensure_account(
-            tenant_id=tenant_id,
-            client_id=invoice.client_id,
-            account_type=InternalLedgerAccountType.CLIENT_AR,
-            currency=currency,
-        )
-        account_cash = self._ensure_account(
-            tenant_id=tenant_id,
-            client_id=invoice.client_id,
-            account_type=InternalLedgerAccountType.CLIENT_CASH,
-            currency=currency,
-        )
-
-        entries = [
-            self._build_entry(
-                tenant_id=tenant_id,
-                transaction=transaction,
-                account=account_ar,
-                direction=InternalLedgerEntryDirection.DEBIT,
-                amount=amount,
-                currency=currency,
-                meta={"invoice_id": invoice.id, "refund_id": str(refund.id)},
-            ),
-            self._build_entry(
-                tenant_id=tenant_id,
-                transaction=transaction,
-                account=account_cash,
-                direction=InternalLedgerEntryDirection.CREDIT,
-                amount=amount,
-                currency=currency,
-                meta={"invoice_id": invoice.id, "refund_id": str(refund.id)},
-            ),
-        ]
-        self._post_entries(transaction=transaction, entries=entries, expected_currency=currency)
 
 
 def verify_ledger_chain(db: Session, *, tenant_id: int | None = None) -> tuple[bool, str | None]:

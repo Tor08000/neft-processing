@@ -14,5 +14,5 @@ scripts\smoke_slice_1_bootstrap.cmd
 
 The script:
 - Logs in as client, partner, and admin.
-- Fetches `/portal/me` and `/v1/admin/me`.
+- Fetches `/api/core/portal/me` and `/api/core/v1/admin/me`.
 - Prints `access_state`, `roles`, and `read_only` summary.

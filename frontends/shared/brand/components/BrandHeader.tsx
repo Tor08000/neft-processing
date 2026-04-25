@@ -12,8 +12,9 @@ export function BrandHeader({ title, subtitle, meta, userSlot }: BrandHeaderProp
   return (
     <header className="brand-header">
       <div className="brand-header__meta">
-        <AppLogo size={32} className="brand-logo" />
+        <AppLogo size={32} className="brand-logo" tone="white" />
         <div className="brand-header__titles">
+          <div className="brand-header__eyebrow">NEFT platform</div>
           <div className="brand-header__title">{title}</div>
           {subtitle ? <div className="brand-header__subtitle">{subtitle}</div> : null}
         </div>

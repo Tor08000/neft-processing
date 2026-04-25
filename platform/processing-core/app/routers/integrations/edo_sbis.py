@@ -27,7 +27,7 @@ async def sbis_webhook(request: Request, db: Session = Depends(get_db)) -> dict:
     account_id = request.headers.get("x-edo-account-id")
     if not account_id:
         raise HTTPException(status_code=400, detail="missing_account_id")
-    account = db.query(EdoAccount).get(account_id)
+    account = db.get(EdoAccount, account_id)
     if not account:
         raise HTTPException(status_code=404, detail="edo_account_not_found")
     store = CredentialsStore()

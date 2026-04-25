@@ -58,7 +58,9 @@ def test_core_tables_exist_after_migrations() -> None:
     running_in_docker = os.getenv("RUNNING_IN_DOCKER") == "1"
 
     if not db_url.startswith("postgresql"):
-        pytest.fail("schema smoke test requires PostgreSQL DATABASE_URL")
+        if running_in_docker:
+            pytest.fail("schema smoke test requires PostgreSQL DATABASE_URL")
+        pytest.skip("schema smoke test requires PostgreSQL DATABASE_URL")
 
     _assert_db_available(db_url, running_in_docker=running_in_docker)
 

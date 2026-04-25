@@ -10,6 +10,7 @@ from app.db import get_db
 from app.schemas.portal_me import PortalMeResponse
 from app.services.portal_me import build_portal_me
 
+# Canonical portal bootstrap/profile SSoT for client, partner, and admin surfaces.
 router = APIRouter(prefix="/portal", tags=["portal-me"])
 logger = logging.getLogger(__name__)
 

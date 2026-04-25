@@ -12,7 +12,6 @@ import {
   createWebhookSubscription,
   deleteWebhookSubscription,
   fetchWebhookAlerts,
-  fetchWebhookEventTypes,
   fetchWebhookDeliveries,
   fetchWebhookDeliveryDetail,
   fetchWebhookEndpoints,
@@ -193,19 +192,6 @@ export function IntegrationsPage() {
       .catch((err) => setEndpointError(normalizeError(err, t("integrationsPage.errors.loadEndpoints"))))
       .finally(() => setEndpointLoading(false));
   }, [user, selectedEndpointId]);
-
-  useEffect(() => {
-    if (!user) return;
-    fetchWebhookEventTypes(user.token)
-      .then((data) => {
-        if (data.length > 0) {
-          setEventTypes(data);
-        }
-      })
-      .catch((err) => {
-        console.warn(t("integrationsPage.errors.loadEventsFallback"), err);
-      });
-  }, [user]);
 
   useEffect(() => {
     if (!selectedEndpointId || !user) return;
@@ -1241,7 +1227,7 @@ export function IntegrationsPage() {
                         <tr key={`${deliveryDetail.id}-${attempt.attempt}`}>
                           <td>{attempt.attempt}</td>
                           <td>{attempt.http_status ?? t("common.notAvailable")}</td>
-                          <td>{attempt.error ? "Ошибка доставки" : t("common.notAvailable")}</td>
+                          <td>{attempt.error ? t("integrationsPage.modals.deliveryDetail.table.deliveryError") : t("common.notAvailable")}</td>
                           <td>{attempt.latency_ms ?? t("common.notAvailable")} ms</td>
                           <td>{attempt.next_retry_at ? formatDateTime(attempt.next_retry_at) : t("common.notAvailable")}</td>
                         </tr>

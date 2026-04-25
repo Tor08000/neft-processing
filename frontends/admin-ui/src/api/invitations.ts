@@ -15,6 +15,15 @@ export interface AdminInvitationsResponse {
   total: number;
 }
 
+export async function listAdminInvitations(params?: {
+  client_id?: string;
+  status?: string;
+  q?: string;
+  sort?: string;
+}) {
+  return apiGet<AdminInvitationsResponse>("/v1/admin/clients/invitations", params);
+}
+
 export async function listClientInvitations(clientId: string, params?: { status?: string; q?: string; sort?: string }) {
   return apiGet<AdminInvitationsResponse>(`/v1/admin/clients/${clientId}/invitations`, params);
 }

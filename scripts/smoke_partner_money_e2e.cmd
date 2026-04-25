@@ -1,5 +1,5 @@
 @echo off
-setlocal EnableExtensions EnableDelayedExpansion
+setlocal EnableExtensions DisableDelayedExpansion
 chcp 65001 >nul
 
 set "SCRIPT_NAME=smoke_partner_money_e2e"
@@ -15,17 +15,24 @@ if "%CORE_ADMIN_AUDIT_URL%"=="" set "CORE_ADMIN_AUDIT_URL=%CORE_ADMIN%/audit"
 
 if "%PARTNER_EMAIL%"=="" set "PARTNER_EMAIL=partner@neft.local"
 if "%PARTNER_PASSWORD%"=="" set "PARTNER_PASSWORD=Partner123!"
-if "%ADMIN_EMAIL%"=="" set "ADMIN_EMAIL=admin@example.com"
-if "%ADMIN_PASSWORD%"=="" set "ADMIN_PASSWORD=admin"
+if "%ADMIN_EMAIL%"=="" set "ADMIN_EMAIL=admin@neft.local"
+if "%ADMIN_PASSWORD%"=="" set "ADMIN_PASSWORD=Neft123!"
 
+set "LAST_STEP=seed_partner_money"
 call "%~dp0seed_partner_money_e2e.cmd" >nul 2>nul || goto :fail
 
 set "PARTNER_LOGIN_FILE=%TEMP%\partner_login.json"
 set "PARTNER_TOKEN_FILE=%TEMP%\partner_token.txt"
 set "PARTNER_LOGIN_BODY_FILE=%TEMP%\partner_login_body_%RANDOM%.json"
+set "LAST_STEP=partner_login_body"
 python -c "import json; from pathlib import Path; Path(r'%PARTNER_LOGIN_BODY_FILE%').write_text(json.dumps({'email': r'%PARTNER_EMAIL%','password': r'%PARTNER_PASSWORD%','portal':'partner'}), encoding='utf-8')"
+if errorlevel 1 goto :fail
+set "LAST_STEP=partner_login_request"
 call :http_request "POST" "%AUTH_URL%/login" "" "%PARTNER_LOGIN_BODY_FILE%" "200" "%PARTNER_LOGIN_FILE%" || goto :fail
-for /f "usebackq tokens=*" %%t in (`python -c "import json; from pathlib import Path; data=json.loads(Path(r'%PARTNER_LOGIN_FILE%').read_text(encoding='utf-8', errors='ignore') or '{}'); token=data.get('access_token',''); Path(r'%PARTNER_TOKEN_FILE%').write_text(token); print(token)"`) do set "PARTNER_TOKEN=%%t"
+set "LAST_STEP=partner_login_token"
+python -c "import json; from pathlib import Path; data=json.loads(Path(r'%PARTNER_LOGIN_FILE%').read_text(encoding='utf-8', errors='ignore') or '{}'); token=data.get('access_token',''); Path(r'%PARTNER_TOKEN_FILE%').write_text(token, encoding='utf-8')"
+if errorlevel 1 goto :fail
+set /p PARTNER_TOKEN=<"%PARTNER_TOKEN_FILE%"
 if "%PARTNER_TOKEN%"=="" goto :fail
 
 set "PARTNER_AUTH_HEADER=Authorization: Bearer %PARTNER_TOKEN%"
@@ -62,7 +69,10 @@ set "ADMIN_TOKEN_FILE=%TEMP%\admin_token.txt"
 set "ADMIN_LOGIN_BODY_FILE=%TEMP%\admin_login_body_%RANDOM%.json"
 python -c "import json; from pathlib import Path; Path(r'%ADMIN_LOGIN_BODY_FILE%').write_text(json.dumps({'email': r'%ADMIN_EMAIL%','password': r'%ADMIN_PASSWORD%','portal':'admin'}), encoding='utf-8')"
 call :http_request "POST" "%AUTH_URL%/login" "" "%ADMIN_LOGIN_BODY_FILE%" "200" "%ADMIN_LOGIN_FILE%" || goto :fail
-for /f "usebackq tokens=*" %%t in (`python -c "import json; from pathlib import Path; data=json.loads(Path(r'%ADMIN_LOGIN_FILE%').read_text(encoding='utf-8', errors='ignore') or '{}'); token=data.get('access_token',''); Path(r'%ADMIN_TOKEN_FILE%').write_text(token); print(token)"`) do set "ADMIN_TOKEN=%%t"
+set "LAST_STEP=admin_login_token"
+python -c "import json; from pathlib import Path; data=json.loads(Path(r'%ADMIN_LOGIN_FILE%').read_text(encoding='utf-8', errors='ignore') or '{}'); token=data.get('access_token',''); Path(r'%ADMIN_TOKEN_FILE%').write_text(token, encoding='utf-8')"
+if errorlevel 1 goto :fail
+set /p ADMIN_TOKEN=<"%ADMIN_TOKEN_FILE%"
 if "%ADMIN_TOKEN%"=="" goto :fail
 
 set "ADMIN_AUTH_HEADER=Authorization: Bearer %ADMIN_TOKEN%"
@@ -87,7 +97,7 @@ echo E2E_PARTNER_MONEY: PASS
 exit /b 0
 
 :fail
-echo E2E_PARTNER_MONEY: FAIL
+echo E2E_PARTNER_MONEY: FAIL step=%LAST_STEP%
 exit /b 1
 
 :http_request
@@ -112,11 +122,17 @@ if "%BODY_FILE%"=="" (
     for /f "usebackq tokens=*" %%c in (`curl -s -S -o "%OUT%" -w "%%{http_code}" -X %METHOD% -H "%HEADER%" -H "Content-Type: application/json" -d "@%BODY_FILE%" "%URL%" 2^>nul`) do set "CODE=%%c"
   )
 )
-if "%CODE%"=="" exit /b 1
+if "%CODE%"=="" (
+  echo [HTTP FAIL] %METHOD% %URL% expected %EXPECTED% got empty_status
+  if exist "%OUT%" type "%OUT%"
+  exit /b 1
+)
 set "EXPECTED_LIST=%EXPECTED:,= %"
 set "MATCHED="
 for %%e in (%EXPECTED_LIST%) do (
   if "%%e"=="%CODE%" set "MATCHED=1"
 )
 if defined MATCHED exit /b 0
+echo [HTTP FAIL] %METHOD% %URL% expected %EXPECTED% got %CODE%
+if exist "%OUT%" type "%OUT%"
 exit /b 1

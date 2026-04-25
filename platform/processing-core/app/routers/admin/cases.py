@@ -3,6 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 
+from app.api.dependencies.admin_capability import require_admin_capability
 from app.db import get_db
 from app.models.cases import Case, CaseEvent, CaseStatus
 from app.models.case_exports import CaseExport
@@ -23,7 +24,6 @@ from app.schemas.admin.case_events import (
     CaseWithEventResponse,
 )
 from app.schemas.cases import CaseResponse
-from app.services.admin_auth import require_admin
 from app.services.case_events_service import (
     CaseEventChainIntegrityResult,
     CaseEventSignatureIntegrityResult,
@@ -35,7 +35,11 @@ from app.services.cases_service import close_case, update_case
 from app.services.decision_memory.records import list_decision_memory_for_case
 from app.services.audit_signing import AuditSigningService
 
-router = APIRouter(prefix="/cases", tags=["admin-cases"])
+router = APIRouter(
+    prefix="/cases",
+    tags=["admin-cases"],
+    dependencies=[Depends(require_admin_capability("cases"))],
+)
 
 
 def _get_case(db: Session, case_id: str) -> Case:
@@ -207,7 +211,7 @@ def update_case_status_endpoint(
     payload: CaseStatusUpdateRequest,
     request: Request,
     db: Session = Depends(get_db),
-    token: dict = Depends(require_admin),
+    token: dict = Depends(require_admin_capability("cases", "operate")),
 ) -> CaseWithEventResponse:
     case = _get_case(db, case_id)
     request_id, trace_id = _request_ids(request)
@@ -300,7 +304,7 @@ def close_case_endpoint(
     payload: CaseCloseRequest,
     request: Request,
     db: Session = Depends(get_db),
-    token: dict = Depends(require_admin),
+    token: dict = Depends(require_admin_capability("cases", "operate")),
 ) -> CaseWithEventResponse:
     case = _get_case(db, case_id)
     request_id, trace_id = _request_ids(request)

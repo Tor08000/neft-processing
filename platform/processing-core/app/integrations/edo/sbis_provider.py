@@ -31,11 +31,11 @@ class SbisProvider(EdoProvider):
         self.storage = DocumentsStorage()
 
     def send(self, request: EdoSendRequest) -> EdoSendResult:
-        account = self.db.query(EdoAccount).get(request.account_id)
+        account = self.db.get(EdoAccount, request.account_id)
         if not account:
             raise RuntimeError("edo_account_not_found")
         credentials = self.credentials_store.get_credentials(account.credentials_ref)
-        document = self.db.query(Document).get(request.document_registry_id)
+        document = self.db.get(Document, request.document_registry_id)
         if not document:
             raise RuntimeError("document_not_found")
         file_record = (
@@ -108,7 +108,7 @@ class SbisProvider(EdoProvider):
         return EdoRevokeResult(status=mapped.status, raw=response)
 
     def _credentials_for_account(self, account_id: str) -> SbisCredentials:
-        account = self.db.query(EdoAccount).get(account_id)
+        account = self.db.get(EdoAccount, account_id)
         if not account:
             raise RuntimeError("edo_account_not_found")
         return self.credentials_store.get_credentials(account.credentials_ref)

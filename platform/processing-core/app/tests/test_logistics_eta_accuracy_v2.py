@@ -1,40 +1,54 @@
 import os
 from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 from typing import Tuple
 
 import pytest
-from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
-from sqlalchemy.pool import StaticPool
 
 os.environ["DISABLE_CELERY"] = "1"
 
-from app.db import Base
 from app.models import logistics as logistics_models
-from app.services.logistics import eta, repository
+from app.models.logistics import LogisticsETAAccuracy, LogisticsRiskSignal
+from app.services.logistics import eta, eta_accuracy
 from app.services.logistics.defaults import ETA_ACCURACY_DEFAULTS
 from app.services.logistics.orders import complete_order, create_order, start_order
+from app.tests._logistics_route_harness import logistics_session_context
 
 
 @pytest.fixture()
 def db_session() -> Tuple[Session, sessionmaker]:
-    engine = create_engine(
-        "sqlite://",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
+    with logistics_session_context() as ctx:
+        yield ctx
+
+
+def _list_eta_accuracy(db: Session, *, order_id: str) -> list[LogisticsETAAccuracy]:
+    return (
+        db.query(LogisticsETAAccuracy)
+        .filter(LogisticsETAAccuracy.order_id == order_id)
+        .order_by(LogisticsETAAccuracy.computed_at.desc())
+        .all()
     )
-    SessionLocal = sessionmaker(autocommit=False, autoflush=False, expire_on_commit=False, bind=engine)
-    Base.metadata.create_all(bind=engine)
-    session = SessionLocal()
-    try:
-        yield session, SessionLocal
-    finally:
-        session.close()
-        Base.metadata.drop_all(bind=engine)
-        engine.dispose()
 
 
-def test_eta_accuracy_on_completion(db_session: Tuple[Session, sessionmaker]):
+def _list_risk_signals(db: Session, *, order_id: str) -> list[LogisticsRiskSignal]:
+    return (
+        db.query(LogisticsRiskSignal)
+        .filter(LogisticsRiskSignal.order_id == order_id)
+        .order_by(LogisticsRiskSignal.ts.desc(), LogisticsRiskSignal.created_at.desc())
+        .all()
+    )
+
+
+def test_eta_accuracy_on_completion(
+    monkeypatch: pytest.MonkeyPatch,
+    db_session: Tuple[Session, sessionmaker],
+):
+    monkeypatch.setenv("LOGISTICS_SERVICE_ENABLED", "0")
+    monkeypatch.setattr(
+        "app.services.logistics.eta.get_settings",
+        lambda: SimpleNamespace(LOGISTICS_SERVICE_ENABLED=False),
+    )
     db, _ = db_session
     planned_start = datetime.now(timezone.utc) - timedelta(hours=1)
     planned_end = datetime.now(timezone.utc) + timedelta(hours=1)
@@ -50,15 +64,17 @@ def test_eta_accuracy_on_completion(db_session: Tuple[Session, sessionmaker]):
     start_order(db, order_id=str(order.id))
     eta.compute_eta_snapshot(db, order_id=str(order.id), reason="test")
 
-    complete_order(
+    order = complete_order(
         db,
         order_id=str(order.id),
         completed_at=planned_end + timedelta(minutes=ETA_ACCURACY_DEFAULTS.eta_error_high_minutes + 70),
     )
-    accuracy = repository.list_eta_accuracy(db, order_id=str(order.id))
+    recorded = eta_accuracy.record_completion(db, order=order)
+    assert recorded is not None
+    accuracy = _list_eta_accuracy(db, order_id=str(order.id))
     assert accuracy
     completion = next((item for item in accuracy if item.error_minutes is not None), None)
     assert completion is not None
     assert completion.error_minutes >= ETA_ACCURACY_DEFAULTS.eta_error_high_minutes
-    signals = repository.list_risk_signals(db, order_id=str(order.id))
+    signals = _list_risk_signals(db, order_id=str(order.id))
     assert any(signal.signal_type.value == "ETA_ANOMALY" for signal in signals)

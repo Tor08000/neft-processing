@@ -15,6 +15,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
+import app.main as app_main
 from app.db import get_db
 from app.main import app
 from app.models.cases import Case, CaseEvent, CaseEventType
@@ -26,12 +27,20 @@ from app.models.fuel import (
     FleetNotificationPolicy,
     FleetNotificationPolicyScopeType,
     FleetNotificationSeverity,
+    FleetActionPolicy,
+    FleetActionBreachKind,
+    FleetActionPolicyAction,
+    FleetActionPolicyScopeType,
+    FleetActionTriggerType,
+    FleetPolicyExecutionStatus,
+    FleetPolicyExecution,
     FuelAnomaly,
     FuelAnomalyStatus,
     FuelAnomalyType,
     FuelCard,
     FuelCardGroup,
     FuelCardStatus,
+    FuelCardStatusEvent,
     FuelIngestJob,
     FuelLimit,
     FuelLimitBreach,
@@ -79,6 +88,15 @@ def signing_key() -> bytes:
 
 
 @pytest.fixture(autouse=True)
+def app_env_guardrails(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("APP_ENV", "dev")
+    monkeypatch.setenv("ALLOW_MOCK_PROVIDERS_IN_PROD", "1")
+    monkeypatch.setattr(app_main.settings, "APP_ENV", "dev", raising=False)
+    monkeypatch.setattr("app.routers.client_fleet.enforce_entitlement", lambda *args, **kwargs: None)
+    monkeypatch.setattr("app.routers.client_fleet.assert_max_cards", lambda *args, **kwargs: None)
+
+
+@pytest.fixture(autouse=True)
 def audit_signing_env(monkeypatch: pytest.MonkeyPatch, signing_key: bytes) -> None:
     monkeypatch.setenv("AUDIT_SIGNING_MODE", "local")
     monkeypatch.setenv("AUDIT_SIGNING_REQUIRED", "true")
@@ -100,6 +118,7 @@ def db_session() -> Session:
     FuelStation.__table__.create(bind=engine)
     FuelCardGroup.__table__.create(bind=engine)
     FuelCard.__table__.create(bind=engine)
+    FuelCardStatusEvent.__table__.create(bind=engine)
     FuelCardGroupMember.__table__.create(bind=engine)
     ClientEmployee.__table__.create(bind=engine)
     FuelGroupAccess.__table__.create(bind=engine)
@@ -108,6 +127,8 @@ def db_session() -> Session:
     FuelLimitBreach.__table__.create(bind=engine)
     FuelLimitEscalation.__table__.create(bind=engine)
     FuelAnomaly.__table__.create(bind=engine)
+    FleetActionPolicy.__table__.create(bind=engine)
+    FleetPolicyExecution.__table__.create(bind=engine)
     FleetNotificationPolicy.__table__.create(bind=engine)
     FleetNotificationOutbox.__table__.create(bind=engine)
     FuelTransaction.__table__.create(bind=engine)
@@ -119,6 +140,8 @@ def db_session() -> Session:
         FuelTransaction.__table__.drop(bind=engine)
         FleetNotificationOutbox.__table__.drop(bind=engine)
         FleetNotificationPolicy.__table__.drop(bind=engine)
+        FleetPolicyExecution.__table__.drop(bind=engine)
+        FleetActionPolicy.__table__.drop(bind=engine)
         FuelAnomaly.__table__.drop(bind=engine)
         FuelLimitEscalation.__table__.drop(bind=engine)
         FuelLimitBreach.__table__.drop(bind=engine)
@@ -127,6 +150,7 @@ def db_session() -> Session:
         FuelGroupAccess.__table__.drop(bind=engine)
         ClientEmployee.__table__.drop(bind=engine)
         FuelCardGroupMember.__table__.drop(bind=engine)
+        FuelCardStatusEvent.__table__.drop(bind=engine)
         FuelCard.__table__.drop(bind=engine)
         FuelCardGroup.__table__.drop(bind=engine)
         FuelStation.__table__.drop(bind=engine)
@@ -163,7 +187,7 @@ def _create_card(client: TestClient, make_jwt) -> tuple[str, str, str]:
         roles=("CLIENT_ADMIN",),
         client_id=client_id,
         sub=admin_user_id,
-        extra={"user_id": admin_user_id, "email": "admin@fleet.test", "tenant_id": 1},
+        extra={"user_id": admin_user_id, "email": "admin@fleet.test", "tenant_id": 1, "aud": "neft-client"},
     )
     card_payload = {"card_alias": "NEFT-00001234", "masked_pan": "****1111", "currency": "RUB"}
     card_resp = client.post("/api/client/fleet/cards", json=card_payload, headers=_auth_headers(admin_token))
@@ -282,17 +306,16 @@ def test_hard_breach_auto_blocks_card(make_jwt, client: TestClient, db_session: 
         audit_event_id=None,
     )
     db_session.add(limit)
-    policy = FleetNotificationPolicy(
+    policy = FleetActionPolicy(
         client_id=client_id,
-        scope_type=FleetNotificationPolicyScopeType.CLIENT,
+        scope_type=FleetActionPolicyScopeType.CLIENT,
         scope_id=None,
-        event_type=FleetNotificationEventType.LIMIT_BREACH,
-        severity_min=FleetNotificationSeverity.MEDIUM,
-        channels=["WEBHOOK"],
+        trigger_type=FleetActionTriggerType.LIMIT_BREACH,
+        trigger_severity_min=FleetNotificationSeverity.LOW,
+        breach_kind=FleetActionBreachKind.HARD,
+        action=FleetActionPolicyAction.AUTO_BLOCK_CARD,
         cooldown_seconds=300,
         active=True,
-        action_on_critical=FuelLimitEscalationAction.AUTO_BLOCK_CARD,
-        hard_breach_only=True,
     )
     db_session.add(policy)
     db_session.commit()
@@ -313,8 +336,10 @@ def test_hard_breach_auto_blocks_card(make_jwt, client: TestClient, db_session: 
 
     card = db_session.query(FuelCard).filter(FuelCard.id == card_id).one()
     assert card.status == FuelCardStatus.BLOCKED
-    escalation = db_session.query(FuelLimitEscalation).one()
-    assert escalation.status == FuelLimitEscalationStatus.APPLIED
+    status_event = db_session.query(FuelCardStatusEvent).filter(FuelCardStatusEvent.card_id == card_id).one()
+    assert status_event.to_status == FuelCardStatus.BLOCKED
+    execution = db_session.query(FleetPolicyExecution).one()
+    assert execution.status == FleetPolicyExecutionStatus.APPLIED
 
 
 def test_outbox_dedupe(db_session: Session) -> None:

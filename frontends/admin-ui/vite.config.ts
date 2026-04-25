@@ -7,6 +7,14 @@ const resolveBasePath = (env: Record<string, string>, fallback: string) => {
   return rawBase.endsWith("/") ? rawBase : `${rawBase}/`;
 };
 
+const splitVendorChunk = (id: string) => {
+  if (!id.includes("node_modules")) return undefined;
+  if (id.includes("react-router-dom")) return "vendor-router";
+  if (id.includes("@tanstack")) return "vendor-query";
+  if (id.includes("react")) return "vendor-react";
+  return "vendor";
+};
+
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
 
@@ -29,6 +37,13 @@ export default defineConfig(({ mode }) => {
     preview: {
       host: true,
       port: 8080,
+    },
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks: splitVendorChunk,
+        },
+      },
     },
     test: {
       environment: "jsdom",

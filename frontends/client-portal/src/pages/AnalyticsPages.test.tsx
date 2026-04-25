@@ -1,11 +1,17 @@
 import { render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { App } from "../App";
 import type { AuthSession } from "../api/types";
+import { AuthProvider } from "../auth/AuthContext";
+import { I18nProvider } from "../i18n";
+import { AnalyticsDashboardPage } from "./AnalyticsDashboardPage";
+import { AnalyticsDeclinesPage } from "./AnalyticsDeclinesPage";
+import { AnalyticsExportsPage } from "./AnalyticsExportsPage";
+import { AnalyticsMarketplacePage } from "./AnalyticsMarketplacePage";
+import { AnalyticsSpendPage } from "./AnalyticsSpendPage";
 
 const ownerSession: AuthSession = {
-  token: "token-analytics",
+  token: "test.analytics.owner",
   email: "owner@demo.test",
   roles: ["CLIENT_OWNER"],
   subjectType: "CLIENT",
@@ -14,7 +20,7 @@ const ownerSession: AuthSession = {
 };
 
 const userSession: AuthSession = {
-  token: "token-user",
+  token: "test.analytics.user",
   email: "user@demo.test",
   roles: ["CLIENT_USER"],
   subjectType: "CLIENT",
@@ -143,8 +149,18 @@ const explainInsightsPayload = {
 describe("Analytics pages", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
     vi.restoreAllMocks();
   });
+
+  const renderAnalyticsPage = (initialEntry: string, session: AuthSession, page: JSX.Element) =>
+    render(
+      <MemoryRouter initialEntries={[initialEntry]}>
+        <I18nProvider locale="ru">
+          <AuthProvider initialSession={session}>{page}</AuthProvider>
+        </I18nProvider>
+      </MemoryRouter>,
+    );
 
   it("renders analytics dashboard with attention link", async () => {
     const fetchMock = vi.fn((input: RequestInfo) => {
@@ -165,18 +181,14 @@ describe("Analytics pages", () => {
     });
     vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
 
-    render(
-      <MemoryRouter initialEntries={["/analytics"]}>
-        <App initialSession={ownerSession} />
-      </MemoryRouter>,
-    );
+    renderAnalyticsPage("/analytics", ownerSession, <AnalyticsDashboardPage />);
 
     expect(await screen.findByText(/CFO-дешборд/i)).toBeInTheDocument();
     const attentionLink = await screen.findByRole("link", { name: /3 документа ждут подписи/i });
     expect(attentionLink).toHaveAttribute("href", "/documents?requiresAction=yes");
   });
 
-  it("shows empty state when declines data is missing", async () => {
+  it("shows production empty state when declines data is missing", async () => {
     const emptyDeclinesPayload = {
       total: 0,
       top_reasons: [],
@@ -196,11 +208,27 @@ describe("Analytics pages", () => {
     });
     vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
 
-    render(
-      <MemoryRouter initialEntries={["/analytics/declines"]}>
-        <App initialSession={ownerSession} />
-      </MemoryRouter>,
-    );
+    renderAnalyticsPage("/analytics/declines", ownerSession, <AnalyticsDeclinesPage />);
+
+    expect(await screen.findByText(/Недостаточно данных за выбранный период/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Данные в демо появятся позже/i)).not.toBeInTheDocument();
+  });
+
+  it("uses demo analytics fallback only when demo mode is explicit", async () => {
+    vi.stubEnv("VITE_DEMO_MODE", "true");
+    const fetchMock = vi.fn((input: RequestInfo) => {
+      const url = input.toString();
+      if (url.includes("/bi/declines")) {
+        return Promise.resolve(new Response(JSON.stringify({ detail: "not found" }), { status: 404 }));
+      }
+      if (url.includes("/explain/insights")) {
+        return Promise.resolve(new Response(JSON.stringify(explainInsightsPayload), { status: 200 }));
+      }
+      return Promise.resolve(new Response(JSON.stringify({}), { status: 200 }));
+    });
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+
+    renderAnalyticsPage("/analytics/declines", ownerSession, <AnalyticsDeclinesPage />);
 
     expect(await screen.findByText(/Данные в демо появятся позже/i)).toBeInTheDocument();
   });
@@ -215,16 +243,12 @@ describe("Analytics pages", () => {
     });
     vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
 
-    render(
-      <MemoryRouter initialEntries={["/analytics/exports"]}>
-        <App initialSession={userSession} />
-      </MemoryRouter>,
-    );
+    renderAnalyticsPage("/analytics/exports", userSession, <AnalyticsExportsPage />);
 
     expect(await screen.findByText(/Финансовая аналитика доступна/i)).toBeInTheDocument();
   });
 
-  it("renders spend analytics empty state", async () => {
+  it("renders spend analytics production empty state", async () => {
     const fetchMock = vi.fn((input: RequestInfo) => {
       const url = input.toString();
       if (url.includes("/bi/spend/summary")) {
@@ -234,13 +258,10 @@ describe("Analytics pages", () => {
     });
     vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
 
-    render(
-      <MemoryRouter initialEntries={["/analytics/spend"]}>
-        <App initialSession={ownerSession} />
-      </MemoryRouter>,
-    );
+    renderAnalyticsPage("/analytics/spend", ownerSession, <AnalyticsSpendPage />);
 
-    expect(await screen.findByText(/Данные в демо появятся позже/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Недостаточно данных за выбранный период/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Данные в демо появятся позже/i)).not.toBeInTheDocument();
   });
 
   it("renders marketplace analytics empty state", async () => {
@@ -253,11 +274,7 @@ describe("Analytics pages", () => {
     });
     vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
 
-    render(
-      <MemoryRouter initialEntries={["/analytics/marketplace"]}>
-        <App initialSession={ownerSession} />
-      </MemoryRouter>,
-    );
+    renderAnalyticsPage("/analytics/marketplace", ownerSession, <AnalyticsMarketplacePage />);
 
     const emptyStates = await screen.findAllByText(/Недостаточно данных за выбранный период/i);
     expect(emptyStates.length).toBeGreaterThan(0);

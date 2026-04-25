@@ -18,6 +18,7 @@ from app.models.clearing_batch_operation import ClearingBatchOperation
 from app.models.fuel import FuelNetwork, FuelNetworkStatus, FuelStation, FuelStationStatus
 from app.models.operation import Operation, OperationStatus, OperationType
 from app.models.station_margin import StationMarginDay
+from app.services import commercial_margin
 from app.services.commercial_margin import MarginMappingError, discover_margin_mapping, margin_build_daily
 
 
@@ -103,7 +104,7 @@ def test_margin_builder_computes_station_day_and_is_idempotent() -> None:
         assert round(totals[str(station_a.id)].margin_pct, 4) == round(50.0 / 150.0, 4)
 
 
-def test_margin_endpoint_returns_sorted() -> None:
+def test_margin_endpoint_returns_sorted(monkeypatch: pytest.MonkeyPatch) -> None:
     session_local = _setup_session()
     with session_local() as db:
         network = FuelNetwork(name="NET", provider_code="P", status=FuelNetworkStatus.ACTIVE)
@@ -134,6 +135,7 @@ def test_margin_endpoint_returns_sorted() -> None:
 
     app.dependency_overrides[get_db] = override_get_db
 
+    monkeypatch.setattr(commercial_margin.settings, "GEO_ANALYTICS_BACKEND", "postgres", raising=False)
     client = TestClient(app)
     resp = client.get("/api/v1/commercial/margin/stations?date_from=2026-02-14&date_to=2026-02-14&sort_by=gross_margin&order=desc&limit=20")
     assert resp.status_code == 200

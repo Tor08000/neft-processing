@@ -33,5 +33,5 @@ Partner lists EDO documents, downloads artifacts, and acknowledges receipt.
 
 ## VERIFIED
 - pytest: `platform/processing-core/app/tests/test_edo_events.py`.
-- smoke cmd: `scripts/smoke_partner_documents.cmd` (placeholder).
-- PASS: list/details/artifacts endpoints return data.
+- smoke cmd: `scripts/smoke_partner_documents.cmd`.
+- PASS: partner login + `portal/me` resolve partner context; seeded partner EDO document is visible through list/details/artifacts/transitions and acknowledgement responds successfully.

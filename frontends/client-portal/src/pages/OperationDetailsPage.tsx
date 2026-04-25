@@ -58,9 +58,6 @@ export function OperationDetailsPage() {
           <button type="button" className="secondary" onClick={() => setIsSupportOpen(true)}>
             Сообщить о проблеме
           </button>
-          <button type="button" className="secondary" disabled>
-            Скачать чек (если доступен)
-          </button>
         </div>
       </div>
 
@@ -161,15 +158,17 @@ export function OperationDetailsPage() {
             >
               Показать на карте
             </button>
-            <button
-              type="button"
-              className="secondary"
-              disabled={!operation.station.nav_url}
-              title={!operation.station.nav_url ? "Нет координат станции" : undefined}
-              onClick={() => operation.station?.nav_url && window.open(operation.station.nav_url, "_blank", "noopener,noreferrer")}
-            >
-              Проложить маршрут
-            </button>
+            {operation.station.nav_url ? (
+              <button
+                type="button"
+                className="secondary"
+                onClick={() => window.open(operation.station!.nav_url!, "_blank", "noopener,noreferrer")}
+              >
+                Проложить маршрут
+              </button>
+            ) : (
+              <span className="muted small">Координаты станции недоступны.</span>
+            )}
           </div>
         </div>
       ) : null}

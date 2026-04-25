@@ -2,6 +2,7 @@ import importlib
 from types import SimpleNamespace
 
 import pytest
+import sqlalchemy as sa
 
 
 migration = importlib.import_module("app.alembic.versions.20260110_0010_clearing")
@@ -73,6 +74,34 @@ class DummyOp:
 def _run_upgrade(monkeypatch: pytest.MonkeyPatch, connection: DummyConnection):
     dummy_op = DummyOp(connection)
     monkeypatch.setattr(migration, "op", dummy_op)
+    created_tables: set[str] = set()
+    created_indexes: set[str] = set()
+
+    def create_table_if_not_exists(bind, table_name, *args, **kwargs):  # noqa: ARG001
+        if table_name in connection.tables:
+            return
+        created_tables.add(table_name)
+        connection.tables.add(table_name)
+        dummy_op.created_tables.append(table_name)
+
+    def create_index_if_not_exists(bind, index_name, table_name, columns, **kwargs):  # noqa: ARG001
+        if index_name in created_indexes:
+            return
+        created_indexes.add(index_name)
+        connection.indexes.add(index_name)
+        qualified_table = f"{kwargs['schema']}.{table_name}" if kwargs.get("schema") else table_name
+        connection.executed.append(
+            f"CREATE INDEX IF NOT EXISTS {index_name} ON {qualified_table} ({', '.join(columns)})"
+        )
+
+    monkeypatch.setattr(migration, "ensure_pg_enum", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        migration,
+        "safe_enum",
+        lambda *args, **kwargs: sa.Enum(*migration.BATCH_STATUS_VALUES, name="clearing_batch_status", native_enum=False),
+    )
+    monkeypatch.setattr(migration, "create_table_if_not_exists", create_table_if_not_exists)
+    monkeypatch.setattr(migration, "create_index_if_not_exists", create_index_if_not_exists)
     migration.upgrade()
     return dummy_op
 

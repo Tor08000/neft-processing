@@ -3,6 +3,8 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from uuid import uuid4
 
+import pytest
+
 from app.models.fuel import (
     FleetNotificationChannel,
     FleetNotificationChannelStatus,
@@ -25,9 +27,20 @@ from app.models.fuel import (
 )
 from app.services.fleet_notification_dispatcher import dispatch_outbox_item, enqueue_breach_notification
 from app.services.notifications.telegram_sender import TelegramSendResult
+from app.tests._fuel_runtime_test_harness import (
+    FLEET_NOTIFICATION_TELEGRAM_TEST_TABLES,
+    fuel_runtime_session_context,
+)
+
+
+@pytest.fixture()
+def db_session():
+    with fuel_runtime_session_context(tables=FLEET_NOTIFICATION_TELEGRAM_TEST_TABLES) as session:
+        yield session
 
 
 def test_breach_dispatches_telegram_notification(monkeypatch, db_session) -> None:
+    monkeypatch.setattr("app.services.fleet_notification_dispatcher.fleet_service._emit_event", lambda *args, **kwargs: str(uuid4()))
     client_id = str(uuid4())
     card = FuelCard(
         tenant_id=1,

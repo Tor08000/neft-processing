@@ -17,8 +17,8 @@ class Principal:
     user_id: UUID | None
     roles: set[str]
     scopes: set[str]
-    client_id: UUID | None
-    partner_id: UUID | None
+    client_id: UUID | str | None
+    partner_id: UUID | str | None
     is_admin: bool
     raw_claims: dict
 
@@ -67,6 +67,18 @@ def _parse_uuid(value: Any) -> UUID | None:
         return None
 
 
+def _parse_context_id(value: Any) -> UUID | str | None:
+    if value is None:
+        return None
+    if isinstance(value, UUID):
+        return value
+    text = str(value).strip()
+    if not text:
+        return None
+    parsed_uuid = _parse_uuid(text)
+    return parsed_uuid or text
+
+
 def _collect_raw_roles(claims: dict) -> list[str]:
     raw_roles: list[str] = []
     roles = claims.get("roles") or []
@@ -96,8 +108,8 @@ def _principal_from_claims(claims: dict) -> Principal:
         roles.add(subject_role)
 
     user_id = _parse_uuid(claims.get("user_id") or claims.get("sub"))
-    client_id = _parse_uuid(claims.get("client_id"))
-    partner_id = _parse_uuid(claims.get("partner_id"))
+    client_id = _parse_context_id(claims.get("client_id"))
+    partner_id = _parse_context_id(claims.get("partner_id"))
     scopes = _parse_scopes(claims)
 
     return Principal(
@@ -108,6 +120,48 @@ def _principal_from_claims(claims: dict) -> Principal:
         partner_id=partner_id,
         is_admin="admin" in roles,
         raw_claims=claims,
+    )
+
+
+def _resolve_partner_context(principal: Principal) -> Principal:
+    raw_claims = principal.raw_claims if isinstance(principal.raw_claims, dict) else {}
+    subject_type = str(raw_claims.get("subject_type") or "").strip().lower()
+    raw_partner_id = raw_claims.get("partner_id")
+    if subject_type != "partner_user":
+        return principal
+    if isinstance(principal.partner_id, UUID):
+        return principal
+    if raw_partner_id and _parse_uuid(raw_partner_id):
+        return principal
+
+    try:
+        from app.db import get_sessionmaker
+        from app.services.partner_context import resolve_partner_id_from_claims
+    except Exception:
+        return principal
+
+    db = get_sessionmaker()()
+    try:
+        canonical_partner_id = resolve_partner_id_from_claims(db, claims=raw_claims)
+    except Exception:
+        canonical_partner_id = None
+    finally:
+        db.close()
+
+    resolved_partner_id = _parse_context_id(canonical_partner_id)
+    if resolved_partner_id is None:
+        return principal
+
+    resolved_claims = dict(raw_claims)
+    resolved_claims["partner_id"] = str(resolved_partner_id)
+    return Principal(
+        user_id=principal.user_id,
+        roles=principal.roles,
+        scopes=principal.scopes,
+        client_id=principal.client_id,
+        partner_id=resolved_partner_id,
+        is_admin=principal.is_admin,
+        raw_claims=resolved_claims,
     )
 
 
@@ -124,7 +178,7 @@ def get_principal(request: Request) -> Principal:
         except HTTPException as exc:
             last_exc = exc
             continue
-        return _principal_from_claims(verified_claims)
+        return _resolve_partner_context(_principal_from_claims(verified_claims))
     raise HTTPException(status_code=401, detail="Invalid bearer token") from last_exc
 
 
@@ -139,7 +193,7 @@ def get_portal_principal(request: Request) -> Principal:
     }
     verifier = verifier_map.get(token_kind, client_auth.verify_client_token)
     verified_claims = verifier(token)
-    return _principal_from_claims(verified_claims)
+    return _resolve_partner_context(_principal_from_claims(verified_claims))
 
 
 __all__ = ["Principal", "get_principal", "get_portal_principal", "principal_context"]

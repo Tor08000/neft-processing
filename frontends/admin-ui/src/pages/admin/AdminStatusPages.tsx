@@ -1,6 +1,7 @@
 import React from "react";
 import { Link } from "react-router-dom";
 import { EmptyState } from "@shared/brand/components";
+import { adminStatusCopy } from "./runtimeStatusCopy";
 
 interface AdminStatusProps {
   requestId?: string;
@@ -18,21 +19,21 @@ const RequestMeta: React.FC<AdminStatusProps> = ({ requestId, errorId }) => {
 };
 
 export const AdminLoadingPage: React.FC = () => (
-  <EmptyState title="Загрузка" description="Проверяем доступ к админ-порталу..." />
+  <EmptyState title={adminStatusCopy.loading.title} description={adminStatusCopy.loading.description} />
 );
 
 export const AdminUnauthorizedPage: React.FC<AdminStatusProps> = ({ requestId, errorId }) => (
   <EmptyState
-    title="Требуется вход"
+    title={adminStatusCopy.unauthorized.title}
     description={
       <>
-        Войдите в админ-портал, чтобы продолжить работу.
+        {adminStatusCopy.unauthorized.description}
         <RequestMeta requestId={requestId} errorId={errorId} />
       </>
     }
     action={
       <Link className="ghost neft-btn-secondary" to="/login">
-        Войти
+        {adminStatusCopy.unauthorized.action}
       </Link>
     }
   />
@@ -43,13 +44,13 @@ export const AdminForbiddenPage: React.FC<AdminStatusProps> = ({ requestId, erro
     title="FORBIDDEN_ROLE"
     description={
       <>
-        У вас нет прав доступа к этому разделу.
+        {adminStatusCopy.forbidden.description}
         <RequestMeta requestId={requestId} errorId={errorId} />
       </>
     }
     action={
       <Link className="ghost neft-btn-secondary" to="/">
-        Вернуться на главную
+        {adminStatusCopy.forbidden.action}
       </Link>
     }
   />
@@ -57,11 +58,11 @@ export const AdminForbiddenPage: React.FC<AdminStatusProps> = ({ requestId, erro
 
 export const AdminNotFoundPage: React.FC = () => (
   <EmptyState
-    title="404 — Страница не найдена"
-    description="Проверьте адрес и попробуйте снова."
+    title={adminStatusCopy.notFound.title}
+    description={adminStatusCopy.notFound.description}
     action={
       <Link className="ghost neft-btn-secondary" to="/">
-        На главную
+        {adminStatusCopy.notFound.action}
       </Link>
     }
   />
@@ -72,13 +73,13 @@ export const AdminMisconfigPage: React.FC<AdminStatusProps> = ({ requestId, erro
     title="MISCONFIG"
     description={
       <>
-        Проверьте настройки роутинга admin API (ожидали /api/core/v1/admin).
+        {adminStatusCopy.misconfig.description}
         <RequestMeta requestId={requestId} errorId={errorId} />
       </>
     }
     action={
       <Link className="ghost neft-btn-secondary" to="/login">
-        Перейти к входу
+        {adminStatusCopy.misconfig.action}
       </Link>
     }
   />
@@ -86,15 +87,15 @@ export const AdminMisconfigPage: React.FC<AdminStatusProps> = ({ requestId, erro
 
 export const AdminCrashPage: React.FC = () => (
   <EmptyState
-    title="Техническая ошибка"
-    description="Произошла непредвиденная ошибка. Попробуйте обновить страницу."
+    title={adminStatusCopy.crash.title}
+    description={adminStatusCopy.crash.description}
     action={
       <div className="actions">
         <Link className="ghost neft-btn-secondary" to="/">
-          На главную
+          {adminStatusCopy.crash.homeAction}
         </Link>
         <button className="ghost neft-btn-secondary" type="button" onClick={() => window.location.reload()}>
-          Обновить
+          {adminStatusCopy.crash.refreshAction}
         </button>
       </div>
     }
@@ -107,20 +108,20 @@ export const AdminTechErrorPage: React.FC<AdminStatusProps & { message?: string 
   message,
 }) => (
   <EmptyState
-    title="Техническая ошибка"
+    title={adminStatusCopy.techError.title}
     description={
       <>
-        {message ?? "Не удалось загрузить данные админ-портала. Попробуйте позже."}
+        {message ?? adminStatusCopy.techError.fallbackMessage}
         <RequestMeta requestId={requestId} errorId={errorId} />
       </>
     }
     action={
       <div className="actions">
         <Link className="ghost neft-btn-secondary" to="/">
-          На главную
+          {adminStatusCopy.techError.homeAction}
         </Link>
         <button className="ghost neft-btn-secondary" type="button" onClick={() => window.location.reload()}>
-          Обновить
+          {adminStatusCopy.techError.refreshAction}
         </button>
       </div>
     }
@@ -132,13 +133,13 @@ export const AdminServiceUnavailablePage: React.FC<AdminStatusProps> = ({ reques
     title="SERVICE_UNAVAILABLE"
     description={
       <>
-        Сервис временно недоступен. Попробуйте позже.
+        {adminStatusCopy.serviceUnavailable.description}
         <RequestMeta requestId={requestId} />
       </>
     }
     action={
       <Link className="ghost neft-btn-secondary" to="/">
-        На главную
+        {adminStatusCopy.serviceUnavailable.action}
       </Link>
     }
   />

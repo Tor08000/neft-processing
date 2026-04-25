@@ -7,8 +7,8 @@ export function NotFoundPage() {
       title="Страница не найдена"
       description="Проверьте адрес или вернитесь в кабинет партнёра."
       action={
-        <Link className="ghost neft-btn-secondary" to="/products">
-          К продуктам
+        <Link className="ghost neft-btn-secondary" to="/">
+          В кабинет
         </Link>
       }
     />

@@ -19,7 +19,7 @@ def _route_count(method: str, path: str) -> int:
 def test_partner_routes_registered_once() -> None:
     expected_routes = [
         ("GET", "/api/partner/profile"),
-        ("POST", "/api/partner/profile"),
+        ("PATCH", "/api/partner/profile"),
         ("GET", "/api/partner/orders"),
         ("GET", "/api/partner/orders/{order_id}"),
         ("POST", "/api/partner/orders/{order_id}/accept"),

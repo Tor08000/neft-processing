@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from contextlib import nullcontext
+from dataclasses import dataclass
 from datetime import date
 
+from sqlalchemy import MetaData, Table, select
 from sqlalchemy.orm import Session
 
 from app.db import get_sessionmaker
@@ -10,6 +13,64 @@ from app.models.billing_summary import BillingSummary, BillingSummaryStatus
 from app.models.billing_job_run import BillingJobType
 from app.models.clearing import Clearing
 from app.services.billing_job_runs import BillingJobRunService
+
+
+@dataclass(slots=True)
+class _ClearingSummaryRow:
+    id: str
+    client_id: str | None
+    merchant_id: str
+    product_type: str | None
+    currency: str | None
+    total_amount: int
+    total_quantity: float | None
+    operations_count: int
+    commission_amount: int
+
+
+def _reflect_billing_summary_table(session: Session) -> Table:
+    metadata = MetaData()
+    return Table(BillingSummary.__tablename__, metadata, autoload_with=session.connection())
+
+
+def _load_summary_rows(
+    session: Session,
+    *,
+    clearing_date: date,
+    status: str | None = None,
+) -> list[_ClearingSummaryRow]:
+    table = _reflect_billing_summary_table(session)
+    filters = [table.c.billing_date == clearing_date]
+    if status is not None and "status" in table.c:
+        filters.append(table.c.status == status)
+
+    stmt = select(
+        table.c.id,
+        table.c.client_id,
+        table.c.merchant_id,
+        table.c.product_type,
+        table.c.currency,
+        table.c.total_amount,
+        table.c.total_quantity,
+        table.c.operations_count,
+        table.c.commission_amount,
+    ).where(*filters)
+
+    rows = session.execute(stmt).mappings().all()
+    return [
+        _ClearingSummaryRow(
+            id=str(row["id"]),
+            client_id=str(row["client_id"]) if row["client_id"] is not None else None,
+            merchant_id=str(row["merchant_id"]),
+            product_type=str(row["product_type"]) if row["product_type"] is not None else None,
+            currency=str(row["currency"]) if row["currency"] is not None else None,
+            total_amount=int(row["total_amount"] or 0),
+            total_quantity=float(row["total_quantity"]) if row["total_quantity"] is not None else None,
+            operations_count=int(row["operations_count"] or 0),
+            commission_amount=int(row["commission_amount"] or 0),
+        )
+        for row in rows
+    ]
 
 
 async def generate_clearing_batches_for_date(
@@ -28,15 +89,12 @@ async def generate_clearing_batches_for_date(
     should_close = session is None
     session = session or get_sessionmaker()()
     try:
-        with session.begin():
-            summaries = (
-                session.query(BillingSummary)
-                .filter(BillingSummary.billing_date == clearing_date)
-                .all()
-            )
+        txn_context = nullcontext() if session.in_transaction() else session.begin()
+        with txn_context:
+            summaries = _load_summary_rows(session, clearing_date=clearing_date)
 
             if not summaries:
-                return
+                return []
 
             grouped: dict[tuple[str, str], list[BillingSummary]] = defaultdict(list)
             for summary in summaries:
@@ -55,14 +113,12 @@ async def generate_clearing_batches_for_date(
                     {
                         "id": item.id,
                         "client_id": item.client_id,
-                        "product_type": item.product_type.value if item.product_type else None,
+                        "product_type": item.product_type,
                         "currency": item.currency,
-                        "total_amount": int(item.total_amount or 0),
-                        "total_quantity": float(item.total_quantity)
-                        if item.total_quantity is not None
-                        else None,
-                        "operations_count": int(item.operations_count or 0),
-                        "commission_amount": int(item.commission_amount or 0),
+                        "total_amount": item.total_amount,
+                        "total_quantity": item.total_quantity,
+                        "operations_count": item.operations_count,
+                        "commission_amount": item.commission_amount,
                     }
                     for item in items
                 ]
@@ -80,6 +136,7 @@ async def generate_clearing_batches_for_date(
                         details=details,
                     )
                     session.add(clearing)
+            session.flush()
         updated_batches = (
             session.query(Clearing)
             .filter(Clearing.batch_date == clearing_date)
@@ -106,32 +163,6 @@ def _apply_filters(
     return query
 
 
-def list_clearing_batches(
-    db,
-    *,
-    date_from: date | None,
-    date_to: date | None,
-    merchant_id: str | None,
-    status: str | None,
-    limit: int,
-    offset: int,
-) -> tuple[list[Clearing], int]:
-    query = db.query(Clearing)
-    query = _apply_filters(query, merchant_id, status, date_from, date_to)
-    total = query.count()
-    batches = (
-        query.order_by(Clearing.batch_date.desc(), Clearing.created_at.desc())
-        .offset(offset)
-        .limit(limit)
-        .all()
-    )
-    return batches, total
-
-
-def load_clearing_batch(db, batch_id: str) -> Clearing | None:
-    return db.query(Clearing).filter(Clearing.id == batch_id).first()
-
-
 def run_admin_clearing(db: Session, *, clearing_date: date) -> dict:
     """
     Idempotent clearing run:
@@ -150,11 +181,10 @@ def run_admin_clearing(db: Session, *, clearing_date: date) -> dict:
             db.commit()
             return metrics
 
-        summaries = (
-            db.query(BillingSummary)
-            .filter(BillingSummary.billing_date == clearing_date)
-            .filter(BillingSummary.status == BillingSummaryStatus.FINALIZED)
-            .all()
+        summaries = _load_summary_rows(
+            db,
+            clearing_date=clearing_date,
+            status=BillingSummaryStatus.FINALIZED.value,
         )
         if not summaries:
             metrics = {"created": 0, "reason": "no_data"}
@@ -173,12 +203,12 @@ def run_admin_clearing(db: Session, *, clearing_date: date) -> dict:
                 {
                     "id": item.id,
                     "client_id": item.client_id,
-                    "product_type": item.product_type.value if item.product_type else None,
+                    "product_type": item.product_type,
                     "currency": item.currency,
-                    "total_amount": int(item.total_amount or 0),
-                    "total_quantity": float(item.total_quantity) if item.total_quantity is not None else None,
-                    "operations_count": int(item.operations_count or 0),
-                    "commission_amount": int(item.commission_amount or 0),
+                    "total_amount": item.total_amount,
+                    "total_quantity": item.total_quantity,
+                    "operations_count": item.operations_count,
+                    "commission_amount": item.commission_amount,
                 }
                 for item in items
             ]

@@ -125,7 +125,6 @@ class MarketplaceOrder(Base):
     price = Column(Numeric(18, 4), nullable=True)
     discount = Column(Numeric(18, 4), nullable=True)
     final_price = Column(Numeric(18, 4), nullable=True)
-    commission_snapshot = Column(JSON_TYPE, nullable=True)
     commission = Column(Numeric(18, 4), nullable=True)
     payment_flow = Column(
         ExistingEnum(MarketplacePaymentFlow, name="marketplace_payment_flow"),
@@ -145,6 +144,21 @@ class MarketplaceOrder(Base):
     audit_event_id = Column(String(36), nullable=True)
     external_ref = Column(Text, nullable=True)
     meta = Column(JSON_TYPE, nullable=True)
+
+    @property
+    def commission_snapshot(self) -> dict | None:
+        meta = self.meta if isinstance(self.meta, dict) else {}
+        snapshot = meta.get("commission_snapshot") if meta else None
+        return snapshot if isinstance(snapshot, dict) else None
+
+    @commission_snapshot.setter
+    def commission_snapshot(self, value: dict | None) -> None:
+        meta = dict(self.meta or {})
+        if value is None:
+            meta.pop("commission_snapshot", None)
+        else:
+            meta["commission_snapshot"] = value
+        self.meta = meta or None
 
 
 class MarketplaceOrderLine(Base):
@@ -182,8 +196,6 @@ class MarketplaceOrderEvent(Base):
 
     id = Column(GUID(), primary_key=True, default=new_uuid_str)
     order_id = Column(GUID(), ForeignKey("marketplace_orders.id", ondelete="RESTRICT"), nullable=False, index=True)
-    client_id = Column(String(64), nullable=True, index=True)
-    partner_id = Column(String(64), nullable=True, index=True)
     event_type = Column(
         ExistingEnum(MarketplaceOrderEventType, name="marketplace_order_event_type"), nullable=False
     )
@@ -205,7 +217,7 @@ class MarketplaceOrderEvent(Base):
         nullable=False,
     )
     actor_id = Column(GUID(), nullable=True)
-    audit_event_id = Column(GUID(), ForeignKey("case_events.id", ondelete="RESTRICT"), nullable=False)
+    audit_event_id = Column(String(36), ForeignKey("case_events.id", ondelete="RESTRICT"), nullable=False)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
 

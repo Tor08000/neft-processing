@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 
@@ -15,7 +17,7 @@ from app.schemas.billing_payment_intakes import (
 )
 from app.services.audit_service import AuditService, _sanitize_token_for_audit, request_context_from_request
 from app.services.billing_payment_intakes import (
-    get_invoice,
+    approve_invoice_payment_intake,
     get_payment_intake,
     list_payment_intakes,
     review_payment_intake,
@@ -23,10 +25,26 @@ from app.services.billing_payment_intakes import (
 from app.services.client_notifications import ClientNotificationSeverity, create_notification, resolve_client_email
 from app.services.entitlements_v2_service import get_org_entitlements_snapshot
 from app.services.payment_intake_attachment_storage import PaymentIntakeAttachmentStorage
-from app.services.subscription_billing import update_invoice_status
 
 
 router = APIRouter(prefix="/billing/payment-intakes", tags=["admin-billing"])
+
+
+def _invoice_identifier(value: Any) -> str | int | None:
+    if value is None:
+        return None
+    if isinstance(value, (str, int)):
+        return value
+    return str(value)
+
+
+def _entitlements_org_id(*, invoice: dict | None, intake: dict) -> int:
+    invoice_org_id = invoice.get("org_id") if invoice else None
+    if isinstance(invoice_org_id, int):
+        return invoice_org_id
+    if isinstance(invoice_org_id, str) and invoice_org_id.isdigit():
+        return int(invoice_org_id)
+    return int(intake["org_id"])
 
 
 def _serialize_payment_intake(row: dict, *, proof_url: str | None = None) -> PaymentIntakeOut:
@@ -41,7 +59,7 @@ def _serialize_payment_intake(row: dict, *, proof_url: str | None = None) -> Pay
     return PaymentIntakeOut(
         id=row["id"],
         org_id=row["org_id"],
-        invoice_id=row["invoice_id"],
+        invoice_id=_invoice_identifier(row["invoice_id"]),
         status=row["status"],
         amount=row["amount"],
         currency=row["currency"],
@@ -108,17 +126,21 @@ def approve_payment_intake(
     if not updated:
         raise HTTPException(status_code=404, detail="payment_intake_not_found")
 
-    invoice = get_invoice(db, invoice_id=intake["invoice_id"])
+    request_ctx = request_context_from_request(request, token=_sanitize_token_for_audit(token))
+    try:
+        invoice = approve_invoice_payment_intake(db, intake=intake, request_ctx=request_ctx)
+    except ValueError as exc:
+        detail = str(exc)
+        if detail in {"invoice_already_paid", "payment_amount_exceeds_due"}:
+            raise HTTPException(status_code=409, detail=detail) from exc
+        raise
     if not invoice:
         raise HTTPException(status_code=404, detail="invoice_not_found")
-
-    update_invoice_status(
+    get_org_entitlements_snapshot(
         db,
-        invoice_id=intake["invoice_id"],
-        status="PAID",
-        request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(token)),
+        org_id=_entitlements_org_id(invoice=invoice, intake=intake),
+        force_new_version=True,
     )
-    get_org_entitlements_snapshot(db, org_id=invoice["org_id"])
 
     AuditService(db).audit(
         event_type="INVOICE_MARKED_PAID",
@@ -127,7 +149,7 @@ def approve_payment_intake(
         action="PAID",
         visibility=AuditVisibility.INTERNAL,
         after={"status": "PAID"},
-        request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(token)),
+        request_ctx=request_ctx,
     )
     if invoice.get("subscription_id"):
         AuditService(db).audit(
@@ -137,7 +159,7 @@ def approve_payment_intake(
             action="ACTIVATE",
             visibility=AuditVisibility.INTERNAL,
             after={"status": "ACTIVE"},
-            request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(token)),
+            request_ctx=request_ctx,
         )
 
     AuditService(db).audit(
@@ -152,7 +174,7 @@ def approve_payment_intake(
             "amount": str(intake["amount"]),
             "currency": intake["currency"],
         },
-        request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(token)),
+        request_ctx=request_ctx,
     )
 
     client_email = resolve_client_email(db, str(intake["org_id"]))

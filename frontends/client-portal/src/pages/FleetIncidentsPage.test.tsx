@@ -1,11 +1,11 @@
 import { render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "../App";
 import type { AuthSession } from "../api/types";
 
 const session: AuthSession = {
-  token: "token-1",
+  token: "test.header.payload",
   email: "client@demo.test",
   roles: ["CLIENT_OWNER"],
   subjectType: "CLIENT",
@@ -14,12 +14,20 @@ const session: AuthSession = {
 };
 
 describe("FleetIncidentsPage", () => {
+  beforeEach(() => {
+    vi.stubEnv("VITE_DEMO_MODE", "true");
+  });
+
   afterEach(() => {
     vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
     vi.restoreAllMocks();
+    window.localStorage.clear();
+    window.sessionStorage.clear();
   });
 
   it("renders incidents list", async () => {
+    window.localStorage.setItem("neft.client.mode", "fleet");
     const payload = {
       items: [
         {

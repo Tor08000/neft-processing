@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from fastapi import HTTPException
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.db.types import new_uuid_str
@@ -32,33 +32,52 @@ class ClientDocflowPackagesService:
         doc_ids: list[str] | None = None,
         package_kind: str = "ONBOARDING_SIGNED_SET",
     ) -> ClientDocumentPackage:
-        selected_ids = doc_ids or [
-            str(row.id)
-            for row in self.db.execute(
-                select(ClientGeneratedDocument.id).where(
-                    ClientGeneratedDocument.client_id == client_id,
-                    ClientGeneratedDocument.status == "SIGNED_BY_CLIENT",
-                )
-            ).scalars().all()
-        ]
-        package = self.create_documents_package(client_id=client_id, created_by_user_id=created_by_user_id, doc_ids=selected_ids)
+        if doc_ids:
+            selected_ids = doc_ids
+        elif application_id:
+            selected_ids = [
+                str(row.id)
+                for row in self.db.execute(
+                    select(ClientGeneratedDocument.id).where(
+                        ClientGeneratedDocument.client_application_id == application_id,
+                        ClientGeneratedDocument.status == "SIGNED_BY_CLIENT",
+                    )
+                ).scalars().all()
+            ]
+        else:
+            selected_ids = [
+                str(row.id)
+                for row in self.db.execute(
+                    select(ClientGeneratedDocument.id).where(
+                        ClientGeneratedDocument.client_id == client_id,
+                        ClientGeneratedDocument.status == "SIGNED_BY_CLIENT",
+                    )
+                ).scalars().all()
+            ]
+        package = self.create_documents_package(
+            client_id=client_id,
+            application_id=application_id,
+            created_by_user_id=created_by_user_id,
+            doc_ids=selected_ids,
+        )
         return self.build_package(package.id)
 
     def create_documents_package(
         self,
         *,
         client_id: str,
+        application_id: str | None = None,
         created_by_user_id: str | None,
         doc_ids: list[str],
     ) -> ClientDocumentPackage:
-        docs = self._select_docs(client_id=client_id, doc_ids=doc_ids)
+        docs = self._select_docs(client_id=client_id, application_id=application_id, doc_ids=doc_ids)
         if len(docs) != len(set(doc_ids)):
             raise HTTPException(status_code=403, detail={"reason_code": "document_forbidden"})
 
         package = ClientDocumentPackage(
             id=new_uuid_str(),
             client_id=client_id,
-            application_id=None,
+            application_id=application_id,
             package_kind="DOCUMENTS_EXPORT",
             status="CREATING",
             created_by_user_id=created_by_user_id,
@@ -124,12 +143,15 @@ class ClientDocflowPackagesService:
     def get_package(self, package_id: str) -> ClientDocumentPackage | None:
         return self.db.get(ClientDocumentPackage, package_id)
 
-    def _select_docs(self, *, client_id: str, doc_ids: list[str]) -> list[ClientGeneratedDocument]:
+    def _select_docs(self, *, client_id: str, application_id: str | None, doc_ids: list[str]) -> list[ClientGeneratedDocument]:
         if not doc_ids:
             raise HTTPException(status_code=400, detail={"reason_code": "empty_ids"})
+        owner_filters = [ClientGeneratedDocument.client_id == client_id]
+        if application_id:
+            owner_filters.append(ClientGeneratedDocument.client_application_id == application_id)
         stmt = select(ClientGeneratedDocument).where(
-            ClientGeneratedDocument.client_id == client_id,
             ClientGeneratedDocument.id.in_(doc_ids),
+            or_(*owner_filters),
         )
         return list(self.db.execute(stmt).scalars().all())
 

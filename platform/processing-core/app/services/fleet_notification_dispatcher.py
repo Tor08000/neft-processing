@@ -44,11 +44,41 @@ from app.services.notifications.telegram_templates import render_telegram_messag
 from app.services.notifications.stub_sender import process_stub_delivery_outcomes, send_stub_message
 from app.services.notifications.webhook_signature import build_signature_headers, sign_webhook_v1
 from app.services.notifications.webpush_sender import WebPushSender
+from neft_shared.settings import get_settings
 
 logger = logging.getLogger(__name__)
 
 BACKOFF_SECONDS = [60, 300, 900, 3600, 9000, 18000, 36000, 72000, 144000, 288000]
 MAX_ATTEMPTS = 10
+
+
+class NotificationProviderUnavailableError(RuntimeError):
+    def __init__(self, code: str) -> None:
+        super().__init__(code)
+        self.code = code
+
+
+def _resolve_stub_provider(channel_type: FleetNotificationChannelType) -> str:
+    settings = get_settings()
+    if channel_type == FleetNotificationChannelType.SMS:
+        raw_provider = os.getenv("SMS_PROVIDER", settings.SMS_PROVIDER)
+        expected_provider = "sms_stub"
+        owner = "sms"
+    elif channel_type == FleetNotificationChannelType.VOICE:
+        raw_provider = os.getenv("VOICE_PROVIDER", settings.VOICE_PROVIDER)
+        expected_provider = "voice_stub"
+        owner = "voice"
+    else:
+        raise RuntimeError("unsupported_stub_channel")
+
+    provider = (raw_provider or "").strip().lower()
+    if provider in {"stub", expected_provider}:
+        return expected_provider
+    if provider in {"", "disabled"}:
+        raise NotificationProviderUnavailableError(f"{owner}_provider_disabled")
+    if provider == "degraded":
+        raise NotificationProviderUnavailableError(f"{owner}_provider_degraded")
+    raise RuntimeError(f"unsupported_{owner}_provider:{provider}")
 
 
 @dataclass(frozen=True)
@@ -264,10 +294,8 @@ def _send_stub_notification(
     outbox: FleetNotificationOutbox,
     channel: FleetNotificationChannel,
     payload: dict[str, Any],
-    provider: str,
 ) -> str:
-    if provider not in {"sms_stub", "voice_stub"}:
-        raise RuntimeError("unsupported_stub_provider")
+    provider = _resolve_stub_provider(channel.channel_type)
     tenant_id = payload.get("tenant_id")
     result = send_stub_message(
         db,
@@ -527,7 +555,6 @@ def _dispatch_outbox_item(
                     outbox=outbox,
                     channel=channel,
                     payload=payload,
-                    provider=os.getenv("SMS_PROVIDER", "sms_stub"),
                 )
             elif channel.channel_type == FleetNotificationChannelType.VOICE:
                 outbox.delivery_message_id = _send_stub_notification(
@@ -535,7 +562,6 @@ def _dispatch_outbox_item(
                     outbox=outbox,
                     channel=channel,
                     payload=payload,
-                    provider=os.getenv("VOICE_PROVIDER", "voice_stub"),
                 )
         outbox.status = FleetNotificationOutboxStatus.SENT
         outbox.last_status = "sent"
@@ -548,7 +574,10 @@ def _dispatch_outbox_item(
         outbox.last_error = error
         outbox.channels_attempted = attempted
         outbox.last_status = "failed"
-        if outbox.attempts >= MAX_ATTEMPTS:
+        if isinstance(exc, NotificationProviderUnavailableError):
+            outbox.status = FleetNotificationOutboxStatus.DEAD
+            outbox.next_attempt_at = None
+        elif outbox.attempts >= MAX_ATTEMPTS:
             outbox.status = FleetNotificationOutboxStatus.DEAD
         else:
             outbox.status = FleetNotificationOutboxStatus.FAILED

@@ -214,10 +214,10 @@ def _extract_cursor(rows: list[dict[str, Any]], id_field: str = "entity_id") -> 
     return (str(last_id) if last_id is not None else None), last_ts
 
 
-def sync_clickhouse(db: Session, *, batch_size: int = 5000, retries: int = 3) -> dict[str, int]:
+def sync_clickhouse(db: Session, *, batch_size: int = 5000, retries: int = 3) -> dict[str, int | str]:
     if not settings.BI_CLICKHOUSE_ENABLED:
         logger.info("bi.clickhouse_disabled")
-        return {"synced": 0}
+        return {"synced": 0, "status": "disabled", "reason": "bi_disabled"}
 
     total_synced = 0
     for dataset in DATASETS:

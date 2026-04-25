@@ -1,66 +1,57 @@
-from datetime import date, datetime
-from decimal import Decimal
-from uuid import uuid4
+from datetime import date, datetime, timezone
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from app.db import Base, SessionLocal, engine
-from app.main import app
-from app.models.client import Client
+from app.models.audit_log import AuditLog
 from app.models.contract_limits import TariffPlan
-from app.models.invoice import InvoiceStatus
-from app.models.operation import Operation, OperationStatus, OperationType, ProductType
-from app.repositories.billing_repository import BillingInvoiceData, BillingLineData, BillingRepository
+from app.models.invoice import Invoice, InvoicePdfStatus, InvoiceStatus, InvoiceTransitionLog
 
-
-@pytest.fixture(autouse=True)
-def _setup_db():
-    Base.metadata.drop_all(bind=engine)
-    Base.metadata.create_all(bind=engine)
-    yield
-    Base.metadata.drop_all(bind=engine)
+from ._money_router_harness import (
+    ADMIN_BILLING_INVOICE_TEST_TABLES,
+    admin_billing_client_context,
+    money_session_context,
+)
 
 
 @pytest.fixture
-def session():
-    db = SessionLocal()
-    try:
+def session() -> Session:
+    with money_session_context(tables=ADMIN_BILLING_INVOICE_TEST_TABLES) as db:
         yield db
-    finally:
-        db.close()
 
 
 @pytest.fixture
-def admin_client(admin_auth_headers: dict):
-    with TestClient(app) as api_client:
-        api_client.headers.update(admin_auth_headers)
+def admin_client(session: Session) -> TestClient:
+    with admin_billing_client_context(db_session=session) as api_client:
         yield api_client
 
 
-def _make_operation(*, client_id: str, created_at: datetime, status: OperationStatus, amount: int) -> Operation:
-    return Operation(
-        ext_operation_id=f"ext-{created_at.timestamp()}",
-        operation_type=OperationType.COMMIT,
-        status=status,
-        created_at=created_at,
-        updated_at=created_at,
-        merchant_id="m-1",
-        terminal_id="t-1",
+def _make_invoice(
+    *,
+    invoice_id: str,
+    client_id: str,
+    period_from: date,
+    period_to: date,
+    status: InvoiceStatus,
+    created_at: datetime,
+    pdf_status: InvoicePdfStatus = InvoicePdfStatus.NONE,
+) -> Invoice:
+    total_amount = 1500 if invoice_id.endswith("issued") else 1000
+    return Invoice(
+        id=invoice_id,
         client_id=client_id,
-        card_id="card-1",
-        product_id="prod-1",
-        product_type=ProductType.AI92,
-        amount=amount,
+        period_from=period_from,
+        period_to=period_to,
         currency="RUB",
-        quantity=Decimal("10.000"),
-        unit_price=Decimal("10.000"),
-        captured_amount=0,
-        refunded_amount=0,
-        response_code="00",
-        response_message="OK",
-        authorized=True,
+        total_amount=total_amount,
+        tax_amount=0,
+        total_with_tax=total_amount,
+        amount_paid=0,
+        amount_due=total_amount,
+        status=status,
+        pdf_status=pdf_status,
+        created_at=created_at,
     )
 
 
@@ -104,30 +95,27 @@ def test_admin_tariff_price_crud(admin_client: TestClient, session: Session):
 
 
 def test_admin_invoice_listing_filters(admin_client: TestClient, session: Session):
-    repo = BillingRepository(session)
     period_from = date(2024, 5, 1)
     period_to = date(2024, 5, 31)
 
-    issued = repo.create_invoice(
-        BillingInvoiceData(
-            client_id="client-1",
-            period_from=period_from,
-            period_to=period_to,
-            currency="RUB",
-            lines=[BillingLineData(product_id="prod-1", liters=None, unit_price=None, line_amount=1000)],
-            status=InvoiceStatus.ISSUED,
-        )
+    issued = _make_invoice(
+        invoice_id="inv-issued",
+        client_id="client-1",
+        period_from=period_from,
+        period_to=period_to,
+        status=InvoiceStatus.ISSUED,
+        created_at=datetime(2024, 5, 31, 12, 0, tzinfo=timezone.utc),
     )
-    repo.create_invoice(
-        BillingInvoiceData(
-            client_id="client-2",
-            period_from=period_from,
-            period_to=period_to,
-            currency="RUB",
-            lines=[BillingLineData(product_id="prod-2", liters=None, unit_price=None, line_amount=500)],
-            status=InvoiceStatus.DRAFT,
-        )
+    draft = _make_invoice(
+        invoice_id="inv-draft",
+        client_id="client-2",
+        period_from=period_from,
+        period_to=period_to,
+        status=InvoiceStatus.DRAFT,
+        created_at=datetime(2024, 5, 31, 11, 0, tzinfo=timezone.utc),
     )
+    session.add_all([issued, draft])
+    session.commit()
 
     response = admin_client.get(
         "/api/v1/admin/billing/invoices",
@@ -141,17 +129,29 @@ def test_admin_invoice_listing_filters(admin_client: TestClient, session: Sessio
     assert payload["items"][0]["id"] == issued.id
 
 
-def test_generate_and_change_invoice_status(admin_client: TestClient, session: Session):
-    tariff = TariffPlan(id="tariff-main", name="Main")
-    session.add(tariff)
+def test_generate_route_returns_existing_period_invoices_and_status_transition(
+    admin_client: TestClient, session: Session
+):
+    session.add(TariffPlan(id="tariff-main", name="Main"))
 
-    client_id = uuid4()
-    client = Client(id=client_id, name="Test", tariff_plan=tariff.id, status="ACTIVE")
-    session.add(client)
-
-    op_ts = datetime(2024, 6, 5, 12, 0, 0)
-    operation = _make_operation(client_id=str(client_id), created_at=op_ts, status=OperationStatus.COMPLETED, amount=1500)
-    session.add(operation)
+    matching_invoice = _make_invoice(
+        invoice_id="invoice-issued",
+        client_id="client-one",
+        period_from=date(2024, 6, 1),
+        period_to=date(2024, 6, 30),
+        status=InvoiceStatus.ISSUED,
+        pdf_status=InvoicePdfStatus.READY,
+        created_at=datetime(2024, 6, 5, 12, 0, tzinfo=timezone.utc),
+    )
+    non_matching_invoice = _make_invoice(
+        invoice_id="invoice-draft",
+        client_id="client-two",
+        period_from=date(2024, 6, 1),
+        period_to=date(2024, 6, 30),
+        status=InvoiceStatus.DRAFT,
+        created_at=datetime(2024, 6, 5, 11, 0, tzinfo=timezone.utc),
+    )
+    session.add_all([matching_invoice, non_matching_invoice])
     session.commit()
 
     generate_resp = admin_client.post(
@@ -160,12 +160,27 @@ def test_generate_and_change_invoice_status(admin_client: TestClient, session: S
     )
     assert generate_resp.status_code == 202
     created_ids = generate_resp.json()["created_ids"]
-    assert len(created_ids) == 1
+    assert created_ids == [matching_invoice.id]
 
-    invoice_id = created_ids[0]
     status_resp = admin_client.post(
-        f"/api/v1/admin/billing/invoices/{invoice_id}/status",
-        json={"status": InvoiceStatus.ISSUED.value},
+        f"/api/v1/admin/billing/invoices/{matching_invoice.id}/status",
+        json={"status": InvoiceStatus.SENT.value, "reason": "pdf_ready"},
     )
     assert status_resp.status_code == 200
-    assert status_resp.json()["status"] == InvoiceStatus.ISSUED.value
+    assert status_resp.json()["status"] == InvoiceStatus.SENT.value
+
+    stored = session.query(Invoice).filter(Invoice.id == matching_invoice.id).one()
+    assert stored.status == InvoiceStatus.SENT
+
+    transition_logs = session.query(InvoiceTransitionLog).filter(
+        InvoiceTransitionLog.invoice_id == matching_invoice.id
+    ).all()
+    assert len(transition_logs) == 1
+    assert transition_logs[0].to_status == InvoiceStatus.SENT
+
+    audit_logs = session.query(AuditLog).filter(
+        AuditLog.entity_type == "invoice",
+        AuditLog.entity_id == matching_invoice.id,
+    ).all()
+    assert len(audit_logs) == 1
+    assert audit_logs[0].event_type == "INVOICE_STATUS_CHANGED"

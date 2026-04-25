@@ -39,7 +39,7 @@ class DummyConnection:
 
         if "CREATE TYPE" in sql:
             type_segment = sql.split("CREATE TYPE", 1)[1]
-            type_name = type_segment.split()[0].split(".")[-1]
+            type_name = type_segment.split()[0].split(".")[-1].strip('"')
             if type_name not in self.types:
                 self.types.add(type_name)
             return DummyResult([])

@@ -4,11 +4,28 @@ from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
 
 import pytest
+from sqlalchemy import Column, MetaData, String, Table, create_engine, event
+from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.pool import StaticPool
 
-from app.db import Base, SessionLocal, engine, reset_engine
+from app.models.audit_log import AuditLog
+from app.models.billing_job_run import BillingJobRun
 from app.models.billing_period import BillingPeriod, BillingPeriodStatus, BillingPeriodType
-from app.models.invoice import Invoice, InvoicePdfStatus, InvoiceStatus
+from app.models.billing_summary import BillingSummary
+from app.models.decision_result import DecisionResult as DecisionResultRecord
+from app.models.finance import CreditNote, InvoicePayment, InvoiceSettlementAllocation
+from app.models.internal_ledger import InternalLedgerAccount, InternalLedgerEntry, InternalLedgerTransaction
+from app.models.invoice import Invoice, InvoiceLine, InvoicePdfStatus, InvoiceStatus, InvoiceTransitionLog
+from app.models.money_flow import MoneyFlowEvent
 from app.models.operation import Operation, OperationStatus, OperationType, ProductType
+from app.models.fuel import FuelTransaction
+from app.models.payout_batch import PayoutBatch, PayoutItem
+from app.models.risk_decision import RiskDecision
+from app.models.risk_policy import RiskPolicy
+from app.models.risk_threshold import RiskThreshold
+from app.models.risk_threshold_set import RiskThresholdSet
+from app.models.risk_training_snapshot import RiskTrainingSnapshot
+from app.models.risk_types import RiskSubjectType, RiskThresholdAction, RiskThresholdScope
 from app.services.billing.daily import run_billing_daily
 from app.services.billing_periods import BillingPeriodConflict
 from app.services.billing_run import BillingPeriodClosedError, BillingRunService
@@ -18,28 +35,107 @@ from app.services.invoice_state_machine import InvalidTransitionError, InvoiceSt
 from app.services.payouts_service import close_payout_period
 
 
-@pytest.fixture(autouse=True)
-def _use_sqlite(monkeypatch: pytest.MonkeyPatch):
-    import app.db as db
-
-    monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
-    monkeypatch.setenv("TEST_DATABASE_URL", "sqlite:///:memory:")
-    monkeypatch.setattr(db, "DATABASE_URL", "sqlite:///:memory:", raising=False)
-    monkeypatch.setattr(db, "raw_db_url", "sqlite:///:memory:", raising=False)
-    reset_engine()
-
-
-@pytest.fixture(autouse=True)
-def _reset_db(_use_sqlite):
-    Base.metadata.drop_all(bind=engine)
-    Base.metadata.create_all(bind=engine)
-    yield
-    Base.metadata.drop_all(bind=engine)
+TEST_TABLES = (
+    AuditLog.__table__,
+    BillingPeriod.__table__,
+    BillingSummary.__table__,
+    BillingJobRun.__table__,
+    Operation.__table__,
+    FuelTransaction.__table__,
+    Invoice.__table__,
+    InvoiceLine.__table__,
+    InvoiceTransitionLog.__table__,
+    InvoicePayment.__table__,
+    CreditNote.__table__,
+    InvoiceSettlementAllocation.__table__,
+    InternalLedgerAccount.__table__,
+    InternalLedgerTransaction.__table__,
+    InternalLedgerEntry.__table__,
+    MoneyFlowEvent.__table__,
+    DecisionResultRecord.__table__,
+    RiskDecision.__table__,
+    RiskPolicy.__table__,
+    RiskThresholdSet.__table__,
+    RiskThreshold.__table__,
+    RiskTrainingSnapshot.__table__,
+    PayoutBatch.__table__,
+    PayoutItem.__table__,
+)
 
 
 @pytest.fixture
-def session():
-    db = SessionLocal()
+def _session_factory():
+    engine = create_engine(
+        "sqlite+pysqlite:///:memory:",
+        future=True,
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+
+    @event.listens_for(engine, "connect")
+    def _enable_sqlite_fk(dbapi_connection, _connection_record) -> None:
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
+
+    stub_metadata = MetaData()
+    Table("fuel_cards", stub_metadata, Column("id", String(36), primary_key=True))
+    Table("fleet_vehicles", stub_metadata, Column("id", String(36), primary_key=True))
+    Table("fleet_drivers", stub_metadata, Column("id", String(36), primary_key=True))
+    Table("fuel_stations", stub_metadata, Column("id", String(36), primary_key=True))
+    Table("fuel_networks", stub_metadata, Column("id", String(36), primary_key=True))
+    Table("clearing_batch", stub_metadata, Column("id", String(36), primary_key=True))
+    Table("reconciliation_requests", stub_metadata, Column("id", String(36), primary_key=True))
+    stub_metadata.create_all(bind=engine)
+    for table in TEST_TABLES:
+        table.create(bind=engine, checkfirst=True)
+
+    session_local = sessionmaker(
+        bind=engine,
+        autocommit=False,
+        autoflush=False,
+        expire_on_commit=False,
+        class_=Session,
+    )
+    try:
+        yield session_local
+    finally:
+        for table in reversed(TEST_TABLES):
+            table.drop(bind=engine, checkfirst=True)
+        stub_metadata.drop_all(bind=engine, checkfirst=True)
+        engine.dispose()
+
+
+@pytest.fixture
+def session(_session_factory):
+    db = _session_factory()
+    db.add_all(
+        [
+            RiskThresholdSet(
+                id="global-payment-thresholds",
+                subject_type=RiskSubjectType.PAYMENT,
+                version=1,
+                active=True,
+                scope=RiskThresholdScope.GLOBAL,
+                action=RiskThresholdAction.PAYMENT,
+                block_threshold=90,
+                review_threshold=70,
+                allow_threshold=0,
+            ),
+            RiskThresholdSet(
+                id="global-invoice-thresholds",
+                subject_type=RiskSubjectType.INVOICE,
+                version=1,
+                active=True,
+                scope=RiskThresholdScope.GLOBAL,
+                action=RiskThresholdAction.INVOICE,
+                block_threshold=90,
+                review_threshold=70,
+                allow_threshold=0,
+            ),
+        ]
+    )
+    db.flush()
     try:
         yield db
     finally:

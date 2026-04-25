@@ -14,7 +14,7 @@ from app.models.logistics import (
 from app.schemas.logistics import LogisticsTrackingEventIn
 from app.services.audit_service import RequestContext
 from app.services.logistics import eta, events, navigator, repository
-from app.services.logistics.repository import count_tracking_events, get_stop
+from app.services.logistics.repository import count_tracking_events, get_stop, id_equals, refresh_by_id
 
 
 class LogisticsTrackingError(ValueError):
@@ -32,7 +32,7 @@ def ingest_tracking_event(
     payload: LogisticsTrackingEventIn,
     request_ctx: RequestContext | None = None,
 ) -> LogisticsTrackingEvent:
-    order = db.query(LogisticsOrder).filter(LogisticsOrder.id == order_id).one_or_none()
+    order = db.query(LogisticsOrder).filter(id_equals(LogisticsOrder.id, order_id)).one_or_none()
     if not order:
         raise LogisticsTrackingError("order_not_found")
 
@@ -81,8 +81,10 @@ def ingest_tracking_event(
         if stop and payload.meta and payload.meta.get("fuel_tx_id"):
             stop.fuel_tx_id = payload.meta.get("fuel_tx_id")
 
+    db.flush()
+    event_id = str(event.id)
     db.commit()
-    db.refresh(event)
+    event = refresh_by_id(db, event, LogisticsTrackingEvent, event_id)
 
     events.audit_event(
         db,
@@ -119,6 +121,8 @@ def ingest_tracking_event(
 
 
 def _capture_navigator_deviation(db: Session, *, order_id: str) -> None:
+    # Deviation explains are derived from the persisted local route snapshot.
+    # This stays an in-core evidence layer and does not claim external routing ownership.
     if not navigator.is_enabled():
         return
     route = repository.get_active_route(db, order_id=order_id)
@@ -140,7 +144,7 @@ def _capture_navigator_deviation(db: Session, *, order_id: str) -> None:
         )
     if snapshot is None or not snapshot.geometry:
         return
-    adapter = navigator.get(snapshot.provider)
+    adapter = navigator.get_local_evidence_adapter(snapshot.provider)
     geometry = [
         navigator.GeoPoint(lat=point["lat"], lon=point["lon"])
         for point in snapshot.geometry

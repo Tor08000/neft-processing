@@ -10,6 +10,9 @@ from alembic import context
 from sqlalchemy.engine import make_url
 from sqlalchemy import engine_from_config, pool
 
+from app.db import Base
+from app.models.registry import import_all_models
+
 BASE_DIR = Path(__file__).resolve().parents[2]
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
@@ -25,7 +28,9 @@ except KeyError as exc:
 
 config.set_main_option("sqlalchemy.url", DATABASE_URL)
 
-target_metadata = None
+import_all_models()
+
+target_metadata = Base.metadata
 logger = getLogger(__name__)
 MIGRATIONS_LOCK_KEY = "processing_core_migrations"
 CORE_SCHEMA = "processing_core"
@@ -113,7 +118,9 @@ def run_migrations_online() -> None:
                 )
 
 
-if context.is_offline_mode():
+if os.getenv("ALEMBIC_SKIP_RUN") == "1":
+    logger.info("[alembic] ALEMBIC_SKIP_RUN=1; skipping migration execution")
+elif context.is_offline_mode():
     run_migrations_offline()
 else:
     run_migrations_online()

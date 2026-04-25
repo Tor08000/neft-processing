@@ -6,41 +6,32 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from app.config import settings
-from app.db import Base, SessionLocal, engine, reset_engine
 from app.models.billing_period import BillingPeriod, BillingPeriodStatus, BillingPeriodType
 from app.models.billing_summary import BillingSummary
 from app.models.finance import InvoiceSettlementAllocation, SettlementSourceType
 from app.models.invoice import Invoice, InvoiceLine, InvoicePdfStatus, InvoiceStatus
 from app.services.billing_periods import period_bounds_for_dates
 from app.services.finance import FinanceService
+from app.tests._finance_test_harness import finance_invariant_session_context, seed_default_finance_thresholds
 
 
 @pytest.fixture(autouse=True)
-def _use_sqlite(monkeypatch: pytest.MonkeyPatch):
-    import app.db as db
+def _disable_legal_graph(monkeypatch: pytest.MonkeyPatch):
+    class _NoopGraphBuilder:
+        def __init__(self, *args, **kwargs) -> None:
+            pass
 
-    monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
-    monkeypatch.setenv("TEST_DATABASE_URL", "sqlite:///:memory:")
-    monkeypatch.setattr(db, "DATABASE_URL", "sqlite:///:memory:", raising=False)
-    monkeypatch.setattr(db, "raw_db_url", "sqlite:///:memory:", raising=False)
-    reset_engine()
+        def ensure_settlement_allocation_graph(self, *args, **kwargs) -> None:
+            return None
 
-
-@pytest.fixture(autouse=True)
-def _reset_db(_use_sqlite):
-    Base.metadata.drop_all(bind=engine)
-    Base.metadata.create_all(bind=engine)
-    yield
-    Base.metadata.drop_all(bind=engine)
+    monkeypatch.setattr("app.services.finance.LegalGraphBuilder", _NoopGraphBuilder)
 
 
 @pytest.fixture
 def session():
-    db = SessionLocal()
-    try:
+    with finance_invariant_session_context() as db:
+        seed_default_finance_thresholds(db)
         yield db
-    finally:
-        db.close()
 
 
 def _create_period(
@@ -58,6 +49,13 @@ def _create_period(
         tz="UTC",
         status=status,
     )
+    session.add(period)
+    session.flush()
+    return period
+
+
+def _transition_period(session, *, period: BillingPeriod, status: BillingPeriodStatus) -> BillingPeriod:
+    period.status = status
     session.add(period)
     session.flush()
     return period
@@ -98,9 +96,10 @@ def test_payment_allocates_after_lock_without_mutating_charges(session):
         session,
         date_from=charge_date,
         date_to=charge_date,
-        status=BillingPeriodStatus.LOCKED,
+        status=BillingPeriodStatus.OPEN,
     )
     invoice = _create_invoice(session, period=charge_period)
+    _transition_period(session, period=charge_period, status=BillingPeriodStatus.LOCKED)
     summary = BillingSummary(
         billing_date=charge_date,
         billing_period_id=charge_period.id,
@@ -170,9 +169,10 @@ def test_payment_allocation_is_idempotent(session):
         session,
         date_from=charge_date,
         date_to=charge_date,
-        status=BillingPeriodStatus.FINALIZED,
+        status=BillingPeriodStatus.OPEN,
     )
     invoice = _create_invoice(session, period=charge_period)
+    _transition_period(session, period=charge_period, status=BillingPeriodStatus.FINALIZED)
     session.commit()
 
     service = FinanceService(session)
@@ -206,9 +206,10 @@ def test_credit_note_allocation_after_lock(session):
         session,
         date_from=charge_date,
         date_to=charge_date,
-        status=BillingPeriodStatus.LOCKED,
+        status=BillingPeriodStatus.OPEN,
     )
     invoice = _create_invoice(session, period=charge_period)
+    _transition_period(session, period=charge_period, status=BillingPeriodStatus.LOCKED)
     session.commit()
 
     service = FinanceService(session)

@@ -1,4 +1,4 @@
-import { apiGet, apiPost } from "./client";
+import { apiDownload, apiGet, apiPost } from "./client";
 import type {
   ReconciliationImport,
   ReconciliationImportListResponse,
@@ -8,6 +8,7 @@ import type {
 export type ReconciliationScope = "internal" | "external" | "unknown";
 export type ReconciliationRunStatus = "completed" | "failed" | "started" | "running" | "unknown";
 export type ReconciliationDiscrepancyStatus = "open" | "resolved" | "ignored" | "unknown";
+export type ReconciliationRunExportScope = "full" | "discrepancies";
 export type ReconciliationFixtureScenario = "SCN2_WRONG_AMOUNT" | "SCN2_UNMATCHED" | "SCN3_DOUBLE_PAYMENT";
 export type ReconciliationFixtureFormat = "CSV" | "CLIENT_BANK_1C" | "MT940" | "ALL";
 export type ReconciliationFixtureWrongAmountMode = "LESS" | "MORE";
@@ -23,6 +24,9 @@ export interface ReconciliationRun {
   created_by_user_id?: string | null;
   summary?: Record<string, unknown> | null;
   audit_event_id?: string | null;
+  statement?: ReconciliationStatementSummary | null;
+  timeline?: ReconciliationAuditEvent[];
+  link_counts?: ReconciliationLinkCounts | null;
 }
 
 export interface ReconciliationRunListResponse {
@@ -48,11 +52,120 @@ export interface ReconciliationDiscrepancy {
   status: ReconciliationDiscrepancyStatus;
   resolution?: Record<string, unknown> | null;
   created_at: string;
+  timeline?: ReconciliationAuditEvent[];
+  adjustment_explain?: ReconciliationAdjustmentExplain | null;
 }
 
 export interface ReconciliationDiscrepancyListResponse {
   discrepancies: ReconciliationDiscrepancy[];
   unavailable?: boolean;
+}
+
+export interface ReconciliationAuditEvent {
+  ts: string;
+  event_type: string;
+  entity_type: string;
+  entity_id: string;
+  action: string;
+  reason?: string | null;
+  actor_id?: string | null;
+  actor_email?: string | null;
+  before?: Record<string, unknown> | null;
+  after?: Record<string, unknown> | null;
+}
+
+export interface ReconciliationLinkCounts {
+  matched: number;
+  mismatched: number;
+  pending: number;
+}
+
+export interface ReconciliationStatementSummary {
+  id: string;
+  provider: string;
+  period_start: string;
+  period_end: string;
+  currency: string;
+  total_in?: number | string | null;
+  total_out?: number | string | null;
+  closing_balance?: number | string | null;
+  created_at: string;
+  source_hash: string;
+  audit_event_id?: string | null;
+}
+
+export interface ReconciliationStatementTotalCheck {
+  kind: string;
+  status: string;
+  external_amount?: number | string | null;
+  internal_amount?: number | string | null;
+  delta?: number | string | null;
+  discrepancy_id?: string | null;
+  discrepancy_status?: ReconciliationDiscrepancyStatus | null;
+}
+
+export interface ExternalStatementExplain {
+  related_run_id?: string | null;
+  related_run_status?: ReconciliationRunStatus | null;
+  relation_source?: string | null;
+  line_count: number;
+  matched_links: number;
+  mismatched_links: number;
+  pending_links: number;
+  unmatched_external: number;
+  unmatched_internal: number;
+  mismatched_amount: number;
+  open_discrepancies: number;
+  resolved_discrepancies: number;
+  ignored_discrepancies: number;
+  adjusted_discrepancies: number;
+  total_checks: ReconciliationStatementTotalCheck[];
+}
+
+export interface ReconciliationLink {
+  id: string;
+  run_id?: string | null;
+  entity_type: string;
+  entity_id: string;
+  provider: string;
+  currency: string;
+  expected_amount: number | string;
+  direction: string;
+  expected_at: string;
+  match_key?: string | null;
+  status: string;
+  created_at: string;
+  discrepancy_ids: string[];
+  review_status?: ReconciliationDiscrepancyStatus | null;
+}
+
+export interface ReconciliationLinkListResponse {
+  links: ReconciliationLink[];
+  unavailable?: boolean;
+}
+
+export interface ReconciliationAdjustmentPosting {
+  account_id: string;
+  account_type: string;
+  client_id?: string | null;
+  direction: string;
+  amount: number;
+  currency: string;
+  entry_hash: string;
+}
+
+export interface ReconciliationAdjustmentExplain {
+  adjustment_tx_id: string;
+  transaction_type?: string | null;
+  external_ref_type?: string | null;
+  external_ref_id?: string | null;
+  tenant_id?: number | null;
+  currency?: string | null;
+  total_amount?: number | null;
+  posted_at?: string | null;
+  meta?: Record<string, unknown> | null;
+  entries: ReconciliationAdjustmentPosting[];
+  audit_events: ReconciliationAuditEvent[];
 }
 
 export interface ExternalStatement {
@@ -68,6 +181,8 @@ export interface ExternalStatement {
   created_at: string;
   source_hash: string;
   audit_event_id?: string | null;
+  explain?: ExternalStatementExplain | null;
+  timeline?: ReconciliationAuditEvent[];
 }
 
 export interface ExternalStatementListResponse {
@@ -109,6 +224,32 @@ export interface ResolveDiscrepancyResult {
   adjustment_tx_id?: string;
   unavailable?: boolean;
 }
+
+export interface ReconciliationRunExport {
+  exported_at: string;
+  run: ReconciliationRun;
+  discrepancies: ReconciliationDiscrepancy[];
+  links: ReconciliationLink[];
+  unavailable?: boolean;
+}
+
+export interface ReconciliationDiscrepancyResult {
+  discrepancy: ReconciliationDiscrepancy | null;
+  unavailable?: boolean;
+}
+
+export interface ReconciliationRunExportDownload {
+  blob: Blob;
+  fileName: string | null;
+  contentType: string | null;
+  unavailable?: boolean;
+}
+
+export type ReconciliationRunExportOptions = {
+  export_scope?: ReconciliationRunExportScope;
+  discrepancy_status?: Exclude<ReconciliationDiscrepancyStatus, "unknown"> | "";
+  discrepancy_type?: string;
+};
 
 export interface IgnoreDiscrepancyResult {
   status?: string;
@@ -213,6 +354,44 @@ export const getRun = async (runId: string): Promise<ReconciliationRunResult> =>
   }
 };
 
+export const listRunLinks = async (
+  runId: string,
+  params?: { status?: string },
+): Promise<ReconciliationLinkListResponse> => {
+  try {
+    const response = await apiGet<{ links: ReconciliationLink[] }>(`/reconciliation/runs/${runId}/links`, params);
+    return { links: response.links ?? [] };
+  } catch (error) {
+    return handleAvailability(error, { links: [], unavailable: true });
+  }
+};
+
+export const downloadRunExport = async (
+  runId: string,
+  format: "json" | "csv",
+  options?: ReconciliationRunExportOptions,
+): Promise<ReconciliationRunExportDownload> => {
+  try {
+    return await apiDownload(
+      `/reconciliation/runs/${runId}/export`,
+      {
+        format,
+        export_scope: options?.export_scope,
+        discrepancy_status: options?.discrepancy_status || undefined,
+        discrepancy_type: options?.discrepancy_type || undefined,
+      },
+      format === "csv" ? "text/csv" : "application/json",
+    );
+  } catch (error) {
+    return handleAvailability(error, {
+      blob: new Blob([]),
+      fileName: null,
+      contentType: null,
+      unavailable: true,
+    });
+  }
+};
+
 export const listDiscrepancies = async (
   runId: string,
   params?: { status?: string },
@@ -220,6 +399,30 @@ export const listDiscrepancies = async (
   try {
     const response = await apiGet<{ discrepancies: ReconciliationDiscrepancy[] }>(
       `/reconciliation/runs/${runId}/discrepancies`,
+      params,
+    );
+    return { discrepancies: response.discrepancies ?? [] };
+  } catch (error) {
+    return handleAvailability(error, { discrepancies: [], unavailable: true });
+  }
+};
+
+export const getDiscrepancy = async (discrepancyId: string): Promise<ReconciliationDiscrepancyResult> => {
+  try {
+    const response = await apiGet<{ discrepancy: ReconciliationDiscrepancy }>(`/reconciliation/discrepancies/${discrepancyId}`);
+    return { discrepancy: response.discrepancy };
+  } catch (error) {
+    return handleAvailability(error, { discrepancy: null, unavailable: true });
+  }
+};
+
+export const listStatementDiscrepancies = async (
+  statementId: string,
+  params?: { status?: Exclude<ReconciliationDiscrepancyStatus, "unknown"> | ""; discrepancy_type?: string },
+): Promise<ReconciliationDiscrepancyListResponse> => {
+  try {
+    const response = await apiGet<{ discrepancies: ReconciliationDiscrepancy[] }>(
+      `/reconciliation/external/statements/${statementId}/discrepancies`,
       params,
     );
     return { discrepancies: response.discrepancies ?? [] };
@@ -290,6 +493,15 @@ export const listStatements = async (params?: { provider?: string }): Promise<Ex
     return { statements: response.statements ?? [] };
   } catch (error) {
     return handleAvailability(error, { statements: [], unavailable: true });
+  }
+};
+
+export const getStatement = async (statementId: string): Promise<ExternalStatementResult> => {
+  try {
+    const statement = await apiGet<ExternalStatement>(`/reconciliation/external/statements/${statementId}`);
+    return { statement };
+  } catch (error) {
+    return handleAvailability(error, { statement: null, unavailable: true });
   }
 };
 

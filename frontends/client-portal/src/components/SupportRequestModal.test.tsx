@@ -6,7 +6,7 @@ import { SupportRequestModal } from "./SupportRequestModal";
 import type { AuthSession } from "../api/types";
 
 const session: AuthSession = {
-  token: "token-1",
+  token: "test.header.payload",
   email: "client@demo.test",
   roles: ["CLIENT_OWNER"],
   subjectType: "CLIENT",

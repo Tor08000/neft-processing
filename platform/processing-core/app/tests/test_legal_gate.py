@@ -1,23 +1,27 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
+from fastapi import Request
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from app.api.dependencies.admin import require_admin
+from app.api.dependencies.admin import require_admin, require_admin_user
 from app.db import get_db
 from app.main import app
 from app.models.audit_log import AuditLog
 from app.models.legal_acceptance import LegalAcceptance, LegalAcceptanceImmutableError, LegalSubjectType
 from app.models.legal_document import LegalDocument, LegalDocumentContentType, LegalDocumentStatus
-from app.security.rbac.principal import Principal, get_principal
+from app.security.rbac.principal import Principal, get_portal_principal, get_principal
 from app.services import legal as legal_service
 from app.services.legal import LegalService, subject_from_request
+
+
+ADMIN_USER_ID = "00000000-0000-0000-0000-000000000001"
 
 
 @pytest.fixture()
@@ -39,7 +43,7 @@ def db_session() -> Session:
 
 
 @pytest.fixture()
-def client(db_session: Session):
+def client(db_session: Session, monkeypatch: pytest.MonkeyPatch):
     def _override_db():
         try:
             yield db_session
@@ -47,23 +51,37 @@ def client(db_session: Session):
             pass
 
     def _override_admin():
-        return {"roles": ["SUPERADMIN"], "user_id": "admin-1"}
+        return {"roles": ["SUPERADMIN"], "user_id": ADMIN_USER_ID}
+
+    def _override_admin_user(request: Request):
+        token = _override_admin()
+        subject = subject_from_request(subject_type=LegalSubjectType.USER, subject_id=ADMIN_USER_ID)
+        legal_service.enforce_legal_gate(
+            db=db_session,
+            request=request,
+            subject=subject,
+            actor_roles=token["roles"],
+        )
+        return token
 
     def _override_principal():
         return Principal(
-            user_id=uuid4(),
+            user_id=UUID(ADMIN_USER_ID),
             roles={"admin"},
             scopes=set(),
             client_id=None,
             partner_id=None,
             is_admin=True,
-            raw_claims={"user_id": "admin-1", "roles": ["SUPERADMIN"]},
+            raw_claims={"user_id": ADMIN_USER_ID, "sub": ADMIN_USER_ID, "roles": ["SUPERADMIN"]},
         )
 
     app.dependency_overrides[get_db] = _override_db
     app.dependency_overrides[require_admin] = _override_admin
+    app.dependency_overrides[require_admin_user] = _override_admin_user
     app.dependency_overrides[get_principal] = _override_principal
+    app.dependency_overrides[get_portal_principal] = _override_principal
 
+    monkeypatch.setenv("ALLOW_MOCK_PROVIDERS_IN_PROD", "1")
     legal_service.settings.LEGAL_GATE_ENABLED = True
     legal_service.settings.LEGAL_REQUIRED_DOCS = "TERMS"
     legal_service.settings.LEGAL_GATE_EXEMPT_ROLES = ""
@@ -73,7 +91,9 @@ def client(db_session: Session):
 
     app.dependency_overrides.pop(get_db, None)
     app.dependency_overrides.pop(require_admin, None)
+    app.dependency_overrides.pop(require_admin_user, None)
     app.dependency_overrides.pop(get_principal, None)
+    app.dependency_overrides.pop(get_portal_principal, None)
 
 
 @pytest.fixture()
@@ -99,7 +119,7 @@ def seeded_document(db_session: Session) -> LegalDocument:
 
 def test_legal_gate_blocks_protected_action(client: TestClient, seeded_document: LegalDocument):
     response = client.post(
-        "/api/v1/admin/legal/documents",
+        "/api/core/v1/admin/legal/documents",
         json={
             "code": "SMOKE",
             "version": "1",
@@ -119,10 +139,10 @@ def test_legal_gate_allows_after_acceptance(client: TestClient, db_session: Sess
         "/api/legal/accept",
         json={"code": "TERMS", "version": "1", "locale": "ru", "accepted": True},
     )
-    assert accept_response.status_code == 200
+    assert accept_response.status_code == 204
 
     response = client.post(
-        "/api/v1/admin/legal/documents",
+        "/api/core/v1/admin/legal/documents",
         json={
             "code": "SMOKE",
             "version": "1",

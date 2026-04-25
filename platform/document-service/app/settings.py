@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 @dataclass(frozen=True)
@@ -17,11 +17,13 @@ class Settings:
         "S3_BUCKET_DOCS",
         os.getenv("NEFT_S3_BUCKET_DOCUMENTS", os.getenv("NEFT_S3_BUCKET", "neft-documents")),
     )
-    provider_x_base_url: str = os.getenv("PROVIDER_X_BASE_URL", "")
-    provider_x_api_key: str = os.getenv("PROVIDER_X_API_KEY", "dev-key")
-    provider_x_api_secret: str = os.getenv("PROVIDER_X_API_SECRET", "dev-secret")
-    provider_x_timeout_seconds: float = float(os.getenv("PROVIDER_X_TIMEOUT_SECONDS", "15"))
-    provider_x_mode: str = os.getenv("PROVIDER_X_MODE", "mock")
+    provider_x_base_url: str = field(default_factory=lambda: os.getenv("PROVIDER_X_BASE_URL", ""))
+    provider_x_sandbox_base_url: str = field(default_factory=lambda: os.getenv("PROVIDER_X_SANDBOX_BASE_URL", ""))
+    provider_x_api_key: str = field(default_factory=lambda: os.getenv("PROVIDER_X_API_KEY", ""))
+    provider_x_api_secret: str = field(default_factory=lambda: os.getenv("PROVIDER_X_API_SECRET", ""))
+    esign_callback_secret: str = field(default_factory=lambda: os.getenv("ESIGN_CALLBACK_SECRET", ""))
+    provider_x_timeout_seconds: float = field(default_factory=lambda: float(os.getenv("PROVIDER_X_TIMEOUT_SECONDS", "15")))
+    provider_x_mode: str = field(default_factory=lambda: os.getenv("ESIGN_PROVIDER_MODE", os.getenv("PROVIDER_X_MODE", "real")))
 
 
 def get_settings() -> Settings:

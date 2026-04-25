@@ -9,21 +9,19 @@ import { AppLogo } from "@shared/brand/components";
 export const LoginPage: React.FC = () => {
   const { login, error, accessToken } = useAuth();
   const navigate = useNavigate();
-  const demoAdminEmail = import.meta.env.NEFT_DEMO_ADMIN_EMAIL ?? "admin@example.com";
-  const demoAdminPassword = import.meta.env.NEFT_DEMO_ADMIN_PASSWORD;
-  const [email, setEmail] = useState(demoAdminEmail);
-  const [password, setPassword] = useState(demoAdminPassword ?? "");
+  const isDemoLoginEnabled = import.meta.env.NEFT_DEMO_LOGIN_ENABLED === "true";
+  const demoAdminEmail = import.meta.env.NEFT_DEMO_ADMIN_EMAIL ?? "admin@neft.local";
+  const demoAdminPassword = import.meta.env.NEFT_DEMO_ADMIN_PASSWORD ?? "";
+  const [email, setEmail] = useState(isDemoLoginEnabled ? demoAdminEmail : "");
+  const [password, setPassword] = useState(isDemoLoginEnabled ? demoAdminPassword : "");
   const [submitting, setSubmitting] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
   const [capsLockOn, setCapsLockOn] = useState(false);
   const { toast, showToast } = useToast();
   const emailRef = useRef<HTMLInputElement | null>(null);
   const errorRef = useRef<HTMLDivElement | null>(null);
-  const showGatewayHint = typeof window !== "undefined" && window.location.port === "4173";
-
-  if (accessToken) {
-    return <Navigate to="/" replace />;
-  }
+  const showGatewayHint =
+    typeof window !== "undefined" && ["4173", "8080"].includes(window.location.port);
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -57,6 +55,10 @@ export const LoginPage: React.FC = () => {
     }
   }, [error, localError]);
 
+  if (accessToken) {
+    return <Navigate to="/" replace />;
+  }
+
   return (
     <div className="login-page neft-page">
       <div className="login-card neft-card">
@@ -74,12 +76,14 @@ export const LoginPage: React.FC = () => {
             .
           </div>
         ) : null}
-        <div className="login-demo muted small">
+        {isDemoLoginEnabled ? (
+          <div className="login-demo muted small">
           <CopyChip label="Demo email" value={demoAdminEmail} onCopy={() => showToast("success", "Скопировано")} />
           {demoAdminPassword ? (
             <CopyChip label="Demo password" value={demoAdminPassword} onCopy={() => showToast("success", "Скопировано")} />
           ) : null}
-        </div>
+          </div>
+        ) : null}
         <form onSubmit={handleSubmit} className="login-form">
           <label htmlFor="admin-email">
             Email
@@ -90,7 +94,7 @@ export const LoginPage: React.FC = () => {
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder={demoAdminEmail}
+              placeholder={isDemoLoginEnabled ? demoAdminEmail : "admin@example.com"}
               required
               autoComplete="username"
               disabled={submitting}
@@ -107,7 +111,7 @@ export const LoginPage: React.FC = () => {
               onChange={(e) => setPassword(e.target.value)}
               onKeyUp={(event) => setCapsLockOn(event.getModifierState("CapsLock"))}
               onBlur={() => setCapsLockOn(false)}
-              placeholder={demoAdminPassword ?? "Введите пароль"}
+              placeholder="Password"
               required
               autoComplete="current-password"
               disabled={submitting}

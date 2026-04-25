@@ -6,7 +6,7 @@ from sqlalchemy import JSON, BigInteger, Date, DateTime, ForeignKey, Index, Nume
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
-from app.db.types import GUID
+from app.db.types import ExistingEnum, GUID
 
 
 class DocumentDirection(str, enum.Enum):
@@ -55,14 +55,20 @@ class ClientDocument(Base):
         {"extend_existing": True},
     )
 
-    id: Mapped[str] = mapped_column(GUID(), primary_key=True)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
     client_id: Mapped[str] = mapped_column(String(64), nullable=False)
-    direction: Mapped[str] = mapped_column(String(16), nullable=False)
+    direction: Mapped[str] = mapped_column(
+        ExistingEnum(DocumentDirection, name="documents_direction"),
+        nullable=False,
+    )
     title: Mapped[str] = mapped_column(Text, nullable=False)
     category: Mapped[str | None] = mapped_column(Text, nullable=True)
     doc_type: Mapped[str | None] = mapped_column(Text, nullable=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
-    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    status: Mapped[str] = mapped_column(
+        ExistingEnum(DocumentStatus, name="document_status"),
+        nullable=False,
+    )
     sender_type: Mapped[str] = mapped_column(String(32), nullable=False, default=DocumentSenderType.NEFT.value)
     sender_name: Mapped[str | None] = mapped_column(Text, nullable=True)
     counterparty_name: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -90,13 +96,12 @@ class ClientDocument(Base):
 class ClientDocumentFile(Base):
     __tablename__ = "document_files"
     __table_args__ = (
-        Index("ix_document_files_document_id", "document_id"),
         UniqueConstraint("document_id", "storage_key", name="uq_document_files_document_storage_key"),
         {"extend_existing": True},
     )
 
-    id: Mapped[str] = mapped_column(GUID(), primary_key=True)
-    document_id: Mapped[str] = mapped_column(GUID(), ForeignKey("documents.id", ondelete="CASCADE"), nullable=False)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    document_id: Mapped[str] = mapped_column(String(36), ForeignKey("documents.id", ondelete="CASCADE"), nullable=False)
     storage_key: Mapped[str] = mapped_column(Text, nullable=False)
     filename: Mapped[str] = mapped_column(Text, nullable=False)
     mime: Mapped[str] = mapped_column(Text, nullable=False)
@@ -119,14 +124,14 @@ class DocumentTimelineEvent(Base):
         {"extend_existing": True},
     )
 
-    id: Mapped[str] = mapped_column(GUID(), primary_key=True)
-    document_id: Mapped[str] = mapped_column(GUID(), ForeignKey("documents.id", ondelete="CASCADE"), nullable=False)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    document_id: Mapped[str] = mapped_column(String(36), ForeignKey("documents.id", ondelete="CASCADE"), nullable=False)
     client_id: Mapped[str] = mapped_column(String(64), nullable=False)
     event_type: Mapped[str] = mapped_column(Text, nullable=False)
     message: Mapped[str | None] = mapped_column(Text, nullable=True)
     meta: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     actor_type: Mapped[str] = mapped_column(String(16), nullable=False)
-    actor_user_id: Mapped[str | None] = mapped_column(GUID(), nullable=True)
+    actor_user_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     ip: Mapped[str | None] = mapped_column(String(45), nullable=True)
     user_agent: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
@@ -141,8 +146,8 @@ class DocumentEdoState(Base):
         {"extend_existing": True},
     )
 
-    id: Mapped[str] = mapped_column(GUID(), primary_key=True)
-    document_id: Mapped[str] = mapped_column(GUID(), ForeignKey("documents.id", ondelete="CASCADE"), nullable=False)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    document_id: Mapped[str] = mapped_column(String(36), ForeignKey("documents.id", ondelete="CASCADE"), nullable=False)
     client_id: Mapped[str] = mapped_column(String(64), nullable=False)
     provider: Mapped[str | None] = mapped_column(Text, nullable=True)
     provider_mode: Mapped[str] = mapped_column(String(16), nullable=False, default="real")
@@ -168,14 +173,13 @@ class DocumentSignature(Base):
     __table_args__ = (
         UniqueConstraint("document_id", "signer_user_id", "signature_method", name="uq_doc_signature_per_user_method"),
         Index("ix_document_signatures_client_id", "client_id"),
-        Index("ix_document_signatures_document_id", "document_id"),
         {"extend_existing": True},
     )
 
-    id: Mapped[str] = mapped_column(GUID(), primary_key=True)
-    document_id: Mapped[str] = mapped_column(GUID(), ForeignKey("documents.id", ondelete="CASCADE"), nullable=False)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    document_id: Mapped[str] = mapped_column(String(36), ForeignKey("documents.id", ondelete="CASCADE"), nullable=False)
     client_id: Mapped[str] = mapped_column(String(64), nullable=False)
-    signer_user_id: Mapped[str] = mapped_column(GUID(), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    signer_user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     signer_type: Mapped[str] = mapped_column(Text, nullable=False, default="CLIENT_USER")
     signature_method: Mapped[str] = mapped_column(String(16), nullable=False, default="SIMPLE")
     consent_text_version: Mapped[str] = mapped_column(Text, nullable=False)

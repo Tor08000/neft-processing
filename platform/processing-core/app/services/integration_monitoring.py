@@ -77,7 +77,19 @@ def partner_status_summary(db: Session, window_minutes: int = 15) -> List[dict]:
         summaries.append(
             {
                 "partner_id": row.partner_id,
-                "partner_name": partners.get(row.partner_id, Partner(id=row.partner_id, name=row.partner_id, type="AZS", status="active")).name,
+                "partner_name": partners.get(
+                    row.partner_id,
+                    Partner(
+                        id=row.partner_id,
+                        name=row.partner_id,
+                        type="AZS",
+                        code=row.partner_id,
+                        legal_name=row.partner_id,
+                        partner_type="OTHER",
+                        status="ACTIVE",
+                        contacts={},
+                    ),
+                ).name,
                 "status": derived_status,
                 "total_requests": row.total,
                 "error_rate": error_rate,
@@ -200,4 +212,3 @@ def recent_declines(
     if reason_category:
         query = query.filter(ExternalRequestLog.reason_category == reason_category)
     return query.order_by(ExternalRequestLog.created_at.desc()).all()
-

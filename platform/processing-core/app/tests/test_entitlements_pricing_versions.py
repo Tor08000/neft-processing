@@ -2,52 +2,106 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
+from fastapi import FastAPI
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
-from app.db import Base, SessionLocal, engine
-from app.main import app
+from app.db import get_db
+from app.models.audit_log import AuditLog
 from app.models.client import Client
+from app.models.card import Card
 from app.models.client_cards import ClientCard
-from app.models.pricing import PriceSchedule, PriceScheduleStatus, PriceVersion, PriceVersionItem, PriceVersionStatus
+from app.models.crm import CRMBillingPeriod, CRMClient, CRMClientStatus, CRMSubscription, CRMTariffPlan, CRMTariffStatus
+from app.models.fuel import FleetOfflineProfile
+from app.models.pricing import PriceSchedule, PriceScheduleStatus, PriceVersion, PriceVersionAudit, PriceVersionItem, PriceVersionStatus
 from app.models.subscriptions_v1 import (
     ClientSubscription,
+    SubscriptionEvent,
     SubscriptionModuleCode,
     SubscriptionPlan,
     SubscriptionPlanLimit,
     SubscriptionPlanModule,
     SubscriptionStatus,
 )
+from app.routers.admin import crm as admin_crm
+from app.routers.admin import entitlements as admin_entitlements
+from app.security.rbac.principal import Principal, get_principal
 from app.services import entitlements_service
+from app.services import pricing_versions
 from app.services.entitlements_service import assert_max_cards, assert_module_enabled
 from app.services.pricing_versions import create_price_version, create_schedule, publish_price_version
+from app.tests._scoped_router_harness import scoped_session_context
+
+
+ENTITLEMENTS_TEST_TABLES = (
+    AuditLog.__table__,
+    FleetOfflineProfile.__table__,
+    Client.__table__,
+    Card.__table__,
+    ClientCard.__table__,
+    SubscriptionPlan.__table__,
+    SubscriptionPlanModule.__table__,
+    SubscriptionPlanLimit.__table__,
+    ClientSubscription.__table__,
+    SubscriptionEvent.__table__,
+    PriceVersion.__table__,
+    PriceVersionAudit.__table__,
+    PriceVersionItem.__table__,
+    PriceSchedule.__table__,
+    CRMClient.__table__,
+    CRMTariffPlan.__table__,
+    CRMSubscription.__table__,
+)
+
+_ADMIN_PRINCIPAL = Principal(
+    user_id=UUID("00000000-0000-0000-0000-000000000001"),
+    roles={"admin"},
+    scopes=set(),
+    client_id=None,
+    partner_id=None,
+    is_admin=True,
+    raw_claims={"roles": ["admin"]},
+)
 
 
 @pytest.fixture(autouse=True)
-def _prepare_db():
-    Base.metadata.drop_all(bind=engine)
-    Base.metadata.create_all(bind=engine)
+def _prepare_runtime(monkeypatch: pytest.MonkeyPatch):
     entitlements_service._ENTITLEMENTS_CACHE.clear()
+    monkeypatch.setattr(entitlements_service, "DB_SCHEMA", None, raising=False)
+    monkeypatch.setattr(pricing_versions, "DB_SCHEMA", None, raising=False)
     yield
     entitlements_service._ENTITLEMENTS_CACHE.clear()
-    Base.metadata.drop_all(bind=engine)
 
 
 @pytest.fixture
 def session():
-    db = SessionLocal()
-    try:
+    with scoped_session_context(tables=ENTITLEMENTS_TEST_TABLES) as db:
         yield db
-    finally:
-        db.close()
 
 
 @pytest.fixture
-def api_client():
-    return TestClient(app)
+def api_client(session):
+    app = FastAPI()
+    app.include_router(admin_entitlements.router, prefix="/api/v1/admin")
+    app.include_router(admin_crm.router, prefix="/api/v1/admin")
+
+    def override_get_db():
+        try:
+            yield session
+        finally:
+            pass
+
+    def override_principal() -> Principal:
+        return _ADMIN_PRINCIPAL
+
+    app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_principal] = override_principal
+
+    with TestClient(app) as client:
+        yield client
 
 
 def _create_plan(
@@ -104,10 +158,36 @@ def _create_subscription(db, *, client_id: str, plan: SubscriptionPlan) -> Clien
     return subscription
 
 
+def _seed_crm_subscription_refs(db, *, client_id: str, plan_code: str) -> None:
+    if db.get(CRMClient, client_id) is None:
+        db.add(
+            CRMClient(
+                id=client_id,
+                tenant_id=1,
+                legal_name=f"{client_id} LLC",
+                country="RU",
+                status=CRMClientStatus.ACTIVE,
+            )
+        )
+    if db.get(CRMTariffPlan, plan_code) is None:
+        db.add(
+            CRMTariffPlan(
+                id=plan_code,
+                name=f"{plan_code} Tariff",
+                description=None,
+                status=CRMTariffStatus.ACTIVE,
+                billing_period=CRMBillingPeriod.MONTHLY,
+                base_fee_minor=0,
+                currency="RUB",
+            )
+        )
+    db.commit()
+
+
 def test_publish_new_price_version_affects_entitlements(session, api_client, admin_auth_headers):
     client_id = str(uuid4())
     plan = _create_plan(session, code="CONTROL")
-    _create_subscription(session, client_id=client_id, plan=plan)
+    subscription = _create_subscription(session, client_id=client_id, plan=plan)
 
     now = datetime.now(timezone.utc)
     version_v1 = PriceVersion(
@@ -148,8 +228,8 @@ def test_publish_new_price_version_affects_entitlements(session, api_client, adm
     )
     assert first_resp.status_code == 200
     first = first_resp.json()
-    assert first["active_price_version_id"] == version_v1.id
-    assert first["pricing"]["base_price"] == "100.00"
+    assert first["price_version_id"] == version_v1.id
+    assert Decimal(first["pricing"]["base_price"]) == Decimal("100.00")
 
     version_v2 = create_price_version(session, name="V2 Pricing")
     session.add(
@@ -183,8 +263,8 @@ def test_publish_new_price_version_affects_entitlements(session, api_client, adm
     )
     assert second_resp.status_code == 200
     second = second_resp.json()
-    assert second["active_price_version_id"] == version_v2.id
-    assert second["pricing"]["base_price"] == "120.00"
+    assert second["price_version_id"] == version_v2.id
+    assert Decimal(second["pricing"]["base_price"]) == Decimal("120.00")
 
 
 def test_module_gating_blocks_docs(session):
@@ -213,8 +293,9 @@ def test_max_cards_limit_blocks_second_card(session):
         )
     )
     session.add(Client(id=client_uuid, name="Client A"))
+    session.add(Card(id="card-1", client_id=client_id, status="ACTIVE", pan_masked="****1111"))
     _create_subscription(session, client_id=client_id, plan=plan)
-    session.add(ClientCard(client_id=client_uuid, card_id="card-1", pan_masked="****1111", status="ACTIVE"))
+    session.add(ClientCard(id=1, client_id=client_uuid, card_id="card-1", pan_masked="****1111", status="ACTIVE"))
     session.commit()
 
     with pytest.raises(HTTPException) as exc:
@@ -226,6 +307,7 @@ def test_crm_module_blocks_admin_subscription(session, api_client, admin_auth_he
     client_id = "client-crm-blocked"
     plan = _create_plan(session, code="BASIC", crm_enabled=False)
     _create_subscription(session, client_id=client_id, plan=plan)
+    _seed_crm_subscription_refs(session, client_id=client_id, plan_code=plan.code)
     payload = {
         "tenant_id": 1,
         "tariff_plan_id": "BASIC",
@@ -249,6 +331,7 @@ def test_crm_module_allows_admin_subscription(session, api_client, admin_auth_he
     client_id = "client-crm-enabled"
     plan = _create_plan(session, code="PRO", crm_enabled=True)
     _create_subscription(session, client_id=client_id, plan=plan)
+    _seed_crm_subscription_refs(session, client_id=client_id, plan_code=plan.code)
     payload = {
         "tenant_id": 1,
         "tariff_plan_id": "PRO",

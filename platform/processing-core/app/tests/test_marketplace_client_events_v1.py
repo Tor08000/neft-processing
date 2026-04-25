@@ -62,7 +62,7 @@ def _make_client() -> tuple[TestClient, sessionmaker]:
     MarketplaceClientEvent.__table__.create(bind=engine)
 
     app = FastAPI()
-    app.include_router(client_events_router, prefix="/api")
+    app.include_router(client_events_router, prefix="/api/v1")
 
     def override_get_db():
         db = SessionLocal()
@@ -82,7 +82,7 @@ def _make_client() -> tuple[TestClient, sessionmaker]:
     return TestClient(app), SessionLocal
 
 
-def test_ingest_accepts_valid_events() -> None:
+def test_live_client_events_router_owns_batched_ingest_contract() -> None:
     global CURRENT_TOKEN
     client, SessionLocal = _make_client()
     client_id = str(uuid4())
@@ -135,6 +135,7 @@ def test_ingest_rejects_unknown_event_type() -> None:
     )
     assert response.status_code == 400
     client.close()
+
 
 
 def test_query_returns_events_by_date_range() -> None:

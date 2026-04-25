@@ -20,20 +20,30 @@ class ClientDocflowNotificationsService:
         client_id: str,
         user_id: str | None,
         title: str,
-        message: str,
-        kind: str,
+        message: str | None = None,
+        kind: str | None = None,
         payload: dict | None = None,
         severity: str = "INFO",
         dedupe_key: str | None = None,
+        body: str | None = None,
+        event_type: str | None = None,
+        meta_json: dict | None = None,
     ) -> ClientDocflowNotification:
+        resolved_message = message or body or ""
+        resolved_kind = kind or event_type or "INFO"
+        resolved_payload = payload if payload is not None else (meta_json or {})
         item = ClientDocflowNotification(
             id=new_uuid_str(),
             client_id=client_id,
             user_id=user_id,
+            channel="in_app",
             title=title,
-            message=message,
-            kind=kind,
-            payload=payload or {},
+            body=resolved_message,
+            event_type=resolved_kind,
+            meta_json=resolved_payload,
+            message=resolved_message,
+            kind=resolved_kind,
+            payload=resolved_payload,
             severity=severity,
             dedupe_key=dedupe_key,
         )

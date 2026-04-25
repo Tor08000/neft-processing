@@ -5,7 +5,7 @@
 - [ ] BI exports v1.1 (BI API + CSV/JSONL + manifest + ClickHouse sync).
 - [ ] Portals MAX (client + partner portals in `frontends/`).
 - [ ] Marketplace events registry (`docs/contracts/events/marketplace`).
-- [ ] Support Inbox v1 (support requests API + portal UIs).
+- [ ] Support / Cases unified contour (canonical `cases` owner + compatibility `support_requests` + portal UIs).
 - [ ] Client Controls v1 (limits/users/services/features tabs + role gating).
 - [ ] PWA v1 (manifest + service worker + routing + push wiring).
 - [ ] OSRM provider (logistics-service, `LOGISTICS_PROVIDER=osrm`).

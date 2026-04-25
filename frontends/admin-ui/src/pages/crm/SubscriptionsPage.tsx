@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { cancelSubscription, createSubscription, listSubscriptions, pauseSubscription, resumeSubscription } from "../../api/crm";
 import { useAuth } from "../../auth/AuthContext";
@@ -10,15 +10,10 @@ import { useToast } from "../../components/Toast/useToast";
 import { StatusBadge } from "../../components/StatusBadge/StatusBadge";
 import type { CrmSubscription } from "../../types/crm";
 import { describeError, formatError } from "../../utils/apiErrors";
-
-const actionLabels = {
-  pause: "Pause",
-  resume: "Resume",
-  cancel: "Cancel",
-};
+import { subscriptionsPageCopy } from "./crmListPageCopy";
 
 const getNextRun = (billingDay?: number | null) => {
-  if (!billingDay) return "-";
+  if (!billingDay) return subscriptionsPageCopy.values.fallback;
   const today = new Date();
   const run = new Date(today.getFullYear(), today.getMonth(), billingDay);
   if (run < today) {
@@ -33,47 +28,112 @@ export const SubscriptionsPage: React.FC = () => {
   const { toast, showToast } = useToast();
   const [subscriptions, setSubscriptions] = useState<CrmSubscription[]>([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<{ title: string; description?: string; details?: string } | null>(null);
   const [clientFilter, setClientFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [showCreate, setShowCreate] = useState(false);
   const [saving, setSaving] = useState(false);
   const [canCreate, setCanCreate] = useState(true);
-  const [confirmAction, setConfirmAction] = useState<null | { action: keyof typeof actionLabels; subscription: CrmSubscription }>(
+  const [confirmAction, setConfirmAction] = useState<null | { action: keyof typeof subscriptionsPageCopy.actionLabels; subscription: CrmSubscription }>(
     null,
   );
-  const [actionVisibility, setActionVisibility] = useState<Record<keyof typeof actionLabels, boolean>>({
+  const [actionVisibility, setActionVisibility] = useState<Record<keyof typeof subscriptionsPageCopy.actionLabels, boolean>>({
     pause: true,
     resume: true,
     cancel: true,
   });
+  const filtersActive = Boolean(clientFilter.trim() || statusFilter.trim());
 
-  const loadSubscriptions = () => {
+  const loadSubscriptions = useCallback(() => {
     if (!accessToken) return;
     setLoading(true);
+    setError(null);
     listSubscriptions(accessToken, { client_id: clientFilter || undefined, status: statusFilter || undefined })
       .then((response) => setSubscriptions(response.items))
-      .catch((error: unknown) => showToast("error", formatError(error)))
+      .catch((error: unknown) => {
+        const summary = describeError(error);
+        setError({ title: subscriptionsPageCopy.errors.load, description: summary.message, details: summary.details });
+        showToast("error", formatError(error));
+      })
       .finally(() => setLoading(false));
-  };
+  }, [accessToken, clientFilter, showToast, statusFilter]);
 
   useEffect(() => {
     loadSubscriptions();
-  }, [accessToken, clientFilter, statusFilter]);
+  }, [accessToken, clientFilter, loadSubscriptions, statusFilter]);
 
   const columns: DataColumn<CrmSubscription>[] = useMemo(
     () => [
-      { key: "subscription_id", title: "Subscription", render: (row) => row.subscription_id ?? row.id ?? "-" },
-      { key: "client_id", title: "Client" },
-      { key: "tariff_id", title: "Tariff" },
-      { key: "status", title: "Status", render: (row) => (row.status ? <StatusBadge status={row.status} /> : "-") },
-      { key: "billing_day", title: "Billing day" },
-      { key: "started_at", title: "Started" },
-      { key: "next_run", title: "Next run", render: (row) => getNextRun(row.billing_day) },
+      { key: "subscription_id", title: subscriptionsPageCopy.columns.subscription, render: (row) => row.id },
+      { key: "client_id", title: subscriptionsPageCopy.columns.client },
+      { key: "tariff_plan_id", title: subscriptionsPageCopy.columns.tariff },
+      {
+        key: "status",
+        title: subscriptionsPageCopy.columns.status,
+        render: (row) => (row.status ? <StatusBadge status={row.status} /> : subscriptionsPageCopy.values.fallback),
+      },
+      { key: "billing_day", title: subscriptionsPageCopy.columns.billingDay },
+      { key: "started_at", title: subscriptionsPageCopy.columns.started },
+      { key: "next_run", title: subscriptionsPageCopy.columns.nextRun, render: (row) => getNextRun(row.billing_day) },
+      {
+        key: "actions",
+        title: subscriptionsPageCopy.columns.actions,
+        render: (row) => (
+          <div className="table-row-actions">
+            {actionVisibility.pause ? (
+              <button
+                type="button"
+                className="ghost"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setConfirmAction({ action: "pause", subscription: row });
+                }}
+              >
+                {subscriptionsPageCopy.actionLabels.pause}
+              </button>
+            ) : null}
+            {actionVisibility.resume ? (
+              <button
+                type="button"
+                className="ghost"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setConfirmAction({ action: "resume", subscription: row });
+                }}
+              >
+                {subscriptionsPageCopy.actionLabels.resume}
+              </button>
+            ) : null}
+            {actionVisibility.cancel ? (
+              <button
+                type="button"
+                className="ghost"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setConfirmAction({ action: "cancel", subscription: row });
+                }}
+              >
+                {subscriptionsPageCopy.actionLabels.cancel}
+              </button>
+            ) : null}
+            <button
+              type="button"
+              className="ghost"
+              onClick={(event) => {
+                event.stopPropagation();
+                navigate(`/crm/subscriptions/${row.id}/preview-billing`);
+              }}
+            >
+              {subscriptionsPageCopy.actions.previewBilling}
+            </button>
+          </div>
+        ),
+      },
     ],
-    [],
+    [actionVisibility, navigate],
   );
 
-  const handleAction = async (action: keyof typeof actionLabels, subscription: CrmSubscription) => {
+  const handleAction = async (action: keyof typeof subscriptionsPageCopy.actionLabels, subscription: CrmSubscription) => {
     if (!accessToken) return;
     const id = subscription.subscription_id ?? subscription.id ?? "";
     try {
@@ -86,7 +146,7 @@ export const SubscriptionsPage: React.FC = () => {
       if (action === "cancel") {
         await cancelSubscription(accessToken, id);
       }
-      showToast("success", `${actionLabels[action]} done`);
+      showToast("success", subscriptionsPageCopy.toasts.done(subscriptionsPageCopy.actionLabels[action]));
       loadSubscriptions();
     } catch (error: unknown) {
       const summary = describeError(error);
@@ -103,13 +163,13 @@ export const SubscriptionsPage: React.FC = () => {
     if (!accessToken) return;
     const clientId = values.client_id ?? clientFilter;
     if (!clientId) {
-      showToast("error", "Client ID is required");
+      showToast("error", subscriptionsPageCopy.errors.clientIdRequired);
       return;
     }
     setSaving(true);
     try {
       await createSubscription(accessToken, clientId, values);
-      showToast("success", "Subscription created");
+      showToast("success", subscriptionsPageCopy.toasts.created);
       setShowCreate(false);
       loadSubscriptions();
     } catch (error: unknown) {
@@ -126,16 +186,7 @@ export const SubscriptionsPage: React.FC = () => {
   return (
     <div>
       <Toast toast={toast} />
-      <h1>CRM · Subscriptions</h1>
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 16 }}>
-        <input placeholder="Client ID" value={clientFilter} onChange={(e) => setClientFilter(e.target.value)} />
-        <input placeholder="Status" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} />
-        {canCreate && (
-          <button type="button" onClick={() => setShowCreate((prev) => !prev)}>
-            {showCreate ? "Close" : "Create subscription"}
-          </button>
-        )}
-      </div>
+      <h1>{subscriptionsPageCopy.title}</h1>
       {showCreate && (
         <div style={{ marginBottom: 24, border: "1px solid #e2e8f0", padding: 16, borderRadius: 12 }}>
           <SubscriptionForm onSubmit={handleCreate} submitting={saving} submitLabel="Create" />
@@ -145,39 +196,95 @@ export const SubscriptionsPage: React.FC = () => {
         data={subscriptions}
         columns={columns}
         loading={loading}
-        onRowClick={(row) => navigate(`/crm/subscriptions/${row.subscription_id ?? row.id}`)}
-      />
-
-      <div style={{ marginTop: 16, display: "grid", gap: 8 }}>
-        {subscriptions.map((subscription) => (
-          <div key={subscription.subscription_id ?? subscription.id} style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <strong>{subscription.subscription_id ?? subscription.id}</strong>
-            {actionVisibility.pause && (
-              <button type="button" onClick={() => setConfirmAction({ action: "pause", subscription })}>
-                Pause
+        toolbar={
+          <div className="table-toolbar">
+            <div className="filters">
+              <div className="filter">
+                <label className="label" htmlFor="crm-subscription-client-filter">
+                  {subscriptionsPageCopy.labels.clientId}
+                </label>
+                <input
+                  id="crm-subscription-client-filter"
+                  placeholder={subscriptionsPageCopy.placeholders.clientId}
+                  value={clientFilter}
+                  onChange={(e) => setClientFilter(e.target.value)}
+                />
+              </div>
+              <div className="filter">
+                <label className="label" htmlFor="crm-subscription-status-filter">
+                  {subscriptionsPageCopy.labels.status}
+                </label>
+                <input
+                  id="crm-subscription-status-filter"
+                  placeholder={subscriptionsPageCopy.placeholders.status}
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
+                />
+              </div>
+            </div>
+            <div className="toolbar-actions">
+              <button
+                type="button"
+                className="button secondary"
+                onClick={() => {
+                  setClientFilter("");
+                  setStatusFilter("");
+                }}
+                disabled={!filtersActive}
+              >
+                {subscriptionsPageCopy.actions.reset}
               </button>
-            )}
-            {actionVisibility.resume && (
-              <button type="button" onClick={() => setConfirmAction({ action: "resume", subscription })}>
-                Resume
-              </button>
-            )}
-            {actionVisibility.cancel && (
-              <button type="button" onClick={() => setConfirmAction({ action: "cancel", subscription })}>
-                Cancel
-              </button>
-            )}
-            <button type="button" onClick={() => navigate(`/crm/subscriptions/${subscription.subscription_id ?? subscription.id}/preview-billing`)}>
-              Preview billing
-            </button>
+              {canCreate ? (
+                <button type="button" className="button primary" onClick={() => setShowCreate((prev) => !prev)}>
+                  {showCreate ? subscriptionsPageCopy.actions.close : subscriptionsPageCopy.actions.create}
+                </button>
+              ) : null}
+            </div>
           </div>
-        ))}
-      </div>
+        }
+        errorState={
+          error
+            ? {
+                title: error.title,
+                description: error.description,
+                details: error.details,
+                actionLabel: subscriptionsPageCopy.actions.retry,
+                actionOnClick: loadSubscriptions,
+              }
+            : undefined
+        }
+        footer={<div className="table-footer__content muted">{subscriptionsPageCopy.footer.rows(subscriptions.length)}</div>}
+        emptyState={{
+          title: filtersActive ? subscriptionsPageCopy.empty.filteredTitle : subscriptionsPageCopy.empty.pristineTitle,
+          description: filtersActive
+            ? subscriptionsPageCopy.empty.filteredDescription
+            : subscriptionsPageCopy.empty.pristineDescription,
+          actionLabel:
+            filtersActive ? subscriptionsPageCopy.empty.resetAction : canCreate ? subscriptionsPageCopy.actions.create : undefined,
+          actionOnClick: filtersActive
+            ? () => {
+                setClientFilter("");
+                setStatusFilter("");
+              }
+            : canCreate
+              ? () => setShowCreate(true)
+              : undefined,
+        }}
+        onRowClick={(row) => navigate(`/crm/subscriptions/${row.id}`)}
+      />
 
       <ConfirmModal
         open={Boolean(confirmAction)}
-        title={confirmAction ? `${actionLabels[confirmAction.action]} subscription` : ""}
-        description={confirmAction ? `Subscription ${confirmAction.subscription.subscription_id ?? ""}` : ""}
+        title={
+          confirmAction
+            ? subscriptionsPageCopy.confirm.title(subscriptionsPageCopy.actionLabels[confirmAction.action])
+            : ""
+        }
+        description={
+          confirmAction
+            ? subscriptionsPageCopy.confirm.description(confirmAction.subscription.subscription_id ?? "")
+            : ""
+        }
         danger={confirmAction?.action === "cancel"}
         onCancel={() => setConfirmAction(null)}
         onConfirm={() => {

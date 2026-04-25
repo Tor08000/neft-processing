@@ -1,16 +1,12 @@
 from datetime import datetime, timezone
-from typing import Tuple
 from uuid import uuid4
 
 import pytest
 from fastapi import FastAPI
 from app.fastapi_utils import generate_unique_id
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import Session, sessionmaker
-from sqlalchemy.pool import StaticPool
+from sqlalchemy.orm import Session
 
-from app.db import Base
 from app.models import fuel as fuel_models
 from app.deps.db import get_db
 from app.models.fleet import FleetDriver, FleetVehicle, FleetDriverStatus, FleetVehicleStatus
@@ -24,44 +20,32 @@ from app.models.fleet_intelligence import (
 from app.models.fuel import FuelCard, FuelCardStatus, FuelNetwork, FuelNetworkStatus, FuelStation, FuelStationStatus, FuelTransaction
 from app.routers.admin.explain import router as explain_router
 from app.services.fuel.risk_context import build_risk_context_for_fuel_tx
+from app.tests._fleet_intelligence_test_harness import FLEET_INTELLIGENCE_EXPLAIN_TEST_TABLES
+from app.tests._scoped_router_harness import scoped_session_context
 
 
 @pytest.fixture()
-def db_session() -> Tuple[Session, sessionmaker]:
-    engine = create_engine(
-        "sqlite://",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
-    SessionLocal = sessionmaker(autocommit=False, autoflush=False, expire_on_commit=False, bind=engine)
-    Base.metadata.create_all(bind=engine)
-    session = SessionLocal()
-    try:
-        yield session, SessionLocal
-    finally:
-        session.close()
-        Base.metadata.drop_all(bind=engine)
-        engine.dispose()
+def db_session() -> Session:
+    with scoped_session_context(tables=FLEET_INTELLIGENCE_EXPLAIN_TEST_TABLES) as session:
+        yield session
 
 
 @pytest.fixture()
-def admin_client(admin_auth_headers: dict, db_session: Tuple[Session, sessionmaker]) -> Tuple[TestClient, sessionmaker]:
-    _, SessionLocal = db_session
+def admin_client(admin_auth_headers: dict, db_session: Session) -> TestClient:
     app = FastAPI(generate_unique_id_function=generate_unique_id)
     app.include_router(explain_router, prefix="/api/v1/admin")
 
     def override_get_db():
-        db = SessionLocal()
         try:
-            yield db
+            yield db_session
         finally:
-            db.close()
+            pass
 
     app.dependency_overrides[get_db] = override_get_db
 
     with TestClient(app) as client:
         client.headers.update(admin_auth_headers)
-        yield client, SessionLocal
+        yield client
 
 
 def _seed_fleet_refs(db: Session):
@@ -151,8 +135,8 @@ def _seed_scores(db: Session, *, driver_id: str, vehicle_id: str, station_id: st
     db.commit()
 
 
-def test_risk_context_enriched(db_session: Tuple[Session, sessionmaker]):
-    db, _ = db_session
+def test_risk_context_enriched(db_session: Session):
+    db = db_session
     driver, vehicle, station, network, card = _seed_fleet_refs(db)
     _seed_scores(
         db,
@@ -188,35 +172,34 @@ def test_risk_context_enriched(db_session: Tuple[Session, sessionmaker]):
     assert metadata["vehicle_efficiency_delta_pct"] == pytest.approx(0.0714)
 
 
-def test_unified_explain_includes_fleet_intelligence(admin_client: Tuple[TestClient, sessionmaker]):
-    client, SessionLocal = admin_client
-    with SessionLocal() as db:
-        driver, vehicle, station, network, card = _seed_fleet_refs(db)
-        _seed_scores(
-            db,
-            driver_id=str(driver.id),
-            vehicle_id=str(vehicle.id),
-            station_id=str(station.id),
-            network_id=str(network.id),
-        )
-        tx = FuelTransaction(
-            tenant_id=1,
-            client_id="client-1",
-            card_id=card.id,
-            vehicle_id=vehicle.id,
-            driver_id=driver.id,
-            station_id=station.id,
-            network_id=network.id,
-            occurred_at=datetime(2025, 1, 11, tzinfo=timezone.utc),
-            fuel_type="DIESEL",
-            volume_ml=15000,
-            unit_price_minor=500,
-            amount_total_minor=7500,
-            currency="RUB",
-            status=fuel_models.FuelTransactionStatus.SETTLED,
-        )
-        db.add(tx)
-        db.commit()
+def test_unified_explain_includes_fleet_intelligence(admin_client: TestClient, db_session: Session):
+    client = admin_client
+    driver, vehicle, station, network, card = _seed_fleet_refs(db_session)
+    _seed_scores(
+        db_session,
+        driver_id=str(driver.id),
+        vehicle_id=str(vehicle.id),
+        station_id=str(station.id),
+        network_id=str(network.id),
+    )
+    tx = FuelTransaction(
+        tenant_id=1,
+        client_id="client-1",
+        card_id=card.id,
+        vehicle_id=vehicle.id,
+        driver_id=driver.id,
+        station_id=station.id,
+        network_id=network.id,
+        occurred_at=datetime(2025, 1, 11, tzinfo=timezone.utc),
+        fuel_type="DIESEL",
+        volume_ml=15000,
+        unit_price_minor=500,
+        amount_total_minor=7500,
+        currency="RUB",
+        status=fuel_models.FuelTransactionStatus.SETTLED,
+    )
+    db_session.add(tx)
+    db_session.commit()
 
     response = client.get(f"/api/v1/admin/explain?fuel_tx_id={tx.id}")
     assert response.status_code == 200

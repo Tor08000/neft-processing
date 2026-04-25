@@ -28,7 +28,7 @@
 | `webhook_intake_events` | `neft_integration_hub/services/webhook_intake.py` | Audit/monitoring | Intake metadata + payload. (`platform/integration-hub/neft_integration_hub/models/webhook_intake.py`) | Records signature verification state. |
 | `webhook_deliveries` | `neft_integration_hub/services/webhooks.py` | Webhook worker | Delivery attempts, retries. (`platform/integration-hub/neft_integration_hub/models/webhooks.py`) | Tracks SLA, retry state. |
 | `webhook_alerts` | `neft_integration_hub/services/webhooks.py` | Ops | SLA/alert state. (`platform/integration-hub/neft_integration_hub/models/webhooks.py`) | Alert types include SLA breach and delivery failure. |
-| `edo_documents` / `edo_stub_messages` | `neft_integration_hub/services/edo_stub.py`, `neft_integration_hub/services/edo_service.py` | Integration hub API | EDO document lifecycle. (`platform/integration-hub/neft_integration_hub/models/edo.py`, `platform/integration-hub/neft_integration_hub/models/edo_stub.py`) | Stub mode by default. |
+| `edo_documents` / `edo_stub_messages` | `neft_integration_hub/services/edo_stub.py`, `neft_integration_hub/services/edo_service.py` | Integration hub API | EDO document lifecycle. (`platform/integration-hub/neft_integration_hub/models/edo.py`, `platform/integration-hub/neft_integration_hub/models/edo_stub.py`) | Explicit stub remains available; live defaults are real/degraded, not mock-by-default. |
 | Log-based EDO event envelope | `neft_integration_hub/events.py` | Log aggregation | JSON log envelope `EventEnvelope`. (`platform/integration-hub/neft_integration_hub/events.py`) | Emitted via logger `edo.event`. |
 
 ## 3) Event payload references

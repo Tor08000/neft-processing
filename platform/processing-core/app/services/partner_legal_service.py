@@ -55,6 +55,14 @@ class PartnerLegalService:
     def get_details(self, *, partner_id: str) -> PartnerLegalDetails | None:
         return self.db.query(PartnerLegalDetails).filter(PartnerLegalDetails.partner_id == partner_id).one_or_none()
 
+    @staticmethod
+    def _coerce_utc(value: datetime | None) -> datetime | None:
+        if value is None:
+            return None
+        if value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc)
+
     def get_tax_policy(
         self, *, legal_type: PartnerLegalType | None, tax_regime: PartnerTaxRegime | None
     ) -> PartnerTaxPolicy | None:
@@ -197,14 +205,24 @@ class PartnerLegalService:
             required_fields.append(details.ogrn)
         return all(value for value in required_fields)
 
+    def is_details_complete(
+        self,
+        *,
+        profile: PartnerLegalProfile | None,
+        details: PartnerLegalDetails | None,
+    ) -> bool:
+        if profile is None or details is None:
+            return False
+        return self._details_complete(details, profile.legal_type)
+
     def _collect_warnings(self, *, profile: PartnerLegalProfile, details: PartnerLegalDetails) -> list[str]:
         warnings: list[str] = []
         tax_policy = self.get_tax_policy(legal_type=profile.legal_type, tax_regime=profile.tax_regime)
         if profile.tax_regime and tax_policy is None:
             warnings.append("tax_regime_unconfirmed")
-        updated_at = details.updated_at or details.created_at
+        updated_at = self._coerce_utc(details.updated_at or details.created_at)
         if updated_at:
-            now = datetime.now(timezone.utc)
+            now = self._coerce_utc(datetime.now(timezone.utc))
             if now - updated_at < timedelta(days=LEGAL_DETAILS_COOLDOWN_DAYS):
                 warnings.append("legal_details_recently_changed")
         return warnings

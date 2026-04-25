@@ -2,11 +2,13 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { App } from "../App";
 import type { AuthSession } from "../api/types";
+import { AuthProvider } from "../auth/AuthContext";
+import { I18nProvider } from "../i18n";
+import { FleetPoliciesPage } from "./FleetPoliciesPage";
 
 const adminSession: AuthSession = {
-  token: "token-1",
+  token: "test.header.payload",
   email: "client@demo.test",
   roles: ["CLIENT_OWNER"],
   subjectType: "CLIENT",
@@ -15,7 +17,7 @@ const adminSession: AuthSession = {
 };
 
 const viewerSession: AuthSession = {
-  token: "token-2",
+  token: "test.fleet.viewer",
   email: "viewer@demo.test",
   roles: ["CLIENT_USER"],
   subjectType: "CLIENT",
@@ -27,9 +29,12 @@ describe("FleetPoliciesPage", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
+    window.localStorage.clear();
+    window.sessionStorage.clear();
   });
 
   it("renders policies list", async () => {
+    window.sessionStorage.clear();
     const fetchMock = vi.fn((input: RequestInfo) => {
       const url = input.toString();
       if (url.includes("/client/fleet/policies")) {
@@ -68,7 +73,11 @@ describe("FleetPoliciesPage", () => {
 
     render(
       <MemoryRouter initialEntries={["/fleet/policies"]}>
-        <App initialSession={adminSession} />
+        <I18nProvider locale="ru">
+          <AuthProvider initialSession={adminSession}>
+            <FleetPoliciesPage />
+          </AuthProvider>
+        </I18nProvider>
       </MemoryRouter>,
     );
 
@@ -76,6 +85,7 @@ describe("FleetPoliciesPage", () => {
   });
 
   it("validates create modal required fields", async () => {
+    window.sessionStorage.clear();
     const fetchMock = vi.fn((input: RequestInfo) => {
       const url = input.toString();
       if (url.includes("/client/fleet/policies")) {
@@ -93,7 +103,11 @@ describe("FleetPoliciesPage", () => {
 
     render(
       <MemoryRouter initialEntries={["/fleet/policies"]}>
-        <App initialSession={adminSession} />
+        <I18nProvider locale="ru">
+          <AuthProvider initialSession={adminSession}>
+            <FleetPoliciesPage />
+          </AuthProvider>
+        </I18nProvider>
       </MemoryRouter>,
     );
 
@@ -107,6 +121,7 @@ describe("FleetPoliciesPage", () => {
   });
 
   it("hides create button for viewer", async () => {
+    window.sessionStorage.clear();
     const fetchMock = vi.fn((input: RequestInfo) => {
       const url = input.toString();
       if (url.includes("/client/fleet/policies")) {
@@ -124,7 +139,11 @@ describe("FleetPoliciesPage", () => {
 
     render(
       <MemoryRouter initialEntries={["/fleet/policies"]}>
-        <App initialSession={viewerSession} />
+        <I18nProvider locale="ru">
+          <AuthProvider initialSession={viewerSession}>
+            <FleetPoliciesPage />
+          </AuthProvider>
+        </I18nProvider>
       </MemoryRouter>,
     );
 
@@ -133,6 +152,7 @@ describe("FleetPoliciesPage", () => {
   });
 
   it("shows create button for admin", async () => {
+    window.sessionStorage.clear();
     const fetchMock = vi.fn((input: RequestInfo) => {
       const url = input.toString();
       if (url.includes("/client/fleet/policies")) {
@@ -150,7 +170,11 @@ describe("FleetPoliciesPage", () => {
 
     render(
       <MemoryRouter initialEntries={["/fleet/policies"]}>
-        <App initialSession={adminSession} />
+        <I18nProvider locale="ru">
+          <AuthProvider initialSession={adminSession}>
+            <FleetPoliciesPage />
+          </AuthProvider>
+        </I18nProvider>
       </MemoryRouter>,
     );
 

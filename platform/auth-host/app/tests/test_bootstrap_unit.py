@@ -25,14 +25,33 @@ class _FakeCursor:
     async def execute(self, query: str, params: tuple[Any, ...]):
         q = query.lower().strip()
 
-        if "from users" in q:
+        if "from users" in q and "lower(email)" in q:
             email = params[0].lower()
             user = next((u for u in self.state.users if u["email"].lower() == email), None)
             self._rows = [user] if user else []
+        elif "from users" in q and "lower(username)" in q:
+            username = params[0].lower()
+            user = next(
+                (u for u in self.state.users if (u.get("username") or "").lower() == username),
+                None,
+            )
+            self._rows = [user] if user else []
         elif q.startswith("insert into users"):
-            user_id, email, username, full_name, password_hash = params
+            user_id, *_rest = params
+            email = params[2] if len(params) >= 7 else params[1]
+            username = params[3] if len(params) >= 7 else params[2]
+            full_name = params[4] if len(params) >= 7 else params[3]
+            password_hash = params[5] if len(params) >= 7 else params[4]
             existing = next((u for u in self.state.users if u["email"].lower() == email.lower()), None)
-            if not existing:
+            username_taken = next(
+                (
+                    u
+                    for u in self.state.users
+                    if username and (u.get("username") or "").lower() == str(username).lower()
+                ),
+                None,
+            )
+            if not existing and not username_taken:
                 self.state.users.append(
                     {
                         "id": user_id,
@@ -52,11 +71,20 @@ class _FakeCursor:
                 if user["id"] == user_id:
                     user["is_active"] = True
             self._rows = []
+        elif q.startswith("update users set email"):
+            email, user_id = params
+            for user in self.state.users:
+                if user["id"] == user_id:
+                    user["email"] = email
+            self._rows = []
         elif q.startswith("update users set password_hash"):
-            password_hash, user_id = params
+            password_hash = params[0]
+            user_id = params[-1]
             for user in self.state.users:
                 if user["id"] == user_id:
                     user["password_hash"] = password_hash
+                    if len(params) == 3:
+                        user["bootstrap_password_version"] = params[1]
             self._rows = []
         elif "from user_roles" in q:
             user_id = str(params[0])
@@ -121,7 +149,7 @@ async def test_bootstrap_admin_idempotent_without_db(monkeypatch: pytest.MonkeyP
     assert user["email"] == "admin@neft.local"
 
     roles = {role for (_uid, role) in state.roles}
-    assert roles == {"ADMIN", "SUPERADMIN"}
+    assert roles == set(settings.bootstrap_admin_roles)
 
 
 @pytest.mark.anyio
@@ -141,11 +169,44 @@ async def test_bootstrap_client_and_admin_without_db(monkeypatch: pytest.MonkeyP
     await seed_demo_client_account(settings)
 
     emails = {user["email"] for user in state.users}
-    assert {"client@example.com", "root@example.com"} <= emails
+    assert {settings.demo_client_email, settings.bootstrap_admin_email} <= emails
     role_map = {}
     for user_id, role in state.roles:
         role_map.setdefault(user_id, set()).add(role)
     assert any("ADMIN" in roles for roles in role_map.values())
+
+
+@pytest.mark.anyio
+async def test_bootstrap_admin_normalizes_legacy_email_by_username(monkeypatch: pytest.MonkeyPatch):
+    state = _FakeState(
+        users=[
+            {
+                "id": "admin-user",
+                "email": "admin@example.com",
+                "username": "admin",
+                "full_name": "Legacy Admin",
+                "password_hash": "old-hash",
+                "is_active": True,
+                "bootstrap_password_version": 1,
+            }
+        ],
+        roles={("admin-user", "ADMIN")},
+    )
+    _patch_db(monkeypatch, state)
+
+    settings = Settings(
+        bootstrap_admin_email="admin@neft.local",
+        bootstrap_admin_username="admin",
+        bootstrap_admin_password="Neft123!",
+        bootstrap_admin_roles=["ADMIN", "PLATFORM_ADMIN"],
+    )
+
+    await bootstrap_admin_account(settings=settings)
+
+    assert len(state.users) == 1
+    assert state.users[0]["email"] == "admin@neft.local"
+    roles = {role for (_uid, role) in state.roles}
+    assert roles == set(settings.bootstrap_admin_roles)
 
 
 def test_settings_bootstrap_enabled_honors_demo_seed_enabled(monkeypatch: pytest.MonkeyPatch):

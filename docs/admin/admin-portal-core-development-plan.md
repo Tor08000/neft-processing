@@ -1,5 +1,12 @@
 # Admin Portal — Core Development Plan
 
+> Historical sprint-plan document.
+> Current runtime truth for owner/access/route topology lives in:
+> - `docs/architecture/adr/ADR-0011-admin-portal-owner-and-access-truth.md`
+> - `docs/admin/ADMIN_PORTAL_TRUTH_MAP.md`
+>
+> The role buckets and phase labels below are backlog-era planning notes, not the canonical admin RBAC contract.
+
 ## Цель
 Создать Admin Portal как операционный центр платформы NEFT, обеспечивающий контроль денег, ролей, партнёров и инвариантов MoR без участия разработчиков и без прямого доступа к БД.
 

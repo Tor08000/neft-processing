@@ -3,8 +3,8 @@ from datetime import timedelta
 import pytest
 from sqlalchemy import inspect
 
-from app.db import Base, SessionLocal, engine
 from app.models.risk_rule import RiskRuleAudit, RiskRuleAuditAction
+from app.models.risk_rule import RiskRule, RiskRuleVersion
 from app.repositories.risk_rules_repository import RiskRulesRepository
 from app.services.risk_rules import (
     MetricType,
@@ -14,24 +14,25 @@ from app.services.risk_rules import (
     SelectorConfig,
     WindowConfig,
 )
+from app.tests._scoped_router_harness import scoped_session_context
 
 
-@pytest.fixture(autouse=True)
-def _prepare_db():
-    Base.metadata.drop_all(bind=engine)
-    Base.metadata.create_all(bind=engine)
-    yield
-    Base.metadata.drop_all(bind=engine)
+RISK_RULES_TEST_TABLES = (
+    RiskRule.__table__,
+    RiskRuleVersion.__table__,
+    RiskRuleAudit.__table__,
+)
 
 
 @pytest.fixture
-def repo():
-    session = SessionLocal()
-    repository = RiskRulesRepository(session)
-    try:
-        yield repository
-    finally:
-        session.close()
+def session():
+    with scoped_session_context(tables=RISK_RULES_TEST_TABLES) as db:
+        yield db
+
+
+@pytest.fixture
+def repo(session):
+    yield RiskRulesRepository(session)
 
 
 def _make_basic_rule(name: str, scope: RuleScope, subject: str | None = None) -> RuleConfig:
@@ -48,8 +49,8 @@ def _make_basic_rule(name: str, scope: RuleScope, subject: str | None = None) ->
     )
 
 
-def test_migration_tables_created():
-    inspector = inspect(engine)
+def test_migration_tables_created(session):
+    inspector = inspect(session.get_bind())
     assert "risk_rules" in inspector.get_table_names()
     assert "risk_rule_versions" in inspector.get_table_names()
     assert "risk_rule_audits" in inspector.get_table_names()

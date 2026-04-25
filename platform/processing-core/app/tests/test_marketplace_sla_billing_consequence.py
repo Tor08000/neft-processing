@@ -1,7 +1,7 @@
 import base64
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from cryptography.hazmat.primitives import serialization
@@ -11,8 +11,11 @@ from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.models.audit_log import AuditLog
-from app.models.cases import Case, CaseEvent
+from app.models.client import Client
+from app.models.client_notification import ClientNotification
+from app.models.cases import Case, CaseComment, CaseEvent, CaseSnapshot
 from app.models.decision_memory import DecisionMemoryRecord
+from app.models.dispute import Dispute
 from app.models.finance import CreditNote
 from app.models.internal_ledger import (
     InternalLedgerAccount,
@@ -36,13 +39,23 @@ from app.models.marketplace_contracts import Contract, ContractObligation, Contr
 from app.models.marketplace_order_sla import (
     MarketplaceOrderContractLink,
     MarketplaceOrderEvent,
+    MarketplaceSlaNotificationOutbox,
     OrderSlaConsequence,
     OrderSlaEvaluation,
 )
 from app.models.marketplace_orders import MarketplaceOrder, MarketplaceOrderActorType, MarketplaceOrderEventType
 from app.models.marketplace_settlement import MarketplaceAdjustment, MarketplaceSettlementItem
+from app.models.marketplace_settlement import MarketplaceSettlementSnapshot
 from app.models.notifications import NotificationMessage
+from app.models.operation import Operation
 from app.models.partner_finance import PartnerAccount, PartnerLedgerEntry
+from app.models.partner_finance import PartnerPayoutPolicy
+from app.models.partner_legal import (
+    PartnerLegalDetails,
+    PartnerLegalProfile,
+    PartnerLegalStatus,
+    PartnerLegalType,
+)
 from app.models.payout_batch import PayoutBatch, PayoutItem
 from app.models.platform_revenue import PlatformRevenueEntry
 from app.services.marketplace_order_service import MarketplaceOrderService
@@ -79,12 +92,15 @@ def db_session() -> Session:
         AuditLog.__table__,
         DecisionMemoryRecord.__table__,
         Case.__table__,
+        CaseSnapshot.__table__,
+        CaseComment.__table__,
         CaseEvent.__table__,
         Contract.__table__,
         ContractVersion.__table__,
         ContractObligation.__table__,
         MarketplaceOrderContractLink.__table__,
         MarketplaceOrderEvent.__table__,
+        MarketplaceSlaNotificationOutbox.__table__,
         OrderSlaEvaluation.__table__,
         OrderSlaConsequence.__table__,
         InternalLedgerAccount.__table__,
@@ -95,12 +111,20 @@ def db_session() -> Session:
         MarketplaceCommissionRule.__table__,
         MarketplaceSettlementItem.__table__,
         MarketplaceAdjustment.__table__,
+        MarketplaceSettlementSnapshot.__table__,
         PartnerAccount.__table__,
         PartnerLedgerEntry.__table__,
+        PartnerPayoutPolicy.__table__,
+        Client.__table__,
+        ClientNotification.__table__,
         NotificationMessage.__table__,
         PlatformRevenueEntry.__table__,
         PayoutBatch.__table__,
         PayoutItem.__table__,
+        PartnerLegalProfile.__table__,
+        PartnerLegalDetails.__table__,
+        Operation.__table__,
+        Dispute.__table__,
         Invoice.__table__,
         CreditNote.__table__,
     ]
@@ -118,11 +142,35 @@ def db_session() -> Session:
 
 
 def test_order_sla_billing_consequence_flow(db_session: Session) -> None:
+    client_id = UUID("22222222-2222-2222-2222-222222222222")
+    client = Client(
+        id=client_id,
+        name="Client",
+        email=None,
+    )
+    db_session.add(client)
+    db_session.add(
+        PartnerLegalProfile(
+            partner_id="33333333-3333-3333-3333-333333333333",
+            legal_type=PartnerLegalType.IP,
+            legal_status=PartnerLegalStatus.VERIFIED,
+        )
+    )
+    db_session.add(
+        PartnerLegalDetails(
+            partner_id="33333333-3333-3333-3333-333333333333",
+            legal_name="Partner",
+            inn="7701234567",
+            bank_account="40702810900000000001",
+            bank_bic="044525225",
+            bank_name="NEFT BANK",
+        )
+    )
     contract = Contract(
         contract_number="C-ORDER-002",
         contract_type="service",
         party_a_type="client",
-        party_a_id="22222222-2222-2222-2222-222222222222",
+        party_a_id=str(client_id),
         party_b_type="partner",
         party_b_id="33333333-3333-3333-3333-333333333333",
         currency="RUB",

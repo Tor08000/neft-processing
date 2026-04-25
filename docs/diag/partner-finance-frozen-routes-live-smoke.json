@@ -1,0 +1,14 @@
+{
+  "generated_at": "2026-04-25T14:43:23.3264884+03:00",
+  "scope": "partner finance /contracts and /settlements* frozen-route truth",
+  "status": "SUPERSEDED",
+  "superseded_at": "2026-04-25T16:20:00.000000+00:00",
+  "superseded_by": "docs/diag/partner-finance-mounted-routes-live-smoke-20260425.json",
+  "reason": "The seven-tail finish wave mounted read-only partner contracts and settlements APIs. The former frozen-route evidence is kept only as historical context and must not be used as launch truth.",
+  "current_truth": {
+    "contracts": "VERIFIED_RUNTIME_READ_ONLY",
+    "settlements": "VERIFIED_RUNTIME_READ_ONLY",
+    "write_tails": "settlement confirm/write remains explicit 404",
+    "evidence": "docs/diag/partner-finance-mounted-routes-live-smoke-20260425.json"
+  }
+}

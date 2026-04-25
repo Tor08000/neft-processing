@@ -1,40 +1,26 @@
 import os
 from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 from typing import Tuple
 
-import httpx
 import pytest
-from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
-from sqlalchemy.pool import StaticPool
 
 os.environ["DISABLE_CELERY"] = "1"
 
-from app.db import Base
 from app.models import logistics as logistics_models
 from app.models.fleet import FleetDriver, FleetDriverStatus, FleetVehicle, FleetVehicleStatus
 from app.schemas.logistics import LogisticsStopIn
 from app.services.logistics import deviation, eta, routes
 from app.services.logistics.orders import create_order
-from app.services.logistics.service_client import httpx as service_httpx
+from app.services.logistics.service_client import ETAResult, DeviationResult as ServiceDeviationResult
+from app.tests._logistics_route_harness import logistics_session_context
 
 
 @pytest.fixture()
 def db_session() -> Tuple[Session, sessionmaker]:
-    engine = create_engine(
-        "sqlite://",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
-    SessionLocal = sessionmaker(autocommit=False, autoflush=False, expire_on_commit=False, bind=engine)
-    Base.metadata.create_all(bind=engine)
-    session = SessionLocal()
-    try:
-        yield session, SessionLocal
-    finally:
-        session.close()
-        Base.metadata.drop_all(bind=engine)
-        engine.dispose()
+    with logistics_session_context() as ctx:
+        yield ctx
 
 
 def _seed_fleet(db: Session) -> Tuple[str, str]:
@@ -57,33 +43,21 @@ def _seed_fleet(db: Session) -> Tuple[str, str]:
     return str(vehicle.id), str(driver.id)
 
 
-class DummyClient:
-    def __init__(self, response: httpx.Response) -> None:
-        self.response = response
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc, traceback):
-        return False
-
-    def post(self, url, json):
-        return self.response
-
-
 def test_eta_uses_logistics_service(monkeypatch: pytest.MonkeyPatch, db_session: Tuple[Session, sessionmaker]):
     monkeypatch.setenv("LOGISTICS_SERVICE_ENABLED", "1")
-
-    response = httpx.Response(
-        200,
-        json={
-            "eta_minutes": 45,
-            "confidence": 0.88,
-            "provider": "mock",
-            "explain": {"primary_reason": "NORMAL_TRAFFIC"},
-        },
+    monkeypatch.setattr(
+        "app.services.logistics.eta.get_settings",
+        lambda: SimpleNamespace(LOGISTICS_SERVICE_ENABLED=True),
     )
-    monkeypatch.setattr(service_httpx, "Client", lambda *args, **kwargs: DummyClient(response))
+    monkeypatch.setattr(
+        "app.services.logistics.eta.LogisticsServiceClient.compute_eta",
+        lambda self, payload: ETAResult(
+            eta_minutes=45,
+            confidence=0.88,
+            provider="osrm",
+            explain={"primary_reason": "NORMAL_TRAFFIC"},
+        ),
+    )
 
     db, _ = db_session
     vehicle_id, driver_id = _seed_fleet(db)
@@ -125,13 +99,17 @@ def test_eta_uses_logistics_service(monkeypatch: pytest.MonkeyPatch, db_session:
     snapshot = eta.compute_eta_snapshot(db, order_id=str(order.id), reason="test")
     assert snapshot is not None
     assert snapshot.eta_confidence == 88
-    assert snapshot.inputs["provider"] == "mock"
+    assert snapshot.inputs["provider"] == "osrm"
     assert snapshot.inputs["service_eta_minutes"] == 45
     assert snapshot.inputs["service_explain"]["primary_reason"] == "NORMAL_TRAFFIC"
 
 
 def test_eta_fallback_when_disabled(monkeypatch: pytest.MonkeyPatch, db_session: Tuple[Session, sessionmaker]):
     monkeypatch.setenv("LOGISTICS_SERVICE_ENABLED", "0")
+    monkeypatch.setattr(
+        "app.services.logistics.eta.get_settings",
+        lambda: SimpleNamespace(LOGISTICS_SERVICE_ENABLED=False),
+    )
 
     db, _ = db_session
     vehicle_id, driver_id = _seed_fleet(db)
@@ -155,17 +133,19 @@ def test_eta_fallback_when_disabled(monkeypatch: pytest.MonkeyPatch, db_session:
 
 def test_deviation_uses_logistics_service(monkeypatch: pytest.MonkeyPatch, db_session: Tuple[Session, sessionmaker]):
     monkeypatch.setenv("LOGISTICS_SERVICE_ENABLED", "1")
-
-    response = httpx.Response(
-        200,
-        json={
-            "deviation_meters": 1200,
-            "is_violation": True,
-            "confidence": 0.9,
-            "explain": {"primary_reason": "ROUTE_DEVIATION"},
-        },
+    monkeypatch.setattr(
+        "app.services.logistics.deviation.get_settings",
+        lambda: SimpleNamespace(LOGISTICS_SERVICE_ENABLED=True),
     )
-    monkeypatch.setattr(service_httpx, "Client", lambda *args, **kwargs: DummyClient(response))
+    monkeypatch.setattr(
+        "app.services.logistics.deviation.LogisticsServiceClient.compute_deviation",
+        lambda self, payload: ServiceDeviationResult(
+            deviation_meters=1200,
+            is_violation=True,
+            confidence=0.9,
+            explain={"primary_reason": "ROUTE_DEVIATION"},
+        ),
+    )
 
     db, _ = db_session
     vehicle_id, driver_id = _seed_fleet(db)

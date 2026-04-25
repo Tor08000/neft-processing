@@ -13,6 +13,20 @@ class ActorContext:
     user_id: str | None
 
 
+def _coerce_actor_tenant_id(value: object) -> int:
+    if value is None or isinstance(value, bool):
+        return 0
+    if isinstance(value, int):
+        return value
+    text = str(value).strip()
+    if not text:
+        return 0
+    try:
+        return int(text)
+    except (TypeError, ValueError):
+        return 0
+
+
 def _normalize_roles(token: dict | None) -> set[str]:
     if not token:
         return set()
@@ -41,7 +55,7 @@ def actor_from_token(token: dict | None) -> ActorContext:
     client_id = None
     user_id = None
     if token:
-        tenant_id = int(token.get("tenant_id") or 0)
+        tenant_id = _coerce_actor_tenant_id(token.get("tenant_id"))
         client_id = token.get("client_id")
         user_id = token.get("user_id") or token.get("sub")
 

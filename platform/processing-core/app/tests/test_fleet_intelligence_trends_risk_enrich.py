@@ -1,13 +1,9 @@
 from datetime import datetime, timezone
-from typing import Tuple
 from uuid import uuid4
 
 import pytest
-from sqlalchemy import create_engine
-from sqlalchemy.orm import Session, sessionmaker
-from sqlalchemy.pool import StaticPool
+from sqlalchemy.orm import Session
 
-from app.db import Base
 from app.models.crm import CRMClient, CRMClientStatus
 from app.models.fleet import FleetDriver, FleetDriverStatus, FleetVehicle, FleetVehicleStatus
 from app.models.fleet_intelligence import (
@@ -21,28 +17,18 @@ from app.models.fleet_intelligence import (
 )
 from app.models.fuel import FuelCard, FuelCardStatus, FuelNetwork, FuelNetworkStatus, FuelStation, FuelStationStatus, FuelType
 from app.services.fuel.risk_context import build_risk_context_for_fuel_tx
+from app.tests._fleet_intelligence_test_harness import FLEET_INTELLIGENCE_EXPLAIN_TEST_TABLES
+from app.tests._scoped_router_harness import scoped_session_context
 
 
 @pytest.fixture()
-def db_session() -> Tuple[Session, sessionmaker]:
-    engine = create_engine(
-        "sqlite://",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
-    SessionLocal = sessionmaker(autocommit=False, autoflush=False, expire_on_commit=False, bind=engine)
-    Base.metadata.create_all(bind=engine)
-    session = SessionLocal()
-    try:
-        yield session, SessionLocal
-    finally:
-        session.close()
-        Base.metadata.drop_all(bind=engine)
-        engine.dispose()
+def db_session() -> Session:
+    with scoped_session_context(tables=FLEET_INTELLIGENCE_EXPLAIN_TEST_TABLES) as session:
+        yield session
 
 
-def test_risk_context_trend_hint(db_session: Tuple[Session, sessionmaker]):
-    db, _ = db_session
+def test_risk_context_trend_hint(db_session: Session):
+    db = db_session
     client = CRMClient(
         id="client-1",
         tenant_id=1,

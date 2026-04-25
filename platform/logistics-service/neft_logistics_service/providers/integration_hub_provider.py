@@ -5,7 +5,7 @@ import socket
 from urllib import error, request as urllib_request
 
 from neft_logistics_service.providers.base import BaseProvider
-from neft_logistics_service.providers.mock import MockProvider
+from neft_logistics_service.schemas import RoutePreviewRequest
 from neft_logistics_service.schemas.fleet import FleetListRequest, FleetListResponse, FleetUpsertRequest, FleetUpsertResponse
 from neft_logistics_service.schemas.fuel import FuelConsumptionRequest, FuelConsumptionResponse
 from neft_logistics_service.schemas.trips import TripCreateRequest, TripCreateResponse, TripStatusResponse
@@ -21,7 +21,6 @@ class IntegrationHubProvider(BaseProvider):
         self.base_url = self.settings.integration_hub_base_url.rstrip("/")
         self.timeout = self.settings.integration_hub_timeout_sec
         self.internal_token = self.settings.integration_hub_internal_token
-        self.mock = MockProvider()
 
     def _call(self, method: str, path: str, payload: dict | None = None) -> dict:
         url = f"{self.base_url}{path}"
@@ -66,14 +65,17 @@ class IntegrationHubProvider(BaseProvider):
         data = self._call("POST", "/v1/logistics/fuel/consumption", request.model_dump())
         return FuelConsumptionResponse(**data)
 
+    def preview_route(self, request: RoutePreviewRequest):
+        raise RuntimeError("compute_provider_unsupported:integration_hub")
+
     def compute_eta(self, request):
-        return self.mock.compute_eta(request)
+        raise RuntimeError("compute_provider_unsupported:integration_hub")
 
     def compute_deviation(self, request):
-        return self.mock.compute_deviation(request)
+        raise RuntimeError("compute_provider_unsupported:integration_hub")
 
     def explain_eta(self, request):
-        return self.mock.explain_eta(request)
+        raise RuntimeError("compute_provider_unsupported:integration_hub")
 
     def explain_deviation(self, request):
-        return self.mock.explain_deviation(request)
+        raise RuntimeError("compute_provider_unsupported:integration_hub")

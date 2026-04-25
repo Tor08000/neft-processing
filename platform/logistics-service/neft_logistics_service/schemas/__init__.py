@@ -11,6 +11,12 @@ from neft_logistics_service.schemas.legacy import (
     PointIn,
     VehicleIn,
 )
+from neft_logistics_service.schemas.preview import (
+    RoutePreviewGeometryPoint,
+    RoutePreviewPoint,
+    RoutePreviewRequest,
+    RoutePreviewResponse,
+)
 
 __all__ = [
     "Explain",
@@ -24,4 +30,8 @@ __all__ = [
     "DeviationResponse",
     "ExplainRequest",
     "ExplainResponse",
+    "RoutePreviewPoint",
+    "RoutePreviewGeometryPoint",
+    "RoutePreviewRequest",
+    "RoutePreviewResponse",
 ]

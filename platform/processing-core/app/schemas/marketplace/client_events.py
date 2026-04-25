@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 MarketplaceClientEventType = Literal[
@@ -42,7 +42,8 @@ class MarketplaceClientEventIn(BaseModel):
     request_id: str | None = None
     idempotency_key: str | None = None
 
-    @validator("payload")
+    @field_validator("payload")
+    @classmethod
     def payload_is_object_and_size_limited(cls, value: dict | None) -> dict | None:
         if value is None:
             return None
@@ -53,7 +54,8 @@ class MarketplaceClientEventIn(BaseModel):
             raise ValueError("payload exceeds size limit")
         return value
 
-    @validator("utm")
+    @field_validator("utm")
+    @classmethod
     def utm_is_object(cls, value: dict | None) -> dict | None:
         if value is None:
             return None
@@ -61,12 +63,11 @@ class MarketplaceClientEventIn(BaseModel):
             raise ValueError("utm must be a JSON object")
         return value
 
-    @validator("entity_id", always=True)
-    def entity_id_required_for_entity_type(cls, value: UUID | None, values: dict) -> UUID | None:
-        entity_type = values.get("entity_type")
-        if entity_type and entity_type != "NONE" and value is None:
+    @model_validator(mode="after")
+    def entity_id_required_for_entity_type(self) -> MarketplaceClientEventIn:
+        if self.entity_type != "NONE" and self.entity_id is None:
             raise ValueError("entity_id is required for entity_type events")
-        return value
+        return self
 
 
 class MarketplaceClientEventsIngestRequest(BaseModel):

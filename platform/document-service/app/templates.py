@@ -92,6 +92,33 @@ class TemplateRegistry:
                 version="1",
                 status="ACTIVE",
             ),
+            "offer_v1": TemplateDefinition(
+                code="offer_v1",
+                title="Client onboarding offer",
+                engine="HTML",
+                template_path=templates_dir / "offer_v1.html",
+                schema_path=schemas_dir / "client_onboarding.schema.json",
+                version="1",
+                status="ACTIVE",
+            ),
+            "agreement_v1": TemplateDefinition(
+                code="agreement_v1",
+                title="Client onboarding service agreement",
+                engine="HTML",
+                template_path=templates_dir / "agreement_v1.html",
+                schema_path=schemas_dir / "client_onboarding.schema.json",
+                version="1",
+                status="ACTIVE",
+            ),
+            "dpa_v1": TemplateDefinition(
+                code="dpa_v1",
+                title="Client onboarding data processing addendum",
+                engine="HTML",
+                template_path=templates_dir / "dpa_v1.html",
+                schema_path=schemas_dir / "client_onboarding.schema.json",
+                version="1",
+                status="ACTIVE",
+            ),
         }
 
     def list_templates(self) -> list[TemplateDefinition]:

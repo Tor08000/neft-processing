@@ -51,7 +51,7 @@ class OtpChallenge(Base):
     document_id: Mapped[str] = mapped_column(
         GUID(), ForeignKey("client_generated_documents.id", ondelete="CASCADE"), nullable=False
     )
-    client_id: Mapped[str] = mapped_column(GUID(), nullable=False)
+    client_id: Mapped[str | None] = mapped_column(GUID(), nullable=True)
     user_id: Mapped[str] = mapped_column(GUID(), nullable=False)
     channel: Mapped[str] = mapped_column(String(16), nullable=False)
     destination: Mapped[str] = mapped_column(Text, nullable=False)

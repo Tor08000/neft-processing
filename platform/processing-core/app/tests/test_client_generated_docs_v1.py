@@ -1,78 +1,38 @@
 from __future__ import annotations
 
-import io
-import uuid
-
-from fastapi.testclient import TestClient
-
-from app.db import get_sessionmaker
-from app.domains.client.onboarding.repo import ClientOnboardingRepository
-from app.main import app
+from app.tests._client_docflow_onboarding_harness import (
+    create_onboarding_application,
+    docflow_api_client,
+    move_onboarding_to_in_review,
+    setup_docflow_env,
+)
 
 
-class _InMemoryStorage:
-    data: dict[tuple[str, str], bytes] = {}
-
-    def ensure_bucket(self, bucket: str) -> None:
-        return None
-
-    def put_object(self, bucket: str, key: str, payload: bytes, content_type: str, metadata=None) -> None:
-        self.data[(bucket, key)] = payload
-
-    def get_object_stream(self, bucket: str, key: str):
-        return io.BytesIO(self.data[(bucket, key)])
-
-
-class _DocClient:
-    def render_pdf(self, *, template_id: str, data: dict) -> bytes:
-        return f"%PDF-1.7 {template_id} {data.get('application_id')}".encode()
-
-
-def _email() -> str:
-    return f"gen-docs-{uuid.uuid4().hex[:8]}@example.com"
-
-
-def _create(api_client: TestClient):
-    response = api_client.post("/api/core/client/v1/onboarding/applications", json={"email": _email()})
-    assert response.status_code == 200
-    body = response.json()
-    return body["application"]["id"], body["access_token"]
-
-
-def _move_to_in_review(app_id: str) -> None:
-    session = get_sessionmaker()()
-    try:
-        repo = ClientOnboardingRepository(db=session)
-        application = repo.get_by_id(app_id)
-        assert application is not None
-        repo.update_draft(application, {"status": "IN_REVIEW"})
-    finally:
-        session.close()
+def _create_in_review_application(api_client, session_factory, *, prefix: str) -> tuple[str, str]:
+    application_id, token = create_onboarding_application(api_client, prefix=prefix)
+    move_onboarding_to_in_review(session_factory, application_id)
+    return application_id, token
 
 
 def test_generated_docs_happy_path_and_access_control(monkeypatch) -> None:
-    monkeypatch.setenv("ONBOARDING_TOKEN_SECRET", "test-onboarding-secret")
-    monkeypatch.setenv("APP_ENV", "dev")
-    monkeypatch.setenv("PLATFORM_DOC_SIGN_MODE", "mock")
-    monkeypatch.setenv("MINIO_ENDPOINT", "http://minio:9000")
-    monkeypatch.setenv("MINIO_ACCESS_KEY", "minio")
-    monkeypatch.setenv("MINIO_SECRET_KEY", "minio123")
-    monkeypatch.setattr("app.routers.client_generated_docs_v1.OnboardingDocumentsStorage.from_env", lambda: _InMemoryStorage())
-    monkeypatch.setattr("app.routers.client_generated_docs_v1.DocumentServiceRenderClient", lambda: _DocClient())
+    setup_docflow_env(monkeypatch)
 
-    with TestClient(app) as api_client:
-        app_id, token = _create(api_client)
-        _move_to_in_review(app_id)
+    with docflow_api_client() as (api_client, session_factory):
+        application_id, token = _create_in_review_application(
+            api_client,
+            session_factory,
+            prefix="gen-docs",
+        )
 
         generated = api_client.post(
-            f"/api/core/client/v1/onboarding/applications/{app_id}/generate-docs",
+            f"/api/core/client/v1/onboarding/applications/{application_id}/generate-docs",
             headers={"Authorization": f"Bearer {token}"},
         )
         assert generated.status_code == 200
         assert len(generated.json()["items"]) == 3
 
         listed = api_client.get(
-            f"/api/core/client/v1/onboarding/applications/{app_id}/generated-docs",
+            f"/api/core/client/v1/onboarding/applications/{application_id}/generated-docs",
             headers={"Authorization": f"Bearer {token}"},
         )
         assert listed.status_code == 200
@@ -86,62 +46,61 @@ def test_generated_docs_happy_path_and_access_control(monkeypatch) -> None:
         assert download.status_code == 200
         assert download.content.startswith(b"%PDF-1.7")
 
-        _, token_other = _create(api_client)
+        _, token_other = create_onboarding_application(api_client, prefix="other-docs")
         forbidden = api_client.get(
             f"/api/core/client/v1/onboarding/generated-docs/{doc_id}/download",
             headers={"Authorization": f"Bearer {token_other}"},
         )
         assert forbidden.status_code == 403
+        assert forbidden.json()["detail"]["reason_code"] == "onboarding_token_app_mismatch"
 
 
 def test_generated_docs_versioning(monkeypatch) -> None:
-    monkeypatch.setenv("ONBOARDING_TOKEN_SECRET", "test-onboarding-secret")
-    monkeypatch.setenv("APP_ENV", "dev")
-    monkeypatch.setenv("PLATFORM_DOC_SIGN_MODE", "mock")
-    monkeypatch.setenv("MINIO_ENDPOINT", "http://minio:9000")
-    monkeypatch.setenv("MINIO_ACCESS_KEY", "minio")
-    monkeypatch.setenv("MINIO_SECRET_KEY", "minio123")
-    monkeypatch.setattr("app.routers.client_generated_docs_v1.OnboardingDocumentsStorage.from_env", lambda: _InMemoryStorage())
-    monkeypatch.setattr("app.routers.client_generated_docs_v1.DocumentServiceRenderClient", lambda: _DocClient())
+    setup_docflow_env(monkeypatch)
 
-    with TestClient(app) as api_client:
-        app_id, token = _create(api_client)
-        _move_to_in_review(app_id)
+    with docflow_api_client() as (api_client, session_factory):
+        application_id, token = _create_in_review_application(
+            api_client,
+            session_factory,
+            prefix="gen-docs",
+        )
+
         first = api_client.post(
-            f"/api/core/client/v1/onboarding/applications/{app_id}/generate-docs",
+            f"/api/core/client/v1/onboarding/applications/{application_id}/generate-docs",
             headers={"Authorization": f"Bearer {token}"},
         )
         assert first.status_code == 200
+
         second = api_client.post(
-            f"/api/core/client/v1/onboarding/applications/{app_id}/generate-docs",
+            f"/api/core/client/v1/onboarding/applications/{application_id}/generate-docs",
             headers={"Authorization": f"Bearer {token}"},
         )
         assert second.status_code == 200
 
         listed = api_client.get(
-            f"/api/core/client/v1/onboarding/applications/{app_id}/generated-docs",
+            f"/api/core/client/v1/onboarding/applications/{application_id}/generated-docs",
             headers={"Authorization": f"Bearer {token}"},
         )
+        assert listed.status_code == 200
         versions = sorted({(item["doc_kind"], item["version"]) for item in listed.json()["items"]})
         assert ("OFFER", 1) in versions
         assert ("OFFER", 2) in versions
 
 
 def test_generated_docs_prod_mode_without_sign(monkeypatch) -> None:
-    monkeypatch.setenv("ONBOARDING_TOKEN_SECRET", "test-onboarding-secret")
+    setup_docflow_env(monkeypatch)
     monkeypatch.setenv("APP_ENV", "prod")
     monkeypatch.setenv("PLATFORM_DOC_SIGN_MODE", "disabled")
-    monkeypatch.setenv("MINIO_ENDPOINT", "http://minio:9000")
-    monkeypatch.setenv("MINIO_ACCESS_KEY", "minio")
-    monkeypatch.setenv("MINIO_SECRET_KEY", "minio123")
-    monkeypatch.setattr("app.routers.client_generated_docs_v1.OnboardingDocumentsStorage.from_env", lambda: _InMemoryStorage())
-    monkeypatch.setattr("app.routers.client_generated_docs_v1.DocumentServiceRenderClient", lambda: _DocClient())
 
-    with TestClient(app) as api_client:
-        app_id, token = _create(api_client)
-        _move_to_in_review(app_id)
+    with docflow_api_client() as (api_client, session_factory):
+        application_id, token = _create_in_review_application(
+            api_client,
+            session_factory,
+            prefix="gen-docs",
+        )
+
         generated = api_client.post(
-            f"/api/core/client/v1/onboarding/applications/{app_id}/generate-docs",
+            f"/api/core/client/v1/onboarding/applications/{application_id}/generate-docs",
             headers={"Authorization": f"Bearer {token}"},
         )
 

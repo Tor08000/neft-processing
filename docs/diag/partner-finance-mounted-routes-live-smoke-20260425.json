@@ -1,0 +1,31 @@
+{
+    "captured_at":  "2026-04-25T16:31:34.0527877Z",
+    "surface":  "partner_finance_contracts_settlements_read",
+    "status":  "VERIFIED_RUNTIME",
+    "command":  "cmd /c scripts\\smoke_partner_settlement_e2e.cmd",
+    "checks":  [
+                   "partner finance dashboard/balance/ledger/payout/document reads return 200",
+                   "admin settlement snapshot returns 200",
+                   "canonical partner contracts read returns 200 with items",
+                   "legacy partner contracts read returns 200 with items",
+                   "canonical partner settlements read returns 200 with items",
+                   "legacy partner settlements read returns 200 with items",
+                   "partner settlement confirm/write tail remains 404"
+               ],
+    "finance_org_id":  "1",
+    "partner_storage_id":  "00000000-0000-0000-0000-000000000001",
+    "contracts":  {
+                      "canonical_status":  200,
+                      "canonical_total":  0,
+                      "legacy_status":  200,
+                      "legacy_total":  0
+                  },
+    "settlements":  {
+                        "canonical_status":  200,
+                        "canonical_total":  0,
+                        "legacy_status":  200,
+                        "legacy_total":  0,
+                        "confirm_tail_status":  404
+                    },
+    "public_api_change":  "additive read-only partner contracts/settlements APIs; settlement write/confirm route remains absent"
+}

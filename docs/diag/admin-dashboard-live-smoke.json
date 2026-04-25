@@ -1,0 +1,222 @@
+{
+  "checked_at": "2026-04-23T15:37:14.510Z",
+  "admin_base_url": "http://localhost/admin",
+  "stale_route_prefixes": [
+    "/billing",
+    "/money",
+    "/fleet",
+    "/subscriptions",
+    "/operations",
+    "/explain"
+  ],
+  "results": [
+    {
+      "role": "NEFT_OPS",
+      "path": "/",
+      "url": "http://localhost/admin/",
+      "bodySnippet": "NEFT PLATFORM ADMIN operator surface Home Cases Finance Marketplace Onboarding Ops Logistics Runtime Geo Analytics Rules Sandbox Risk Rules Policy Center NEFT PLATFORM Home neft_ops@neft.test DEV neft_ops@neft.test opera",
+      "meStatus": 200,
+      "headings": [
+        {
+          "heading": "Admin operator console",
+          "visible": true
+        }
+      ],
+      "presentLinks": [
+        {
+          "link": "Rules Sandbox",
+          "visible": true
+        },
+        {
+          "link": "Risk Rules",
+          "visible": true
+        },
+        {
+          "link": "Policy Center",
+          "visible": true
+        },
+        {
+          "link": "Geo Analytics",
+          "visible": true
+        },
+        {
+          "link": "Ops KPI",
+          "visible": true
+        }
+      ],
+      "absentLinks": [
+        {
+          "link": "Revenue",
+          "visible": false
+        }
+      ],
+      "staleLinks": [],
+      "consoleMessages": [],
+      "screenshot": "C:\\neft-processing\\docs\\diag\\screenshots\\admin-dashboard-ops.png"
+    },
+    {
+      "role": "NEFT_FINANCE",
+      "path": "/",
+      "url": "http://localhost/admin/",
+      "bodySnippet": "NEFT PLATFORM ADMIN operator surface Home Cases Finance Revenue Commercial Runtime Audit NEFT PLATFORM Home neft_finance@neft.test DEV neft_finance@neft.test finance_admin Admin operator console Строгая операторская пане",
+      "meStatus": 200,
+      "headings": [
+        {
+          "heading": "Admin operator console",
+          "visible": true
+        }
+      ],
+      "presentLinks": [
+        {
+          "link": "Finance",
+          "visible": true
+        },
+        {
+          "link": "Revenue",
+          "visible": true
+        }
+      ],
+      "absentLinks": [
+        {
+          "link": "Rules Sandbox",
+          "visible": false
+        },
+        {
+          "link": "Risk Rules",
+          "visible": false
+        },
+        {
+          "link": "Policy Center",
+          "visible": false
+        }
+      ],
+      "staleLinks": [],
+      "consoleMessages": [],
+      "screenshot": "C:\\neft-processing\\docs\\diag\\screenshots\\admin-dashboard-finance.png"
+    },
+    {
+      "role": "NEFT_SUPPORT",
+      "path": "/",
+      "url": "http://localhost/admin/",
+      "bodySnippet": "NEFT PLATFORM ADMIN operator surface Home Cases Finance Commercial Marketplace Onboarding Runtime Legal Audit NEFT PLATFORM Home neft_support@neft.test DEV neft_support@neft.test support_admin Admin operator console Стро",
+      "meStatus": 200,
+      "headings": [
+        {
+          "heading": "Admin operator console",
+          "visible": true
+        }
+      ],
+      "presentLinks": [
+        {
+          "link": "Cases",
+          "visible": true
+        },
+        {
+          "link": "Onboarding",
+          "visible": true
+        }
+      ],
+      "absentLinks": [
+        {
+          "link": "Revenue",
+          "visible": false
+        },
+        {
+          "link": "Rules Sandbox",
+          "visible": false
+        },
+        {
+          "link": "Risk Rules",
+          "visible": false
+        },
+        {
+          "link": "Policy Center",
+          "visible": false
+        }
+      ],
+      "staleLinks": [],
+      "consoleMessages": [],
+      "screenshot": "C:\\neft-processing\\docs\\diag\\screenshots\\admin-dashboard-support.png"
+    },
+    {
+      "role": "NEFT_SALES",
+      "path": "/crm/tariffs",
+      "url": "http://localhost/admin/crm/tariffs",
+      "bodySnippet": "NEFT PLATFORM ADMIN operator surface Home Cases Revenue Commercial CRM Marketplace Onboarding NEFT PLATFORM CRM neft_sales@neft.test DEV neft_sales@neft.test commercial_admin CRM · Tariffs Create tariff DENSITY Compact C",
+      "meStatus": 200,
+      "headings": [
+        {
+          "heading": "CRM",
+          "visible": true
+        }
+      ],
+      "presentLinks": [
+        {
+          "link": "CRM",
+          "visible": true
+        },
+        {
+          "link": "Revenue",
+          "visible": true
+        }
+      ],
+      "absentLinks": [
+        {
+          "link": "Rules Sandbox",
+          "visible": false
+        },
+        {
+          "link": "Risk Rules",
+          "visible": false
+        },
+        {
+          "link": "Policy Center",
+          "visible": false
+        }
+      ],
+      "staleLinks": [],
+      "consoleMessages": [],
+      "screenshot": "C:\\neft-processing\\docs\\diag\\screenshots\\admin-shell-crm-tariffs.png"
+    },
+    {
+      "role": "NEFT_LEGAL",
+      "path": "/legal/partners",
+      "url": "http://localhost/admin/legal/partners",
+      "bodySnippet": "NEFT PLATFORM ADMIN operator surface Home Cases Runtime Legal Audit NEFT PLATFORM Legal neft_legal@neft.test DEV neft_legal@neft.test legal_admin Legal partners Documents Partners Refresh Status Search Apply DENSITY Comp",
+      "meStatus": 200,
+      "headings": [
+        {
+          "heading": "Legal",
+          "visible": true
+        }
+      ],
+      "presentLinks": [
+        {
+          "link": "Legal",
+          "visible": true
+        }
+      ],
+      "absentLinks": [
+        {
+          "link": "Revenue",
+          "visible": false
+        },
+        {
+          "link": "Rules Sandbox",
+          "visible": false
+        },
+        {
+          "link": "Risk Rules",
+          "visible": false
+        },
+        {
+          "link": "Policy Center",
+          "visible": false
+        }
+      ],
+      "staleLinks": [],
+      "consoleMessages": [],
+      "screenshot": "C:\\neft-processing\\docs\\diag\\screenshots\\admin-shell-legal-partners.png"
+    }
+  ]
+}

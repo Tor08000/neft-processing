@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Client onboarding template variables",
+  "type": "object",
+  "required": ["company_name", "inn", "ogrn", "email", "application_id"],
+  "properties": {
+    "company_name": { "type": "string", "minLength": 1 },
+    "inn": { "type": "string", "minLength": 1 },
+    "ogrn": { "type": "string", "minLength": 1 },
+    "email": { "type": "string", "minLength": 1 },
+    "phone": { "type": ["string", "null"] },
+    "application_id": { "type": "string", "minLength": 1 },
+    "client_id": { "type": ["string", "null"] }
+  },
+  "additionalProperties": false
+}

@@ -24,7 +24,7 @@
 | Файл | Строка | Тип заглушки | Влияет на prod? |
 |---|---:|---|---|
 | `docker-compose.dev.yml` | 5 | `LOGISTICS_PROVIDER=mock` | Нет (только dev override) |
-| `platform/crm-service/app/main.py` | 1 | CRM сервис реализован как stub-микросервис | Да (если включён сервис в prod профиле) |
+| `platform/crm-service/app/main.py` | 1 | CRM сервис реализован как compatibility/shadow surface, не как canonical owner | Да (если включён сервис в prod профиле) |
 | `platform/processing-core/app/integrations/fuel/providers/stub_provider.py` | 1 | Fuel provider stub | Да (если выбран провайдером) |
 | `platform/processing-core/app/services/bank_stub_service.py` | 1 | Bank stub service | Да (если вызван сценарий bank stub) |
 | `platform/processing-core/app/services/erp_stub_service.py` | 1 | ERP stub service | Да (если вызван сценарий ERP stub) |
@@ -34,12 +34,12 @@
 | `platform/processing-core/app/services/legal_integrations/providers/kontur_sign.py` | 10 | `NotImplementedError` в Kontur.Sign adapter | Да |
 | `platform/processing-core/app/services/helpdesk_service.py` | 89 | `NotImplementedError` интерфейса | Да |
 | `platform/processing-core/app/services/unified_rules_engine.py` | 61 | `NotImplementedError` | Да |
-| `platform/document-service/app/settings.py` | 24 | `PROVIDER_X_MODE=mock` по умолчанию | Да |
+| `platform/document-service/app/settings.py` | 24 | `PROVIDER_X_MODE=real` по умолчанию, explicit `mock/degraded/disabled` modes | Да |
 | `platform/document-service/app/sign/providers/provider_x.py` | 92 | mock signature flow | Да |
 | `platform/logistics-service/neft_logistics_service/providers/mock.py` | 20 | Полный mock provider | Да (если `LOGISTICS_PROVIDER=mock`) |
-| `platform/integration-hub/neft_integration_hub/settings.py` | 41 | `DIADOK_MODE=mock` default | Да |
+| `platform/integration-hub/neft_integration_hub/settings.py` | 44 | historical `DIADOK_MODE=mock` default was removed; current defaults are real/degraded/disabled | Нет |
 | `platform/integration-hub/neft_integration_hub/providers/diadok.py` | 23 | mock request id | Да |
-| `scripts/smoke_gating_states.cmd` | 7 | placeholder smoke script | Нет (диагностический скрипт) |
+| `scripts/smoke_gating_states.cmd` | 7 | aggregated gating smoke over mounted owner states | Да (used in runtime verification for auth/onboarding/overdue gating) |
 | `.github/workflows/cd.yml` | 10 | `Deploy placeholder` | Нет (CD заглушка) |
 
 Примечание: полный машинный поиск по ключам `stub/mock/NotImplemented/TODO/placeholder/fake/demo-only` также захватывает UI-placeholder поля форм и тестовые `vi.mock`; они не классифицированы как prod-блокер.
@@ -94,14 +94,14 @@
 | gateway | OK | Да | Нет | Нет | Нет |
 | auth-host | OK | Да | Нет | Нет | Нет |
 | processing-core | Partial | Частично | Нет | Частично (интеграционные адаптеры) | Есть (незакрытые NotImplemented-пути) |
-| integration-hub | Partial | Частично | Нет | Да (EDO mock режимы) | Есть (реальные EDO коннекторы неполные) |
+| integration-hub | Partial | Частично | Нет | Только explicit mock mode | Есть (не все реальные transport adapters wired) |
 | logistics-service | Partial | Частично | Нет | Да (mock provider) | Есть (mock fallback) |
-| document-service | Partial | Частично | Нет | Да (provider_x mock default) | Есть (default не production-safe) |
-| crm-service | Stub | Нет | Да | Да | Да |
+| document-service | Partial | Частично | Нет | Только explicit mock/degraded modes | Есть (реальный provider требует config, degraded mode now explicit) |
+| crm-service | Partial | Нет (не canonical owner) | Да | Да (compatibility/shadow) | Да |
 | workers/beat | OK | Да | Нет | Нет | Нет |
 | admin-ui | Partial | Частично | Нет | Нет | Нет |
 | client-portal | Partial | Частично | Нет | Нет | Нет |
-| partner-portal | Partial | Частично | Нет | Есть (`Demo-only bypass` в коде) | Есть (требуется жёсткое отключение в prod конфиге) |
+| partner-portal | Partial | Частично | Нет | Только explicit demo mode (`VITE_DEMO_MODE`), без implicit prod bypass | Есть (широкая runtime parity/capability rollout ещё не завершена) |
 
 Статусы строго из набора: `OK`, `Partial`, `Dev-Only`, `Stub`, `Broken`.
 
@@ -113,7 +113,7 @@
 - **Auth flow**: SPA/API client → `gateway` → `auth-host` (`/api/auth/*` или legacy `/api/v1/auth/*`) → JWT.
 - **Domain API flow**: client/admin/partner token → `gateway` → `processing-core` (`/api/core/*`).
 - **Integration flow**:
-  - `processing-core` ↔ `integration-hub` (webhooks/EDO stub paths),
+  - `processing-core` ↔ `integration-hub` (webhooks + EDO transport with explicit mock/degraded modes),
   - `processing-core` ↔ `logistics-service` (provider switch: integration_hub/mock),
   - `processing-core` ↔ `document-service` (PDF/sign verify),
   - async задачи через `workers/beat` + Redis.
@@ -153,7 +153,7 @@
 ### PROD текущий факт
 
 - Правила fail-fast и migration gate реализованы.
-- Полное соответствие «no mock/no stub» **не достигнуто**: в runtime-коде присутствуют mock/stub интеграции и default mock mode для части сервисов.
+- Полное соответствие «no mock/no stub» **не достигнуто**: в runtime-коде присутствуют mock/stub интеграции, но production defaults уже сдвинуты в explicit real/degraded/disabled modes вместо mock-by-default.
 
 ## 5) DEV Profile Specification
 
@@ -187,9 +187,9 @@
 
 | Интеграция | Реальная | Stub | Prod-ready |
 |---|---|---|---|
-| CRM | Частично (core CRM доменная модель) | Да (`crm-service` stub) | Нет |
+| CRM | Частично (canonical admin CRM в `processing-core`) | Да (`crm-service` compatibility/shadow surface) | Нет |
 | Logistics | Частично (integration_hub provider path) | Да (`mock` provider) | Частично |
-| EDO | Частично | Да (integration-hub EDO stub + mock mode) | Нет |
+| EDO | Частично | Да (explicit integration-hub transport with mock only by mode and degraded unsupported providers) | Нет |
 | ERP-light | Частично | Да (`erp_stub_service`) | Нет |
 
 ## 8) CI/CD Status

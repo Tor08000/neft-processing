@@ -5,6 +5,7 @@ import { ForbiddenState, LoadingState } from "../../components/states";
 import { PriceAnalyticsCharts } from "../../components/PriceAnalyticsCharts";
 import { ChartFrame } from "@shared/ui/charts/ChartFrame";
 import { useAuth } from "../../auth/AuthContext";
+import { usePortal } from "../../auth/PortalContext";
 import { useTranslation } from "react-i18next";
 import {
   fetchPriceAnalyticsInsights,
@@ -15,6 +16,7 @@ import {
 import { ApiError } from "../../api/http";
 import { formatCurrency, formatDate, formatNumber } from "../../utils/format";
 import { canReadPriceAnalytics } from "../../utils/roles";
+import { resolveEffectivePartnerRoles } from "../../access/partnerWorkspace";
 import type {
   PriceAnalyticsInsight,
   PriceAnalyticsOffer,
@@ -39,8 +41,11 @@ const formatPercent = (value: number | null) => {
   return `${sign}${Math.abs(value).toFixed(0)}%`;
 };
 
+const DEBUG_ANALYTICS_ERRORS = Boolean(import.meta.env.DEV && import.meta.env.VITE_PARTNER_DEBUG_ERRORS === "true");
+
 export function AnalyticsPageProd() {
   const { user } = useAuth();
+  const { portal } = usePortal();
   const { t } = useTranslation();
   const [versions, setVersions] = useState<PriceAnalyticsVersion[]>([]);
   const [offers, setOffers] = useState<PriceAnalyticsOffer[]>([]);
@@ -54,7 +59,8 @@ export function AnalyticsPageProd() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<ApiError | null>(null);
 
-  const canRead = canReadPriceAnalytics(user?.roles);
+  const effectiveRoles = resolveEffectivePartnerRoles(portal, user?.roles);
+  const canRead = canReadPriceAnalytics(effectiveRoles);
 
   useEffect(() => {
     if (!user || !canRead) return;
@@ -71,7 +77,9 @@ export function AnalyticsPageProd() {
         setError(null);
       })
       .catch((err) => {
-        console.error(err);
+        if (DEBUG_ANALYTICS_ERRORS) {
+          console.error(err);
+        }
         setError(err instanceof ApiError ? err : new ApiError(t("priceAnalyticsPage.errors.loadFailed"), 500, null, null, null));
       })
       .finally(() => {
@@ -100,7 +108,9 @@ export function AnalyticsPageProd() {
     fetchPriceAnalyticsVersionSeries(user.token, { ...filters, price_version_id: selectedVersion })
       .then((response) => setSeries(response ?? []))
       .catch((err) => {
-        console.error(err);
+        if (DEBUG_ANALYTICS_ERRORS) {
+          console.error(err);
+        }
         setSeries([]);
       });
   }, [user, selectedVersion, filters, canRead]);

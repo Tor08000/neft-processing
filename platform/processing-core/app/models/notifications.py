@@ -58,20 +58,20 @@ class NotificationMessage(Base):
         Index("ix_notification_outbox_aggregate", "aggregate_type", "aggregate_id"),
     )
 
-    id = Column(GUID(), primary_key=True, default=new_uuid_str)
+    id = Column(String(36), primary_key=True, default=new_uuid_str)
     event_type = Column(String(64), nullable=False)
-    subject_type = Column(ExistingEnum(NotificationSubjectType, name="notification_subject_type"), nullable=True)
-    subject_id = Column(String(64), nullable=True)
+    subject_type = Column(ExistingEnum(NotificationSubjectType, name="notification_subject_type"), nullable=False)
+    subject_id = Column(String(64), nullable=False)
     aggregate_type = Column(Text, nullable=False, server_default="client_invitation")
-    aggregate_id = Column(GUID(), nullable=False)
+    aggregate_id = Column(Text, nullable=False)
     tenant_client_id = Column(GUID(), nullable=True, index=True)
     channels = Column(JSON, nullable=True)
-    template_code = Column(String(128), nullable=True)
+    template_code = Column(String(128), nullable=False)
     template_vars = Column(JSON, nullable=True)
     payload = Column(JSON, nullable=False, default=dict)
-    priority = Column(ExistingEnum(NotificationPriority, name="notification_priority"), nullable=True)
-    dedupe_key = Column(String(256), nullable=True, unique=True)
-    status = Column(String(16), nullable=False, server_default="NEW", index=True)
+    priority = Column(ExistingEnum(NotificationPriority, name="notification_priority"), nullable=False)
+    dedupe_key = Column(String(256), nullable=False, unique=True)
+    status = Column(String(16), nullable=False, server_default="NEW")
     attempts = Column(Integer, nullable=False, default=0, server_default="0")
     next_attempt_at = Column(DateTime(timezone=True), nullable=True)
     last_error = Column(Text, nullable=True)
@@ -85,7 +85,7 @@ class NotificationPreference(Base):
         Index("ix_notification_prefs_subject_event", "subject_type", "subject_id", "event_type"),
     )
 
-    id = Column(GUID(), primary_key=True, default=new_uuid_str)
+    id = Column(String(36), primary_key=True, default=new_uuid_str)
     subject_type = Column(ExistingEnum(NotificationSubjectType, name="notification_subject_type"), nullable=False)
     subject_id = Column(String(64), nullable=False)
     event_type = Column(String(64), nullable=False)
@@ -101,7 +101,7 @@ class NotificationTemplate(Base):
     __tablename__ = "notification_templates"
     __table_args__ = (UniqueConstraint("code", name="uq_notification_templates_code"),)
 
-    id = Column(GUID(), primary_key=True, default=new_uuid_str)
+    id = Column(String(36), primary_key=True, default=new_uuid_str)
     code = Column(String(128), nullable=False, unique=True)
     event_type = Column(String(64), nullable=False)
     channel = Column(ExistingEnum(NotificationChannel, name="notification_channel"), nullable=False)
@@ -125,8 +125,8 @@ class NotificationDelivery(Base):
         UniqueConstraint("message_id", "channel", "recipient", name="uq_notification_delivery_target"),
     )
 
-    id = Column(GUID(), primary_key=True, default=new_uuid_str)
-    message_id = Column(GUID(), nullable=False, index=True)
+    id = Column(String(36), primary_key=True, default=new_uuid_str)
+    message_id = Column(String(36), nullable=False, index=True)
     event_type = Column(String(64), nullable=False)
     channel = Column(ExistingEnum(NotificationChannel, name="notification_channel"), nullable=False)
     provider = Column(String(64), nullable=False)

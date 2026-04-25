@@ -2,35 +2,68 @@ from datetime import date, datetime, timedelta
 from decimal import Decimal
 
 import pytest
+from sqlalchemy import Column, MetaData, String, Table, create_engine, event
+from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.pool import StaticPool
 
-from app.db import Base, SessionLocal, engine, reset_engine
+from app.models.billing_job_run import BillingJobRun
+from app.models.billing_period import BillingPeriod
 from app.models.billing_summary import BillingSummary, BillingSummaryStatus
 from app.models.operation import Operation, OperationStatus, OperationType, ProductType
+from app.services.billing import daily as billing_daily
 from app.services.billing.daily import finalize_billing_day, run_billing_daily
 
 
-@pytest.fixture(autouse=True)
-def _use_sqlite(monkeypatch: pytest.MonkeyPatch):
-    import app.db as db
-
-    monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
-    monkeypatch.setenv("TEST_DATABASE_URL", "sqlite:///:memory:")
-    monkeypatch.setattr(db, "DATABASE_URL", "sqlite:///:memory:", raising=False)
-    monkeypatch.setattr(db, "raw_db_url", "sqlite:///:memory:", raising=False)
-    reset_engine()
-
-
-@pytest.fixture(autouse=True)
-def _setup_db(_use_sqlite):
-    Base.metadata.drop_all(bind=engine)
-    Base.metadata.create_all(bind=engine)
-    yield
-    Base.metadata.drop_all(bind=engine)
+TEST_TABLES = (
+    BillingPeriod.__table__,
+    BillingSummary.__table__,
+    BillingJobRun.__table__,
+    Operation.__table__,
+)
 
 
 @pytest.fixture
-def session():
-    db = SessionLocal()
+def _session_factory(monkeypatch: pytest.MonkeyPatch):
+    engine = create_engine(
+        "sqlite+pysqlite:///:memory:",
+        future=True,
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+
+    @event.listens_for(engine, "connect")
+    def _enable_sqlite_fk(dbapi_connection, _connection_record) -> None:
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
+
+    stub_metadata = MetaData()
+    Table("fuel_stations", stub_metadata, Column("id", String(36), primary_key=True))
+    stub_metadata.create_all(bind=engine)
+    for table in TEST_TABLES:
+        table.create(bind=engine, checkfirst=True)
+
+    monkeypatch.setattr(billing_daily, "_aggregate_fuel_transactions", lambda _session, _billing_date: [])
+
+    session_local = sessionmaker(
+        bind=engine,
+        autocommit=False,
+        autoflush=False,
+        expire_on_commit=False,
+        class_=Session,
+    )
+    try:
+        yield session_local
+    finally:
+        for table in reversed(TEST_TABLES):
+            table.drop(bind=engine, checkfirst=True)
+        stub_metadata.drop_all(bind=engine, checkfirst=True)
+        engine.dispose()
+
+
+@pytest.fixture
+def session(_session_factory):
+    db = _session_factory()
     try:
         yield db
     finally:

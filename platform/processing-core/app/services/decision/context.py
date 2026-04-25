@@ -2,10 +2,37 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
+from datetime import date, datetime, timezone
 from enum import Enum
 from typing import Literal
+from uuid import UUID
 
 from app.services.decision.versions import DecisionAction
+
+
+def _json_sort_key(value: object) -> str:
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+
+
+def _normalize_payload_value(value: object) -> object:
+    if value is None:
+        return None
+    if isinstance(value, Enum):
+        return value.value
+    if isinstance(value, UUID):
+        return str(value)
+    if isinstance(value, datetime):
+        return value.astimezone(timezone.utc).isoformat()
+    if isinstance(value, date):
+        return value.isoformat()
+    if isinstance(value, dict):
+        return {str(key): _normalize_payload_value(value[key]) for key in sorted(value, key=str)}
+    if isinstance(value, (set, frozenset)):
+        normalized_items = [_normalize_payload_value(item) for item in value]
+        return sorted(normalized_items, key=_json_sort_key)
+    if isinstance(value, (list, tuple)):
+        return [_normalize_payload_value(item) for item in value]
+    return value
 
 
 @dataclass(frozen=True)
@@ -38,8 +65,8 @@ class DecisionContext:
             "invoice_id": self.invoice_id,
             "billing_period_id": self.billing_period_id,
             "age": self.age,
-            "history": self.history,
-            "metadata": self.metadata,
+            "history": _normalize_payload_value(self.history),
+            "metadata": _normalize_payload_value(self.metadata),
         }
 
     def to_json(self) -> str:

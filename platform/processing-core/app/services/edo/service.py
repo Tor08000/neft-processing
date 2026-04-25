@@ -87,7 +87,8 @@ class EdoService:
     def dispatch_outbox_item(self, outbox: EdoOutbox) -> EdoOutbox:
         if outbox.status not in {EdoOutboxStatus.PENDING, EdoOutboxStatus.FAILED}:
             return outbox
-        edo_document = self.db.query(EdoDocument).get(outbox.id)
+        edo_document_id = (outbox.payload or {}).get("edo_document_id")
+        edo_document = self.db.get(EdoDocument, edo_document_id) if edo_document_id else None
         if not edo_document:
             outbox.status = EdoOutboxStatus.FAILED
             outbox.last_error = "edo_document_not_found"
@@ -112,7 +113,7 @@ class EdoService:
             return outbox
 
     def send(self, request: EdoSendRequest) -> EdoSendResult:
-        edo_document = self.db.query(EdoDocument).get(request.edo_document_id)
+        edo_document = self.db.get(EdoDocument, request.edo_document_id)
         if not edo_document:
             raise RuntimeError("edo_document_not_found")
         if edo_document.provider_doc_id:
@@ -317,7 +318,7 @@ class EdoService:
                 EdoArtifactType.RECEIPT: DocumentFileType.EDI_XML,
                 EdoArtifactType.PROTOCOL: DocumentFileType.PDF,
             }.get(artifact_type, DocumentFileType.PDF)
-            document = self.db.query(Document).get(edo_document.document_registry_id)
+            document = self.db.get(Document, edo_document.document_registry_id)
             if not document:
                 continue
             object_key = DocumentsStorage.build_signature_object_key(

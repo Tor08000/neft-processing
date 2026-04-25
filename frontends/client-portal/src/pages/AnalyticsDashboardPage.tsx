@@ -21,7 +21,6 @@ import type {
 import { buildDateRange } from "../utils/dateRange";
 import { MoneyValue } from "../components/common/MoneyValue";
 import { canAccessFinance, hasAnyRole } from "../utils/roles";
-import { demoAnalyticsDailyMetrics, demoAnalyticsDeclines, demoAnalyticsExportsSummary, demoDocumentsSummary } from "../demo/demoData";
 import { isDemoClient } from "@shared/demo/demo";
 
 interface AnalyticsErrorState {
@@ -89,9 +88,15 @@ export function AnalyticsDashboardPage() {
         setDocumentsSummary(documentsResponse);
         setExportsSummary(exportsResponse ?? null);
       })
-      .catch((err: unknown) => {
+      .catch(async (err: unknown) => {
         const status = err instanceof ApiError ? err.status : undefined;
         if (isDemoClientAccount && status === 404) {
+          const {
+            demoAnalyticsDailyMetrics,
+            demoAnalyticsDeclines,
+            demoAnalyticsExportsSummary,
+            demoDocumentsSummary,
+          } = await import("../demo/demoData");
           setDailyMetrics(demoAnalyticsDailyMetrics);
           setDeclines(demoAnalyticsDeclines);
           setDocumentsSummary(demoDocumentsSummary);

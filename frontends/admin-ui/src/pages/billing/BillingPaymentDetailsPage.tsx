@@ -4,6 +4,8 @@ import { getPayment, listRefunds, refundPayment } from "../../api/billing";
 import { UnauthorizedError } from "../../api/client";
 import { CopyButton } from "../../components/CopyButton/CopyButton";
 import { Table, type Column } from "../../components/Table/Table";
+import { EmptyState } from "../../components/common/EmptyState";
+import { ErrorState } from "../../components/common/ErrorState";
 import { Toast } from "../../components/common/Toast";
 import { JsonViewer } from "../../components/common/JsonViewer";
 import { useToast } from "../../components/Toast/useToast";
@@ -12,6 +14,7 @@ import { createIdempotencyKey } from "../../utils/uuid";
 import type { BillingPayment, BillingRefund } from "../../types/billingFlows";
 import { formatMoney, paymentStatusBadge, refundStatusBadge, renderBadge } from "./billingUtils";
 import { AdminUnauthorizedPage } from "../admin/AdminStatusPages";
+import { billingPaymentDetailsCopy } from "../operatorKeyPageCopy";
 
 const BillingPaymentDetailsPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -36,6 +39,9 @@ const BillingPaymentDetailsPage: React.FC = () => {
   const loadPayment = useCallback(() => {
     if (!id) return;
     setLoading(true);
+    setError(null);
+    setUnauthorized(false);
+    setNotAvailable(false);
     getPayment(id)
       .then((response) => {
         if (response.unavailable) {
@@ -59,6 +65,7 @@ const BillingPaymentDetailsPage: React.FC = () => {
   const loadRefunds = useCallback(() => {
     if (!id) return;
     setRefundsLoading(true);
+    setRefundsUnavailable(false);
     listRefunds({ payment_id: id })
       .then((response) => {
         if (response.unavailable) {
@@ -169,15 +176,49 @@ const BillingPaymentDetailsPage: React.FC = () => {
   }
 
   if (loading) {
-    return <div className="card">Loading payment...</div>;
+    return (
+      <EmptyState
+        title={billingPaymentDetailsCopy.loading.title}
+        description={billingPaymentDetailsCopy.loading.description}
+      />
+    );
   }
 
   if (notAvailable) {
-    return <div className="card">Payments endpoint unavailable in this environment</div>;
+    return (
+      <EmptyState
+        title={billingPaymentDetailsCopy.unavailable.title}
+        description={billingPaymentDetailsCopy.unavailable.description}
+        actionLabel={billingPaymentDetailsCopy.unavailable.actionLabel}
+        actionOnClick={() => navigate("/billing/payments")}
+      />
+    );
+  }
+
+  if (error) {
+    return (
+      <ErrorState
+        title={billingPaymentDetailsCopy.loadError.title}
+        description={error}
+        actionLabel={billingPaymentDetailsCopy.loadError.actionLabel}
+        onAction={() => {
+          loadPayment();
+          loadRefunds();
+        }}
+        details={error}
+      />
+    );
   }
 
   if (!payment) {
-    return <div className="card error-state">Payment not found</div>;
+    return (
+      <EmptyState
+        title={billingPaymentDetailsCopy.notFound.title}
+        description={billingPaymentDetailsCopy.notFound.description}
+        actionLabel={billingPaymentDetailsCopy.notFound.actionLabel}
+        actionOnClick={() => navigate("/billing/payments")}
+      />
+    );
   }
 
   return (
@@ -222,17 +263,23 @@ const BillingPaymentDetailsPage: React.FC = () => {
         </div>
       </section>
 
-      {error ? <div className="card error-state">{error}</div> : null}
-
       <section className="card">
         <h3 style={{ marginTop: 0 }}>Refunds</h3>
-        {refundsUnavailable ? <div className="muted">Refunds endpoint unavailable</div> : null}
-        <Table
-          columns={refundColumns}
-          data={refunds}
-          loading={refundsLoading}
-          emptyState={{ title: "No refunds", description: "Refunds will appear here once processed." }}
-        />
+        {refundsUnavailable ? (
+          <EmptyState
+            title={billingPaymentDetailsCopy.refundsUnavailable.title}
+            description={billingPaymentDetailsCopy.refundsUnavailable.description}
+            actionLabel={billingPaymentDetailsCopy.refundsUnavailable.actionLabel}
+            actionOnClick={loadRefunds}
+          />
+        ) : (
+          <Table
+            columns={refundColumns}
+            data={refunds}
+            loading={refundsLoading}
+            emptyState={{ title: "No refunds", description: "Refunds will appear here once processed." }}
+          />
+        )}
       </section>
 
       <section className="card">
@@ -261,11 +308,15 @@ const BillingPaymentDetailsPage: React.FC = () => {
               <input value={refundIdempotencyKey} onChange={(event) => setRefundIdempotencyKey(event.target.value)} />
             </label>
             {refundError ? (
-              <div className="card error-state">
-                <div>{refundError}</div>
+              <div className="stack" style={{ marginTop: 12 }}>
+                <ErrorState
+                  title={billingPaymentDetailsCopy.refundError.title}
+                  description={refundError}
+                  details={refundErrorDetail ?? undefined}
+                />
                 {refundErrorDetail ? (
-                  <div className="stack-inline" style={{ marginTop: 8 }}>
-                    <span className="muted">{refundErrorDetail}</span>
+                  <div className="stack-inline" style={{ gap: 8 }}>
+                    <span className="muted">{billingPaymentDetailsCopy.refundError.copyDetailLabel}</span>
                     <CopyButton value={refundErrorDetail} />
                   </div>
                 ) : null}

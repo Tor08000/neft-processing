@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import csv
 import json
 from datetime import date, datetime, timezone
+from io import StringIO
 
 from app.models.bi import BiExportBatch, BiExportFormat, BiExportKind, BiExportStatus
 from app.services.bi.exports.manifest import build_manifest
@@ -18,11 +20,12 @@ def test_render_csv_stable_columns_and_dates():
         }
     ]
 
-    payload = render_csv(headers, rows).decode("utf-8").strip().split("\n")
+    payload = list(csv.reader(StringIO(render_csv(headers, rows).decode("utf-8"))))
 
-    assert payload[0] == "tenant_id,occurred_at,payload"
-    assert "2024-01-02T03:04:05+00:00" in payload[1]
-    assert "{\"key\":\"value\"}" in payload[1]
+    assert payload[0] == ["tenant_id", "occurred_at", "payload"]
+    assert payload[1][0] == "42"
+    assert payload[1][1] == "2024-01-02T03:04:05+00:00"
+    assert payload[1][2] == "{\"key\":\"value\"}"
 
 
 def test_render_jsonl_valid_lines():

@@ -68,6 +68,8 @@
 - `sign_payload_json` (минимум: `ip`, `user-agent`, `otp_tx_id`, `provider_doc_id`)
 - `doc_hash`
 
+Текущий runtime использует эту таблицу как shared storage: simple client docflow writes only the minimal sign/ack subset, while legal/e-sign providers also keep versioned artifacts, provider status, verification details, and certificate linkage in the same `document_signatures` table. Это shared-storage truth, а не повод делать schema/route flip без отдельной консолидационной волны.
+
 ### 3.4 `document_edostate`
 - `id`
 - `document_id FK`

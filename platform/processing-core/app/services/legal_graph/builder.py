@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Iterable
+from typing import Any, Iterable
 
 from sqlalchemy import Date
 from sqlalchemy.orm import Session
@@ -318,7 +318,7 @@ class LegalGraphBuilder:
                 edge_type=LegalEdgeType.RELATES_TO,
             )
 
-    def ensure_risk_decision_graph(self, risk_decision: RiskDecision) -> None:
+    def ensure_risk_decision_graph(self, risk_decision: RiskDecision) -> dict[str, Any]:
         decision_node = self.registry.get_or_create_node(
             tenant_id=self.context.tenant_id,
             node_type=LegalNodeType.RISK_DECISION,
@@ -333,14 +333,19 @@ class LegalGraphBuilder:
             RiskSubjectType.EXPORT: LegalNodeType.ACCOUNTING_EXPORT_BATCH,
         }.get(risk_decision.subject_type)
         if not target_type:
-            return
+            return {
+                "status": "unsupported_subject",
+                "risk_decision_node_id": str(decision_node.id),
+                "subject_type": risk_decision.subject_type.value,
+                "subject_id": str(risk_decision.subject_id),
+            }
 
         target_node = self.registry.get_or_create_node(
             tenant_id=self.context.tenant_id,
             node_type=target_type,
             ref_id=str(risk_decision.subject_id),
         ).node
-        self.registry.link(
+        edge = self.registry.link(
             tenant_id=self.context.tenant_id,
             src_node_id=target_node.id,
             dst_node_id=decision_node.id,
@@ -352,6 +357,15 @@ class LegalGraphBuilder:
                 "threshold_set_id": risk_decision.threshold_set_id,
             },
         )
+        return {
+            "status": "written",
+            "risk_decision_node_id": str(decision_node.id),
+            "target_node_id": str(target_node.id),
+            "edge_id": str(edge.edge.id),
+            "edge_type": LegalEdgeType.GATED_BY_RISK.value,
+            "target_type": target_type.value,
+            "target_ref_id": str(risk_decision.subject_id),
+        }
 
     def _resolve_billing_period_for_document(self, document: Document) -> str | None:
         invoice = (

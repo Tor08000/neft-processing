@@ -6,10 +6,13 @@ import pytest
 from fastapi import FastAPI
 from app.fastapi_utils import generate_unique_id
 from fastapi.testclient import TestClient
+from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.pool import StaticPool
 
 from app.db import get_db
-from app.models.marketplace_catalog import MarketplaceProductCard, MarketplaceProductCardStatus
+from app.models.audit_log import AuditLog
+from app.models.marketplace_catalog import MarketplaceProductCard, MarketplaceProductCardStatus, MarketplaceProductMedia
 from app.routers.marketplace_catalog import router as catalog_router
 from app.routers.partner.marketplace_catalog import router as partner_router
 from app.security.client_auth import require_client_user
@@ -18,6 +21,11 @@ from app.services.marketplace_catalog_service import MarketplaceCatalogService
 
 CURRENT_PRINCIPAL: Principal | None = None
 CURRENT_CLIENT_TOKEN: dict = {"client_id": str(uuid4())}
+TEST_TABLES = [
+    AuditLog.__table__,
+    MarketplaceProductCard.__table__,
+    MarketplaceProductMedia.__table__,
+]
 
 
 def _build_principal(partner_id: str) -> Principal:
@@ -33,13 +41,19 @@ def _build_principal(partner_id: str) -> Principal:
 
 
 @pytest.fixture()
-def api_client(test_db_sessionmaker) -> tuple[TestClient, sessionmaker]:
+def api_client() -> tuple[TestClient, sessionmaker]:
+    engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+    SessionLocal = sessionmaker(autocommit=False, autoflush=False, expire_on_commit=False, bind=engine)
+
+    for table in TEST_TABLES:
+        table.create(bind=engine)
+
     app = FastAPI(generate_unique_id_function=generate_unique_id)
     app.include_router(partner_router, prefix="/api")
     app.include_router(catalog_router, prefix="/api")
 
     def override_get_db():
-        db = test_db_sessionmaker()
+        db = SessionLocal()
         try:
             yield db
         finally:
@@ -55,12 +69,28 @@ def api_client(test_db_sessionmaker) -> tuple[TestClient, sessionmaker]:
     app.dependency_overrides[require_client_user] = lambda: CURRENT_CLIENT_TOKEN
 
     with TestClient(app) as client:
-        yield client, test_db_sessionmaker
+        yield client, SessionLocal
+
+    for table in reversed(TEST_TABLES):
+        table.drop(bind=engine, checkfirst=True)
+    engine.dispose()
+
+
+@pytest.fixture()
+def test_db_session(api_client) -> Session:
+    _, SessionLocal = api_client
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
 
 
 @pytest.fixture(autouse=True)
 def _cleanup_cards(test_db_session):
+    test_db_session.query(MarketplaceProductMedia).delete()
     test_db_session.query(MarketplaceProductCard).delete()
+    test_db_session.query(AuditLog).delete()
     test_db_session.commit()
 
 

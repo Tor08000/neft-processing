@@ -24,6 +24,35 @@ package_spec.loader.exec_module(package_module)
 app = import_module("app.main").app
 
 
+class _FakeAuthMeCursor:
+    def __init__(self):
+        self._rows = []
+
+    async def execute(self, query: str, params=None):
+        q = " ".join(query.lower().split())
+        if "from auth_sessions" in q:
+            self._rows = [{"revoked_at": None}]
+            return
+        if "from users" in q:
+            self._rows = [{"status": "active", "token_version": 1}]
+            return
+        if "from tenants" in q:
+            self._rows = [{"token_version": 1}]
+            return
+        raise AssertionError(f"Unexpected SQL in auth_me test: {query}")
+
+    async def fetchone(self):
+        return self._rows[0] if self._rows else None
+
+
+class _FakeAuthMeContext:
+    async def __aenter__(self):
+        return None, _FakeAuthMeCursor()
+
+    async def __aexit__(self, exc_type, exc, tb):
+        return False
+
+
 def test_auth_me_requires_bearer_token():
     client = TestClient(app)
 
@@ -34,10 +63,10 @@ def test_auth_me_requires_bearer_token():
 
 
 def test_auth_me_returns_user_payload(monkeypatch: pytest.MonkeyPatch):
-    password_hash = hash_password("admin123")
+    password_hash = hash_password("Neft123!")
     demo_user = User(
         id="00000000-0000-0000-0000-000000000999",
-        email="admin@example.com",
+        email="admin@neft.local",
         full_name="Demo Admin",
         password_hash=password_hash,
         is_active=True,
@@ -60,11 +89,12 @@ def test_auth_me_returns_user_payload(monkeypatch: pytest.MonkeyPatch):
 
     login = client.post(
         "/api/v1/auth/login",
-        json={"email": "admin@example.com", "password": "admin123", "portal": "admin"},
+        json={"email": "admin@neft.local", "password": "Neft123!", "portal": "admin"},
     )
     assert login.status_code == 200
 
     token = login.json()["access_token"]
+    monkeypatch.setattr(auth, "get_conn", lambda: _FakeAuthMeContext())
 
     resp = client.get(
         "/api/v1/auth/me",
@@ -73,18 +103,18 @@ def test_auth_me_returns_user_payload(monkeypatch: pytest.MonkeyPatch):
 
     assert resp.status_code == 200
     payload = resp.json()
-    assert payload["email"] == "admin@example.com"
+    assert payload["email"] == "admin@neft.local"
     assert payload["roles"] == ["ADMIN"]
-    assert payload["subject"] == "admin@example.com"
+    assert payload["subject"] == "admin@neft.local"
     assert payload.get("client_id") is None
     assert payload.get("subject_type") == "user"
 
 
 def test_login_token_valid_for_me(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
-    password_hash = hash_password("admin123")
+    password_hash = hash_password("Neft123!")
     demo_user = User(
         id="00000000-0000-0000-0000-000000000999",
-        email="admin@example.com",
+        email="admin@neft.local",
         full_name="Demo Admin",
         password_hash=password_hash,
         is_active=True,
@@ -101,12 +131,13 @@ def test_login_token_valid_for_me(monkeypatch: pytest.MonkeyPatch, tmp_path: Pat
         return ["ADMIN"]
 
     # ensure keypair is persisted and reused even if in-memory cache is cleared
-    from app import services
+    from app.services import keys as key_service
 
-    monkeypatch.setattr(services.keys, "_PRIVATE_KEY_PATH", tmp_path / "jwt_private.pem")
-    monkeypatch.setattr(services.keys, "_PUBLIC_KEY_PATH", tmp_path / "jwt_public.pem")
-    services.keys._PRIVATE_KEY_PEM = None
-    services.keys._PUBLIC_KEY_PEM = None
+    monkeypatch.setattr(key_service, "_PRIVATE_KEY_PATH", tmp_path / "jwt_private.pem")
+    monkeypatch.setattr(key_service, "_PUBLIC_KEY_PATH", tmp_path / "jwt_public.pem")
+    key_service._PRIVATE_KEY_PEM = None
+    key_service._PUBLIC_KEY_PEM = None
+    key_service._KEY_ERROR = None
 
     monkeypatch.setattr(auth, "_get_user_from_db", fake_get_user)
     monkeypatch.setattr(auth, "_get_roles_for_user", fake_get_roles)
@@ -115,15 +146,17 @@ def test_login_token_valid_for_me(monkeypatch: pytest.MonkeyPatch, tmp_path: Pat
 
     login = client.post(
         "/api/v1/auth/login",
-        json={"email": "admin@example.com", "password": "admin123", "portal": "admin"},
+        json={"email": "admin@neft.local", "password": "Neft123!", "portal": "admin"},
     )
     assert login.status_code == 200
 
     token = login.json()["access_token"]
 
     # emulate a fresh process where key cache is empty
-    services.keys._PRIVATE_KEY_PEM = None
-    services.keys._PUBLIC_KEY_PEM = None
+    key_service._PRIVATE_KEY_PEM = None
+    key_service._PUBLIC_KEY_PEM = None
+    key_service._KEY_ERROR = None
+    monkeypatch.setattr(auth, "get_conn", lambda: _FakeAuthMeContext())
 
     resp = client.get(
         "/api/v1/auth/me",
@@ -131,14 +164,14 @@ def test_login_token_valid_for_me(monkeypatch: pytest.MonkeyPatch, tmp_path: Pat
     )
 
     assert resp.status_code == 200
-    assert resp.json()["email"] == "admin@example.com"
+    assert resp.json()["email"] == "admin@neft.local"
 
 
 def test_auth_me_accepts_partner_portal(monkeypatch: pytest.MonkeyPatch):
-    password_hash = hash_password("admin123")
+    password_hash = hash_password("Neft123!")
     demo_user = User(
         id="00000000-0000-0000-0000-000000000999",
-        email="admin@example.com",
+        email="admin@neft.local",
         full_name="Demo Admin",
         password_hash=password_hash,
         is_active=True,
@@ -161,11 +194,12 @@ def test_auth_me_accepts_partner_portal(monkeypatch: pytest.MonkeyPatch):
 
     login = client.post(
         "/api/v1/auth/login",
-        json={"email": "admin@example.com", "password": "admin123", "portal": "partner"},
+        json={"email": "admin@neft.local", "password": "Neft123!", "portal": "partner"},
     )
     assert login.status_code == 200
 
     token = login.json()["access_token"]
+    monkeypatch.setattr(auth, "get_conn", lambda: _FakeAuthMeContext())
 
     resp = client.get(
         "/api/v1/auth/me",
@@ -176,10 +210,10 @@ def test_auth_me_accepts_partner_portal(monkeypatch: pytest.MonkeyPatch):
 
 
 def test_auth_verify_returns_portal_and_subject(monkeypatch: pytest.MonkeyPatch):
-    password_hash = hash_password("admin123")
+    password_hash = hash_password("Neft123!")
     demo_user = User(
         id="00000000-0000-0000-0000-000000000999",
-        email="admin@example.com",
+        email="admin@neft.local",
         full_name="Demo Admin",
         password_hash=password_hash,
         is_active=True,
@@ -201,7 +235,7 @@ def test_auth_verify_returns_portal_and_subject(monkeypatch: pytest.MonkeyPatch)
     client = TestClient(app)
     login = client.post(
         "/api/v1/auth/login",
-        json={"email": "admin@example.com", "password": "admin123", "portal": "admin"},
+        json={"email": "admin@neft.local", "password": "Neft123!", "portal": "admin"},
     )
     assert login.status_code == 200
     token = login.json()["access_token"]

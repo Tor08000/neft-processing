@@ -1,13 +1,9 @@
 from datetime import date, datetime, timezone, timedelta
-from typing import Tuple
 from uuid import uuid4
 
 import pytest
-from sqlalchemy import create_engine
-from sqlalchemy.orm import Session, sessionmaker
-from sqlalchemy.pool import StaticPool
+from sqlalchemy.orm import Session
 
-from app.db import Base
 from app.models.crm import CRMClient, CRMClientStatus
 from app.models.fleet_intelligence import (
     DriverBehaviorLevel,
@@ -20,24 +16,14 @@ from app.models.fleet_intelligence import (
 )
 from app.models.fleet_intelligence_actions import FIInsightSeverity, FIInsightType
 from app.services.fleet_intelligence.control import insights
+from app.tests._fleet_intelligence_test_harness import FLEET_INTELLIGENCE_CONTROL_TEST_TABLES
+from app.tests._scoped_router_harness import scoped_session_context
 
 
 @pytest.fixture()
-def db_session() -> Tuple[Session, sessionmaker]:
-    engine = create_engine(
-        "sqlite://",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
-    SessionLocal = sessionmaker(autocommit=False, autoflush=False, expire_on_commit=False, bind=engine)
-    Base.metadata.create_all(bind=engine)
-    session = SessionLocal()
-    try:
-        yield session, SessionLocal
-    finally:
-        session.close()
-        Base.metadata.drop_all(bind=engine)
-        engine.dispose()
+def db_session() -> Session:
+    with scoped_session_context(tables=FLEET_INTELLIGENCE_CONTROL_TEST_TABLES) as session:
+        yield session
 
 
 def _seed_client(db: Session) -> CRMClient:
@@ -54,14 +40,13 @@ def _seed_client(db: Session) -> CRMClient:
     return client
 
 
-def test_generate_insights_from_trends(db_session: Tuple[Session, sessionmaker]):
-    db, _ = db_session
-    _seed_client(db)
+def test_generate_insights_from_trends(db_session: Session):
+    _seed_client(db_session)
     day = date(2025, 1, 11)
     driver_id = str(uuid4())
     for offset in range(2):
         computed_day = day - timedelta(days=offset)
-        db.add(
+        db_session.add(
             FITrendSnapshot(
                 tenant_id=1,
                 client_id="client-1",
@@ -78,7 +63,7 @@ def test_generate_insights_from_trends(db_session: Tuple[Session, sessionmaker])
                 computed_at=datetime(2025, 1, 11, tzinfo=timezone.utc),
             )
         )
-    db.add(
+    db_session.add(
         FIDriverScore(
             tenant_id=1,
             client_id="client-1",
@@ -89,10 +74,10 @@ def test_generate_insights_from_trends(db_session: Tuple[Session, sessionmaker])
             level=DriverBehaviorLevel.MEDIUM,
         )
     )
-    db.commit()
+    db_session.commit()
 
-    results = insights.generate_insights_for_day(db, day=day)
-    db.commit()
+    results = insights.generate_insights_for_day(db_session, day=day)
+    db_session.commit()
 
     assert results
     insight = results[0]
@@ -100,14 +85,13 @@ def test_generate_insights_from_trends(db_session: Tuple[Session, sessionmaker])
     assert insight.severity == FIInsightSeverity.MEDIUM
 
 
-def test_critical_severity_from_score(db_session: Tuple[Session, sessionmaker]):
-    db, _ = db_session
-    _seed_client(db)
+def test_critical_severity_from_score(db_session: Session):
+    _seed_client(db_session)
     day = date(2025, 1, 11)
     driver_id = str(uuid4())
     for offset in range(2):
         computed_day = day - timedelta(days=offset)
-        db.add(
+        db_session.add(
             FITrendSnapshot(
                 tenant_id=1,
                 client_id="client-1",
@@ -124,7 +108,7 @@ def test_critical_severity_from_score(db_session: Tuple[Session, sessionmaker]):
                 computed_at=datetime(2025, 1, 11, tzinfo=timezone.utc),
             )
         )
-    db.add(
+    db_session.add(
         FIDriverScore(
             tenant_id=1,
             client_id="client-1",
@@ -135,10 +119,10 @@ def test_critical_severity_from_score(db_session: Tuple[Session, sessionmaker]):
             level=DriverBehaviorLevel.VERY_HIGH,
         )
     )
-    db.commit()
+    db_session.commit()
 
-    results = insights.generate_insights_for_day(db, day=day)
-    db.commit()
+    results = insights.generate_insights_for_day(db_session, day=day)
+    db_session.commit()
 
     assert results
     assert results[0].severity == FIInsightSeverity.CRITICAL

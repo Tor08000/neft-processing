@@ -1,15 +1,21 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import {
+  downloadRunExport,
+  getDiscrepancy,
   getRun,
   ignoreDiscrepancy,
   listDiscrepancies,
+  listRunLinks,
   resolveDiscrepancy,
   type ReconciliationDiscrepancy,
+  type ReconciliationLink,
+  type ReconciliationRunExportOptions,
   type ReconciliationRun,
 } from "../../api/reconciliation";
 import { UnauthorizedError } from "../../api/client";
 import { CopyButton } from "../../components/CopyButton/CopyButton";
+import { SelectFilter } from "../../components/Filters/SelectFilter";
 import { Table, type Column } from "../../components/Table/Table";
 import { JsonViewer } from "../../components/common/JsonViewer";
 import { Tabs } from "../../components/common/Tabs";
@@ -66,6 +72,7 @@ export function ReconciliationRunDetailsPage() {
   const { toast, showToast } = useToast();
   const [run, setRun] = useState<ReconciliationRun | null>(null);
   const [discrepancies, setDiscrepancies] = useState<ReconciliationDiscrepancy[]>([]);
+  const [links, setLinks] = useState<ReconciliationLink[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notAvailable, setNotAvailable] = useState(false);
@@ -78,23 +85,33 @@ export function ReconciliationRunDetailsPage() {
   const [ignoreTarget, setIgnoreTarget] = useState<ReconciliationDiscrepancy | null>(null);
   const [ignoreReason, setIgnoreReason] = useState("");
   const [ignoreError, setIgnoreError] = useState<string | null>(null);
+  const [detailTarget, setDetailTarget] = useState<ReconciliationDiscrepancy | null>(null);
+  const [detailLoadingId, setDetailLoadingId] = useState<string | null>(null);
+  const [detailError, setDetailError] = useState<string | null>(null);
+  const [exportingFormat, setExportingFormat] = useState<"json" | "csv" | null>(null);
+  const [exportScope, setExportScope] = useState<"full" | "discrepancies">("full");
+  const [exportDiscrepancyStatus, setExportDiscrepancyStatus] = useState<"" | "open" | "resolved" | "ignored">("");
+  const [exportDiscrepancyType, setExportDiscrepancyType] = useState("");
 
   const loadRun = useCallback(() => {
     if (!id) return;
     setLoading(true);
     setError(null);
     setUnauthorized(false);
-    Promise.all([getRun(id), listDiscrepancies(id)])
-      .then(([runResponse, discrepancyResponse]) => {
-        if (runResponse.unavailable || discrepancyResponse.unavailable) {
+    Promise.all([getRun(id), listDiscrepancies(id), listRunLinks(id)])
+      .then(([runResponse, discrepancyResponse, linkResponse]) => {
+        if (runResponse.unavailable || discrepancyResponse.unavailable || linkResponse.unavailable) {
           setNotAvailable(true);
           setRun(null);
           setDiscrepancies([]);
+          setLinks([]);
+          setDetailTarget(null);
           return;
         }
         setNotAvailable(false);
         setRun(runResponse.run);
         setDiscrepancies(discrepancyResponse.discrepancies ?? []);
+        setLinks(linkResponse.links ?? []);
       })
       .catch((err: unknown) => {
         if (err instanceof UnauthorizedError) {
@@ -127,6 +144,18 @@ export function ReconciliationRunDetailsPage() {
         label: "Total delta abs",
         value: getSummaryNumber(run.summary, ["total_delta_abs", "delta_abs"]) ?? "—",
       },
+      {
+        label: "Links matched",
+        value: run.link_counts?.matched ?? getSummaryNumber(run.summary, ["links_matched"]) ?? "—",
+      },
+      {
+        label: "Links mismatched",
+        value: run.link_counts?.mismatched ?? getSummaryNumber(run.summary, ["links_mismatched"]) ?? "—",
+      },
+      {
+        label: "Links pending",
+        value: run.link_counts?.pending ?? getSummaryNumber(run.summary, ["links_pending"]) ?? "—",
+      },
     ];
   }, [discrepancies.length, run]);
 
@@ -139,21 +168,67 @@ export function ReconciliationRunDetailsPage() {
     return "unknown";
   }, [run?.summary]);
 
-  const handleExport = () => {
-    if (!run) return;
-    const payload = {
-      run,
-      discrepancies,
-      exported_at: new Date().toISOString(),
-    };
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = `reconciliation_run_${run.id}.json`;
-    anchor.click();
-    URL.revokeObjectURL(url);
-  };
+  const handleDownloadExport = useCallback(
+    async (format: "json" | "csv") => {
+      if (!run) return;
+      setExportingFormat(format);
+      try {
+        const options: ReconciliationRunExportOptions = {
+          export_scope: exportScope,
+          discrepancy_status: exportDiscrepancyStatus,
+          discrepancy_type: exportDiscrepancyType,
+        };
+        const payload = await downloadRunExport(run.id, format, options);
+        if (payload.unavailable) {
+          setNotAvailable(true);
+          showToast("error", "Reconciliation export is not available in this environment");
+          return;
+        }
+        const url = URL.createObjectURL(payload.blob);
+        const anchor = document.createElement("a");
+        anchor.href = url;
+        anchor.download = payload.fileName ?? `reconciliation_run_${run.id}.${format}`;
+        anchor.click();
+        URL.revokeObjectURL(url);
+      } catch (err) {
+        if (err instanceof UnauthorizedError) {
+          setUnauthorized(true);
+          return;
+        }
+        showToast("error", (err as Error).message);
+      } finally {
+        setExportingFormat(null);
+      }
+    },
+    [exportDiscrepancyStatus, exportDiscrepancyType, exportScope, run, showToast],
+  );
+
+  const handleOpenDiscrepancy = useCallback(
+    async (item: ReconciliationDiscrepancy) => {
+      setDetailError(null);
+      setDetailLoadingId(item.id);
+      try {
+        const response = await getDiscrepancy(item.id);
+        if (response.unavailable || !response.discrepancy) {
+          setNotAvailable(true);
+          showToast("error", "Discrepancy detail is not available in this environment");
+          return;
+        }
+        setDetailTarget(response.discrepancy);
+      } catch (err) {
+        if (err instanceof UnauthorizedError) {
+          setUnauthorized(true);
+          return;
+        }
+        const message = (err as Error).message;
+        setDetailError(message);
+        showToast("error", message);
+      } finally {
+        setDetailLoadingId(null);
+      }
+    },
+    [showToast],
+  );
 
   const handleResolve = async () => {
     if (!resolveTarget) return;
@@ -180,6 +255,9 @@ export function ReconciliationRunDetailsPage() {
           : item,
       ),
     );
+    if (detailTarget?.id === resolveTarget.id) {
+      setDetailTarget(null);
+    }
     setResolveTarget(null);
     setResolveNote("");
     showToast("success", "Adjustment posted");
@@ -209,6 +287,9 @@ export function ReconciliationRunDetailsPage() {
           : item,
       ),
     );
+    if (detailTarget?.id === ignoreTarget.id) {
+      setDetailTarget(null);
+    }
     setIgnoreTarget(null);
     setIgnoreReason("");
     showToast("success", "Discrepancy ignored");
@@ -298,30 +379,96 @@ export function ReconciliationRunDetailsPage() {
         key: "details",
         title: "Details",
         render: (item) => (
-          <details>
-            <summary>View</summary>
-            <div style={{ marginTop: 8 }}>
-              <JsonViewer value={item.details ?? {}} redactionMode="audit" />
-              {item.resolution ? (
-                <div style={{ marginTop: 12 }}>
-                  <JsonViewer value={item.resolution} redactionMode="audit" title="Resolution" />
-                </div>
-              ) : null}
-              {item.resolution && typeof item.resolution.adjustment_tx_id === "string" ? (
-                <div style={{ marginTop: 8 }}>
-                  <div className="muted small">Adjustment transaction</div>
-                  <div className="stack-inline" style={{ gap: 8 }}>
-                    <span>{String(item.resolution.adjustment_tx_id)}</span>
-                    <CopyButton value={String(item.resolution.adjustment_tx_id)} />
-                  </div>
-                </div>
-              ) : null}
-            </div>
-          </details>
+          <button
+            type="button"
+            className="ghost"
+            onClick={() => void handleOpenDiscrepancy(item)}
+            disabled={detailLoadingId === item.id}
+          >
+            {detailLoadingId === item.id ? "Loading..." : "View"}
+          </button>
         ),
       },
     ],
-    [notAvailable],
+    [detailLoadingId, handleOpenDiscrepancy, notAvailable],
+  );
+
+  const linkColumns = useMemo<Column<ReconciliationLink>[]>(
+    () => [
+      {
+        key: "id",
+        title: "Link ID",
+        render: (item) => (
+          <div className="stack-inline" style={{ gap: 8 }}>
+            <span>{item.id}</span>
+            <CopyButton value={item.id} />
+          </div>
+        ),
+      },
+      {
+        key: "entity",
+        title: "Entity",
+        render: (item) => (
+          <div>
+            <div>{item.entity_type}</div>
+            <div className="muted small">{item.entity_id}</div>
+          </div>
+        ),
+      },
+      {
+        key: "expected",
+        title: "Expected",
+        render: (item) => (
+          <div>
+            <div>{formatValue(item.expected_amount)}</div>
+            <div className="muted small">{item.currency}</div>
+          </div>
+        ),
+      },
+      {
+        key: "direction",
+        title: "Direction",
+        render: (item) => item.direction,
+      },
+      {
+        key: "status",
+        title: "Link status",
+        render: (item) => <span className={`neft-chip neft-chip-${statusBadge(item.status)}`}>{item.status}</span>,
+      },
+      {
+        key: "review",
+        title: "Review",
+        render: (item) =>
+          item.review_status ? (
+            <div>
+              <div className={`neft-chip neft-chip-${statusBadge(item.review_status)}`}>{item.review_status}</div>
+              {item.discrepancy_ids.length ? <div className="muted small">{item.discrepancy_ids.join(", ")}</div> : null}
+            </div>
+          ) : (
+            <span className="muted">—</span>
+          ),
+      },
+      {
+        key: "match_key",
+        title: "Match key",
+        render: (item) => item.match_key ?? "—",
+      },
+      {
+        key: "expected_at",
+        title: "Expected at",
+        render: (item) => formatDateTime(item.expected_at),
+      },
+    ],
+    [],
+  );
+
+  const exportDiscrepancyTypeOptions = useMemo(
+    () =>
+      Array.from(new Set(discrepancies.map((item) => item.discrepancy_type).filter(Boolean))).map((value) => ({
+        label: value,
+        value,
+      })),
+    [discrepancies],
   );
 
   if (unauthorized) {
@@ -346,8 +493,21 @@ export function ReconciliationRunDetailsPage() {
           </div>
           <div className="stack-inline">
             <button type="button" className="ghost" onClick={() => navigate("/reconciliation")}>Back</button>
-            <button type="button" className="neft-btn-secondary" onClick={handleExport} disabled={!run}>
-              Export report JSON
+            <button
+              type="button"
+              className="neft-btn-secondary"
+              onClick={() => void handleDownloadExport("json")}
+              disabled={!run || exportingFormat !== null}
+            >
+              {exportingFormat === "json" ? "Exporting JSON..." : "Export JSON"}
+            </button>
+            <button
+              type="button"
+              className="neft-btn-secondary"
+              onClick={() => void handleDownloadExport("csv")}
+              disabled={!run || exportingFormat !== null}
+            >
+              {exportingFormat === "csv" ? "Exporting CSV..." : "Export CSV"}
             </button>
             {run?.audit_event_id ? (
               <button type="button" className="neft-btn-secondary" onClick={() => setShowAudit((prev) => !prev)}>
@@ -369,6 +529,57 @@ export function ReconciliationRunDetailsPage() {
               <CopyButton value={run.audit_event_id} />
             </div>
           ) : null}
+        </div>
+        {run?.statement ? (
+          <div className="card-grid" style={{ marginTop: 16 }}>
+            <div className="neft-card">
+              <div className="muted" style={{ marginBottom: 8 }}>
+                Statement
+              </div>
+              <div className="stack">
+                <div className="stack-inline" style={{ gap: 8 }}>
+                  <span>{run.statement.id}</span>
+                  <CopyButton value={run.statement.id} />
+                </div>
+                <div className="muted small">
+                  {run.statement.provider} · {run.statement.currency} · {formatDate(run.statement.period_start)} —{" "}
+                  {formatDate(run.statement.period_end)}
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : null}
+        <div className="filters" style={{ marginTop: 16 }}>
+          <SelectFilter
+            label="Export scope"
+            value={exportScope}
+            onChange={(value) => setExportScope(value === "discrepancies" ? "discrepancies" : "full")}
+            options={[
+              { label: "Full run", value: "full" },
+              { label: "Discrepancies only", value: "discrepancies" },
+            ]}
+            allowEmpty={false}
+          />
+          <SelectFilter
+            label="Discrepancy status"
+            value={exportDiscrepancyStatus}
+            onChange={(value) =>
+              setExportDiscrepancyStatus(
+                value === "open" || value === "resolved" || value === "ignored" ? value : "",
+              )
+            }
+            options={[
+              { label: "Open", value: "open" },
+              { label: "Resolved", value: "resolved" },
+              { label: "Ignored", value: "ignored" },
+            ]}
+          />
+          <SelectFilter
+            label="Discrepancy type"
+            value={exportDiscrepancyType}
+            onChange={setExportDiscrepancyType}
+            options={exportDiscrepancyTypeOptions}
+          />
         </div>
       </section>
 
@@ -395,6 +606,112 @@ export function ReconciliationRunDetailsPage() {
         </section>
       ) : null}
 
+      {detailTarget ? (
+        <div className="modal-backdrop" role="dialog" aria-modal="true">
+          <div className="modal" style={{ maxWidth: 960 }}>
+            <div className="stack-inline" style={{ justifyContent: "space-between", gap: 12, alignItems: "center" }}>
+              <div>
+                <h3 style={{ marginTop: 0, marginBottom: 8 }}>Discrepancy {detailTarget.id}</h3>
+                <div className="stack-inline" style={{ gap: 8, flexWrap: "wrap" }}>
+                  <span className={`neft-chip neft-chip-${statusBadge(detailTarget.status)}`}>{detailTarget.status}</span>
+                  <span className="neft-chip neft-chip-info">{detailTarget.discrepancy_type}</span>
+                  <span className="muted">{formatDateTime(detailTarget.created_at)}</span>
+                </div>
+              </div>
+              <button type="button" className="ghost" onClick={() => setDetailTarget(null)}>
+                Close
+              </button>
+            </div>
+            {detailError ? <div className="card error-state">{detailError}</div> : null}
+            <div className="stack" style={{ gap: 16 }}>
+              <JsonViewer value={detailTarget.details ?? {}} redactionMode="audit" title="Details" />
+              {detailTarget.resolution ? (
+                <JsonViewer value={detailTarget.resolution} redactionMode="audit" title="Resolution" />
+              ) : null}
+              {detailTarget.adjustment_explain ? (
+                <div className="card">
+                  <div className="muted" style={{ marginBottom: 8 }}>Adjustment explain</div>
+                  <div className="stack" style={{ gap: 8 }}>
+                    <div className="stack-inline" style={{ gap: 8 }}>
+                      <span>{detailTarget.adjustment_explain.adjustment_tx_id}</span>
+                      <CopyButton value={detailTarget.adjustment_explain.adjustment_tx_id} />
+                    </div>
+                    <div className="muted small">
+                      {detailTarget.adjustment_explain.transaction_type ?? "unknown"} · ref{" "}
+                      {detailTarget.adjustment_explain.external_ref_type ?? "—"} /{" "}
+                      {detailTarget.adjustment_explain.external_ref_id ?? "—"}
+                    </div>
+                    <div className="muted small">
+                      tenant: {detailTarget.adjustment_explain.tenant_id ?? "—"} · total:{" "}
+                      {formatValue(detailTarget.adjustment_explain.total_amount)} · currency:{" "}
+                      {detailTarget.adjustment_explain.currency ?? "—"} · posted:{" "}
+                      {detailTarget.adjustment_explain.posted_at
+                        ? formatDateTime(detailTarget.adjustment_explain.posted_at)
+                        : "—"}
+                    </div>
+                    {detailTarget.adjustment_explain.meta ? (
+                      <JsonViewer value={detailTarget.adjustment_explain.meta} redactionMode="audit" title="Ledger meta" />
+                    ) : null}
+                    <div className="stack" style={{ gap: 6 }}>
+                      {detailTarget.adjustment_explain.entries.map((entry) => (
+                        <div key={entry.entry_hash} className="card">
+                          <div className="stack-inline" style={{ justifyContent: "space-between", gap: 12 }}>
+                            <strong>{entry.account_type}</strong>
+                            <span>{entry.direction}</span>
+                          </div>
+                          <div className="muted small">
+                            {formatValue(entry.amount)} {entry.currency} · client {entry.client_id ?? "—"}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    {detailTarget.adjustment_explain.audit_events.length ? (
+                      <div className="card">
+                        <div className="muted" style={{ marginBottom: 8 }}>Adjustment audit</div>
+                        <div className="stack">
+                          {detailTarget.adjustment_explain.audit_events.map((event) => (
+                            <div key={`${event.entity_type}-${event.entity_id}-${event.ts}-${event.event_type}`} className="card">
+                              <div className="stack-inline" style={{ justifyContent: "space-between", gap: 12 }}>
+                                <strong>{event.event_type}</strong>
+                                <span className="muted">{formatDateTime(event.ts)}</span>
+                              </div>
+                              <div className="muted small">
+                                {event.action}
+                                {event.actor_id ? ` · ${event.actor_id}` : ""}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              ) : null}
+              {detailTarget.timeline?.length ? (
+                <div className="card">
+                  <div className="muted" style={{ marginBottom: 8 }}>Discrepancy timeline</div>
+                  <div className="stack">
+                    {detailTarget.timeline.map((event) => (
+                      <div key={`${event.entity_type}-${event.entity_id}-${event.ts}-${event.event_type}`} className="card">
+                        <div className="stack-inline" style={{ justifyContent: "space-between", gap: 12 }}>
+                          <strong>{event.event_type}</strong>
+                          <span className="muted">{formatDateTime(event.ts)}</span>
+                        </div>
+                        <div className="muted small">
+                          {event.action}
+                          {event.reason ? ` · ${event.reason}` : ""}
+                          {event.actor_id ? ` · ${event.actor_id}` : ""}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {notAvailable ? <div className="neft-card">Reconciliation API not available in this environment</div> : null}
       {error ? <div className="neft-card error-state">{error}</div> : null}
 
@@ -408,6 +725,27 @@ export function ReconciliationRunDetailsPage() {
           </div>
         ))}
       </div>
+
+      {run?.timeline?.length ? (
+        <section className="neft-card">
+          <h3>Run timeline</h3>
+          <div className="stack">
+            {run.timeline.map((item) => (
+              <div key={`${item.ts}-${item.event_type}`} className="card">
+                <div className="stack-inline" style={{ justifyContent: "space-between", gap: 12 }}>
+                  <strong>{item.event_type}</strong>
+                  <span className="muted">{formatDateTime(item.ts)}</span>
+                </div>
+                <div className="muted small">
+                  {item.action}
+                  {item.reason ? ` · ${item.reason}` : ""}
+                  {item.actor_id ? ` · ${item.actor_id}` : ""}
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       <Tabs
         tabs={[
@@ -426,14 +764,12 @@ export function ReconciliationRunDetailsPage() {
           emptyState={{ title: "No discrepancies", description: "This run is balanced." }}
         />
       ) : (
-        <section className="neft-card">
-          <h3>Reconciliation links</h3>
-          {run?.summary && run.summary["links"] ? (
-            <JsonViewer value={run.summary["links"]} redactionMode="audit" />
-          ) : (
-            <p className="muted">Links endpoint unavailable or no links in this run.</p>
-          )}
-        </section>
+        <Table
+          columns={linkColumns}
+          data={links}
+          loading={loading}
+          emptyState={{ title: "No run links", description: "This run has no persisted reconciliation links." }}
+        />
       )}
 
       {resolveTarget ? (

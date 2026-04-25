@@ -1,9 +1,9 @@
 import { render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AuthSession } from "./api/types";
 
-vi.mock("./pages/OverviewPage", () => ({ OverviewPage: () => <div>Overview Mock</div> }));
+vi.mock("./pages/DashboardPage", () => ({ DashboardPage: () => <div>Dashboard Mock</div> }));
 vi.mock("./pages/DocumentsPage", () => ({ DocumentsPage: () => <div>Documents Mock</div> }));
 vi.mock("./pages/ReportsPage", () => ({ ReportsPage: () => <div>Reports Mock</div> }));
 vi.mock("./pages/LimitTemplatesPage", () => ({ LimitTemplatesPage: () => <div>Limits Mock</div> }));
@@ -36,7 +36,6 @@ const portalMePayload = {
 };
 
 const routeCases = [
-  { path: "/client/dashboard", marker: "Overview Mock" },
   { path: "/client/documents", marker: "Documents Mock" },
   { path: "/client/reports", marker: "Reports Mock" },
   { path: "/client/limits", marker: "Limits Mock" },
@@ -46,7 +45,12 @@ const routeCases = [
 ];
 
 describe("Demo showcase navigation", () => {
+  beforeEach(() => {
+    vi.stubEnv("VITE_DEMO_MODE", "true");
+  });
+
   afterEach(() => {
+    vi.unstubAllEnvs();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });
@@ -75,5 +79,25 @@ describe("Demo showcase navigation", () => {
 
     expect(screen.queryByText("Подключить компанию")).not.toBeInTheDocument();
     expect(screen.queryByText("Требуется авторизация")).not.toBeInTheDocument();
+  });
+
+  it("keeps the normal dashboard route on honest onboarding state even in demo mode", async () => {
+    const fetchMock = vi.fn((input: RequestInfo) => {
+      const url = input.toString();
+      if (url.includes("/portal/me")) {
+        return Promise.resolve(new Response(JSON.stringify(portalMePayload), { status: 200 }));
+      }
+      return Promise.resolve(new Response(JSON.stringify({}), { status: 200 }));
+    });
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+
+    render(
+      <MemoryRouter initialEntries={["/client/dashboard"]}>
+        <App initialSession={demoSession} />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("Подключить компанию")).toBeInTheDocument();
+    expect(screen.queryByText("Dashboard Mock")).not.toBeInTheDocument();
   });
 });

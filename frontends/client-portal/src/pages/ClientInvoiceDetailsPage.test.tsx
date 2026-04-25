@@ -6,7 +6,7 @@ import { AuthProvider } from "../auth/AuthContext";
 import type { AuthSession } from "../api/types";
 
 const session: AuthSession = {
-  token: "token-1",
+  token: "test.header.payload",
   email: "client@demo.test",
   roles: ["CLIENT_OWNER"],
   subjectType: "CLIENT",
@@ -26,7 +26,7 @@ const invoicePayload = {
   amount_due: 1000,
   currency: "RUB",
   due_at: "2025-03-10",
-  download_url: "/api/client/invoices/101/download",
+  download_url: "/api/core/client/invoices/101/download",
   payments: [],
   refunds: [],
 };
@@ -54,5 +54,7 @@ describe("ClientInvoiceDetailsPage", () => {
 
     expect(await screen.findByText("Счёт #101")).toBeInTheDocument();
     expect(screen.getByText(/Скачать PDF/)).toBeInTheDocument();
+    expect(screen.getByText("Платежей пока нет")).toBeInTheDocument();
+    expect(screen.getByText("Подтверждений оплаты пока нет")).toBeInTheDocument();
   });
 });

@@ -12,7 +12,6 @@ const TYPE_OPTIONS: { value: PolicyType | ""; label: string }[] = [
   { value: "", label: "All" },
   { value: "fleet", label: "Fleet" },
   { value: "finance", label: "Finance" },
-  { value: "marketplace", label: "Marketplace" },
 ];
 
 const STATUS_OPTIONS: { value: PolicyStatus | ""; label: string }[] = [
@@ -113,7 +112,7 @@ export const PolicyCenterPage = () => {
     <div className="policy-center">
       <div className="page-header">
         <h1>Policy Center</h1>
-        <p className="muted">Unified view across fleet, finance, and marketplace policy engines.</p>
+        <p className="muted">Unified view across fleet and finance policy engines.</p>
       </div>
       <div className="filters">
         <div className="filter">
@@ -165,7 +164,7 @@ export const PolicyCenterPage = () => {
           title="No policies found"
           description={
             typeFilter
-              ? "The selected type is not implemented yet or has no policies."
+              ? "No policies are available for the selected type."
               : "There are no policies available for the current filters."
           }
         />

@@ -44,8 +44,8 @@ type ResolveAccessStateParams = {
 
 export const resolveAccessState = ({
   portal,
-  requiredRoles: _requiredRoles,
-  capability: _capability,
+  requiredRoles,
+  capability,
 }: ResolveAccessStateParams): AccessDecision => {
   if (!portal) {
     return { state: AccessState.TECH_ERROR, reason: "tech_error" };
@@ -64,6 +64,16 @@ export const resolveAccessState = ({
 
   if (portal.access_state !== AccessState.ACTIVE) {
     return { state: portal.access_state as AccessState, reason: (portal.access_reason as AccessReason) ?? undefined };
+  }
+
+  const roleSet = new Set([...(portal.user_roles ?? []), ...(portal.org_roles ?? [])].map((role) => role.toUpperCase()));
+  if (requiredRoles?.length && !requiredRoles.some((role) => roleSet.has(role.toUpperCase()))) {
+    return { state: AccessState.FORBIDDEN_ROLE, reason: "forbidden_role" };
+  }
+
+  const capabilitySet = new Set((portal.capabilities ?? []).map((item) => item.toUpperCase()));
+  if (capability && !capabilitySet.has(capability.toUpperCase())) {
+    return { state: AccessState.MISSING_CAPABILITY, reason: "missing_capability" };
   }
 
   return { state: AccessState.ACTIVE };

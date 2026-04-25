@@ -1,4 +1,4 @@
-import { request } from "./http";
+import { apiGet } from "./client";
 
 export type GeoMetric = "tx_count" | "amount_sum" | "declined_count" | "risk_red_count";
 export type GeoOverlayKind = "RISK_RED" | "HEALTH_OFFLINE" | "HEALTH_DEGRADED";
@@ -28,11 +28,13 @@ export interface GeoStation {
 }
 
 interface GeoTilesResponse {
-  tiles: GeoTile[];
+  items?: GeoTile[];
+  tiles?: GeoTile[];
 }
 
 interface GeoStationsResponse {
-  stations: GeoStation[];
+  items?: GeoStation[];
+  stations?: GeoStation[];
 }
 
 export interface GeoTilesParams {
@@ -52,14 +54,25 @@ export interface GeoStationsParams {
   overlayKind?: GeoOverlayKind;
 }
 
-export const boundsToBbox = (bounds: GeoBounds): string =>
-  [bounds.minLon, bounds.minLat, bounds.maxLon, bounds.maxLat].join(",");
+const toApiDate = (value: string) => {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value.trim())) {
+    return value.trim();
+  }
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return value.slice(0, 10);
+  }
+  return parsed.toISOString().slice(0, 10);
+};
 
 const createBaseParams = (params: GeoTilesParams) => {
   const query = new URLSearchParams();
-  query.set("date_from", params.dateFrom);
-  query.set("date_to", params.dateTo);
-  query.set("bbox", boundsToBbox(params.bounds));
+  query.set("date_from", toApiDate(params.dateFrom));
+  query.set("date_to", toApiDate(params.dateTo));
+  query.set("min_lat", String(params.bounds.minLat));
+  query.set("min_lon", String(params.bounds.minLon));
+  query.set("max_lat", String(params.bounds.maxLat));
+  query.set("max_lon", String(params.bounds.maxLon));
   query.set("zoom", String(params.zoom));
   query.set("limit_tiles", String(params.limitTiles ?? 500));
   return query;
@@ -95,26 +108,35 @@ export const tileToBounds = (tile: Pick<GeoTile, "tile_x" | "tile_y" | "zoom">):
 
 export async function fetchGeoTiles(params: GeoTilesParams & { metric: GeoMetric }) {
   const query = buildGeoTilesQuery(params);
-  const response = await request<GeoTilesResponse>(`/api/v1/geo/tiles?${query}`);
-  return response.tiles ?? [];
+  const response = await apiGet<GeoTilesResponse>(`/api/v1/geo/tiles?${query}`);
+  return response.items ?? response.tiles ?? [];
 }
 
 export async function fetchGeoOverlayTiles(params: GeoTilesParams & { overlayKind: GeoOverlayKind }) {
   const query = buildGeoOverlaysQuery(params);
-  const response = await request<GeoTilesResponse>(`/api/v1/geo/tiles/overlays?${query}`);
-  return response.tiles ?? [];
+  const response = await apiGet<GeoTilesResponse>(`/api/v1/geo/tiles/overlays?${query}`);
+  return response.items ?? response.tiles ?? [];
 }
 
 export async function fetchGeoStationsOverlay(params: GeoStationsParams) {
   const query = new URLSearchParams();
-  query.set("date_from", params.dateFrom);
-  query.set("date_to", params.dateTo);
-  query.set("bbox", boundsToBbox(params.bounds));
+  query.set("date_from", toApiDate(params.dateFrom));
+  query.set("date_to", toApiDate(params.dateTo));
+  query.set("min_lat", String(params.bounds.minLat));
+  query.set("min_lon", String(params.bounds.minLon));
+  query.set("max_lat", String(params.bounds.maxLat));
+  query.set("max_lon", String(params.bounds.maxLon));
   query.set("metric", params.metric);
   query.set("limit", String(params.limit ?? 200));
   if (params.overlayKind === "HEALTH_OFFLINE") {
     query.set("health_status", "OFFLINE");
   }
-  const response = await request<GeoStationsResponse>(`/api/v1/geo/stations/overlay?${query.toString()}`);
-  return response.stations ?? [];
+  if (params.overlayKind === "HEALTH_DEGRADED") {
+    query.set("health_status", "DEGRADED");
+  }
+  if (params.overlayKind === "RISK_RED") {
+    query.set("risk_zone", "RED");
+  }
+  const response = await apiGet<GeoStationsResponse>(`/api/v1/geo/stations/overlay?${query.toString()}`);
+  return response.items ?? response.stations ?? [];
 }

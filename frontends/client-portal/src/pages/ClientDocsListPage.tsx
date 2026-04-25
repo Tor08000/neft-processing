@@ -3,10 +3,9 @@ import { useAuth } from "../auth/AuthContext";
 import { downloadClientDoc, fetchClientDocsList, type ClientDocItem } from "../api/clientDocs";
 import { ApiError } from "../api/http";
 import { ClientErrorState } from "../components/ClientErrorState";
-import { DemoEmptyState } from "../components/DemoEmptyState";
 import { Link } from "react-router-dom";
 import { AppEmptyState, AppForbiddenState, AppLoadingState } from "../components/states";
-import { demoDocuments } from "../demo/demoData";
+import { Table, type Column } from "../components/common/Table";
 import { isDemoClient } from "@shared/demo/demo";
 import { formatDate } from "../utils/format";
 import { canAccessFinance } from "../utils/roles";
@@ -21,26 +20,17 @@ export function ClientDocsListPage({ title, docType }: ClientDocsListPageProps) 
   const [items, setItems] = useState<ClientDocItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<{ status?: number } | null>(null);
-  const [demoFallback, setDemoFallback] = useState(false);
   const isDemoClientAccount = isDemoClient(user?.email ?? null);
 
   const loadDocs = () => {
     if (!user) return;
     setLoading(true);
-    setDemoFallback(false);
     setError(null);
     fetchClientDocsList(user, docType)
       .then((resp) => setItems(resp.items ?? []))
       .catch((err: unknown) => {
         console.error("Не удалось загрузить документы", err);
         const status = err instanceof ApiError ? err.status : undefined;
-        const isNotFound = status === 404;
-        if (isDemoClientAccount && isNotFound) {
-          setItems(demoDocuments);
-          setDemoFallback(true);
-          setError(null);
-          return;
-        }
         setError({ status });
       })
       .finally(() => setLoading(false));
@@ -48,7 +38,7 @@ export function ClientDocsListPage({ title, docType }: ClientDocsListPageProps) 
 
   useEffect(() => {
     loadDocs();
-  }, [docType, user, isDemoClientAccount]);
+  }, [docType, user]);
 
   const handleDownload = async (documentId: string) => {
     try {
@@ -66,43 +56,6 @@ export function ClientDocsListPage({ title, docType }: ClientDocsListPageProps) 
     return <AppLoadingState label="Загружаем документы..." />;
   }
 
-  if (demoFallback) {
-    return (
-      <div className="card">
-        <div className="card__header">
-          <div>
-            <h2>{title}</h2>
-            <p className="muted">Демонстрационный список документов.</p>
-          </div>
-        </div>
-        <table className="table">
-          <thead>
-            <tr>
-              <th>Дата</th>
-              <th>Статус</th>
-              <th>Тип</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((item) => (
-              <tr key={item.id}>
-                <td>{formatDate(item.date)}</td>
-                <td>{item.status}</td>
-                <td>{item.type}</td>
-                <td>
-                  <button type="button" className="ghost" onClick={() => void handleDownload(item.id)}>
-                    Скачать
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    );
-  }
-
   if (error) {
     return (
       <ClientErrorState
@@ -117,7 +70,7 @@ export function ClientDocsListPage({ title, docType }: ClientDocsListPageProps) 
   if (!items.length) {
     if (isDemoClientAccount) {
       return (
-        <DemoEmptyState
+        <AppEmptyState
           title="Документы в демо появятся позже"
           description="В рабочем контуре здесь будет архив счетов, актов и договоров."
           action={
@@ -131,6 +84,35 @@ export function ClientDocsListPage({ title, docType }: ClientDocsListPageProps) 
     return <AppEmptyState title="Документов пока нет" description="Документы появятся после выставления." />;
   }
 
+  const columns: Column<ClientDocItem>[] = [
+    {
+      key: "date",
+      title: "Дата",
+      render: (item) => formatDate(item.date),
+    },
+    {
+      key: "status",
+      title: "Статус",
+      render: (item) => item.status,
+    },
+    {
+      key: "type",
+      title: "Тип",
+      render: (item) => item.type,
+    },
+    {
+      key: "actions",
+      title: "",
+      render: (item) => (
+        <div className="table-row-actions">
+          <button type="button" className="ghost" onClick={() => void handleDownload(item.id)}>
+            Скачать
+          </button>
+        </div>
+      ),
+    },
+  ];
+
   return (
     <div className="card">
       <div className="card__header">
@@ -141,30 +123,12 @@ export function ClientDocsListPage({ title, docType }: ClientDocsListPageProps) 
           </p>
         </div>
       </div>
-      <table className="table">
-        <thead>
-          <tr>
-            <th>Дата</th>
-            <th>Статус</th>
-            <th>Тип</th>
-            <th />
-          </tr>
-        </thead>
-        <tbody>
-          {items.map((item) => (
-            <tr key={item.id}>
-              <td>{formatDate(item.date)}</td>
-              <td>{item.status}</td>
-              <td>{item.type}</td>
-              <td>
-                <button type="button" className="ghost" onClick={() => void handleDownload(item.id)}>
-                  Скачать
-                </button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <Table
+        columns={columns}
+        data={items}
+        rowKey={(item) => item.id}
+        footer={<div className="table-footer__content muted">Документов: {items.length}</div>}
+      />
     </div>
   );
 }

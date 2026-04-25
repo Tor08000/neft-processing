@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -42,6 +43,7 @@ class EdoDocumentResponse(BaseModel):
     provider_document_id: str | None = None
     attempt: int
     last_error: str | None = None
+    last_error_type: str | None = None
 
 
 class EdoStubSendRequest(BaseModel):
@@ -96,6 +98,9 @@ class EdoIntSendResponse(BaseModel):
     edo_status: str
     provider: str
     provider_mode: str
+    last_error: str | None = None
+    last_error_type: str | None = None
+    retrying: bool = False
 
 
 class EdoIntStatusResponse(BaseModel):
@@ -117,6 +122,7 @@ class OtpSendRequest(BaseModel):
 class OtpSendResponse(BaseModel):
     provider_message_id: str
     status: str
+    mode: str | None = None
 
 class NotificationSendRequest(BaseModel):
     channel: str
@@ -128,6 +134,8 @@ class NotificationSendRequest(BaseModel):
 class NotificationSendResponse(BaseModel):
     status: str
     mode: str
+    provider: str | None = None
+    provider_message_id: str | None = None
 
 
 
@@ -143,6 +151,7 @@ class NotifyEmailSendRequest(BaseModel):
 class NotifyEmailSendResponse(BaseModel):
     status: str
     message_id: str
+    mode: str | None = None
 
 class WebhookOwner(BaseModel):
     type: str
@@ -171,6 +180,7 @@ class WebhookIntakeResponse(BaseModel):
     event_id: str | None = None
     status: str
     verified: bool
+    duplicate: bool = False
 
 
 class WebhookEndpointCreate(BaseModel):
@@ -198,6 +208,11 @@ class WebhookEndpointSecretResponse(WebhookEndpointResponse):
     secret: str
 
 
+class WebhookEndpointUpdateRequest(BaseModel):
+    status: Literal["ACTIVE", "DISABLED"] | None = None
+    url: str | None = None
+
+
 class WebhookSubscriptionCreate(BaseModel):
     endpoint_id: str
     event_type: str
@@ -215,6 +230,10 @@ class WebhookSubscriptionResponse(BaseModel):
     enabled: bool
 
 
+class WebhookSubscriptionUpdateRequest(BaseModel):
+    enabled: bool
+
+
 class WebhookDeliveryResponse(BaseModel):
     id: str
     endpoint_id: str
@@ -229,14 +248,45 @@ class WebhookDeliveryResponse(BaseModel):
     latency_ms: int | None = None
 
 
-class WebhookTestResponse(BaseModel):
-    event_id: str
+class WebhookDeliveryAttemptResponse(BaseModel):
+    attempt: int
+    http_status: int | None = None
+    error: str | None = None
+    latency_ms: int | None = None
+    delivered_at: datetime | None = None
+    next_retry_at: datetime | None = None
+    correlation_id: str | None = None
+
+
+class WebhookDeliveryDetailResponse(WebhookDeliveryResponse):
+    endpoint_url: str | None = None
+    envelope: dict | None = None
+    headers: dict[str, str] | None = None
+    attempts: list[WebhookDeliveryAttemptResponse] | None = None
+    error: str | None = None
+    correlation_id: str | None = None
+
+
+class WebhookDeliveryRetryResponse(BaseModel):
     delivery_id: str
-    status: str
+
+
+class WebhookTestResponse(BaseModel):
+    event_id: str | None = None
+    delivery_id: str
+    status: str | None = None
+    http_status: int | None = None
+    latency_ms: int | None = None
+    error: str | None = None
 
 
 class WebhookTestDeliveryRequest(BaseModel):
     endpoint_id: str
+    event_type: str | None = None
+    payload: dict | None = None
+
+
+class WebhookTestEndpointRequest(BaseModel):
     event_type: str | None = None
     payload: dict | None = None
 
@@ -299,10 +349,14 @@ __all__ = [
     "NotificationSendResponse",
     "NotifyEmailSendRequest",
     "NotifyEmailSendResponse",
+    "WebhookDeliveryAttemptResponse",
+    "WebhookDeliveryDetailResponse",
+    "WebhookDeliveryRetryResponse",
     "WebhookDeliveryResponse",
     "WebhookEndpointCreate",
     "WebhookEndpointResponse",
     "WebhookEndpointSecretResponse",
+    "WebhookEndpointUpdateRequest",
     "WebhookEventEnvelope",
     "WebhookIntakeRequest",
     "WebhookIntakeResponse",
@@ -315,6 +369,8 @@ __all__ = [
     "WebhookSlaResponse",
     "WebhookSubscriptionCreate",
     "WebhookSubscriptionResponse",
+    "WebhookSubscriptionUpdateRequest",
+    "WebhookTestEndpointRequest",
     "WebhookTestResponse",
     "WebhookTestDeliveryRequest",
 ]

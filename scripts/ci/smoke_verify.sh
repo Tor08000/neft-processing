@@ -3,7 +3,7 @@ set -euo pipefail
 
 export AUTH_URL="${AUTH_URL:-http://auth-host:8000/api/v1/auth}"
 export CORE_URL="${CORE_URL:-http://core-api:8000/api/core/v1/admin}"
-export NEFT_BOOTSTRAP_ADMIN_EMAIL="${NEFT_BOOTSTRAP_ADMIN_EMAIL:-admin@example.com}"
+export NEFT_BOOTSTRAP_ADMIN_EMAIL="${NEFT_BOOTSTRAP_ADMIN_EMAIL:-admin@neft.local}"
 export NEFT_BOOTSTRAP_ADMIN_PASSWORD="${NEFT_BOOTSTRAP_ADMIN_PASSWORD:-admin}"
 
 python - <<'PY'
@@ -15,7 +15,7 @@ import urllib.request
 auth_url = os.getenv("AUTH_URL")
 core_url = os.getenv("CORE_URL")
 core_public = core_url.replace("/api/core/v1/admin", "/api/core")
-email = os.getenv("NEFT_BOOTSTRAP_ADMIN_EMAIL", "admin@example.com")
+email = os.getenv("NEFT_BOOTSTRAP_ADMIN_EMAIL", "admin@neft.local")
 password = os.getenv("NEFT_BOOTSTRAP_ADMIN_PASSWORD", "admin")
 
 

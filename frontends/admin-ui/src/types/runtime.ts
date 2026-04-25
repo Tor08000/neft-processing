@@ -4,10 +4,18 @@ export interface RuntimeHealthSummary {
   core_api: RuntimeHealthStatus;
   auth_host: RuntimeHealthStatus;
   gateway: RuntimeHealthStatus;
+  integration_hub: RuntimeHealthStatus;
+  document_service: RuntimeHealthStatus;
+  logistics_service: RuntimeHealthStatus;
+  ai_service: RuntimeHealthStatus;
   postgres: RuntimeHealthStatus;
   redis: RuntimeHealthStatus;
   minio: RuntimeHealthStatus;
   clickhouse: RuntimeHealthStatus;
+  prometheus: RuntimeHealthStatus;
+  grafana: RuntimeHealthStatus;
+  loki: RuntimeHealthStatus;
+  otel_collector: RuntimeHealthStatus;
 }
 
 export interface RuntimeQueueState {
@@ -34,6 +42,7 @@ export interface RuntimeViolationTop {
 export interface RuntimeViolations {
   immutable: RuntimeViolationTop;
   invariants: RuntimeViolationTop;
+  sla_penalties: RuntimeViolationTop;
 }
 
 export interface RuntimeMoneyRisk {
@@ -53,6 +62,27 @@ export interface RuntimeEvents {
   critical_last_10: CriticalEvent[];
 }
 
+export type ExternalProviderStatus =
+  | "DISABLED"
+  | "CONFIGURED"
+  | "HEALTHY"
+  | "DEGRADED"
+  | "AUTH_FAILED"
+  | "TIMEOUT"
+  | "UNSUPPORTED"
+  | "RATE_LIMITED";
+
+export interface ExternalProviderHealth {
+  service: string;
+  provider: string;
+  mode: string;
+  status: ExternalProviderStatus;
+  configured: boolean;
+  last_success_at?: string | null;
+  last_error_code?: string | null;
+  message?: string | null;
+}
+
 export interface RuntimeSummary {
   ts: string;
   environment: string;
@@ -62,4 +92,7 @@ export interface RuntimeSummary {
   violations: RuntimeViolations;
   money_risk: RuntimeMoneyRisk;
   events: RuntimeEvents;
+  warnings: string[];
+  missing_tables: string[];
+  external_providers: ExternalProviderHealth[];
 }

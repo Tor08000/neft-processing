@@ -12,7 +12,7 @@ set "LOG_FILE=logs\%SCRIPT_NAME%_%LOG_DATE%.log"
 call :log "Starting %SCRIPT_NAME%"
 
 call :log "Step 1: Commerce overdue -> payment intake -> entitlements -> exports"
-call "%~dp0smoke_commerce_overdue_unblock_e2e.cmd"
+call "%~dp0smoke_billing_enforcement_unblock.cmd"
 if not "%ERRORLEVEL%"=="0" call :fail "commerce_overdue_unblock_failed"
 
 call :log "Step 2: MoR settlement snapshot/ledger/revenue/payout gating"

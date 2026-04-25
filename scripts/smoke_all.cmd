@@ -32,6 +32,10 @@ set "GRAFANA_CONTAINER=neft-processing-grafana-1"
 set "JAEGER_CONTAINER=neft-processing-jaeger-1"
 set "MINIO_CONTAINER=neft-processing-minio-1"
 
+if "%POSTGRES_DB%"=="" set "POSTGRES_DB=neft"
+if "%POSTGRES_USER%"=="" set "POSTGRES_USER=neft"
+if "%POSTGRES_PASSWORD%"=="" set "POSTGRES_PASSWORD=change-me"
+
 set "FAILED=0"
 
 call :check_http "Core API health" "%CORE_API_URL%/health" "%CORE_CONTAINER%"
@@ -42,7 +46,7 @@ call :check_http_head "Gateway core health" "%GATEWAY_URL%/api/core/health" "%GA
 
 call :check_http "Auth health" "%AUTH_URL%/health" "%AUTH_CONTAINER%"
 
-call :check_http_head_any "Flower UI" "%FLOWER_URL%/" "%FLOWER_CONTAINER%" "200 301 302 401 403"
+call :check_http_any "Flower UI" "%FLOWER_URL%/" "%FLOWER_CONTAINER%" "200 301 302 401 403"
 
 call :check_http_head "Grafana" "%GRAFANA_URL%/" "%GRAFANA_CONTAINER%"
 call :check_http "Prometheus ready" "%PROMETHEUS_URL%/-/ready" "%PROMETHEUS_CONTAINER%"
@@ -51,11 +55,11 @@ call :check_http_head "Jaeger" "%JAEGER_URL%/" "%JAEGER_CONTAINER%"
 
 call :check_http "MinIO ready" "%MINIO_URL%/minio/health/ready" "%MINIO_CONTAINER%"
 
-call :check_cmd "Postgres select 1" "docker exec %POSTGRES_CONTAINER% psql -U neft -d neft -c ""select 1""" "%POSTGRES_CONTAINER%"
+call :check_cmd "Postgres select 1" "docker exec -e PGPASSWORD=%POSTGRES_PASSWORD% %POSTGRES_CONTAINER% psql -U %POSTGRES_USER% -d %POSTGRES_DB% -c ""select 1""" "%POSTGRES_CONTAINER%"
 
-call :check_cmd "Alembic heads" "docker exec %CORE_CONTAINER% alembic heads --verbose" "%CORE_CONTAINER%"
-call :check_cmd "Alembic current" "docker exec %CORE_CONTAINER% alembic current -v" "%CORE_CONTAINER%"
-call :check_cmd "Alembic version rows" "docker exec %POSTGRES_CONTAINER% psql -tA -c ""select version_num from processing_core.alembic_version_core""" "%POSTGRES_CONTAINER%"
+call :check_cmd "Alembic heads" "docker exec -w /app %CORE_CONTAINER% alembic -c app/alembic.ini heads --verbose" "%CORE_CONTAINER%"
+call :check_cmd "Alembic current" "docker exec -w /app %CORE_CONTAINER% alembic -c app/alembic.ini current -v" "%CORE_CONTAINER%"
+call :check_cmd "Alembic version rows" "docker exec -e PGPASSWORD=%POSTGRES_PASSWORD% %POSTGRES_CONTAINER% psql -U %POSTGRES_USER% -d %POSTGRES_DB% -tA -c ""select version_num from processing_core.alembic_version_core""" "%POSTGRES_CONTAINER%"
 
 if "%FAILED%"=="0" (
   echo %OK% smoke_all.cmd finished successfully
@@ -112,6 +116,24 @@ if "%hit%"=="0" (
 call :mark_ok "%name% (status %code%)"
 exit /b 0
 
+:check_http_any
+set "name=%~1"
+set "url=%~2"
+set "container=%~3"
+set "allowed=%~4"
+for /f "delims=" %%H in ('curl -s -o NUL -w "%%{http_code}" "%url%"') do set "code=%%H"
+if "%code%"=="" set "code=000"
+set "hit=0"
+for %%A in (%allowed%) do (
+  if "%%A"=="%code%" set "hit=1"
+)
+if "%hit%"=="0" (
+  call :mark_fail "%name% (status %code%)" "%container%"
+  exit /b 0
+)
+call :mark_ok "%name% (status %code%)"
+exit /b 0
+
 :check_prom_targets
 set "name=%~1"
 set "url=%~2"
@@ -148,7 +170,7 @@ set "container=%~2"
 echo [%FAIL%] %name%
 set "FAILED=1"
 if not "%container%"=="" (
-  echo %YELLOW%[logs]%RESET% %container% (last 200 lines)
+  echo %YELLOW%[logs]%RESET% %container% ^(last 200 lines^)
   docker logs --tail 200 %container%
 )
 exit /b 0

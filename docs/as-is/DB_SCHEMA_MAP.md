@@ -23,7 +23,7 @@
 - **Runtime current:** **VERIFIED_RUNTIME** — `alembic current` выполнен в `verify_all`. (`docs/as-is/STATUS_SNAPSHOT_RUNTIME_LATEST.md`)
 
 ### integration-hub
-- Alembic отсутствует; schema создаётся моделями SQLAlchemy на старте. (`platform/integration-hub/neft_integration_hub/db.py`)
+- Alembic отсутствует; schema создаётся моделями SQLAlchemy на старте только при explicit bootstrap toggle `INTEGRATION_HUB_AUTO_CREATE_SCHEMA=true` (fallback: global `NEFT_AUTO_CREATE_SCHEMA`). Если mounted tables отсутствуют и auto-create выключен, `/health` обязан сигнализировать schema-not-ready. (`platform/integration-hub/neft_integration_hub/db.py`, `platform/integration-hub/neft_integration_hub/main.py`)
 
 ---
 
@@ -72,7 +72,7 @@
 
 ### CRM / support / ops
 - `crm_clients`, `crm_contracts`, `crm_tariff_plans`, `crm_subscriptions`, `crm_feature_flags`. (`platform/processing-core/app/models/crm.py`)
-- `support_requests`. (`platform/processing-core/app/models/support_request.py`)
+- `cases`, `case_snapshots`, `case_comments`, `case_events`, `support_requests`, `support_tickets`, `support_ticket_comments`, `support_ticket_attachments`. (`platform/processing-core/app/models/cases.py`, `platform/processing-core/app/models/support_request.py`, `platform/processing-core/app/models/support_ticket.py`)
 - `ops_escalations`. (`platform/processing-core/app/models/ops.py`)
 
 ---

@@ -6,14 +6,15 @@ from uuid import uuid4
 
 import pytest
 
-from app.db import Base, SessionLocal, engine, reset_engine
 from app.models.accounting_export_batch import AccountingExportFormat, AccountingExportType
 from app.models.billing_period import BillingPeriod, BillingPeriodStatus, BillingPeriodType
 from app.models.card import Card
 from app.models.client import Client
+from app.models.fuel import FuelNetwork, FuelStation, FuelStationNetwork
 from app.models.merchant import Merchant
 from app.models.operation import OperationStatus
-from app.models.payout_batch import PayoutBatch, PayoutBatchState
+from app.models.operation import Operation
+from app.models.payout_batch import PayoutBatch, PayoutBatchState, PayoutItem
 from app.models.payout_export_file import PayoutExportFormat
 from app.models.terminal import Terminal
 from app.models.risk_score import RiskLevel
@@ -21,6 +22,7 @@ from app.services.accounting_export_service import AccountingExportRiskDeclined,
 from app.services.decision import DecisionEngine, DecisionOutcome, DecisionResult
 from app.services.payout_exports import PayoutExportError, create_payout_export
 from app.services import transactions_service
+from app.tests._scoped_router_harness import scoped_session_context
 
 
 class _ApprovedLimits:
@@ -35,23 +37,24 @@ class _ApprovedLimits:
         return {"approved": True, "applied_rule_id": self.applied_rule_id}
 
 
-@pytest.fixture(autouse=True)
-def _use_sqlite(monkeypatch: pytest.MonkeyPatch):
-    import app.db as db
+TRANSACTION_DECISION_TEST_TABLES = (
+    Client.__table__,
+    Card.__table__,
+    Merchant.__table__,
+    Terminal.__table__,
+    FuelNetwork.__table__,
+    FuelStationNetwork.__table__,
+    FuelStation.__table__,
+    Operation.__table__,
+)
 
-    monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
-    monkeypatch.setenv("TEST_DATABASE_URL", "sqlite:///:memory:")
-    monkeypatch.setattr(db, "DATABASE_URL", "sqlite:///:memory:", raising=False)
-    monkeypatch.setattr(db, "raw_db_url", "sqlite:///:memory:", raising=False)
-    reset_engine()
+PAYOUT_EXPORT_DECISION_TEST_TABLES = (
+    BillingPeriod.__table__,
+    PayoutBatch.__table__,
+    PayoutItem.__table__,
+)
 
-
-@pytest.fixture(autouse=True)
-def _reset_db(_use_sqlite):
-    Base.metadata.drop_all(bind=engine)
-    Base.metadata.create_all(bind=engine)
-    yield
-    Base.metadata.drop_all(bind=engine)
+ACCOUNTING_EXPORT_DECISION_TEST_TABLES = (BillingPeriod.__table__,)
 
 
 def _decline_result() -> DecisionResult:
@@ -66,15 +69,12 @@ def _decline_result() -> DecisionResult:
 
 
 def test_authorize_operation_declines_on_decision_engine(monkeypatch):
-    Base.metadata.drop_all(bind=engine)
-    Base.metadata.create_all(bind=engine)
-
     monkeypatch.setattr(transactions_service, "evaluate_limits_locally", lambda *_, **__: _ApprovedLimits())
     monkeypatch.setattr(transactions_service, "_evaluate_risk", lambda *_args, **_kwargs: pytest.fail("risk engine"))
     monkeypatch.setattr(DecisionEngine, "evaluate", lambda *_args, **_kwargs: _decline_result())
 
     client_id = uuid4()
-    with SessionLocal() as session:
+    with scoped_session_context(tables=TRANSACTION_DECISION_TEST_TABLES) as session:
         session.add(Client(id=client_id, name="Client", status="ACTIVE"))
         session.add(Card(id="card-1", client_id=str(client_id), status="ACTIVE"))
         session.add(Merchant(id="merchant-1", name="M", status="ACTIVE"))
@@ -108,13 +108,10 @@ def test_authorize_operation_declines_on_decision_engine(monkeypatch):
 
 
 def test_payout_export_declines_on_decision_engine(monkeypatch):
-    Base.metadata.drop_all(bind=engine)
-    Base.metadata.create_all(bind=engine)
-
     monkeypatch.setattr(DecisionEngine, "evaluate", lambda *_args, **_kwargs: _decline_result())
 
     token = {"roles": ["ADMIN", "ADMIN_FINANCE"], "tenant_id": 1, "sub": "admin-1"}
-    with SessionLocal() as session:
+    with scoped_session_context(tables=PAYOUT_EXPORT_DECISION_TEST_TABLES) as session:
         period = BillingPeriod(
             period_type=BillingPeriodType.ADHOC,
             start_at=datetime(2025, 1, 1, tzinfo=timezone.utc),
@@ -150,9 +147,6 @@ def test_payout_export_declines_on_decision_engine(monkeypatch):
 
 
 def test_accounting_export_declines_on_decision_engine(monkeypatch):
-    Base.metadata.drop_all(bind=engine)
-    Base.metadata.create_all(bind=engine)
-
     monkeypatch.setattr(DecisionEngine, "evaluate", lambda *_args, **_kwargs: _decline_result())
 
     period = BillingPeriod(
@@ -164,7 +158,7 @@ def test_accounting_export_declines_on_decision_engine(monkeypatch):
     )
 
     token = {"roles": ["ADMIN", "ADMIN_FINANCE"], "tenant_id": 1, "sub": "admin-1"}
-    with SessionLocal() as session:
+    with scoped_session_context(tables=ACCOUNTING_EXPORT_DECISION_TEST_TABLES) as session:
         session.add(period)
         session.commit()
 

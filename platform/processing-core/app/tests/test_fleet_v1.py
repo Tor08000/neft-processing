@@ -12,6 +12,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
+import app.main as app_main
 from app.db import get_db
 from app.main import app
 from app.models.case_exports import CaseExport
@@ -19,11 +20,13 @@ from app.models.cases import Case, CaseEvent, CaseEventType, CaseKind
 from app.models.decision_memory import DecisionMemoryRecord
 from app.models.fleet import ClientEmployee, FuelCardGroupMember, FuelGroupAccess
 from app.models.fuel import (
+    FleetNotificationOutbox,
     FuelCard,
     FuelCardGroup,
     FuelLimit,
     FuelLimitBreach,
     FuelIngestJob,
+    FuelMerchant,
     FuelNetwork,
     FuelProvider,
     FuelStation,
@@ -58,6 +61,16 @@ def signing_key() -> bytes:
 
 
 @pytest.fixture(autouse=True)
+def app_env_guardrails(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("APP_ENV", "dev")
+    monkeypatch.setenv("ALLOW_MOCK_PROVIDERS_IN_PROD", "1")
+    monkeypatch.setattr(app_main.settings, "APP_ENV", "dev", raising=False)
+    monkeypatch.setattr("app.routers.client_fleet.enforce_entitlement", lambda *args, **kwargs: None)
+    monkeypatch.setattr("app.routers.client_fleet.assert_module_enabled", lambda *args, **kwargs: None)
+    monkeypatch.setattr("app.routers.client_fleet.assert_max_cards", lambda *args, **kwargs: None)
+
+
+@pytest.fixture(autouse=True)
 def audit_signing_env(monkeypatch: pytest.MonkeyPatch, signing_key: bytes) -> None:
     monkeypatch.setenv("AUDIT_SIGNING_MODE", "local")
     monkeypatch.setenv("AUDIT_SIGNING_REQUIRED", "true")
@@ -85,6 +98,8 @@ def db_session() -> Session:
     FuelLimit.__table__.create(bind=engine)
     FuelIngestJob.__table__.create(bind=engine)
     FuelLimitBreach.__table__.create(bind=engine)
+    FuelMerchant.__table__.create(bind=engine)
+    FleetNotificationOutbox.__table__.create(bind=engine)
     FuelTransaction.__table__.create(bind=engine)
     session = SessionLocal()
     try:
@@ -92,6 +107,8 @@ def db_session() -> Session:
     finally:
         session.close()
         FuelTransaction.__table__.drop(bind=engine)
+        FleetNotificationOutbox.__table__.drop(bind=engine)
+        FuelMerchant.__table__.drop(bind=engine)
         FuelLimitBreach.__table__.drop(bind=engine)
         FuelIngestJob.__table__.drop(bind=engine)
         FuelLimit.__table__.drop(bind=engine)
@@ -134,7 +151,7 @@ def test_fleet_v1_flow(make_jwt, client: TestClient, db_session: Session) -> Non
         roles=("CLIENT_ADMIN",),
         client_id=client_id,
         sub=admin_user_id,
-        extra={"user_id": admin_user_id, "email": "admin@fleet.test", "tenant_id": 1},
+        extra={"user_id": admin_user_id, "email": "admin@fleet.test", "tenant_id": 1, "aud": "neft-client"},
     )
 
     card_payload = {"card_alias": "NEFT-00001234", "masked_pan": "****1111", "currency": "RUB"}
@@ -176,7 +193,7 @@ def test_fleet_v1_flow(make_jwt, client: TestClient, db_session: Session) -> Non
         roles=("CLIENT_USER",),
         client_id=client_id,
         sub=viewer_id,
-        extra={"user_id": viewer_id, "email": "viewer@fleet.test", "tenant_id": 1},
+        extra={"user_id": viewer_id, "email": "viewer@fleet.test", "tenant_id": 1, "aud": "neft-client"},
     )
     list_cards = client.get("/api/client/fleet/cards", headers=_auth_headers(viewer_token))
     assert list_cards.status_code == 200
@@ -211,7 +228,7 @@ def test_fleet_v1_flow(make_jwt, client: TestClient, db_session: Session) -> Non
         roles=("CLIENT_USER",),
         client_id=client_id,
         sub=manager_id,
-        extra={"user_id": manager_id, "email": "manager@fleet.test", "tenant_id": 1},
+        extra={"user_id": manager_id, "email": "manager@fleet.test", "tenant_id": 1, "aud": "neft-client"},
     )
     limit_resp = client.post(
         "/api/client/fleet/limits/set",

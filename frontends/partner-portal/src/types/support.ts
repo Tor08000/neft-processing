@@ -11,6 +11,16 @@ export type SupportRequestSubjectType =
 export type SupportRequestScopeType = "CLIENT" | "PARTNER";
 
 export type SupportRequestPriority = "LOW" | "NORMAL" | "HIGH";
+export type SupportRequestCaseKind =
+  | "order"
+  | "support"
+  | "dispute"
+  | "incident"
+  | "operation"
+  | "invoice"
+  | "kpi"
+  | "fleet"
+  | "booking";
 
 export interface SupportRequestItem {
   id: string;
@@ -30,6 +40,12 @@ export interface SupportRequestItem {
   created_at: string;
   updated_at: string;
   resolved_at?: string | null;
+  case_kind?: SupportRequestCaseKind;
+  case_queue?: string | null;
+  case_source_ref_type?: string | null;
+  case_source_ref_id?: string | null;
+  case_first_response_due_at?: string | null;
+  case_resolve_due_at?: string | null;
 }
 
 export interface SupportRequestTimelineEvent {

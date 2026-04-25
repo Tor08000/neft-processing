@@ -13,6 +13,7 @@ from app.services.entitlements_v2_service import get_org_entitlements_snapshot
 from app.services.portal_me import build_portal_me
 from app.services.timezones import validate_timezone_name
 
+# Compatibility-full wrapper over the canonical /api/core/portal/me bootstrap contract.
 router = APIRouter(prefix="/client", tags=["client-me"])
 
 

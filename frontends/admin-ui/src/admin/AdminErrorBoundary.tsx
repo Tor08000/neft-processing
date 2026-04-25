@@ -4,6 +4,7 @@ import { AdminCrashPage } from "../pages/admin/AdminStatusPages";
 
 interface AdminErrorBoundaryProps {
   children: ReactNode;
+  resetKey?: string;
 }
 
 interface AdminErrorBoundaryState {
@@ -15,6 +16,16 @@ export class AdminErrorBoundary extends React.Component<AdminErrorBoundaryProps,
 
   static getDerivedStateFromError(): AdminErrorBoundaryState {
     return { hasError: true };
+  }
+
+  componentDidUpdate(prevProps: AdminErrorBoundaryProps) {
+    if (this.state.hasError && prevProps.resetKey !== this.props.resetKey) {
+      this.setState({ hasError: false });
+    }
+  }
+
+  componentDidCatch(error: unknown) {
+    console.error("Admin route crashed", error);
   }
 
   render() {

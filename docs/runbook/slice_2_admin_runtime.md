@@ -6,8 +6,6 @@
 ## Endpoint
 `GET /api/core/v1/admin/runtime/summary`
 
-Legacy alias: `GET /api/core/admin/runtime/summary` → `308` redirect to canonical v1 endpoint.
-
 ## Пример ответа
 ```json
 {
@@ -31,7 +29,8 @@ Legacy alias: `GET /api/core/admin/runtime/summary` → `308` redirect to canoni
   },
   "violations": {
     "immutable": { "count": 0, "top": [] },
-    "invariants": { "count": 0, "top": [] }
+    "invariants": { "count": 0, "top": [] },
+    "sla_penalties": { "count": 0, "top": [] }
   },
   "money_risk": {
     "payouts_blocked": 0,
@@ -40,7 +39,9 @@ Legacy alias: `GET /api/core/admin/runtime/summary` → `308` redirect to canoni
   },
   "events": {
     "critical_last_10": []
-  }
+  },
+  "warnings": [],
+  "missing_tables": []
 }
 ```
 
@@ -54,3 +55,8 @@ Legacy alias: `GET /api/core/admin/runtime/summary` → `308` redirect to canoni
 scripts\smoke_slice_2_admin_runtime.cmd
 ```
 Скрипт логинит admin, проверяет `/api/core/v1/admin/runtime/summary`, печатает env/read_only и ключевые статусы.
+
+## Drilldown truth
+- queues link to canonical finance / ops owners
+- violations link to audit or support-breach owner surfaces
+- `warnings` and `missing_tables` are explicit degraded evidence, not silent fallback

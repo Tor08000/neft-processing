@@ -1,15 +1,16 @@
-import { AUTH_API_BASE, CORE_API_BASE, CORE_ROOT_API_BASE } from "./base";
+import { AUTH_API_BASE, CORE_API_BASE, CORE_ROOT_API_BASE, INT_API_BASE, V1_API_BASE } from "./base";
 import { isDemoPartner } from "@shared/demo/demo";
 
-export { AUTH_API_BASE, CORE_API_BASE };
+export { AUTH_API_BASE, CORE_API_BASE, INT_API_BASE, V1_API_BASE };
 
-type ApiBase = "core" | "auth" | "core_root";
+type ApiBase = "core" | "auth" | "core_root" | "int" | "v1";
 
 export type HttpHeaders = Record<string, string>;
 
+const isDebugHttpEnabled = () => Boolean(import.meta.env.DEV && import.meta.env.VITE_PARTNER_DEBUG_HTTP === "true");
 const isAuthMeRequest = (base: ApiBase, path: string) => base === "auth" && path.includes("/me");
 const logErrorUrl = (url: string, status: number) => {
-  if (import.meta.env.DEV && status >= 400) {
+  if (isDebugHttpEnabled() && status >= 400) {
     console.info("[api-error]", { final_url: url, status });
   }
 };
@@ -27,12 +28,12 @@ const getDemoPartnerEmail = () => {
 };
 const logDemoStatus = (url: string, status: number) => {
   if (status !== 403 && status !== 404) return;
-  if (isDemoPartner(getDemoPartnerEmail())) {
+  if (isDebugHttpEnabled() && isDemoPartner(getDemoPartnerEmail())) {
     console.debug("[api-demo]", { final_url: url, status });
   }
 };
 const warnDemoApiCall = (url: string) => {
-  if (import.meta.env.DEV && isDemoPartner(getDemoPartnerEmail())) {
+  if (isDebugHttpEnabled() && isDemoPartner(getDemoPartnerEmail())) {
     console.warn("API call in demo is not allowed", url);
   }
 };
@@ -156,7 +157,16 @@ export async function request<T>(
   }
 
   const headers: HttpHeaders = { ...buildHeaders(token ?? undefined), ...(init.headers as HttpHeaders | undefined) };
-  const apiBase = base === "auth" ? AUTH_API_BASE : base === "core_root" ? CORE_ROOT_API_BASE : CORE_API_BASE;
+  const apiBase =
+    base === "auth"
+      ? AUTH_API_BASE
+      : base === "core_root"
+        ? CORE_ROOT_API_BASE
+        : base === "int"
+          ? INT_API_BASE
+          : base === "v1"
+            ? V1_API_BASE
+            : CORE_API_BASE;
   const url = `${apiBase}${path}`;
   warnDemoApiCall(url);
   const response = await fetch(url, { ...init, headers });
@@ -164,7 +174,7 @@ export async function request<T>(
   const contentType = response.headers.get("content-type") ?? "";
   const isJson = contentType.includes("application/json");
   const isAuthLogin = base === "auth" && path.includes("/login");
-  const shouldLogAuth = import.meta.env.DEV && isAuthLogin;
+  const shouldLogAuth = isDebugHttpEnabled() && isAuthLogin;
   let responseText: string | null = null;
 
   const readResponseText = async () => {
@@ -281,7 +291,16 @@ export async function requestWithMeta<T>(
   }
 
   const headers: HttpHeaders = { ...buildHeaders(token ?? undefined), ...(init.headers as HttpHeaders | undefined) };
-  const apiBase = base === "auth" ? AUTH_API_BASE : base === "core_root" ? CORE_ROOT_API_BASE : CORE_API_BASE;
+  const apiBase =
+    base === "auth"
+      ? AUTH_API_BASE
+      : base === "core_root"
+        ? CORE_ROOT_API_BASE
+        : base === "int"
+          ? INT_API_BASE
+          : base === "v1"
+            ? V1_API_BASE
+            : CORE_API_BASE;
   const url = `${apiBase}${path}`;
   warnDemoApiCall(url);
   const response = await fetch(url, { ...init, headers });

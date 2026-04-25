@@ -44,8 +44,14 @@ class ClientGeneratedDocsService:
                 "email": application.email,
                 "phone": application.phone,
                 "application_id": str(application.id),
+                "client_id": application.client_id,
             }
-            pdf_bytes = self.document_client.render_pdf(template_id=template.template_id, data=payload)
+            pdf_bytes = self.document_client.render_pdf(
+                template_id=template.template_id,
+                data=payload,
+                doc_type=template.doc_kind.value,
+                version=version,
+            )
             storage_key = f"client/onboarding/{application.id}/{template.doc_kind.value}/v{version}.pdf"
             self.storage.put_object(bucket, storage_key, pdf_bytes, "application/pdf")
             filename = template.filename_pattern.format(inn=application.inn or "unknown")

@@ -9,15 +9,12 @@ import {
   submitMarketplaceProduct,
   updateMarketplaceProduct,
 } from "../api/marketplaceCatalog";
-import { ApiError } from "../api/http";
 import { useAuth } from "../auth/AuthContext";
 import { StatusBadge } from "../components/StatusBadge";
 import { formatDateTime } from "../utils/format";
 import { useTranslation } from "react-i18next";
 import { EmptyState } from "@shared/ui/EmptyState";
 import { PartnerErrorState } from "../components/PartnerErrorState";
-import { demoMarketplaceProducts } from "../demo/partnerDemoData";
-import { isDemoPartner } from "@shared/demo/demo";
 import type {
   MarketplaceProduct,
   MarketplaceProductMedia,
@@ -139,7 +136,6 @@ export function MarketplaceProductsPage() {
   const [items, setItems] = useState<MarketplaceProductSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<unknown>(null);
-  const [isDemoFallback, setIsDemoFallback] = useState(false);
   const [statusFilter, setStatusFilter] = useState<MarketplaceProductStatus | "">("");
   const [categoryFilter, setCategoryFilter] = useState("");
   const [query, setQuery] = useState("");
@@ -171,15 +167,8 @@ export function MarketplaceProductsPage() {
     fetchMarketplaceProducts(user.token, filters)
       .then((data) => {
         setItems(data.items ?? []);
-        setIsDemoFallback(false);
       })
       .catch((err) => {
-        if (err instanceof ApiError && err.status === 404 && isDemoPartner(user.email ?? null)) {
-          setItems(demoMarketplaceProducts);
-          setIsDemoFallback(true);
-          setError(null);
-          return;
-        }
         setError(err);
       })
       .finally(() => setIsLoading(false));
@@ -407,11 +396,6 @@ export function MarketplaceProductsPage() {
             <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("marketplace.products.filters.searchPlaceholder")} />
           </label>
         </div>
-        {isDemoFallback ? (
-          <div className="notice">
-            <div>В демо-режиме показаны примерные товары и услуги.</div>
-          </div>
-        ) : null}
         {isLoading ? (
           <div className="skeleton-stack" aria-busy="true">
             <div className="skeleton-line" />

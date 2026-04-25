@@ -10,7 +10,7 @@ logger = get_logger(__name__)
 
 
 @celery_client.task(name="bi.clickhouse_sync")
-def clickhouse_sync_task() -> dict[str, int]:
+def clickhouse_sync_task() -> dict[str, int | str]:
     session = get_sessionmaker()()
     try:
         result = sync_clickhouse(session)
@@ -25,4 +25,3 @@ def clickhouse_sync_task() -> dict[str, int]:
 
 
 __all__ = ["clickhouse_sync_task"]
-

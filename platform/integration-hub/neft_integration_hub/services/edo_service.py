@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from neft_integration_hub.events import build_event, publish_event
 from neft_integration_hub.models import EdoDocument, EdoDocumentStatus
+from neft_integration_hub.providers.base import ProviderFailure
 from neft_integration_hub.providers.registry import get_registry
 from neft_integration_hub.schemas import DispatchRequest
 from neft_integration_hub.settings import get_settings
@@ -32,6 +33,10 @@ def dispatch_request(db: Session, payload: DispatchRequest) -> EdoDocument:
         .first()
     )
     if existing:
+        existing_meta = existing.meta or {}
+        existing_idempotency_key = str(existing_meta.get("idempotency_key") or "")
+        if existing_idempotency_key and existing_idempotency_key != payload.idempotency_key:
+            raise ValueError("idempotency_conflict")
         return existing
 
     record = EdoDocument(
@@ -75,14 +80,52 @@ def _next_retry(attempt: int) -> datetime:
     return datetime.now(timezone.utc) + timedelta(seconds=delay)
 
 
-def _update_status(db: Session, record: EdoDocument, status: str, *, error: str | None = None) -> None:
+def _record_error_meta(
+    record: EdoDocument,
+    *,
+    error_type: str | None,
+    error_code: str | None,
+    retryable: bool | None,
+) -> None:
+    meta = dict(record.meta or {})
+    if error_type is None:
+        meta.pop("last_error_type", None)
+    else:
+        meta["last_error_type"] = error_type
+    if error_code is None:
+        meta.pop("last_error_code", None)
+    else:
+        meta["last_error_code"] = error_code
+    if retryable is None:
+        meta.pop("last_error_retryable", None)
+    else:
+        meta["last_error_retryable"] = retryable
+    record.meta = meta
+
+
+def _update_status(
+    db: Session,
+    record: EdoDocument,
+    status: str,
+    *,
+    error: str | None = None,
+    error_type: str | None = None,
+    error_code: str | None = None,
+    retryable: bool | None = None,
+) -> None:
     record.status = status
     record.last_status_at = datetime.now(timezone.utc)
-    if error:
-        record.last_error = error
+    record.last_error = error
+    _record_error_meta(record, error_type=error_type, error_code=error_code, retryable=retryable)
     db.add(record)
     db.commit()
     db.refresh(record)
+
+
+def _classify_provider_exception(exc: Exception) -> tuple[str, str, str, bool]:
+    if isinstance(exc, ProviderFailure):
+        return exc.error_type, exc.code, str(exc), exc.retryable
+    return "provider_error", exc.__class__.__name__.lower(), str(exc), False
 
 
 def _load_artifact_bytes(record: EdoDocument) -> bytes:
@@ -128,11 +171,21 @@ def send_document(db: Session, edo_document_id: str) -> EdoDocument:
         _update_status(db, record, EdoDocumentStatus.SENT.value)
         _publish_status_event(record, EdoDocumentStatus.SENT.value)
     except Exception as exc:  # noqa: BLE001
+        error_type, error_code, error_message, retryable = _classify_provider_exception(exc)
         record.attempt += 1
-        record.last_error = str(exc)
-        if record.attempt >= settings.edo_max_attempts:
-            _update_status(db, record, EdoDocumentStatus.FAILED.value, error=str(exc))
-            _publish_status_event(record, EdoDocumentStatus.FAILED.value, error_message=str(exc))
+        record.last_error = error_message
+        _record_error_meta(record, error_type=error_type, error_code=error_code, retryable=retryable)
+        if not retryable or record.attempt >= settings.edo_max_attempts:
+            _update_status(
+                db,
+                record,
+                EdoDocumentStatus.FAILED.value,
+                error=error_message,
+                error_type=error_type,
+                error_code=error_code,
+                retryable=retryable,
+            )
+            _publish_status_event(record, EdoDocumentStatus.FAILED.value, error_code=error_code, error_message=error_message)
         else:
             record.next_retry_at = _next_retry(record.attempt)
             record.status = EdoDocumentStatus.QUEUED.value
@@ -159,7 +212,15 @@ def poll_document(db: Session, edo_document_id: str) -> EdoDocument:
         new_status = provider_status.status
         if new_status != record.status:
             record.provider_document_id = provider_status.provider_document_id
-            _update_status(db, record, new_status, error=provider_status.error_message)
+            _update_status(
+                db,
+                record,
+                new_status,
+                error=provider_status.error_message,
+                error_type="provider_error" if provider_status.error_code else None,
+                error_code=provider_status.error_code,
+                retryable=False if provider_status.error_code else None,
+            )
             _publish_status_event(
                 record,
                 new_status,
@@ -167,11 +228,21 @@ def poll_document(db: Session, edo_document_id: str) -> EdoDocument:
                 error_message=provider_status.error_message,
             )
     except Exception as exc:  # noqa: BLE001
+        error_type, error_code, error_message, retryable = _classify_provider_exception(exc)
         record.attempt += 1
-        record.last_error = str(exc)
-        if record.attempt >= settings.edo_max_attempts:
-            _update_status(db, record, EdoDocumentStatus.FAILED.value, error=str(exc))
-            _publish_status_event(record, EdoDocumentStatus.FAILED.value, error_message=str(exc))
+        record.last_error = error_message
+        _record_error_meta(record, error_type=error_type, error_code=error_code, retryable=retryable)
+        if not retryable or record.attempt >= settings.edo_max_attempts:
+            _update_status(
+                db,
+                record,
+                EdoDocumentStatus.FAILED.value,
+                error=error_message,
+                error_type=error_type,
+                error_code=error_code,
+                retryable=retryable,
+            )
+            _publish_status_event(record, EdoDocumentStatus.FAILED.value, error_code=error_code, error_message=error_message)
         else:
             record.next_retry_at = _next_retry(record.attempt)
             db.add(record)

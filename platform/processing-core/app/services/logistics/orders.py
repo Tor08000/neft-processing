@@ -8,7 +8,7 @@ from app.models.fleet import FleetDriver, FleetVehicle
 from app.models.logistics import LogisticsOrder, LogisticsOrderStatus, LogisticsOrderType
 from app.services.audit_service import RequestContext
 from app.services.logistics import eta, events
-from app.services.logistics.repository import get_order
+from app.services.logistics.repository import get_order, id_equals, refresh_by_id
 
 
 class LogisticsOrderError(ValueError):
@@ -21,11 +21,11 @@ def _now() -> datetime:
 
 def _ensure_vehicle_driver(db: Session, *, vehicle_id: str | None, driver_id: str | None) -> None:
     if vehicle_id:
-        exists = db.query(FleetVehicle).filter(FleetVehicle.id == vehicle_id).one_or_none()
+        exists = db.query(FleetVehicle).filter(id_equals(FleetVehicle.id, vehicle_id)).one_or_none()
         if not exists:
             raise LogisticsOrderError("vehicle_not_found")
     if driver_id:
-        exists = db.query(FleetDriver).filter(FleetDriver.id == driver_id).one_or_none()
+        exists = db.query(FleetDriver).filter(id_equals(FleetDriver.id, driver_id)).one_or_none()
         if not exists:
             raise LogisticsOrderError("driver_not_found")
 
@@ -62,8 +62,10 @@ def create_order(
         meta=meta,
     )
     db.add(order)
+    db.flush()
+    order_id = str(order.id)
     db.commit()
-    db.refresh(order)
+    order = refresh_by_id(db, order, LogisticsOrder, order_id)
 
     events.audit_event(
         db,
@@ -97,8 +99,9 @@ def start_order(
 
     order.status = LogisticsOrderStatus.IN_PROGRESS
     order.actual_start_at = started_at or _now()
+    order_id = str(order.id)
     db.commit()
-    db.refresh(order)
+    order = refresh_by_id(db, order, LogisticsOrder, order_id)
 
     events.audit_event(
         db,
@@ -127,8 +130,9 @@ def complete_order(
 
     order.status = LogisticsOrderStatus.COMPLETED
     order.actual_end_at = completed_at or _now()
+    order_id = str(order.id)
     db.commit()
-    db.refresh(order)
+    order = refresh_by_id(db, order, LogisticsOrder, order_id)
 
     events.audit_event(
         db,
@@ -155,8 +159,9 @@ def cancel_order(
         raise LogisticsOrderError("invalid_status")
 
     order.status = LogisticsOrderStatus.CANCELLED
+    order_id = str(order.id)
     db.commit()
-    db.refresh(order)
+    order = refresh_by_id(db, order, LogisticsOrder, order_id)
 
     events.audit_event(
         db,
@@ -167,4 +172,3 @@ def cancel_order(
         request_ctx=request_ctx,
     )
     return order
-

@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+﻿import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fetchAdminCases, listCaseEvents, NotAvailableError } from "./adminCases";
 
 const buildResponse = (payload: unknown, init: ResponseInit = {}) =>
@@ -20,12 +20,26 @@ describe("admin cases api", () => {
     global.fetch = originalFetch;
   });
 
-  it("fetches cases list", async () => {
+  it("normalizes legacy OPEN status to TRIAGE", async () => {
     const fetchMock = global.fetch as ReturnType<typeof vi.fn>;
-    fetchMock.mockResolvedValue(buildResponse({ items: [], total: 0, limit: 10 }));
+    fetchMock.mockResolvedValue(
+      buildResponse({
+        items: [
+          {
+            id: "case-1",
+            status: "OPEN",
+            priority: "HIGH",
+            title: "Legacy admin case",
+            created_at: "2026-01-01T10:00:00Z",
+          },
+        ],
+        total: 1,
+        limit: 10,
+      }),
+    );
 
     const response = await fetchAdminCases({ limit: 10 });
-    expect(response.items).toEqual([]);
+    expect(response.items[0]?.status).toBe("TRIAGE");
     expect(fetchMock).toHaveBeenCalled();
   });
 

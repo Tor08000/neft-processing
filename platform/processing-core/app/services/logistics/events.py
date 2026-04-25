@@ -18,6 +18,13 @@ LOGISTICS_STOP_ARRIVED = "LOGISTICS_STOP_ARRIVED"
 LOGISTICS_STOP_DEPARTED = "LOGISTICS_STOP_DEPARTED"
 LOGISTICS_TRACKING_EVENT_INGESTED = "LOGISTICS_TRACKING_EVENT_INGESTED"
 LOGISTICS_ETA_COMPUTED = "LOGISTICS_ETA_COMPUTED"
+LOGISTICS_OFF_ROUTE_DETECTED = "LOGISTICS_OFF_ROUTE_DETECTED"
+LOGISTICS_BACK_ON_ROUTE = "LOGISTICS_BACK_ON_ROUTE"
+LOGISTICS_STOP_OUT_OF_RADIUS = "LOGISTICS_STOP_OUT_OF_RADIUS"
+LOGISTICS_UNEXPECTED_STOP = "LOGISTICS_UNEXPECTED_STOP"
+LOGISTICS_ETA_ERROR_COMPUTED = "LOGISTICS_ETA_ERROR_COMPUTED"
+LOGISTICS_FUEL_LINK_CREATED = "LOGISTICS_FUEL_LINK_CREATED"
+LOGISTICS_RISK_SIGNAL_EMITTED = "LOGISTICS_RISK_SIGNAL_EMITTED"
 
 
 def audit_event(
@@ -172,6 +179,103 @@ def link_stop_relations(
         )
 
 
+# Legal graph does not yet have dedicated node types for logistics-only anomaly
+# artifacts, so we keep them in the generic FRAUD_SIGNAL bucket and attach them
+# to the owning logistics order explicitly.
+def register_deviation_event_node(
+    db,
+    *,
+    tenant_id: int,
+    order_id: str,
+    deviation_id: str,
+    request_ctx: RequestContext | None,
+) -> None:
+    _register_order_related_signal_node(
+        db,
+        tenant_id=tenant_id,
+        order_id=order_id,
+        signal_id=deviation_id,
+        ref_table="logistics_deviation_events",
+        relation="ORDER_RELATES_TO_LOGISTICS_DEVIATION",
+        request_ctx=request_ctx,
+    )
+
+
+def register_risk_signal_node(
+    db,
+    *,
+    tenant_id: int,
+    order_id: str,
+    signal_id: str,
+    request_ctx: RequestContext | None,
+) -> None:
+    _register_order_related_signal_node(
+        db,
+        tenant_id=tenant_id,
+        order_id=order_id,
+        signal_id=signal_id,
+        ref_table="logistics_risk_signals",
+        relation="ORDER_RELATES_TO_LOGISTICS_RISK_SIGNAL",
+        request_ctx=request_ctx,
+    )
+
+
+def register_fuel_link_node(
+    db,
+    *,
+    tenant_id: int,
+    fuel_tx_id: str,
+    link_id: str,
+    stop_id: str,
+    request_ctx: RequestContext | None,
+) -> None:
+    # Fuel links currently persist as a relation between an existing stop and an
+    # existing fuel transaction; there is no separate legal node type for the
+    # link row itself.
+    _ = link_id
+    link_stop_relations(
+        db,
+        tenant_id=tenant_id,
+        stop_id=stop_id,
+        vehicle_id=None,
+        driver_id=None,
+        fuel_tx_id=fuel_tx_id,
+        request_ctx=request_ctx,
+    )
+
+
+def _register_order_related_signal_node(
+    db,
+    *,
+    tenant_id: int,
+    order_id: str,
+    signal_id: str,
+    ref_table: str,
+    relation: str,
+    request_ctx: RequestContext | None,
+) -> None:
+    registry = LegalGraphRegistry(db, request_ctx=request_ctx)
+    order_node = registry.get_or_create_node(
+        tenant_id=tenant_id,
+        node_type=LegalNodeType.LOGISTICS_ORDER,
+        ref_id=order_id,
+        ref_table="logistics_orders",
+    ).node
+    signal_node = registry.get_or_create_node(
+        tenant_id=tenant_id,
+        node_type=LegalNodeType.FRAUD_SIGNAL,
+        ref_id=signal_id,
+        ref_table=ref_table,
+    ).node
+    registry.link(
+        tenant_id=tenant_id,
+        src_node_id=str(order_node.id),
+        dst_node_id=str(signal_node.id),
+        edge_type=LegalEdgeType.RELATES_TO,
+        meta={"relation": relation},
+    )
+
+
 def _serialize_payload(payload: dict) -> dict:
     return {key: _serialize_value(value) for key, value in payload.items()}
 
@@ -199,9 +303,19 @@ __all__ = [
     "LOGISTICS_STOP_DEPARTED",
     "LOGISTICS_TRACKING_EVENT_INGESTED",
     "LOGISTICS_ETA_COMPUTED",
+    "LOGISTICS_OFF_ROUTE_DETECTED",
+    "LOGISTICS_BACK_ON_ROUTE",
+    "LOGISTICS_STOP_OUT_OF_RADIUS",
+    "LOGISTICS_UNEXPECTED_STOP",
+    "LOGISTICS_ETA_ERROR_COMPUTED",
+    "LOGISTICS_FUEL_LINK_CREATED",
+    "LOGISTICS_RISK_SIGNAL_EMITTED",
     "audit_event",
     "register_order_node",
     "register_route_node",
     "register_stop_node",
     "link_stop_relations",
+    "register_deviation_event_node",
+    "register_risk_signal_node",
+    "register_fuel_link_node",
 ]

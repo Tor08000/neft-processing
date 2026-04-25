@@ -2,13 +2,16 @@ import { request } from "./http";
 import { CORE_ROOT_API_BASE } from "./base";
 import type {
   PartnerBalance,
+  PartnerContract,
+  PartnerContractListResponse,
   PartnerDocumentListResponse,
   PartnerExportJobListResponse,
   PartnerLedgerExplain,
   PartnerLedgerListResponse,
   PartnerPayoutListResponse,
   PartnerPayoutPreview,
-  PartnerPayoutTrace,
+  PartnerSettlement,
+  PartnerSettlementListResponse,
 } from "../types/partnerFinance";
 
 export const fetchPartnerBalance = (token: string) => request<PartnerBalance>("/partner/balance", {}, token, "core_root");
@@ -50,9 +53,6 @@ export const fetchPartnerPayouts = (token: string, params: { limit?: number; cur
 export const fetchPartnerPayoutPreview = (token: string) =>
   request<PartnerPayoutPreview>("/partner/payouts/preview", {}, token, "core_root");
 
-export const fetchPartnerPayoutTrace = (token: string, payoutId: string) =>
-  request<PartnerPayoutTrace>(`/partner/payouts/${payoutId}/trace`, {}, token, "core_root");
-
 export const fetchPartnerInvoices = (token: string) =>
   request<PartnerDocumentListResponse>("/partner/invoices", {}, token, "core_root");
 
@@ -75,3 +75,19 @@ export const fetchPartnerExportJobs = (token: string, limit = 20) =>
 
 export const getPartnerExportDownloadUrl = (jobId: string) =>
   `${CORE_ROOT_API_BASE}/partner/exports/jobs/${jobId}/download`;
+
+export const fetchPartnerContracts = (token: string, params: { limit?: number; offset?: number } = {}) => {
+  const suffix = buildQuery(params);
+  return request<PartnerContractListResponse>(`/partner/contracts${suffix}`, {}, token, "core_root");
+};
+
+export const fetchPartnerContract = (token: string, contractId: string) =>
+  request<PartnerContract>(`/partner/contracts/${contractId}`, {}, token, "core_root");
+
+export const fetchPartnerSettlements = (token: string, params: { limit?: number; offset?: number } = {}) => {
+  const suffix = buildQuery(params);
+  return request<PartnerSettlementListResponse>(`/partner/settlements${suffix}`, {}, token, "core_root");
+};
+
+export const fetchPartnerSettlement = (token: string, settlementId: string) =>
+  request<PartnerSettlement>(`/partner/settlements/${settlementId}`, {}, token, "core_root");

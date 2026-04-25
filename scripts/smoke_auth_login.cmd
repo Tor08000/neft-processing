@@ -5,7 +5,7 @@ set "BASE_URL=%~1"
 if "%BASE_URL%"=="" set "BASE_URL=http://localhost"
 
 set "AUTH_EMAIL=%AUTH_EMAIL%"
-if "%AUTH_EMAIL%"=="" set "AUTH_EMAIL=admin@example.com"
+if "%AUTH_EMAIL%"=="" set "AUTH_EMAIL=admin@neft.local"
 set "AUTH_PASSWORD=%AUTH_PASSWORD%"
 if "%AUTH_PASSWORD%"=="" set "AUTH_PASSWORD=admin"
 

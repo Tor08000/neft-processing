@@ -85,8 +85,35 @@ class AdminInvoiceSummary(BaseModel):
     currency: str | None = None
 
 
+class AdminTimelineEvent(BaseModel):
+    ts: datetime | None = None
+    event_type: str
+    entity_type: str
+    entity_id: str
+    action: str
+    reason: str | None = None
+    actor_id: str | None = None
+    actor_email: str | None = None
+    correlation_id: str | None = None
+    before: dict | None = None
+    after: dict | None = None
+
+
+class AdminInvoiceStateExplain(BaseModel):
+    current_status: str
+    pdf_status: str | None = None
+    has_pdf: bool
+    is_overdue: bool
+    payment_intakes_total: int
+    payment_intakes_pending: int
+    latest_payment_intake_status: str | None = None
+    reconciliation_request_id: str | None = None
+
+
 class AdminInvoiceDetail(AdminInvoiceSummary):
     pdf_url: str | None = None
+    state_explain: AdminInvoiceStateExplain | None = None
+    timeline: list[AdminTimelineEvent] = Field(default_factory=list)
 
 
 class AdminInvoiceListResponse(BaseModel):
@@ -104,7 +131,7 @@ class AdminInvoiceActionResponse(BaseModel):
 class AdminPaymentIntakeDetail(BaseModel):
     id: int
     org_id: int
-    invoice_id: int
+    invoice_id: str
     status: str
     amount: Decimal
     currency: str
@@ -120,7 +147,9 @@ class AdminPaymentIntakeDetail(BaseModel):
     reviewed_at: datetime | None = None
     review_note: str | None = None
     created_at: datetime | None = None
+    invoice_status: str | None = None
     invoice_link: str | None = None
+    timeline: list[AdminTimelineEvent] = Field(default_factory=list)
 
 
 class AdminPaymentIntakeListResponse(BaseModel):
@@ -174,8 +203,11 @@ class PayoutTraceItem(BaseModel):
 class PayoutDetail(PayoutQueueItem):
     processed_at: datetime | None = None
     policy: PayoutPolicyInfo | None = None
-    trace: list[PayoutTraceItem] = []
+    trace: list[PayoutTraceItem] = Field(default_factory=list)
     totals: dict[str, Decimal] | None = None
+    settlement_snapshot: dict[str, object] | None = None
+    block_reason_tree: dict[str, object] | None = None
+    audit_events: list[AdminTimelineEvent] = Field(default_factory=list)
 
 
 class PartnerSettlementBreakdown(BaseModel):

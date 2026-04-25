@@ -1,13 +1,9 @@
 from datetime import datetime, timedelta, timezone
-from typing import Tuple
 from uuid import uuid4
 
 import pytest
-from sqlalchemy import create_engine
-from sqlalchemy.orm import Session, sessionmaker
-from sqlalchemy.pool import StaticPool
+from sqlalchemy.orm import Session
 
-from app.db import Base
 from app.models.fleet_intelligence_actions import (
     FIActionCode,
     FIActionEffect,
@@ -22,24 +18,14 @@ from app.models.fleet_intelligence_actions import (
 )
 from app.models.unified_explain import PrimaryReason
 from app.services.fleet_intelligence.control import confidence as control_confidence
+from app.tests._fleet_intelligence_test_harness import FLEET_INTELLIGENCE_CONTROL_TEST_TABLES
+from app.tests._scoped_router_harness import scoped_session_context
 
 
 @pytest.fixture()
-def db_session() -> Tuple[Session, sessionmaker]:
-    engine = create_engine(
-        "sqlite://",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
-    SessionLocal = sessionmaker(autocommit=False, autoflush=False, expire_on_commit=False, bind=engine)
-    Base.metadata.create_all(bind=engine)
-    session = SessionLocal()
-    try:
-        yield session, SessionLocal
-    finally:
-        session.close()
-        Base.metadata.drop_all(bind=engine)
-        engine.dispose()
+def db_session() -> Session:
+    with scoped_session_context(tables=FLEET_INTELLIGENCE_CONTROL_TEST_TABLES) as session:
+        yield session
 
 
 def _seed_effect(
@@ -70,8 +56,7 @@ def _seed_effect(
     db.add(effect)
 
 
-def test_confidence_decay_prefers_recent_improvements(db_session: Tuple[Session, sessionmaker]):
-    db, _ = db_session
+def test_confidence_decay_prefers_recent_improvements(db_session: Session):
     insight = FIInsight(
         tenant_id=1,
         client_id="client-1",
@@ -84,54 +69,53 @@ def test_confidence_decay_prefers_recent_improvements(db_session: Tuple[Session,
         primary_reason=PrimaryReason.POLICY,
         summary="Driver risk",
     )
-    db.add(insight)
-    db.flush()
+    db_session.add(insight)
+    db_session.flush()
     now = datetime(2025, 1, 15, tzinfo=timezone.utc)
     _seed_effect(
-        db,
+        db_session,
         insight=insight,
         action_code=FIActionCode.SUGGEST_RESTRICT_NIGHT_FUELING,
         measured_at=now - timedelta(days=1),
         label=FIActionEffectLabel.IMPROVED,
     )
     _seed_effect(
-        db,
+        db_session,
         insight=insight,
         action_code=FIActionCode.SUGGEST_RESTRICT_NIGHT_FUELING,
         measured_at=now - timedelta(days=60),
         label=FIActionEffectLabel.WORSE,
     )
     _seed_effect(
-        db,
+        db_session,
         insight=insight,
         action_code=FIActionCode.SUGGEST_REQUIRE_ROUTE_LINKED_REFUEL,
         measured_at=now - timedelta(days=60),
         label=FIActionEffectLabel.IMPROVED,
     )
     _seed_effect(
-        db,
+        db_session,
         insight=insight,
         action_code=FIActionCode.SUGGEST_REQUIRE_ROUTE_LINKED_REFUEL,
         measured_at=now - timedelta(days=1),
         label=FIActionEffectLabel.WORSE,
     )
-    db.commit()
+    db_session.commit()
 
     recent_improved = control_confidence.compute_action_confidence(
-        db,
+        db_session,
         action_code=FIActionCode.SUGGEST_RESTRICT_NIGHT_FUELING,
         now=now,
     )
     recent_worse = control_confidence.compute_action_confidence(
-        db,
+        db_session,
         action_code=FIActionCode.SUGGEST_REQUIRE_ROUTE_LINKED_REFUEL,
         now=now,
     )
     assert recent_improved > recent_worse
 
 
-def test_confidence_decay_drops_when_effects_outside_window(db_session: Tuple[Session, sessionmaker]):
-    db, _ = db_session
+def test_confidence_decay_drops_when_effects_outside_window(db_session: Session):
     insight = FIInsight(
         tenant_id=1,
         client_id="client-1",
@@ -144,28 +128,27 @@ def test_confidence_decay_drops_when_effects_outside_window(db_session: Tuple[Se
         primary_reason=PrimaryReason.POLICY,
         summary="Driver risk",
     )
-    db.add(insight)
-    db.flush()
+    db_session.add(insight)
+    db_session.flush()
     now = datetime(2025, 1, 15, tzinfo=timezone.utc)
     _seed_effect(
-        db,
+        db_session,
         insight=insight,
         action_code=FIActionCode.SUGGEST_EXCLUDE_STATION_FROM_ROUTES,
         measured_at=now - timedelta(days=120),
         label=FIActionEffectLabel.IMPROVED,
     )
-    db.commit()
+    db_session.commit()
 
     confidence = control_confidence.compute_action_confidence(
-        db,
+        db_session,
         action_code=FIActionCode.SUGGEST_EXCLUDE_STATION_FROM_ROUTES,
         now=now,
     )
     assert confidence == 0.0
 
 
-def test_confidence_decay_is_deterministic(db_session: Tuple[Session, sessionmaker]):
-    db, _ = db_session
+def test_confidence_decay_is_deterministic(db_session: Session):
     insight = FIInsight(
         tenant_id=1,
         client_id="client-1",
@@ -178,25 +161,25 @@ def test_confidence_decay_is_deterministic(db_session: Tuple[Session, sessionmak
         primary_reason=PrimaryReason.POLICY,
         summary="Driver risk",
     )
-    db.add(insight)
-    db.flush()
+    db_session.add(insight)
+    db_session.flush()
     now = datetime(2025, 1, 15, tzinfo=timezone.utc)
     _seed_effect(
-        db,
+        db_session,
         insight=insight,
         action_code=FIActionCode.SUGGEST_RESTRICT_NIGHT_FUELING,
         measured_at=now - timedelta(days=10),
         label=FIActionEffectLabel.IMPROVED,
     )
-    db.commit()
+    db_session.commit()
 
     first = control_confidence.compute_action_confidence(
-        db,
+        db_session,
         action_code=FIActionCode.SUGGEST_RESTRICT_NIGHT_FUELING,
         now=now,
     )
     second = control_confidence.compute_action_confidence(
-        db,
+        db_session,
         action_code=FIActionCode.SUGGEST_RESTRICT_NIGHT_FUELING,
         now=now,
     )

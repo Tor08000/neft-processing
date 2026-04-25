@@ -10,8 +10,8 @@ from __future__ import annotations
 from alembic import op
 import sqlalchemy as sa
 
-from app.db import DB_SCHEMA
-from app.db.types import GUID
+from db.schema import DB_SCHEMA
+from db.types import GUID
 
 revision = "20299850_0188_onboarding_review_client_link"
 down_revision = "20299840_0187_client_documents"

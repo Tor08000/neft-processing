@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { Package } from "../../components/icons";
 import { fetchOrders, type OrderFilters } from "../../api/orders";
 import { useAuth } from "../../auth/AuthContext";
+import { usePortal } from "../../auth/PortalContext";
 import { EmptyState } from "../../components/EmptyState";
 import { ForbiddenState, LoadingState } from "../../components/states";
 import { StatusBadge } from "../../components/StatusBadge";
@@ -11,9 +12,11 @@ import { PartnerErrorState } from "../../components/PartnerErrorState";
 import type { MarketplaceOrder } from "../../types/marketplace";
 import { formatCurrency, formatDateTime, formatNumber } from "../../utils/format";
 import { canReadOrders } from "../../utils/roles";
+import { resolveEffectivePartnerRoles } from "../../access/partnerWorkspace";
 
 const STORAGE_KEY = "partner-orders-filters";
 const PAGE_SIZE = 20;
+const DEBUG_ORDER_ERRORS = Boolean(import.meta.env.DEV && import.meta.env.VITE_PARTNER_DEBUG_ERRORS === "true");
 
 type PeriodPreset = "today" | "7d" | "30d" | "custom";
 
@@ -55,6 +58,7 @@ const shortId = (value: string) => (value.length > 10 ? `${value.slice(0, 6)}…
 
 export function OrdersPageProd() {
   const { user } = useAuth();
+  const { portal } = usePortal();
   const { t } = useTranslation();
   const [orders, setOrders] = useState<MarketplaceOrder[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -63,7 +67,10 @@ export function OrdersPageProd() {
   const [total, setTotal] = useState(0);
   const [filters, setFilters] = useState<OrderFilters>({});
   const [periodPreset, setPeriodPreset] = useState<PeriodPreset>("7d");
-  const canRead = canReadOrders(user?.roles);
+  const [reloadKey, setReloadKey] = useState(0);
+  const effectiveRoles = resolveEffectivePartnerRoles(portal, user?.roles);
+  const canRead = canReadOrders(effectiveRoles);
+  const hasActiveFilters = Boolean(filters.status || filters.q || filters.station_id || filters.service_id || filters.sla_risk || periodPreset === "custom");
   const getSlaDeadline = (order: MarketplaceOrder) => {
     if (order.status === "CREATED") {
       return order.slaResponseDueAt ?? null;
@@ -123,7 +130,9 @@ export function OrdersPageProd() {
         setPeriodPreset(parsed.periodPreset);
       }
     } catch (err) {
-      console.error("Failed to parse stored filters", err);
+      if (DEBUG_ORDER_ERRORS) {
+        console.error("Failed to parse stored filters", err);
+      }
     }
   }, []);
 
@@ -146,7 +155,9 @@ export function OrdersPageProd() {
       })
       .catch((err) => {
         if (!active) return;
-        console.error(err);
+        if (DEBUG_ORDER_ERRORS) {
+          console.error(err);
+        }
         setError(err);
       })
       .finally(() => {
@@ -158,7 +169,7 @@ export function OrdersPageProd() {
     return () => {
       active = false;
     };
-  }, [user, filters, page, canRead]);
+  }, [user, filters, page, canRead, reloadKey]);
 
   useEffect(() => {
     if (!user) return;
@@ -197,6 +208,13 @@ export function OrdersPageProd() {
     setPage(1);
   };
 
+  const resetFilters = () => {
+    const range = getPresetRange("7d");
+    setPeriodPreset("7d");
+    setFilters({ ...range });
+    setPage(1);
+  };
+
   const handleSaveFilters = () => {
     localStorage.setItem(
       STORAGE_KEY,
@@ -206,7 +224,7 @@ export function OrdersPageProd() {
 
   const refreshOrders = () => {
     setPage(1);
-    setFilters((prev) => ({ ...prev }));
+    setReloadKey((value) => value + 1);
   };
 
   if (!canRead) {
@@ -218,26 +236,26 @@ export function OrdersPageProd() {
       <section className="card">
         <div className="page-section">
           <div className="page-section__header">
-            <h2>{t("ordersPage.title")}</h2>
+            <h2>{t("marketplace.ordersPage.title")}</h2>
             <div className="neft-actions">
               <button type="button" className="secondary" onClick={handleSaveFilters}>
-                {t("ordersPage.actions.saveFilters")}
+                {t("marketplace.ordersPage.actions.saveFilters")}
               </button>
             </div>
           </div>
           <div className="page-section__content">
             <div className="filters neft-filters">
               <label className="filter neft-filter">
-                {t("ordersPage.filters.period")}
+                {t("marketplace.ordersPage.filters.period")}
                 <select value={periodPreset} onChange={(event) => handlePresetChange(event.target.value as PeriodPreset)}>
-                  <option value="today">{t("ordersPage.filters.presets.today")}</option>
-                  <option value="7d">{t("ordersPage.filters.presets.7d")}</option>
-                  <option value="30d">{t("ordersPage.filters.presets.30d")}</option>
-                  <option value="custom">{t("ordersPage.filters.presets.custom")}</option>
+                  <option value="today">{t("marketplace.ordersPage.filters.presets.today")}</option>
+                  <option value="7d">{t("marketplace.ordersPage.filters.presets.7d")}</option>
+                  <option value="30d">{t("marketplace.ordersPage.filters.presets.30d")}</option>
+                  <option value="custom">{t("marketplace.ordersPage.filters.presets.custom")}</option>
                 </select>
               </label>
               <label className="filter neft-filter">
-                {t("ordersPage.filters.from")}
+                {t("marketplace.ordersPage.filters.from")}
                 <input
                   type="date"
                   value={filters.from ?? ""}
@@ -245,7 +263,7 @@ export function OrdersPageProd() {
                 />
               </label>
               <label className="filter neft-filter">
-                {t("ordersPage.filters.to")}
+                {t("marketplace.ordersPage.filters.to")}
                 <input
                   type="date"
                   value={filters.to ?? ""}
@@ -253,7 +271,7 @@ export function OrdersPageProd() {
                 />
               </label>
               <label className="filter neft-filter">
-                {t("ordersPage.filters.status")}
+                {t("marketplace.ordersPage.filters.status")}
                 <select value={filters.status ?? ""} onChange={(event) => handleFilterChange("status", event.target.value)}>
                   {statusOptions.map((status) => (
                     <option key={status || "all"} value={status}>
@@ -263,59 +281,59 @@ export function OrdersPageProd() {
                 </select>
               </label>
               <label className="filter neft-filter">
-                {t("ordersPage.filters.search")}
+                {t("marketplace.ordersPage.filters.search")}
                 <input
                   type="search"
-                  placeholder={t("ordersPage.filters.searchPlaceholder")}
+                  placeholder={t("marketplace.ordersPage.filters.searchPlaceholder")}
                   value={filters.q ?? ""}
                   onChange={(event) => handleFilterChange("q", event.target.value)}
                 />
               </label>
               <label className="filter neft-filter">
-                {t("ordersPage.filters.station")}
+                {t("marketplace.ordersPage.filters.station")}
                 <input
                   type="text"
-                  placeholder={t("ordersPage.filters.stationPlaceholder")}
+                  placeholder={t("marketplace.ordersPage.filters.stationPlaceholder")}
                   value={filters.station_id ?? ""}
                   onChange={(event) => handleFilterChange("station_id", event.target.value)}
                 />
               </label>
               <label className="filter neft-filter">
-                {t("ordersPage.filters.service")}
+                {t("marketplace.ordersPage.filters.service")}
                 <input
                   type="text"
-                  placeholder={t("ordersPage.filters.servicePlaceholder")}
+                  placeholder={t("marketplace.ordersPage.filters.servicePlaceholder")}
                   value={filters.service_id ?? ""}
                   onChange={(event) => handleFilterChange("service_id", event.target.value)}
                 />
               </label>
               <label className="filter neft-filter">
-                {t("ordersPage.filters.slaRisk")}
+                {t("marketplace.ordersPage.filters.slaRisk")}
                 <select
                   value={filters.sla_risk ?? ""}
                   onChange={(event) => handleFilterChange("sla_risk", event.target.value)}
                 >
                   <option value="">{t("common.all")}</option>
-                  <option value="near">{t("ordersPage.filters.slaRiskNear")}</option>
+                  <option value="near">{t("marketplace.ordersPage.filters.slaRiskNear")}</option>
                 </select>
               </label>
             </div>
 
             <div className="stats-grid">
               <div className="stat">
-                <div className="stat__label">{t("ordersPage.kpis.today")}</div>
+                <div className="stat__label">{t("marketplace.ordersPage.kpis.today")}</div>
                 <div className="stat__value">{formatNumber(kpis.ordersToday)}</div>
               </div>
               <div className="stat">
-                <div className="stat__label">{t("ordersPage.kpis.pending")}</div>
+                <div className="stat__label">{t("marketplace.ordersPage.kpis.pending")}</div>
                 <div className="stat__value">{formatNumber(kpis.pendingConfirmation)}</div>
               </div>
               <div className="stat">
-                <div className="stat__label">{t("ordersPage.kpis.documents")}</div>
+                <div className="stat__label">{t("marketplace.ordersPage.kpis.documents")}</div>
                 <div className="stat__value">{formatNumber(kpis.docsPending)}</div>
               </div>
               <div className="stat">
-                <div className="stat__label">{t("ordersPage.kpis.total")}</div>
+                <div className="stat__label">{t("marketplace.ordersPage.kpis.total")}</div>
                 <div className="stat__value">{formatNumber(total)}</div>
               </div>
             </div>
@@ -325,13 +343,22 @@ export function OrdersPageProd() {
         {isLoading ? (
           <LoadingState />
         ) : error ? (
-          <PartnerErrorState error={error} />
+          <PartnerErrorState
+            title={t("marketplace.ordersPage.errors.loadFailed")}
+            description={t("marketplace.ordersPage.errors.apiError")}
+            error={error}
+            onRetry={refreshOrders}
+          />
         ) : orders.length === 0 ? (
           <EmptyState
             icon={<Package />}
-            title={t("emptyStates.orders.title")}
-            description={t("emptyStates.orders.description")}
-            primaryAction={{ label: t("actions.refresh"), onClick: refreshOrders }}
+            title={hasActiveFilters ? t("marketplace.ordersPage.empty.filteredTitle") : t("emptyStates.orders.title")}
+            description={hasActiveFilters ? t("marketplace.ordersPage.empty.filteredDescription") : t("emptyStates.orders.description")}
+            primaryAction={
+              hasActiveFilters
+                ? { label: t("marketplace.ordersPage.actions.resetFilters"), onClick: resetFilters, variant: "secondary" }
+                : { label: t("actions.refresh"), onClick: refreshOrders }
+            }
           />
         ) : (
           <div className="page-section">
@@ -339,14 +366,14 @@ export function OrdersPageProd() {
               <table className="data-table">
                 <thead>
                   <tr>
-                    <th>{t("ordersPage.table.orderId")}</th>
-                    <th>{t("ordersPage.table.client")}</th>
-                    <th>{t("ordersPage.table.service")}</th>
-                    <th>{t("ordersPage.table.createdAt")}</th>
-                    <th>{t("ordersPage.table.sla")}</th>
-                    <th>{t("ordersPage.table.amount")}</th>
-                    <th>{t("ordersPage.table.status")}</th>
-                    <th>{t("ordersPage.table.actions")}</th>
+                    <th>{t("marketplace.ordersPage.table.orderId")}</th>
+                    <th>{t("marketplace.ordersPage.table.client")}</th>
+                    <th>{t("marketplace.ordersPage.table.service")}</th>
+                    <th>{t("marketplace.ordersPage.table.createdAt")}</th>
+                    <th>{t("marketplace.ordersPage.table.sla")}</th>
+                    <th>{t("marketplace.ordersPage.table.amount")}</th>
+                    <th>{t("marketplace.ordersPage.table.status")}</th>
+                    <th>{t("marketplace.ordersPage.table.actions")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -373,14 +400,21 @@ export function OrdersPageProd() {
                 </tbody>
               </table>
             </div>
-            <div className="pagination pagination-wrapper">
-              <button type="button" className="secondary" onClick={() => setPage((prev) => Math.max(prev - 1, 1))} disabled={page <= 1}>
-                {t("ordersPage.pagination.prev")}
-              </button>
-              <div className="muted">{t("ordersPage.pagination.page", { current: page, total: totalPages })}</div>
-              <button type="button" className="secondary" onClick={() => setPage((prev) => Math.min(prev + 1, totalPages))} disabled={page >= totalPages}>
-                {t("ordersPage.pagination.next")}
-              </button>
+            <div className="table-footer">
+              <div className="table-footer__content">
+                <span className="muted">
+                  {t("marketplace.ordersPage.pagination.shown", { visible: orders.length, total })}
+                </span>
+                <div className="pagination pagination-wrapper">
+                  <button type="button" className="secondary" onClick={() => setPage((prev) => Math.max(prev - 1, 1))} disabled={page <= 1}>
+                    {t("marketplace.ordersPage.pagination.prev")}
+                  </button>
+                  <div className="muted">{t("marketplace.ordersPage.pagination.page", { current: page, total: totalPages })}</div>
+                  <button type="button" className="secondary" onClick={() => setPage((prev) => Math.min(prev + 1, totalPages))} disabled={page >= totalPages}>
+                    {t("marketplace.ordersPage.pagination.next")}
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         )}

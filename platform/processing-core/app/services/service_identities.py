@@ -46,6 +46,14 @@ class ServiceTokenContext:
     scopes: set[str]
 
 
+def _coerce_utc_datetime(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
 def normalize_scopes(scopes: Iterable[str]) -> list[str]:
     normalized = sorted({scope.strip() for scope in scopes if scope and scope.strip()})
     invalid = [scope for scope in normalized if scope not in ALLOWED_SERVICE_SCOPES]
@@ -206,14 +214,16 @@ def revoke_service_token(
 
 
 def _apply_expiry(token: ServiceToken, now: datetime) -> bool:
-    if token.expires_at and now >= token.expires_at:
+    expires_at = _coerce_utc_datetime(token.expires_at)
+    if expires_at and now >= expires_at:
         token.status = ServiceTokenStatus.EXPIRED
         return True
     return False
 
 
 def _apply_rotation_grace(token: ServiceToken, now: datetime) -> bool:
-    if token.rotation_grace_until and now > token.rotation_grace_until:
+    rotation_grace_until = _coerce_utc_datetime(token.rotation_grace_until)
+    if rotation_grace_until and now > rotation_grace_until:
         token.status = ServiceTokenStatus.EXPIRED
         return True
     return False

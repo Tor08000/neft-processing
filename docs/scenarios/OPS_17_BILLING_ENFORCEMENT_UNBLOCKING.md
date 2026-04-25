@@ -17,7 +17,7 @@ Prove that billing status enforces real access control and payment automatically
 ## Baseline State (DEBT)
 **Client**
 - Org: ООО Ромашка
-- Plan: CONTROL
+- Plan: CONTROL family, resolved to an active monthly `CONTROL_*` SKU from the live subscriptions catalog
 - Subscription: `OVERDUE`
 - Invoice: `ISSUED → DUE → OVERDUE`
 
@@ -122,8 +122,8 @@ Sales can tell the client: “Access restored, everything works.”
 1. `GET /api/v1/admin/revenue/overdue` — find overdue orgs.
 2. `GET /api/v1/admin/billing/payment-intakes?status=PENDING` — list intakes.
 3. `POST /api/v1/admin/billing/payment-intakes/{id}/approve` — approve payment.
-4. `POST /api/v1/admin/reconciliation/external/statements` — upload bank statement.
-5. `POST /api/v1/admin/reconciliation/run` — run reconciliation.
+4. `POST /api/core/v1/admin/reconciliation/external/statements` — upload bank statement.
+5. `POST /api/core/v1/admin/reconciliation/run` — run reconciliation.
 6. `GET /api/v1/client/me` — verify entitlements snapshot.
 
 ## DB Touchpoints
@@ -150,5 +150,5 @@ Sales can tell the client: “Access restored, everything works.”
 ## VERIFIED
 - pytest: `platform/processing-core/app/tests/integration/test_finance_negative_scenarios.py` (SCN-2 overdue → paid).
 - pytest: `platform/processing-core/app/tests/test_client_me_api.py` (entitlements ACTIVE).
-- smoke cmd: `scripts/smoke_billing_enforcement_unblock.cmd` (stub).
+- smoke cmd: `scripts/smoke_billing_enforcement_unblock.cmd` (delegates to real `scripts/smoke_commerce_overdue_unblock_e2e.cmd` flow).
 - PASS: overdue invoice transitions to paid; entitlements snapshot updated; access restored.

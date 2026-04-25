@@ -18,13 +18,14 @@ import { Toast } from "../../components/Toast/Toast";
 import { useToast } from "../../components/Toast/useToast";
 import { PayoutBatchItem, PayoutReconcileResult } from "../../types/payouts";
 import { formatDate, formatDateTime, formatQty, formatRub } from "../../utils/format";
+import { payoutBatchDetailCopy } from "../operatorKeyPageCopy";
 
 function getErrorMessage(error: Error): string {
   if (error.message.includes("409")) {
-    return "уже отправлено / ref конфликтует";
+    return payoutBatchDetailCopy.errors.conflict;
   }
   if (error.message.includes("400")) {
-    return "нельзя из текущего статуса";
+    return payoutBatchDetailCopy.errors.invalidState;
   }
   return error.message;
 }
@@ -248,9 +249,9 @@ export const PayoutBatchDetail: React.FC = () => {
           columns={columns}
           data={items}
           emptyState={{
-            title: "Нет позиций",
-            description: "В этом батче пока нет операций.",
-            actionLabel: "Обновить",
+            title: payoutBatchDetailCopy.empty.title,
+            description: payoutBatchDetailCopy.empty.description,
+            actionLabel: payoutBatchDetailCopy.empty.actionLabel,
             actionOnClick: () => refetch(),
           }}
         />

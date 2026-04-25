@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { NavLink, type NavLinkProps } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { AppLogo } from "./AppLogo";
 
 export type BrandNavItem = {
@@ -9,6 +9,7 @@ export type BrandNavItem = {
   end?: boolean;
   disabled?: boolean;
   hint?: string;
+  matchPaths?: string[];
 };
 
 export type BrandSidebarProps = {
@@ -17,19 +18,28 @@ export type BrandSidebarProps = {
   footerSlot?: ReactNode;
 };
 
-type NavLinkClassNameState = {
-  isActive?: boolean;
+const matchesPathPrefix = (pathname: string, prefix: string) =>
+  pathname === prefix || pathname.startsWith(`${prefix}/`);
+
+const isItemActive = (item: BrandNavItem, pathname: string) => {
+  const matchesPrimary = item.end ? pathname === item.to : matchesPathPrefix(pathname, item.to);
+  if (matchesPrimary) {
+    return true;
+  }
+  return (item.matchPaths ?? []).some((prefix) => matchesPathPrefix(pathname, prefix));
 };
 
-const navLinkClassName: NavLinkProps["className"] = ({ isActive = false }: NavLinkClassNameState) =>
-  `brand-nav-link${isActive ? " is-active" : ""}`;
-
 export function BrandSidebar({ title = "NEFT", items, footerSlot }: BrandSidebarProps) {
+  const location = useLocation();
+
   return (
     <aside className="brand-sidebar">
       <div className="brand-sidebar__title" aria-label="NEFT Platform">
-        <AppLogo size={28} className="brand-sidebar__logo" />
-        <span>{title}</span>
+        <AppLogo variant="full" size={30} className="brand-sidebar__logo" tone="white" />
+        <div className="brand-sidebar__title-copy">
+          <span className="brand-sidebar__eyebrow">{title}</span>
+          <span className="brand-sidebar__caption">operator surface</span>
+        </div>
       </div>
       <nav className="brand-sidebar__nav">
         {items.map((item: BrandNavItem) =>
@@ -40,11 +50,16 @@ export function BrandSidebar({ title = "NEFT", items, footerSlot }: BrandSidebar
               {item.hint ? <span className="brand-nav-link__hint">{item.hint}</span> : null}
             </span>
           ) : (
-            <NavLink key={item.to} to={item.to} end={item.end} className={navLinkClassName}>
+            <Link
+              key={item.to}
+              to={item.to}
+              className={`brand-nav-link${isItemActive(item, location.pathname) ? " is-active" : ""}`}
+              aria-current={isItemActive(item, location.pathname) ? "page" : undefined}
+            >
               {item.icon ? <span className="brand-nav-link__icon">{item.icon}</span> : null}
               <span className="brand-nav-link__label">{item.label}</span>
               {item.hint ? <span className="brand-nav-link__hint">{item.hint}</span> : null}
-            </NavLink>
+            </Link>
           ),
         )}
       </nav>

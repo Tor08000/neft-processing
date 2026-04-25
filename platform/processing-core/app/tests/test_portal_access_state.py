@@ -94,6 +94,7 @@ def test_access_state_module_disabled():
         partner=None,
         entitlements_snapshot=entitlements_snapshot,
         capabilities=[],
+        contract_status="SIGNED",
     )
     assert state == PortalAccessState.MODULE_DISABLED
     assert reason == "module_disabled"
@@ -111,6 +112,39 @@ def test_access_state_priority_overdue_over_module_disabled():
         partner=None,
         entitlements_snapshot=entitlements_snapshot,
         capabilities=[],
+        contract_status="SIGNED",
     )
     assert state == PortalAccessState.OVERDUE
     assert reason == "billing_overdue"
+
+
+def test_access_state_partner_ignores_client_contract_rules_for_mixed_memberships():
+    state, reason = resolve_access_state(
+        actor_type="partner",
+        org_status="ACTIVE",
+        org_roles=["CLIENT", "PARTNER"],
+        subscription=PortalMeSubscription(plan_code="PRO", status="ACTIVE"),
+        legal=PortalMeLegal(required_count=0, accepted=True, missing=[], required_enabled=True),
+        partner=PortalMePartner(status="PENDING"),
+        entitlements_snapshot={"modules": {"SUPPORT": {"enabled": True}}},
+        capabilities=["PARTNER_CORE"],
+        contract_status=None,
+    )
+    assert state == PortalAccessState.NEEDS_ONBOARDING
+    assert reason == "partner_onboarding"
+
+
+def test_access_state_active_partner_does_not_require_entitlement_capabilities():
+    state, reason = resolve_access_state(
+        actor_type="partner",
+        org_status="ACTIVE",
+        org_roles=["PARTNER"],
+        subscription=None,
+        legal=PortalMeLegal(required_count=0, accepted=True, missing=[], required_enabled=True),
+        partner=PortalMePartner(status="ACTIVE"),
+        entitlements_snapshot={"org_roles": [], "capabilities": [], "modules": {}},
+        capabilities=[],
+        contract_status=None,
+    )
+    assert state == PortalAccessState.ACTIVE
+    assert reason is None

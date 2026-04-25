@@ -64,6 +64,16 @@ class DocumentsRepository:
         items = grouped.order_by(desc(Document.created_at)).offset(offset).limit(limit).all()
         return items, total
 
+    def list_edo_states_for_documents(self, *, document_ids: list[str]) -> dict[str, str]:
+        if not document_ids:
+            return {}
+        rows = (
+            self.db.query(DocumentEdoState.document_id, DocumentEdoState.edo_status)
+            .filter(DocumentEdoState.document_id.in_(document_ids))
+            .all()
+        )
+        return {str(document_id): edo_status for document_id, edo_status in rows}
+
     def get_document(self, *, client_id: str, document_id: str) -> Document | None:
         return (
             self.db.query(Document)

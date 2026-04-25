@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.schemas.explain_diff import ExplainDiffKind, ExplainDiffResponse
 from app.schemas.explain_v2 import ExplainActionCatalogItem, ExplainKind, ExplainV2Response
+from app.services.token_claims import DEFAULT_TENANT_ID, resolve_token_tenant_id
 from app.services import admin_auth, client_auth
 from app.services.explain_diff_service import build_explain_diff
 from app.services.explain_v2_service import (
@@ -53,6 +54,7 @@ def _resolve_token_context(request: Request) -> tuple[str, dict]:
 
 def _resolve_tenant_id(
     *,
+    db: Session,
     token: dict,
     token_type: str,
     tenant_override: int | None,
@@ -63,17 +65,21 @@ def _resolve_tenant_id(
             if not roles.intersection(ADMIN_OVERRIDE_ROLES):
                 raise HTTPException(status_code=403, detail="forbidden")
             return tenant_override, None
-        tenant_id = token.get("tenant_id")
-        if tenant_id is None:
-            raise HTTPException(status_code=403, detail="Missing tenant context")
-        return int(tenant_id), None
+        return resolve_token_tenant_id(token, error_detail="Missing tenant context"), None
 
     if tenant_override is not None:
         raise HTTPException(status_code=403, detail="forbidden")
-    tenant_id = token.get("tenant_id")
-    if tenant_id is None:
-        raise HTTPException(status_code=403, detail="Missing tenant context")
-    return int(tenant_id), str(token.get("client_id") or "") or None
+    client_id = str(token.get("client_id") or "") or None
+    return (
+        resolve_token_tenant_id(
+            token,
+            db=db,
+            client_id=client_id,
+            default=DEFAULT_TENANT_ID,
+            error_detail="Missing tenant context",
+        ),
+        client_id,
+    )
 
 
 @router.get("", response_model=ExplainV2Response)
@@ -88,6 +94,7 @@ def explain_v2(
 ) -> ExplainV2Response:
     token_type, token = _resolve_token_context(request)
     resolved_tenant_id, _client_id = _resolve_tenant_id(
+        db=db,
         token=token,
         token_type=token_type,
         tenant_override=tenant_id,
@@ -142,6 +149,7 @@ def explain_v2(
 @router.get("/actions", response_model=list[ExplainActionCatalogItem])
 def explain_actions(
     request: Request,
+    db: Session = Depends(get_db),
     kind: ExplainKind | None = Query(None),
     id: str | None = None,
     kpi_key: str | None = None,
@@ -149,6 +157,7 @@ def explain_actions(
 ) -> list[ExplainActionCatalogItem]:
     token_type, token = _resolve_token_context(request)
     _resolved_tenant_id, _client_id = _resolve_tenant_id(
+        db=db,
         token=token,
         token_type=token_type,
         tenant_override=tenant_id,
@@ -178,6 +187,7 @@ def explain_diff(
 ) -> ExplainDiffResponse:
     token_type, token = _resolve_token_context(request)
     resolved_tenant_id, _client_id = _resolve_tenant_id(
+        db=db,
         token=token,
         token_type=token_type,
         tenant_override=tenant_id,

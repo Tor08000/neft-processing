@@ -200,6 +200,20 @@ class LogisticsNavigatorExplainOut(BaseModel):
     created_at: datetime
 
 
+class LogisticsAdminInspectionOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    order: LogisticsOrderOut
+    active_route: LogisticsRouteOut | None = None
+    routes: list[LogisticsRouteOut]
+    active_route_stops: list[LogisticsStopOut]
+    latest_eta_snapshot: LogisticsETASnapshotOut | None = None
+    latest_route_snapshot: LogisticsRouteSnapshotOut | None = None
+    navigator_explains: list[LogisticsNavigatorExplainOut]
+    tracking_events_count: int
+    last_tracking_event: LogisticsTrackingEventOut | None = None
+
+
 class LogisticsFuelLinkerRunOut(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

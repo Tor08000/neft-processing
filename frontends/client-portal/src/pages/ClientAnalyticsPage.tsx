@@ -11,7 +11,6 @@ import { ClientErrorState } from "../components/ClientErrorState";
 import { DemoEmptyState } from "../components/DemoEmptyState";
 import { AppEmptyState, AppForbiddenState, AppLoadingState } from "../components/states";
 import { StatusPage } from "../components/StatusPage";
-import { demoClientAnalyticsSummary } from "../demo/demoData";
 import type { ClientAnalyticsSummaryResponse } from "../types/clientAnalytics";
 import { buildDateRange } from "../utils/dateRange";
 import { formatDate, formatLiters } from "../utils/format";
@@ -68,10 +67,11 @@ export function ClientAnalyticsPage() {
     setUseDemoData(false);
     fetchClientAnalyticsSummary(user, { from: filters.from, to: filters.to, scope, timezone })
       .then((resp) => setData(resp))
-      .catch((err: unknown) => {
+      .catch(async (err: unknown) => {
         console.error("Не удалось загрузить аналитику", err);
         const status = err instanceof ApiError ? err.status : undefined;
         if (isDemoClientAccount && status === 404) {
+          const { demoClientAnalyticsSummary } = await import("../demo/demoData");
           setData(demoClientAnalyticsSummary);
           setUseDemoData(true);
           setError(null);

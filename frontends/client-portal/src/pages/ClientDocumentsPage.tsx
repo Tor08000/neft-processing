@@ -4,10 +4,7 @@ import { FileText } from "../components/icons";
 import { acknowledgeClosingDocument, downloadDocumentFile, fetchDocuments } from "../api/documents";
 import { ApiError } from "../api/http";
 import { useAuth } from "../auth/AuthContext";
-import { EmptyState } from "../components/EmptyState";
-import { ClientErrorState } from "../components/ClientErrorState";
-import { DemoEmptyState } from "../components/DemoEmptyState";
-import { AppLoadingState } from "../components/states";
+import { Table, type Column } from "../components/common/Table";
 import type { ClientDocumentSummary } from "../types/documents";
 import { formatDate, formatDateTime } from "../utils/format";
 import { MoneyValue } from "../components/common/MoneyValue";
@@ -28,6 +25,21 @@ import { isDemoClient } from "@shared/demo/demo";
 const DEFAULT_LIMIT = isPwaMode ? 20 : 25;
 const LAST_UPDATED_KEY = "pwa:lastUpdated:documents";
 
+const hasLegacyActionRequired = (item: ClientDocumentSummary): boolean => {
+  const signatureStatus = item.signature_status?.toUpperCase();
+  const edoStatus = item.edo_status?.toUpperCase();
+  return (signatureStatus != null && signatureStatus !== "SIGNED") || edoStatus === "FAILED" || edoStatus === "REJECTED";
+};
+
+const matchesLegacyEdoStatus = (item: ClientDocumentSummary, status: string): boolean => {
+  if (!item.edo_status) {
+    return false;
+  }
+  return item.edo_status.toLowerCase() === status.toLowerCase();
+};
+
+// Legacy closing-docs compatibility page. Keep generic discovery and new docflow entry points on
+// /client/documents* until this surface is intentionally migrated.
 export function ClientDocumentsPage() {
   const { user } = useAuth();
   const { t } = useI18n();
@@ -49,8 +61,8 @@ export function ClientDocumentsPage() {
   const [offset, setOffset] = useState(0);
   const [debouncedFilters, setDebouncedFilters] = useState(filters);
   const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<{ status?: number } | null>(null);
-  const [demoFallback, setDemoFallback] = useState(false);
+  const [loadError, setLoadError] = useState<{ status?: number } | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const isDemoClientAccount = isDemoClient(user?.email ?? null);
 
   useEffect(() => {
@@ -92,8 +104,8 @@ export function ClientDocumentsPage() {
 
   useEffect(() => {
     setIsLoading(true);
-    setError(null);
-    setDemoFallback(false);
+    setLoadError(null);
+    setActionError(null);
     fetchDocuments(user, {
       dateFrom: debouncedFilters.dateFrom || undefined,
       dateTo: debouncedFilters.dateTo || undefined,
@@ -113,14 +125,10 @@ export function ClientDocumentsPage() {
           debouncedFilters.edoStatus || debouncedFilters.requiresAction
             ? resp.items.filter((item) => {
                 const matchesEdo = debouncedFilters.edoStatus
-                  ? item.edo_status === debouncedFilters.edoStatus
+                  ? matchesLegacyEdoStatus(item, debouncedFilters.edoStatus)
                   : true;
                 const requiresAction =
-                  debouncedFilters.requiresAction === "yes"
-                    ? item.signature_status !== "signed" ||
-                      item.edo_status === "failed" ||
-                      item.edo_status === "rejected"
-                    : true;
+                  debouncedFilters.requiresAction === "yes" ? hasLegacyActionRequired(item) : true;
                 return matchesEdo && requiresAction;
               })
             : resp.items;
@@ -132,15 +140,10 @@ export function ClientDocumentsPage() {
       })
       .catch((err: unknown) => {
         const status = err instanceof ApiError ? err.status : undefined;
-        if (isDemoClientAccount && status === 404) {
-          setDemoFallback(true);
-          setError(null);
-          return;
-        }
-        setError({ status });
+        setLoadError({ status });
       })
       .finally(() => setIsLoading(false));
-  }, [debouncedFilters, offset, user, isDemoClientAccount]);
+  }, [debouncedFilters, offset, user]);
 
   const handleFilterChange = (evt: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = evt.target;
@@ -154,21 +157,23 @@ export function ClientDocumentsPage() {
   };
 
   const handleDownload = async (documentId: string, fileType: "PDF" | "XLSX") => {
+    setActionError(null);
     try {
       await downloadDocumentFile(documentId, fileType, user);
     } catch (err) {
-      setError({ status: err instanceof ApiError ? err.status : undefined });
+      setActionError(err instanceof Error ? err.message : t("documentsPage.errors.downloadFailed"));
     }
   };
 
   const handleAck = async (documentId: string) => {
+    setActionError(null);
     try {
       await acknowledgeClosingDocument(documentId, user);
       setItems((prev) =>
         prev.map((doc) => (doc.id === documentId ? { ...doc, status: "ACKNOWLEDGED" } : doc)),
       );
     } catch (err) {
-      setError({ status: err instanceof ApiError ? err.status : undefined });
+      setActionError(err instanceof Error ? err.message : t("documentsPage.errors.ackFailed"));
     }
   };
 
@@ -227,9 +232,93 @@ export function ClientDocumentsPage() {
     [t],
   );
 
+  const documentColumns: Column<ClientDocumentSummary>[] = [
+    {
+      key: "type",
+      title: t("documentsPage.table.type"),
+      render: (doc) => getDocumentTypeLabel(doc.document_type),
+    },
+    {
+      key: "period",
+      title: t("documentsPage.table.period"),
+      render: (doc) =>
+        doc.period_from && doc.period_to
+          ? `${formatDate(doc.period_from)} — ${formatDate(doc.period_to)}`
+          : t("documentsPage.periodFallback"),
+    },
+    {
+      key: "number",
+      title: t("documentsPage.table.number"),
+      render: (doc) => doc.number ?? t("common.notAvailable"),
+    },
+    {
+      key: "amount",
+      title: t("documentsPage.table.amount"),
+      className: "neft-num",
+      render: (doc) =>
+        doc.amount ? <MoneyValue amount={doc.amount} currency="RUB" /> : t("common.notAvailable"),
+    },
+    {
+      key: "lifecycle",
+      title: t("documentsPage.table.lifecycle"),
+      render: (doc) => (
+        <span className={`pill pill--${getDocumentStatusTone(doc.status)}`}>{getDocumentStatusLabel(doc.status)}</span>
+      ),
+    },
+    {
+      key: "signature",
+      title: t("documentsPage.table.sign"),
+      render: (doc) => (
+        <span className={`pill pill--${getSignatureTone(doc.signature_status)}`}>
+          {getSignatureStatusLabel(doc.signature_status)}
+        </span>
+      ),
+    },
+    {
+      key: "edo",
+      title: t("documentsPage.table.edo"),
+      render: (doc) => (
+        <span className={`pill pill--${getEdoTone(doc.edo_status)}`}>{getEdoStatusLabel(doc.edo_status)}</span>
+      ),
+    },
+    {
+      key: "updated",
+      title: t("documentsPage.table.updated"),
+      render: (doc) => formatDate(doc.updated_at ?? doc.created_at),
+    },
+    {
+      key: "actions",
+      title: t("documentsPage.table.actions"),
+      render: (doc) => (
+        <div className="table-row-actions">
+          <Link className="ghost" to={`/documents/${doc.id}`}>
+            {t("common.open")}
+          </Link>
+          {doc.status !== "DRAFT" ? (
+            <>
+              <button type="button" className="ghost" onClick={() => void handleDownload(doc.id, "PDF")}>
+                PDF
+              </button>
+              <button type="button" className="ghost" onClick={() => void handleDownload(doc.id, "XLSX")}>
+                XLSX
+              </button>
+            </>
+          ) : (
+            <span className="muted small">{t("documentsPage.actions.filesUnavailable")}</span>
+          )}
+          {!isPwaMode && canAcknowledge && doc.status === "ISSUED" ? (
+            <button type="button" className="ghost" onClick={() => void handleAck(doc.id)}>
+              {t("documentsPage.actions.requestSign")}
+            </button>
+          ) : null}
+        </div>
+      ),
+    },
+  ];
+
   return (
-    <div className="card">
-      <div className="card__header">
+    <div className="stack">
+      <div className="page-header">
         <div>
           <h2>{t("documentsPage.title")}</h2>
           <p className="muted">{t("documentsPage.subtitle")}</p>
@@ -239,222 +328,112 @@ export function ClientDocumentsPage() {
         </div>
       </div>
 
-      <div className="filters">
-        <div className="filter">
-          <label htmlFor="dateFrom">{t("documentsPage.filters.dateFrom")}</label>
-          <input
-            id="dateFrom"
-            name="dateFrom"
-            type="date"
-            value={filters.dateFrom}
-            onChange={handleFilterChange}
-          />
-        </div>
-        <div className="filter">
-          <label htmlFor="dateTo">{t("documentsPage.filters.dateTo")}</label>
-          <input id="dateTo" name="dateTo" type="date" value={filters.dateTo} onChange={handleFilterChange} />
-        </div>
-        <div className="filter">
-          <label htmlFor="documentType">{t("documentsPage.filters.documentType")}</label>
-          <select id="documentType" name="documentType" value={filters.documentType} onChange={handleFilterChange}>
-            {documentTypes.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="filter">
-          <label htmlFor="status">{t("documentsPage.filters.status")}</label>
-          <select id="status" name="status" value={filters.status} onChange={handleFilterChange}>
-            {statusTypes.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="filter">
-          <label htmlFor="signature">{t("documentsPage.filters.signature")}</label>
-          <select id="signature" name="signature" value={filters.signature} onChange={handleFilterChange}>
-            {signatureTypes.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="filter">
-          <label htmlFor="edoStatus">{t("documentsPage.filters.edoStatus")}</label>
-          <select id="edoStatus" name="edoStatus" value={filters.edoStatus} onChange={handleFilterChange}>
-            {edoTypes.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="filter">
-          <label htmlFor="requiresAction">{t("documentsPage.filters.requiresAction")}</label>
-          <select
-            id="requiresAction"
-            name="requiresAction"
-            value={filters.requiresAction}
-            onChange={handleFilterChange}
-          >
-            <option value="">{t("documentsPage.filters.all")}</option>
-            <option value="yes">{t("documentsPage.filters.requiresAction")}</option>
-          </select>
-        </div>
-        <div className="filter">
-          <label htmlFor="limit">{t("documentsPage.filters.limit")}</label>
-          <select id="limit" value={filters.limit} onChange={handleLimitChange}>
-            {[25, 50].map((value) => (
-              <option key={value} value={value}>
-                {value}
-              </option>
-            ))}
-          </select>
-        </div>
-      </div>
+      {actionError ? <div className="error-text">{actionError}</div> : null}
 
-      {isLoading ? <AppLoadingState /> : null}
-      {error ? (
-        <ClientErrorState
-          title={t("documentsPage.errors.loadFailedTitle")}
-          description={t("documentsPage.errors.loadFailedDescription")}
-          onRetry={() => setDebouncedFilters((prev) => ({ ...prev }))}
-        />
-      ) : null}
-      {demoFallback ? (
-        <DemoEmptyState
-          title={t("documentsPage.demo.title")}
-          description={t("documentsPage.demo.description")}
-          action={
-            <Link className="ghost neft-btn-secondary" to="/dashboard">
-              {t("documentsPage.demo.action")}
-            </Link>
-          }
-        />
-      ) : null}
-      {!isLoading && !error && items.length === 0 && !demoFallback ? (
-        isDemoClientAccount ? (
-          <DemoEmptyState
-            title={t("documentsPage.demo.title")}
-            description={t("documentsPage.demo.description")}
-            action={
-              <Link className="ghost neft-btn-secondary" to="/dashboard">
-                {t("documentsPage.demo.action")}
-              </Link>
-            }
-          />
-        ) : (
-          <EmptyState
-            icon={<FileText />}
-            title={t("emptyStates.documents.title")}
-            description={t("emptyStates.documents.description")}
-          />
-        )
-      ) : null}
-      {!isLoading && !error && items.length > 0 && !demoFallback ? (
-        <>
-          {Object.entries(
-            items.reduce<Record<string, ClientDocumentSummary[]>>((acc, doc) => {
-              const key = doc.period_from ? doc.period_from.slice(0, 7) : t("documentsPage.periodFallback");
-              if (!acc[key]) acc[key] = [];
-              acc[key].push(doc);
-              return acc;
-            }, {}),
-          ).map(([period, docs]) => (
-            <section className="card__section" key={period}>
-              <h3>{period}</h3>
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>{t("documentsPage.table.type")}</th>
-                    <th>{t("documentsPage.table.period")}</th>
-                    <th>{t("documentsPage.table.number")}</th>
-                    <th>{t("documentsPage.table.amount")}</th>
-                    <th>{t("documentsPage.table.lifecycle")}</th>
-                    <th>{t("documentsPage.table.sign")}</th>
-                    <th>{t("documentsPage.table.edo")}</th>
-                    <th>{t("documentsPage.table.updated")}</th>
-                    <th>{t("documentsPage.table.actions")}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {docs.map((doc) => (
-                    <tr key={doc.id}>
-                      <td>{getDocumentTypeLabel(doc.document_type)}</td>
-                      <td>
-                        {formatDate(doc.period_from)} — {formatDate(doc.period_to)}
-                      </td>
-                      <td>{doc.number ?? t("common.notAvailable")}</td>
-                      <td className="neft-num-cell">
-                        {doc.amount ? <MoneyValue amount={doc.amount} currency="RUB" /> : t("common.notAvailable")}
-                      </td>
-                      <td>
-                        <span className={`pill pill--${getDocumentStatusTone(doc.status)}`}>
-                          {getDocumentStatusLabel(doc.status)}
-                        </span>
-                      </td>
-                      <td>
-                        <span className={`pill pill--${getSignatureTone(doc.signature_status)}`}>
-                          {getSignatureStatusLabel(doc.signature_status)}
-                        </span>
-                      </td>
-                      <td>
-                        <span className={`pill pill--${getEdoTone(doc.edo_status)}`}>
-                          {getEdoStatusLabel(doc.edo_status)}
-                        </span>
-                      </td>
-                      <td>{formatDate(doc.updated_at ?? doc.created_at)}</td>
-                      <td>
-                        <div className="actions">
-                          <Link className="ghost" to={`/client/documents/${doc.id}`}>
-                            {t("common.open")}
-                          </Link>
-                          {doc.status !== "DRAFT" ? (
-                            <>
-                              <button type="button" className="ghost" onClick={() => handleDownload(doc.id, "PDF")}>
-                                PDF
-                              </button>
-                              <button type="button" className="ghost" onClick={() => handleDownload(doc.id, "XLSX")}>
-                                XLSX
-                              </button>
-                            </>
-                          ) : (
-                            <span className="muted small">{t("documentsPage.actions.filesUnavailable")}</span>
-                          )}
-                          {!isPwaMode && canAcknowledge && doc.status === "ISSUED" ? (
-                            <button type="button" className="ghost" onClick={() => handleAck(doc.id)}>
-                              {t("documentsPage.actions.requestSign")}
-                            </button>
-                          ) : null}
-                          {!isPwaMode && canAcknowledge ? (
-                            <button type="button" className="ghost" disabled>
-                              {t("documentsPage.actions.resendEdo")}
-                            </button>
-                          ) : null}
-                          {!isPwaMode ? (
-                            <button type="button" className="ghost" disabled>
-                              {t("documentsPage.actions.viewTimeline")}
-                            </button>
-                          ) : null}
-                        </div>
-                      </td>
-                    </tr>
+      <Table
+        columns={documentColumns}
+        data={items}
+        loading={isLoading}
+        rowKey={(doc) => doc.id}
+        toolbar={
+          <div className="filters">
+              <div className="filter">
+                <label htmlFor="dateFrom">{t("documentsPage.filters.dateFrom")}</label>
+                <input
+                  id="dateFrom"
+                  name="dateFrom"
+                  type="date"
+                  value={filters.dateFrom}
+                  onChange={handleFilterChange}
+                />
+              </div>
+              <div className="filter">
+                <label htmlFor="dateTo">{t("documentsPage.filters.dateTo")}</label>
+                <input id="dateTo" name="dateTo" type="date" value={filters.dateTo} onChange={handleFilterChange} />
+              </div>
+              <div className="filter">
+                <label htmlFor="documentType">{t("documentsPage.filters.documentType")}</label>
+                <select id="documentType" name="documentType" value={filters.documentType} onChange={handleFilterChange}>
+                  {documentTypes.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
                   ))}
-                </tbody>
-              </table>
-            </section>
-          ))}
-
-          <div className="table-footer">
-            <div className="muted">
-              {t("documentsPage.footer.shown", { range: totalRange, total })}
-            </div>
-            <div className="actions">
+                </select>
+              </div>
+              <div className="filter">
+                <label htmlFor="status">{t("documentsPage.filters.status")}</label>
+                <select id="status" name="status" value={filters.status} onChange={handleFilterChange}>
+                  {statusTypes.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="filter">
+                <label htmlFor="signature">{t("documentsPage.filters.signature")}</label>
+                <select id="signature" name="signature" value={filters.signature} onChange={handleFilterChange}>
+                  {signatureTypes.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="filter">
+                <label htmlFor="edoStatus">{t("documentsPage.filters.edoStatus")}</label>
+                <select id="edoStatus" name="edoStatus" value={filters.edoStatus} onChange={handleFilterChange}>
+                  {edoTypes.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="filter">
+                <label htmlFor="requiresAction">{t("documentsPage.filters.requiresAction")}</label>
+                <select
+                  id="requiresAction"
+                  name="requiresAction"
+                  value={filters.requiresAction}
+                  onChange={handleFilterChange}
+                >
+                  <option value="">{t("documentsPage.filters.all")}</option>
+                  <option value="yes">{t("documentsPage.filters.requiresAction")}</option>
+                </select>
+              </div>
+              <div className="filter">
+                <label htmlFor="limit">{t("documentsPage.filters.limit")}</label>
+                <select id="limit" value={filters.limit} onChange={handleLimitChange}>
+                  {[25, 50].map((value) => (
+                    <option key={value} value={value}>
+                      {value}
+                    </option>
+                  ))}
+                </select>
+              </div>
+          </div>
+        }
+        errorState={
+          loadError
+            ? {
+                title: t("documentsPage.errors.loadFailedTitle"),
+                description: t("documentsPage.errors.loadFailedDescription"),
+                actionLabel: t("errors.retry"),
+                actionOnClick: () => setDebouncedFilters((prev) => ({ ...prev })),
+              }
+            : undefined
+        }
+        emptyState={{
+          title: isDemoClientAccount ? t("documentsPage.demo.title") : t("emptyStates.documents.title"),
+          description: isDemoClientAccount ? t("documentsPage.demo.description") : t("emptyStates.documents.description"),
+          icon: <FileText />,
+        }}
+        footer={
+          <div className="table-footer__content">
+            <div className="muted">{t("documentsPage.footer.shown", { range: totalRange, total })}</div>
+            <div className="toolbar-actions">
               <button
                 type="button"
                 className="ghost"
@@ -473,8 +452,8 @@ export function ClientDocumentsPage() {
               </button>
             </div>
           </div>
-        </>
-      ) : null}
+        }
+      />
     </div>
   );
 }

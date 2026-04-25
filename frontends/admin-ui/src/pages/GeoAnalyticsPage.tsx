@@ -10,6 +10,10 @@ import {
   fetchGeoTiles,
   tileToBounds,
 } from "../api/geoAnalytics";
+import { describeRuntimeError, type RuntimeErrorMeta } from "../api/runtimeError";
+import { Loader } from "../components/Loader/Loader";
+import { EmptyState } from "../components/common/EmptyState";
+import { ErrorState } from "../components/common/ErrorState";
 
 const METRICS: GeoMetric[] = ["tx_count", "amount_sum", "declined_count", "risk_red_count"];
 const OVERLAYS: GeoOverlayKind[] = ["RISK_RED", "HEALTH_OFFLINE", "HEALTH_DEGRADED"];
@@ -31,6 +35,29 @@ const DATE_RANGES = [
   { label: "Last 7d", value: "7" },
   { label: "Last 30d", value: "30" },
 ];
+
+const geoPageCopy = {
+  mapError: {
+    title: "Geo layer unavailable",
+  },
+  mapEmpty: {
+    title: "No geo data for the selected range",
+    description: "The current date range and layer settings did not return any geo tiles yet.",
+  },
+  drillDown: {
+    title: "Drill-down stations",
+    loading: "Loading stations",
+    emptyTitle: "No stations in the selected tile",
+    emptyDescription: "The selected geo tile returned no stations for the current metric and overlay.",
+    firstUseTitle: "Choose a tile to inspect stations",
+    firstUseDescription: "Select any visible tile on the map to open the station drill-down for that geo segment.",
+    errorTitle: "Failed to load drill-down stations",
+  },
+  actions: {
+    retry: "Retry",
+    refreshLayer: "Refresh layer",
+  },
+} as const;
 
 const toIsoRange = (days: number) => {
   const end = new Date();
@@ -78,13 +105,14 @@ export default function GeoAnalyticsPage() {
   const [tiles, setTiles] = useState<GeoTile[]>([]);
   const [overlayTiles, setOverlayTiles] = useState<GeoTile[]>([]);
   const [loadingTiles, setLoadingTiles] = useState(false);
-  const [tilesError, setTilesError] = useState<string | null>(null);
+  const [tilesError, setTilesError] = useState<RuntimeErrorMeta | null>(null);
   const [mapBounds, setMapBounds] = useState<GeoBounds>(DEFAULT_BOUNDS);
   const [isLayerDirty, setIsLayerDirty] = useState(true);
   const [selectedTileId, setSelectedTileId] = useState<string | null>(null);
+  const [selectedTile, setSelectedTile] = useState<GeoTile | null>(null);
   const [stations, setStations] = useState<GeoStation[]>([]);
   const [stationsLoading, setStationsLoading] = useState(false);
-  const [stationsError, setStationsError] = useState<string | null>(null);
+  const [stationsError, setStationsError] = useState<RuntimeErrorMeta | null>(null);
 
   const dateRange = useMemo(() => toIsoRange(Number(selectedDays)), [selectedDays]);
 
@@ -100,9 +128,18 @@ export default function GeoAnalyticsPage() {
       ]);
       setTiles(base);
       setOverlayTiles(overlays);
+      setSelectedTile(null);
+      setSelectedTileId(null);
+      setStations([]);
+      setStationsError(null);
       setIsLayerDirty(false);
     } catch (err) {
-      setTilesError(err instanceof Error ? err.message : "Ошибка загрузки");
+      setTilesError(
+        describeRuntimeError(
+          err,
+          "Geo tiles owner route returned an internal error. Retry or inspect request metadata below.",
+        ),
+      );
     } finally {
       setLoadingTiles(false);
     }
@@ -116,6 +153,7 @@ export default function GeoAnalyticsPage() {
     async (tile: GeoTile) => {
       const tileBounds = tileToBounds(tile);
       setSelectedTileId(`${tile.zoom}-${tile.tile_x}-${tile.tile_y}`);
+      setSelectedTile(tile);
       setStationsLoading(true);
       setStationsError(null);
       try {
@@ -128,7 +166,12 @@ export default function GeoAnalyticsPage() {
         });
         setStations(data);
       } catch (err) {
-        setStationsError(err instanceof Error ? err.message : "Ошибка загрузки");
+        setStationsError(
+          describeRuntimeError(
+            err,
+            "Drill-down stations owner route returned an internal error. Retry or inspect request metadata below.",
+          ),
+        );
       } finally {
         setStationsLoading(false);
       }
@@ -211,14 +254,47 @@ export default function GeoAnalyticsPage() {
             <button onClick={() => nudgeBounds(0, 0.05)}>→</button>
           </div>
 
-          {loadingTiles ? <div style={{ position: "absolute", inset: 12, background: "rgba(255,255,255,.75)", display: "grid", placeItems: "center", borderRadius: 8 }}>Загрузка тайлов…</div> : null}
+          {loadingTiles ? (
+            <div
+              style={{
+                position: "absolute",
+                inset: 12,
+                background: "rgba(255,255,255,.78)",
+                display: "grid",
+                placeItems: "center",
+                borderRadius: 8,
+                padding: 16,
+              }}
+            >
+              <Loader label="Loading geo layer" />
+            </div>
+          ) : null}
           {tilesError ? (
-            <div style={{ position: "absolute", top: 12, left: 12, right: 12, background: "#fee2e2", color: "#991b1b", padding: 12, borderRadius: 8 }}>
-              Ошибка загрузки: {tilesError} <button onClick={() => void reloadLayer()}>Retry</button>
+            <div style={{ position: "absolute", top: 12, left: 12, right: 12 }}>
+              <ErrorState
+                title={geoPageCopy.mapError.title}
+                description={tilesError.description}
+                actionLabel={geoPageCopy.actions.retry}
+                onAction={() => {
+                  void reloadLayer();
+                }}
+                details={tilesError.details}
+                requestId={tilesError.requestId}
+                correlationId={tilesError.correlationId}
+              />
             </div>
           ) : null}
           {!loadingTiles && !tilesError && tiles.length === 0 && overlayTiles.length === 0 ? (
-            <div style={{ position: "absolute", top: 12, left: 12, background: "rgba(255,255,255,.92)", padding: 10, borderRadius: 8 }}>Нет данных в выбранном диапазоне</div>
+            <div style={{ position: "absolute", top: 12, left: 12, right: 12 }}>
+              <EmptyState
+                title={geoPageCopy.mapEmpty.title}
+                description={geoPageCopy.mapEmpty.description}
+                actionLabel={geoPageCopy.actions.refreshLayer}
+                actionOnClick={() => {
+                  void reloadLayer();
+                }}
+              />
+            </div>
           ) : null}
         </div>
 
@@ -261,7 +337,9 @@ export default function GeoAnalyticsPage() {
               Opacity: {opacity.toFixed(1)}
               <input type="range" min={0.1} max={1} step={0.1} value={opacity} onChange={(event) => setOpacity(Number(event.target.value))} />
             </label>
-            <button disabled={!isLayerDirty || loadingTiles} onClick={() => void reloadLayer()}>Обновить слой</button>
+            <button disabled={!isLayerDirty || loadingTiles} onClick={() => void reloadLayer()}>
+              {geoPageCopy.actions.refreshLayer}
+            </button>
           </section>
 
           <section className="neft-card" style={{ padding: 12 }}>
@@ -273,10 +351,37 @@ export default function GeoAnalyticsPage() {
           </section>
 
           <section className="neft-card" style={{ padding: 12 }}>
-            <h3 style={{ marginBottom: 8 }}>Drill-down stations</h3>
-            {stationsLoading ? <div>Loading stations…</div> : null}
-            {stationsError ? <div style={{ color: "#b91c1c" }}>Ошибка загрузки: {stationsError}</div> : null}
-            {!stationsLoading && !stationsError && stations.length === 0 ? <div>Нажмите на тайл</div> : null}
+            <h3 style={{ marginBottom: 8 }}>{geoPageCopy.drillDown.title}</h3>
+            {stationsLoading ? <Loader label={geoPageCopy.drillDown.loading} /> : null}
+            {stationsError ? (
+              <ErrorState
+                title={geoPageCopy.drillDown.errorTitle}
+                description={stationsError.description}
+                actionLabel={selectedTile ? geoPageCopy.actions.retry : undefined}
+                onAction={
+                  selectedTile
+                    ? () => {
+                        void requestDrillDown(selectedTile);
+                      }
+                    : undefined
+                }
+                details={stationsError.details}
+                requestId={stationsError.requestId}
+                correlationId={stationsError.correlationId}
+              />
+            ) : null}
+            {!stationsLoading && !stationsError && stations.length === 0 && !selectedTileId ? (
+              <EmptyState
+                title={geoPageCopy.drillDown.firstUseTitle}
+                description={geoPageCopy.drillDown.firstUseDescription}
+              />
+            ) : null}
+            {!stationsLoading && !stationsError && stations.length === 0 && selectedTileId ? (
+              <EmptyState
+                title={geoPageCopy.drillDown.emptyTitle}
+                description={geoPageCopy.drillDown.emptyDescription}
+              />
+            ) : null}
             <div style={{ display: "grid", gap: 8, maxHeight: 280, overflow: "auto" }}>
               {stations.slice(0, 200).map((station, index) => (
                 <article key={`${station.station_id ?? station.id ?? station.name}-${index}`} style={{ border: "1px solid #e5e7eb", borderRadius: 8, padding: 8 }}>
@@ -285,10 +390,6 @@ export default function GeoAnalyticsPage() {
                   <div>value: {station.value ?? "—"}</div>
                   <div>risk_zone: {station.risk_zone ?? "—"}</div>
                   <div>health_status: {station.health_status ?? "—"}</div>
-                  <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
-                    <button type="button">Открыть станцию</button>
-                    <button type="button">Открыть карту станций</button>
-                  </div>
                 </article>
               ))}
             </div>

@@ -31,11 +31,13 @@ const normalizeList = <T>(payload: ListResponse<T>): T[] => {
   return payload.items ?? [];
 };
 
+const integrationOptions = (token: string) => ({ token, base: "int" as const });
+
 export async function fetchWebhookEndpoints(token: string, ownerId: string): Promise<WebhookEndpoint[]> {
   const data = await request<ListResponse<WebhookEndpoint>>(
     `/v1/webhooks/endpoints${buildQuery({ owner_type: "PARTNER", owner_id: ownerId })}`,
     {},
-    token,
+    integrationOptions(token),
   );
   return normalizeList(data);
 }
@@ -44,7 +46,7 @@ export async function fetchWebhookEventTypes(token: string): Promise<string[]> {
   const data = await request<ListResponse<string>>(
     `/v1/webhooks/event-types${buildQuery({ owner_type: "PARTNER" })}`,
     {},
-    token,
+    integrationOptions(token),
   );
   return normalizeList(data);
 }
@@ -59,7 +61,7 @@ export async function createWebhookEndpoint(
       method: "POST",
       body: JSON.stringify(payload),
     },
-    token,
+    integrationOptions(token),
   );
 }
 
@@ -75,7 +77,7 @@ export async function updateWebhookEndpointStatus(
       method: "PATCH",
       body: JSON.stringify({ status, ...(url ? { url } : {}) }),
     },
-    token,
+    integrationOptions(token),
   );
 }
 
@@ -86,7 +88,7 @@ export async function rotateWebhookSecret(
   return requestWithMeta<WebhookEndpointSecretResponse>(
     `/v1/webhooks/endpoints/${endpointId}/rotate-secret`,
     { method: "POST" },
-    token,
+    integrationOptions(token),
   );
 }
 
@@ -102,7 +104,7 @@ export async function sendWebhookTest(
       method: "POST",
       body: JSON.stringify({ event_type: eventType, payload }),
     },
-    token,
+    integrationOptions(token),
   );
 }
 
@@ -110,7 +112,7 @@ export async function fetchWebhookSubscriptions(token: string, endpointId: strin
   const data = await request<ListResponse<WebhookSubscription>>(
     `/v1/webhooks/subscriptions${buildQuery({ endpoint_id: endpointId })}`,
     {},
-    token,
+    integrationOptions(token),
   );
   return normalizeList(data);
 }
@@ -128,7 +130,7 @@ export async function createWebhookSubscription(
       method: "POST",
       body: JSON.stringify({ endpoint_id: endpointId, event_type: eventType, enabled, filters }),
     },
-    token,
+    integrationOptions(token),
   );
 }
 
@@ -143,12 +145,12 @@ export async function updateWebhookSubscription(
       method: "PATCH",
       body: JSON.stringify({ enabled }),
     },
-    token,
+    integrationOptions(token),
   );
 }
 
 export async function deleteWebhookSubscription(token: string, subscriptionId: string): Promise<void> {
-  await request(`/v1/webhooks/subscriptions/${subscriptionId}`, { method: "DELETE" }, token);
+  await request(`/v1/webhooks/subscriptions/${subscriptionId}`, { method: "DELETE" }, integrationOptions(token));
 }
 
 export async function fetchWebhookDeliveries(
@@ -176,13 +178,13 @@ export async function fetchWebhookDeliveries(
       event_id: params.eventId,
     })}`,
     {},
-    token,
+    integrationOptions(token),
   );
   return normalizeList(data);
 }
 
 export async function fetchWebhookDeliveryDetail(token: string, deliveryId: string): Promise<WebhookDeliveryDetail> {
-  return request<WebhookDeliveryDetail>(`/v1/webhooks/deliveries/${deliveryId}`, {}, token);
+  return request<WebhookDeliveryDetail>(`/v1/webhooks/deliveries/${deliveryId}`, {}, integrationOptions(token));
 }
 
 export async function retryWebhookDelivery(
@@ -192,7 +194,7 @@ export async function retryWebhookDelivery(
   return requestWithMeta<{ delivery_id: string }>(
     `/v1/webhooks/deliveries/${deliveryId}/retry`,
     { method: "POST" },
-    token,
+    integrationOptions(token),
   );
 }
 
@@ -204,12 +206,12 @@ export async function pauseWebhookEndpoint(
   return request<WebhookEndpoint>(
     `/v1/webhooks/endpoints/${endpointId}/pause`,
     { method: "POST", body: JSON.stringify({ reason }) },
-    token,
+    integrationOptions(token),
   );
 }
 
 export async function resumeWebhookEndpoint(token: string, endpointId: string): Promise<WebhookEndpoint> {
-  return request<WebhookEndpoint>(`/v1/webhooks/endpoints/${endpointId}/resume`, { method: "POST" }, token);
+  return request<WebhookEndpoint>(`/v1/webhooks/endpoints/${endpointId}/resume`, { method: "POST" }, integrationOptions(token));
 }
 
 export async function replayWebhookDeliveries(
@@ -220,7 +222,7 @@ export async function replayWebhookDeliveries(
   return requestWithMeta<WebhookReplayResult>(
     `/v1/webhooks/endpoints/${endpointId}/replay`,
     { method: "POST", body: JSON.stringify(payload) },
-    token,
+    integrationOptions(token),
   );
 }
 
@@ -229,10 +231,10 @@ export async function fetchWebhookSla(
   endpointId: string,
   window = "15m",
 ): Promise<WebhookSlaStatus> {
-  return request<WebhookSlaStatus>(`/v1/webhooks/endpoints/${endpointId}/sla${buildQuery({ window })}`, {}, token);
+  return request<WebhookSlaStatus>(`/v1/webhooks/endpoints/${endpointId}/sla${buildQuery({ window })}`, {}, integrationOptions(token));
 }
 
 export async function fetchWebhookAlerts(token: string, endpointId: string): Promise<WebhookAlert[]> {
-  const data = await request<ListResponse<WebhookAlert>>(`/v1/webhooks/endpoints/${endpointId}/alerts`, {}, token);
+  const data = await request<ListResponse<WebhookAlert>>(`/v1/webhooks/endpoints/${endpointId}/alerts`, {}, integrationOptions(token));
   return normalizeList(data);
 }

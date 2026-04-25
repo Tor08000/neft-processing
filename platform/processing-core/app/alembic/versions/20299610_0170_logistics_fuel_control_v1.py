@@ -9,7 +9,7 @@ from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql as pg
 
-from app.db.types import GUID
+from db.types import GUID
 
 # revision identifiers, used by Alembic.
 revision = "20299610_0170_logistics_fuel_control_v1"

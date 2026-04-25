@@ -1,0 +1,37 @@
+{
+  "captured_at": "2026-04-25T16:31:13.015420+00:00",
+  "surface": "marketplace_order_loop",
+  "status": "VERIFIED_RUNTIME",
+  "command": "cmd /c scripts\\smoke_marketplace_order_loop.cmd",
+  "public_api_change": "none; command wrapper now delegates to Python smoke to avoid Windows cmd parser drift",
+  "checks": [
+    "client browse/offers/create/pay",
+    "partner list/confirm/proof/complete",
+    "client incidents and consequences",
+    "partner settlement pending 409 before admin finalization",
+    "admin detail/events/settlement snapshot/consequences",
+    "partner settlement finalized 200 after admin override",
+    "database order/case/event persistence"
+  ],
+  "order_id": "db453cd7-2f0c-4e4a-856e-e7baaa6eca07",
+  "client_id": "00000000-0000-0000-0000-000000000001",
+  "partner_id": "00000000-0000-0000-0000-000000000001",
+  "product_id": "c3005827-b24a-40ad-b28a-24cf1c524f6c",
+  "offer_id": "03a2c03a-0a86-43f7-a21a-d69dc241532e",
+  "client_consequences_items": 0,
+  "admin_consequences_items": 0,
+  "partner_settlement_before_finalization": "409 SETTLEMENT_NOT_FINALIZED",
+  "partner_settlement_after_finalization": {
+    "http_status": 200,
+    "hash": "70d0dd68dac6dea28d4c62e66fea27b2b7a83a044a5d9da8b6facb1f8bc0149d",
+    "finalized_at": "2026-04-25T16:31:12.810437Z",
+    "partner_net": "8900.0000"
+  },
+  "admin_event_types": [
+    "CREATED",
+    "PAYMENT_PENDING",
+    "PAYMENT_PAID",
+    "CONFIRMED",
+    "COMPLETED"
+  ]
+}

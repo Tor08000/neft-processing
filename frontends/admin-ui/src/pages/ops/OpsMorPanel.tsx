@@ -1,22 +1,25 @@
 import React from "react";
 import { Link } from "react-router-dom";
 import type { OpsMorSummary } from "../../types/ops";
-import { buildPlaceholderLink } from "./opsUtils";
 
 const formatNumber = (value: number) => new Intl.NumberFormat("ru-RU").format(value);
 
 type MetricRowProps = {
   label: string;
   value: number;
-  to: string;
+  to?: string;
 };
 
 const MetricRow: React.FC<MetricRowProps> = ({ label, value, to }) => (
   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
     <span>{label}</span>
-    <Link to={to} style={{ color: "var(--neft-primary)", fontWeight: 600 }}>
-      {formatNumber(value)}
-    </Link>
+    {to ? (
+      <Link to={to} style={{ color: "var(--neft-primary)", fontWeight: 600 }}>
+        {formatNumber(value)}
+      </Link>
+    ) : (
+      <span style={{ fontWeight: 600 }}>{formatNumber(value)}</span>
+    )}
   </div>
 );
 
@@ -35,7 +38,7 @@ export const OpsMorPanel: React.FC<OpsMorPanelProps> = ({ mor }) => {
         <MetricRow
           label="Immutable violations (24h)"
           value={mor.immutable_violations_24h}
-          to={buildPlaceholderLink("MoR immutable violations")}
+          to="/runtime"
         />
         <MetricRow
           label="Payouts blocked (24h)"
@@ -45,12 +48,12 @@ export const OpsMorPanel: React.FC<OpsMorPanelProps> = ({ mor }) => {
         <MetricRow
           label="Clawback required (24h)"
           value={mor.clawback_required_24h}
-          to={buildPlaceholderLink("Clawback required")}
+          to="/finance"
         />
         <MetricRow
           label="Admin overrides (24h)"
           value={mor.admin_overrides_24h}
-          to={buildPlaceholderLink("Admin overrides")}
+          to="/commercial"
         />
       </div>
       <div style={{ marginTop: 12 }}>

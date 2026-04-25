@@ -4,77 +4,31 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from app.db import SessionLocal
-from app.main import app
-from app.models.billing_job_run import BillingJobRun, BillingJobType
+from app.models.billing_job_run import BillingJobRun, BillingJobStatus, BillingJobType
 from app.models.billing_period import BillingPeriod, BillingPeriodStatus, BillingPeriodType
 from app.models.billing_summary import BillingSummary, BillingSummaryStatus
 from app.models.clearing import Clearing
 
-pytestmark = pytest.mark.integration
+from ._money_router_harness import (
+    ADMIN_CLEARING_TEST_TABLES,
+    admin_clearing_client_context,
+    money_session_context,
+)
 
 
 @pytest.fixture
-def session():
-    db = SessionLocal()
-    try:
+def session() -> Session:
+    with money_session_context(tables=ADMIN_CLEARING_TEST_TABLES) as db:
         yield db
-    finally:
-        db.close()
 
 
 @pytest.fixture
-def admin_client(admin_auth_headers: dict):
-    with TestClient(app) as api_client:
-        api_client.headers.update(admin_auth_headers)
+def admin_client(session: Session) -> TestClient:
+    with admin_clearing_client_context(db_session=session) as api_client:
         yield api_client
 
 
-def _cleanup(session: Session, target_date: date):
-    session.query(Clearing).filter(Clearing.batch_date == target_date).delete(synchronize_session=False)
-    session.query(BillingSummary).filter(BillingSummary.billing_date == target_date).delete(synchronize_session=False)
-    session.query(BillingJobRun).filter(BillingJobRun.job_type == BillingJobType.CLEARING).delete(
-        synchronize_session=False
-    )
-    session.query(BillingPeriod).filter(BillingPeriod.start_at <= datetime.combine(target_date, datetime.max.time(), tzinfo=timezone.utc)).delete(
-        synchronize_session=False
-    )
-    session.commit()
-
-
-def test_admin_clearing_no_data(admin_client: TestClient, session: Session):
-    target_date = date(2024, 1, 1)
-    try:
-        response = admin_client.post(
-            "/api/v1/admin/clearing/run", params={"clearing_date": target_date.isoformat()}
-        )
-        assert response.status_code == 200
-        body = response.json()
-        assert body["created"] == 0
-        assert body["reason"] == "no_data"
-    finally:
-        _cleanup(session, target_date)
-
-
-def test_admin_clearing_skips_existing(admin_client: TestClient, session: Session):
-    target_date = date(2024, 1, 2)
-    clearing = Clearing(batch_date=target_date, merchant_id="m1", currency="RUB", total_amount=0)
-    session.add(clearing)
-    session.commit()
-    try:
-        response = admin_client.post(
-            "/api/v1/admin/clearing/run", params={"clearing_date": target_date.isoformat()}
-        )
-        assert response.status_code == 200
-        body = response.json()
-        assert body["created"] == 0
-        assert body["reason"] == "already_exists"
-    finally:
-        _cleanup(session, target_date)
-
-
-def test_admin_clearing_creates_from_summaries(admin_client: TestClient, session: Session):
-    target_date = date(2024, 1, 3)
+def _create_period(session: Session, target_date: date) -> BillingPeriod:
     period = BillingPeriod(
         period_type=BillingPeriodType.DAILY,
         start_at=datetime.combine(target_date, datetime.min.time(), tzinfo=timezone.utc),
@@ -84,46 +38,125 @@ def test_admin_clearing_creates_from_summaries(admin_client: TestClient, session
     )
     session.add(period)
     session.flush()
-    summaries = [
-        BillingSummary(
-            billing_date=target_date,
-            billing_period_id=period.id,
-            merchant_id="m-one",
-            client_id="c1",
-            currency="RUB",
-            total_amount=500,
-            operations_count=2,
-            commission_amount=0,
-            status=BillingSummaryStatus.FINALIZED,
-        ),
-        BillingSummary(
-            billing_date=target_date,
-            billing_period_id=period.id,
-            merchant_id="m-one",
-            client_id="c2",
-            currency="RUB",
-            total_amount=700,
-            operations_count=1,
-            commission_amount=0,
-            status=BillingSummaryStatus.FINALIZED,
-        ),
-    ]
-    session.add_all(summaries)
+    return period
+
+
+def test_admin_clearing_no_data_returns_empty_batch_list(admin_client: TestClient, session: Session):
+    target_date = date(2024, 1, 1)
+
+    response = admin_client.post("/api/v1/admin/clearing/run", params={"clearing_date": target_date.isoformat()})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body == {"clearing_date": target_date.isoformat(), "created": 0, "reason": "no_data"}
+
+    job_runs = session.query(BillingJobRun).filter(BillingJobRun.job_type == BillingJobType.CLEARING).all()
+    assert len(job_runs) == 1
+    assert job_runs[0].status == BillingJobStatus.SUCCESS
+    assert job_runs[0].metrics == {"created": 0, "reason": "no_data"}
+
+
+def test_admin_clearing_reuses_successful_run_result(admin_client: TestClient, session: Session):
+    target_date = date(2024, 1, 2)
+    period = _create_period(session, target_date)
+    session.add_all(
+        [
+            BillingSummary(
+                billing_date=target_date,
+                billing_period_id=period.id,
+                merchant_id="m-one",
+                client_id="c1",
+                currency="RUB",
+                total_amount=500,
+                operations_count=2,
+                commission_amount=0,
+                status=BillingSummaryStatus.FINALIZED,
+            ),
+            BillingSummary(
+                billing_date=target_date,
+                billing_period_id=period.id,
+                merchant_id="m-one",
+                client_id="c2",
+                currency="RUB",
+                total_amount=700,
+                operations_count=1,
+                commission_amount=0,
+                status=BillingSummaryStatus.FINALIZED,
+            ),
+        ]
+    )
     session.commit()
-    try:
-        response = admin_client.post(
-            "/api/v1/admin/clearing/run", params={"clearing_date": target_date.isoformat()}
-        )
-        assert response.status_code == 200
-        body = response.json()
-        assert body["created"] == 1
-        assert body.get("reason") in (None, "")
 
-        stored = session.query(Clearing).filter(Clearing.batch_date == target_date).all()
-        assert len(stored) == 1
-        assert stored[0].total_amount == 1200
+    first_response = admin_client.post("/api/v1/admin/clearing/run", params={"clearing_date": target_date.isoformat()})
+    assert first_response.status_code == 200
+    first_body = first_response.json()
+    assert first_body == {"clearing_date": target_date.isoformat(), "created": 1}
 
-        job_runs = session.query(BillingJobRun).filter(BillingJobRun.job_type == BillingJobType.CLEARING).all()
-        assert job_runs
-    finally:
-        _cleanup(session, target_date)
+    second_response = admin_client.post("/api/v1/admin/clearing/run", params={"clearing_date": target_date.isoformat()})
+    assert second_response.status_code == 200
+    second_body = second_response.json()
+    assert second_body == {"clearing_date": target_date.isoformat(), "created": 0, "reason": "already_exists"}
+
+    stored_batches = session.query(Clearing).filter(Clearing.batch_date == target_date).all()
+    assert len(stored_batches) == 1
+
+    job_runs = (
+        session.query(BillingJobRun)
+        .filter(BillingJobRun.job_type == BillingJobType.CLEARING)
+        .order_by(BillingJobRun.started_at.asc())
+        .all()
+    )
+    assert len(job_runs) == 2
+    assert all(job.status == BillingJobStatus.SUCCESS for job in job_runs)
+    assert job_runs[0].metrics == {"created": 1}
+    assert job_runs[1].metrics == {"created": 0, "reason": "already_exists"}
+
+
+def test_admin_clearing_creates_from_summaries(admin_client: TestClient, session: Session):
+    target_date = date(2024, 1, 3)
+    period = _create_period(session, target_date)
+    session.add_all(
+        [
+            BillingSummary(
+                billing_date=target_date,
+                billing_period_id=period.id,
+                merchant_id="m-one",
+                client_id="c1",
+                currency="RUB",
+                total_amount=500,
+                operations_count=2,
+                commission_amount=0,
+                status=BillingSummaryStatus.FINALIZED,
+            ),
+            BillingSummary(
+                billing_date=target_date,
+                billing_period_id=period.id,
+                merchant_id="m-two",
+                client_id="c2",
+                currency="USD",
+                total_amount=700,
+                operations_count=1,
+                commission_amount=0,
+                status=BillingSummaryStatus.FINALIZED,
+            ),
+        ]
+    )
+    session.commit()
+
+    response = admin_client.post("/api/v1/admin/clearing/run", params={"clearing_date": target_date.isoformat()})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body == {"clearing_date": target_date.isoformat(), "created": 2}
+
+    stored_batches = session.query(Clearing).filter(Clearing.batch_date == target_date).all()
+    assert len(stored_batches) == 2
+    assert {(item.merchant_id, item.currency, item.total_amount) for item in stored_batches} == {
+        ("m-one", "RUB", 500),
+        ("m-two", "USD", 700),
+    }
+
+    job_runs = session.query(BillingJobRun).filter(BillingJobRun.job_type == BillingJobType.CLEARING).all()
+    assert len(job_runs) == 1
+    assert job_runs[0].status == BillingJobStatus.SUCCESS
+    assert job_runs[0].metrics == {"created": 2}

@@ -1,20 +1,14 @@
-import os
 from datetime import datetime, timezone
 
 import pytest
+from fastapi import APIRouter, Depends
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-TEST_DB_URL = os.getenv("DATABASE_URL")
-
-if TEST_DB_URL and not TEST_DB_URL.startswith("sqlite"):
-    pytest.skip("admin policies API tests expect isolated SQLite database", allow_module_level=True)
-
-os.environ.setdefault("DATABASE_URL", "sqlite+pysqlite:///:memory:")
-
-from app.db import Base, engine, new_uuid_str  # noqa: E402
-from app.main import app  # noqa: E402
-from app.models.fuel import (  # noqa: E402
+from app import services
+from app.api.dependencies.admin import require_admin_user
+from app.db import new_uuid_str
+from app.models.fuel import (
     FleetActionBreachKind,
     FleetActionPolicy,
     FleetActionPolicyAction,
@@ -24,21 +18,38 @@ from app.models.fuel import (  # noqa: E402
     FleetPolicyExecution,
     FleetPolicyExecutionStatus,
 )
-from app.models.risk_policy import RiskPolicy  # noqa: E402
-from app.models.risk_types import RiskSubjectType  # noqa: E402
+from app.models.risk_policy import RiskPolicy
+from app.models.risk_types import RiskSubjectType
+from app.routers.admin.policies import router as admin_policies_router
+from app.tests._scoped_router_harness import router_client_context, scoped_session_context
 
 
-@pytest.fixture(autouse=True)
-def clean_db():
-    Base.metadata.drop_all(bind=engine)
-    Base.metadata.create_all(bind=engine)
-    yield
-    Base.metadata.drop_all(bind=engine)
+ADMIN_POLICIES_TEST_TABLES = (
+    FleetActionPolicy.__table__,
+    FleetPolicyExecution.__table__,
+    RiskPolicy.__table__,
+)
+
+
+def _admin_policies_test_router() -> APIRouter:
+    router = APIRouter(prefix="/api/v1/admin", dependencies=[Depends(require_admin_user)])
+    router.include_router(admin_policies_router)
+    return router
 
 
 @pytest.fixture
-def client(admin_auth_headers: dict):
-    with TestClient(app) as api_client:
+def db_session() -> Session:
+    with scoped_session_context(tables=ADMIN_POLICIES_TEST_TABLES) as session:
+        yield session
+
+
+@pytest.fixture
+def client(db_session: Session, admin_auth_headers: dict):
+    with router_client_context(
+        router=_admin_policies_test_router(),
+        db_session=db_session,
+        dependency_overrides={require_admin_user: services.admin_auth.require_admin},
+    ) as api_client:
         api_client.headers.update(admin_auth_headers)
         yield api_client
 
@@ -49,50 +60,49 @@ def user_auth_headers(user_token: str):
 
 
 @pytest.fixture
-def seeded_policies():
-    with Session(bind=engine) as db:
-        fleet_policy = FleetActionPolicy(
-            client_id="client-1",
-            scope_type=FleetActionPolicyScopeType.CLIENT,
-            scope_id=None,
-            trigger_type=FleetActionTriggerType.LIMIT_BREACH,
-            trigger_severity_min=FleetNotificationSeverity.HIGH,
-            breach_kind=FleetActionBreachKind.HARD,
-            action=FleetActionPolicyAction.AUTO_BLOCK_CARD,
-            cooldown_seconds=300,
-            active=True,
-        )
-        db.add(fleet_policy)
-        risk_policy = RiskPolicy(
-            id="risk-policy-1",
-            subject_type=RiskSubjectType.PAYMENT,
-            tenant_id=10,
-            client_id="client-1",
-            provider=None,
-            currency=None,
-            country=None,
-            threshold_set_id="thresholds-1",
-            model_selector="default",
-            priority=10,
-            active=False,
-        )
-        db.add(risk_policy)
-        db.flush()
-        execution = FleetPolicyExecution(
-            client_id="client-1",
-            policy_id=fleet_policy.id,
-            event_type="LIMIT_BREACH",
-            event_id=new_uuid_str(),
-            action="AUTO_BLOCK_CARD",
-            status=FleetPolicyExecutionStatus.APPLIED,
-            reason=None,
-            dedupe_key=f"client:client-1:policy:{fleet_policy.id}:event:{new_uuid_str()}",
-            created_at=datetime.now(timezone.utc),
-        )
-        db.add(execution)
-        db.commit()
-        db.refresh(fleet_policy)
-        yield {"fleet_id": str(fleet_policy.id), "risk_id": risk_policy.id}
+def seeded_policies(db_session: Session):
+    fleet_policy = FleetActionPolicy(
+        client_id="client-1",
+        scope_type=FleetActionPolicyScopeType.CLIENT,
+        scope_id=None,
+        trigger_type=FleetActionTriggerType.LIMIT_BREACH,
+        trigger_severity_min=FleetNotificationSeverity.HIGH,
+        breach_kind=FleetActionBreachKind.HARD,
+        action=FleetActionPolicyAction.AUTO_BLOCK_CARD,
+        cooldown_seconds=300,
+        active=True,
+    )
+    db_session.add(fleet_policy)
+    risk_policy = RiskPolicy(
+        id="risk-policy-1",
+        subject_type=RiskSubjectType.PAYMENT,
+        tenant_id=10,
+        client_id="client-1",
+        provider=None,
+        currency=None,
+        country=None,
+        threshold_set_id="thresholds-1",
+        model_selector="default",
+        priority=10,
+        active=False,
+    )
+    db_session.add(risk_policy)
+    db_session.flush()
+    execution = FleetPolicyExecution(
+        client_id="client-1",
+        policy_id=fleet_policy.id,
+        event_type="LIMIT_BREACH",
+        event_id=new_uuid_str(),
+        action="AUTO_BLOCK_CARD",
+        status=FleetPolicyExecutionStatus.APPLIED,
+        reason=None,
+        dedupe_key=f"client:client-1:policy:{fleet_policy.id}:event:{new_uuid_str()}",
+        created_at=datetime.now(timezone.utc),
+    )
+    db_session.add(execution)
+    db_session.commit()
+    db_session.refresh(fleet_policy)
+    yield {"fleet_id": str(fleet_policy.id), "risk_id": risk_policy.id}
 
 
 def test_list_policies_across_types(client: TestClient, seeded_policies: dict):
@@ -121,8 +131,14 @@ def test_policy_detail_endpoint(client: TestClient, seeded_policies: dict):
     assert payload["header"]["type"] == "fleet"
 
 
-def test_admin_policies_requires_admin(user_auth_headers: dict, seeded_policies: dict):
-    with TestClient(app) as api_client:
+def test_admin_policies_requires_admin(
+    db_session: Session, user_auth_headers: dict, seeded_policies: dict
+):
+    with router_client_context(
+        router=_admin_policies_test_router(),
+        db_session=db_session,
+        dependency_overrides={require_admin_user: services.admin_auth.require_admin},
+    ) as api_client:
         api_client.headers.update(user_auth_headers)
         resp = api_client.get("/api/v1/admin/policies")
         assert resp.status_code == 403

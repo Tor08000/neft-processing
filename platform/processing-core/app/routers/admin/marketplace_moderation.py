@@ -3,6 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 
+from app.api.dependencies.admin_capability import require_admin_capability
 from app.api.dependencies.admin import require_admin_user
 from app.db import get_db
 from app.models.marketplace_moderation import MarketplaceModerationAction, MarketplaceModerationEntityType
@@ -28,7 +29,11 @@ from app.services.marketplace_moderation_service import MarketplaceModerationSer
 from app.services.marketplace_offers_service import MarketplaceOffersService
 from app.services.marketplace_services_service import MarketplaceServicesService
 
-router = APIRouter(prefix="/marketplace", tags=["admin"])
+router = APIRouter(
+    prefix="/marketplace",
+    tags=["admin"],
+    dependencies=[Depends(require_admin_capability("marketplace"))],
+)
 
 
 def _product_media_out(media) -> ProductMediaOut:
@@ -239,7 +244,7 @@ def approve_product_card(
     product_id: str,
     request: Request,
     db: Session = Depends(get_db),
-    token: dict = Depends(require_admin_user),
+    token: dict = Depends(require_admin_capability("marketplace", "approve")),
 ) -> ProductCardOut:
     catalog_service = MarketplaceCatalogService(
         db, request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(token))
@@ -273,7 +278,7 @@ def reject_product_card(
     payload: ModerationRejectRequest,
     request: Request,
     db: Session = Depends(get_db),
-    token: dict = Depends(require_admin_user),
+    token: dict = Depends(require_admin_capability("marketplace", "approve")),
 ) -> ProductCardOut:
     catalog_service = MarketplaceCatalogService(
         db, request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(token))
@@ -308,7 +313,7 @@ def approve_service_card(
     service_id: str,
     request: Request,
     db: Session = Depends(get_db),
-    token: dict = Depends(require_admin_user),
+    token: dict = Depends(require_admin_capability("marketplace", "approve")),
 ) -> ServiceModerationDetail:
     services_service = MarketplaceServicesService(db)
     moderation_service = MarketplaceModerationService(
@@ -366,7 +371,7 @@ def reject_service_card(
     payload: ModerationRejectRequest,
     request: Request,
     db: Session = Depends(get_db),
-    token: dict = Depends(require_admin_user),
+    token: dict = Depends(require_admin_capability("marketplace", "approve")),
 ) -> ServiceModerationDetail:
     services_service = MarketplaceServicesService(db)
     moderation_service = MarketplaceModerationService(
@@ -425,7 +430,7 @@ def approve_offer(
     offer_id: str,
     request: Request,
     db: Session = Depends(get_db),
-    token: dict = Depends(require_admin_user),
+    token: dict = Depends(require_admin_capability("marketplace", "approve")),
 ) -> OfferOut:
     offers_service = MarketplaceOffersService(db)
     moderation_service = MarketplaceModerationService(
@@ -456,7 +461,7 @@ def reject_offer(
     payload: ModerationRejectRequest,
     request: Request,
     db: Session = Depends(get_db),
-    token: dict = Depends(require_admin_user),
+    token: dict = Depends(require_admin_capability("marketplace", "approve")),
 ) -> OfferOut:
     offers_service = MarketplaceOffersService(db)
     moderation_service = MarketplaceModerationService(
@@ -518,7 +523,7 @@ def approve_offer_legacy(
     offer_id: str,
     request: Request,
     db: Session = Depends(get_db),
-    token: dict = Depends(require_admin_user),
+    token: dict = Depends(require_admin_capability("marketplace", "approve")),
 ) -> OfferOut:
     return approve_offer(offer_id=offer_id, request=request, db=db, token=token)
 
@@ -529,6 +534,6 @@ def reject_offer_legacy(
     payload: ModerationRejectRequest,
     request: Request,
     db: Session = Depends(get_db),
-    token: dict = Depends(require_admin_user),
+    token: dict = Depends(require_admin_capability("marketplace", "approve")),
 ) -> OfferOut:
     return reject_offer(offer_id=offer_id, payload=payload, request=request, db=db, token=token)

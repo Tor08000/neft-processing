@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from neft_shared.logging_setup import get_logger
 
+from app.db.types import new_uuid_str
 from app.models.audit_log import ActorType
 from app.models.internal_ledger import (
     InternalLedgerAccount,
@@ -286,7 +287,17 @@ def upload_external_statement(
         "lines": lines or [],
     }
     source_hash = _hash_payload(payload)
+    statement_id = new_uuid_str()
+    audit = AuditService(db).audit(
+        event_type="EXTERNAL_STATEMENT_UPLOADED",
+        entity_type="external_statement",
+        entity_id=statement_id,
+        action="created",
+        after={"statement_id": statement_id, "provider": provider, "source_hash": source_hash},
+        request_ctx=_audit_actor(created_by),
+    )
     statement = ExternalStatement(
+        id=statement_id,
         provider=provider,
         period_start=period_start,
         period_end=period_end,
@@ -296,23 +307,13 @@ def upload_external_statement(
         closing_balance=closing_balance,
         lines=lines,
         source_hash=source_hash,
+        audit_event_id=audit.id,
     )
     try:
         db.add(statement)
         db.flush()
     except IntegrityError as exc:
         raise ValueError("statement_already_uploaded") from exc
-
-    audit = AuditService(db).audit(
-        event_type="EXTERNAL_STATEMENT_UPLOADED",
-        entity_type="external_statement",
-        entity_id=str(statement.id),
-        action="created",
-        after={"statement_id": str(statement.id), "provider": provider, "source_hash": source_hash},
-        request_ctx=_audit_actor(created_by),
-    )
-    statement.audit_event_id = audit.id
-    db.flush()
     logger.info(
         "external statement uploaded",
         extra={"statement_id": str(statement.id), "provider": provider},
@@ -541,6 +542,22 @@ def run_external_reconciliation(
             "links_matched": links_matched,
             "links_mismatched": links_mismatched,
             "links_pending": max(links_pending, 0),
+            "statement_id": str(statement.id),
+            "statement_totals": {
+                "total_in": str(statement.total_in) if statement.total_in is not None else None,
+                "total_out": str(statement.total_out) if statement.total_out is not None else None,
+                "closing_balance": str(statement.closing_balance) if statement.closing_balance is not None else None,
+            },
+            "internal_totals": {
+                "total_in": str(internal_in),
+                "total_out": str(internal_out),
+                "closing_balance": str(internal_balance),
+            },
+            "links": {
+                "matched": links_matched,
+                "mismatched": links_mismatched,
+                "pending": max(links_pending, 0),
+            },
         }
         run.summary = summary
         run.status = ReconciliationRunStatus.COMPLETED

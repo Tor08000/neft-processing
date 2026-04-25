@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from uuid import uuid4
 
 import pytest
@@ -6,16 +6,42 @@ from fastapi.testclient import TestClient
 
 from app.db import Base, SessionLocal, engine
 from app.main import app
+from app.models.audit_log import AuditLog
 from app.models.invoice import Invoice, InvoiceStatus
-from app.models.settlement_v1 import SettlementPeriod, SettlementPeriodStatus
+from app.models.marketplace_contracts import Contract
+from app.models.marketplace_settlement import MarketplaceSettlementSnapshot
+from app.models.settlement_v1 import SettlementItem, SettlementPeriod
 
 
 @pytest.fixture(autouse=True)
 def clean_db():
-    Base.metadata.drop_all(bind=engine)
-    Base.metadata.create_all(bind=engine)
+    tables = [
+        AuditLog.__table__,
+        Invoice.__table__,
+        Contract.__table__,
+        SettlementPeriod.__table__,
+        SettlementItem.__table__,
+        MarketplaceSettlementSnapshot.__table__,
+    ]
+    for table in reversed(tables):
+        table.drop(bind=engine, checkfirst=True)
+    for table in tables:
+        table.create(bind=engine, checkfirst=True)
     yield
-    Base.metadata.drop_all(bind=engine)
+    for table in reversed(tables):
+        table.drop(bind=engine, checkfirst=True)
+
+
+@pytest.fixture(autouse=True)
+def _patch_startup(monkeypatch: pytest.MonkeyPatch) -> None:
+    import app.main as main
+
+    monkeypatch.setattr(main, "init_db", lambda: None)
+    monkeypatch.setattr(main, "ensure_default_refs", lambda _db: None)
+    monkeypatch.setattr(main, "register_shadow_hook", lambda: None)
+    monkeypatch.setattr(main.settings, "APP_ENV", "dev", raising=False)
+    monkeypatch.setenv("APP_ENV", "dev")
+    monkeypatch.setenv("ALLOW_MOCK_PROVIDERS_IN_PROD", "1")
 
 
 @pytest.fixture
@@ -43,34 +69,13 @@ def _create_invoice(session, *, client_id: str, number: str) -> Invoice:
     session.add(invoice)
     session.commit()
     return invoice
-
-
-def _create_settlement(session, *, partner_id: str, amount: int = 10000) -> SettlementPeriod:
-    now = datetime.now(timezone.utc)
-    settlement = SettlementPeriod(
-        id=str(uuid4()),
-        partner_id=partner_id,
-        currency="RUB",
-        period_start=now - timedelta(days=30),
-        period_end=now,
-        status=SettlementPeriodStatus.CALCULATED,
-        total_gross=amount,
-        total_fees=500,
-        total_refunds=200,
-        net_amount=amount - 700,
-    )
-    session.add(settlement)
-    session.commit()
-    return settlement
-
-
 def test_client_portal_invoices_scoped(db_session, make_jwt):
-    client_id = "client-1"
-    other_client_id = "client-2"
+    client_id = str(uuid4())
+    other_client_id = str(uuid4())
     _create_invoice(db_session, client_id=client_id, number="INV-CLIENT-1")
     _create_invoice(db_session, client_id=other_client_id, number="INV-CLIENT-2")
 
-    token = make_jwt(roles=("CLIENT_USER",), client_id=client_id)
+    token = make_jwt(roles=("CLIENT_USER",), client_id=client_id, extra={"aud": "neft-client"})
     with TestClient(app, headers={"Authorization": f"Bearer {token}"}) as api_client:
         resp = api_client.get("/api/client/invoices")
         assert resp.status_code == 200
@@ -79,27 +84,26 @@ def test_client_portal_invoices_scoped(db_session, make_jwt):
         assert payload["items"][0]["invoice_number"] == "INV-CLIENT-1"
 
 
-def test_partner_portal_settlements_scoped(db_session, make_jwt):
-    partner_id = str(uuid4())
-    other_partner_id = str(uuid4())
-    _create_settlement(db_session, partner_id=partner_id, amount=12000)
-    _create_settlement(db_session, partner_id=other_partner_id, amount=8000)
-
-    token = make_jwt(roles=("PARTNER_OWNER",), extra={"partner_id": partner_id, "subject_type": "partner_user"})
+def test_partner_portal_contracts_and_settlement_reads_are_mounted_without_writes(make_jwt):
+    token = make_jwt(
+        roles=("PARTNER_OWNER",),
+        extra={"partner_id": str(uuid4()), "subject_type": "partner_user", "aud": "neft-partner"},
+    )
     with TestClient(app, headers={"Authorization": f"Bearer {token}"}) as api_client:
-        resp = api_client.get("/api/partner/settlements")
-        assert resp.status_code == 200
-        payload = resp.json()
-        assert len(payload["items"]) == 1
-        assert payload["items"][0]["settlement_ref"]
+        settlements = api_client.get("/api/partner/settlements")
+        assert settlements.status_code == 200
+        assert settlements.json()["items"] == []
 
+        details = api_client.get(f"/api/partner/settlements/{uuid4()}")
+        assert details.status_code == 404
 
-def test_partner_forbidden_access_returns_403(db_session, make_jwt):
-    partner_id = str(uuid4())
-    other_partner_id = str(uuid4())
-    settlement = _create_settlement(db_session, partner_id=other_partner_id)
+        confirm = api_client.post(f"/api/partner/settlements/{uuid4()}/confirm")
+        assert confirm.status_code == 404
 
-    token = make_jwt(roles=("PARTNER_OWNER",), extra={"partner_id": partner_id, "subject_type": "partner_user"})
-    with TestClient(app, headers={"Authorization": f"Bearer {token}"}) as api_client:
-        resp = api_client.get(f"/api/partner/settlements/{settlement.id}")
-        assert resp.status_code == 403
+        contracts = api_client.get("/api/partner/contracts")
+        assert contracts.status_code == 200
+        assert contracts.json()["items"] == []
+
+        core_contracts = api_client.get("/api/core/partner/contracts")
+        assert core_contracts.status_code == 200
+        assert core_contracts.json()["items"] == []

@@ -28,11 +28,6 @@ from app.services.decision import DecisionAction, DecisionContext, DecisionEngin
 from app.services.documents_storage import DocumentsStorage
 from app.services.legal_integrations.base import EnvelopeStatus, SigningPayload
 from app.services.legal_integrations.errors import EnvelopeNotFound, ProviderNotConfigured, SignatureVerificationError
-from app.services.legal_integrations.providers.docusign import DocuSignAdapter
-from app.services.legal_integrations.providers.kontur_sign import KonturSignAdapter
-from app.services.legal_integrations.providers.noop import NoopLegalAdapter
-from app.services.legal_integrations.edo.diadok import DiadokAdapter
-from app.services.legal_integrations.edo.sbis import SbisAdapter
 from app.services.legal_integrations.registry import LegalAdapterRegistry, registry as default_registry
 from app.services.policy import Action, PolicyEngine, audit_access_denied
 from app.services.policy.actor import actor_from_token
@@ -63,16 +58,6 @@ class LegalIntegrationsService:
         self.decision_engine = decision_engine or DecisionEngine(db)
         self.policy_engine = policy_engine or PolicyEngine()
         self.now_provider = now_provider or (lambda: datetime.now(timezone.utc))
-
-        if not list(self.registry.providers()):
-            for adapter in (
-                NoopLegalAdapter(),
-                DocuSignAdapter(),
-                KonturSignAdapter(),
-                DiadokAdapter(),
-                SbisAdapter(),
-            ):
-                self.registry.register(adapter)
 
     def resolve_config(self, *, tenant_id: int, client_id: str) -> ResolvedLegalConfig:
         config = (

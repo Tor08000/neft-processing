@@ -1,21 +1,21 @@
 import React, { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { fetchFinanceOverview } from "../../api/finance";
 import type { FinanceOverview } from "../../types/finance";
 import { extractRequestId } from "../ops/opsUtils";
 import { ApiError } from "../../api/http";
 import { AdminMisconfigPage } from "../admin/AdminStatusPages";
-
-const KPI_STYLE: React.CSSProperties = {
-  display: "grid",
-  gap: 16,
-  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-};
+import { EmptyState } from "../../components/common/EmptyState";
+import { ErrorState } from "../../components/common/ErrorState";
+import { Loader } from "../../components/Loader/Loader";
+import { FinanceOverview as BrandFinanceOverview } from "@shared/brand/components";
 
 export const FinanceOverviewPage: React.FC = () => {
   const [window, setWindow] = useState<"24h" | "7d">("24h");
   const [overview, setOverview] = useState<FinanceOverview | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
+  const [retryKey, setRetryKey] = useState(0);
 
   useEffect(() => {
     setLoading(true);
@@ -28,12 +28,16 @@ export const FinanceOverviewPage: React.FC = () => {
         setError(err);
       })
       .finally(() => setLoading(false));
-  }, [window]);
+  }, [window, retryKey]);
 
   const requestId = error ? extractRequestId(error) : null;
 
   if (loading) {
-    return <div>Loading finance overview…</div>;
+    return (
+      <div className="card">
+        <Loader label="Loading finance overview..." />
+      </div>
+    );
   }
 
   if (error instanceof ApiError && error.status === 404) {
@@ -42,19 +46,23 @@ export const FinanceOverviewPage: React.FC = () => {
 
   if (!overview) {
     return (
-      <div>
-        <h1 className="neft-h1">Finance overview</h1>
-        <div style={{ color: "#dc2626" }}>Failed to load overview: {error?.message ?? "Unknown error"}</div>
-        {requestId ? <div style={{ marginTop: 8 }}>Request ID: {requestId}</div> : null}
-      </div>
+      <ErrorState
+        title="Finance overview unavailable"
+        description={error?.message ?? "Overview did not return data for this environment."}
+        requestId={requestId}
+        actionLabel="Retry"
+        onAction={() => setRetryKey((value) => value + 1)}
+      />
     );
   }
 
   return (
     <div style={{ display: "grid", gap: 20 }}>
-      <div>
-        <h1 className="neft-h1">Finance overview</h1>
-        <div style={{ display: "flex", gap: 8 }}>
+      <div className="surface-toolbar">
+        <div>
+          <h1 className="neft-h1">Finance overview</h1>
+        </div>
+        <div className="toolbar-actions">
           <button type="button" className={window === "24h" ? "neft-btn" : "ghost"} onClick={() => setWindow("24h")}>
             24h
           </button>
@@ -65,41 +73,56 @@ export const FinanceOverviewPage: React.FC = () => {
       </div>
 
       {error ? (
-        <div style={{ color: "#dc2626" }}>
-          {error.message}
-          {requestId ? <div style={{ marginTop: 4 }}>Request ID: {requestId}</div> : null}
-        </div>
+        <ErrorState
+          title="Finance overview may be stale"
+          description={error.message}
+          requestId={requestId}
+          actionLabel="Retry"
+          onAction={() => setRetryKey((value) => value + 1)}
+        />
       ) : null}
 
-      <div style={KPI_STYLE}>
-        <div className="card">
-          <div className="neft-kpi-label">Overdue orgs</div>
-          <div className="neft-kpi-value">{overview.overdue_orgs}</div>
-          <div className="neft-kpi-meta">Amount: {overview.overdue_amount}</div>
-        </div>
-        <div className="card">
-          <div className="neft-kpi-label">Invoices issued</div>
-          <div className="neft-kpi-value">{overview.invoices_issued_24h}</div>
-          <div className="neft-kpi-meta">Paid: {overview.invoices_paid_24h}</div>
-        </div>
-        <div className="card">
-          <div className="neft-kpi-label">Payment intakes pending</div>
-          <div className="neft-kpi-value">{overview.payment_intakes_pending}</div>
-        </div>
-        <div className="card">
-          <div className="neft-kpi-label">Reconciliation unmatched</div>
-          <div className="neft-kpi-value">{overview.reconciliation_unmatched_24h}</div>
-        </div>
-        <div className="card">
-          <div className="neft-kpi-label">Payout queue pending</div>
-          <div className="neft-kpi-value">{overview.payout_queue_pending}</div>
-        </div>
-        <div className="card">
-          <div className="neft-kpi-label">MoR immutable violations</div>
-          <div className="neft-kpi-value">{overview.mor_immutable_violations_24h}</div>
-          <div className="neft-kpi-meta">Clawback required: {overview.clawback_required_24h}</div>
-        </div>
-      </div>
+      <BrandFinanceOverview
+        items={[
+          {
+            id: "overdue-orgs",
+            label: "Overdue orgs",
+            value: overview.overdue_orgs,
+            meta: `Amount: ${overview.overdue_amount}`,
+            tone: "warning",
+          },
+          {
+            id: "invoices-issued",
+            label: "Invoices issued",
+            value: overview.invoices_issued_24h,
+            meta: `Paid: ${overview.invoices_paid_24h}`,
+            tone: "info",
+          },
+          {
+            id: "payment-intakes",
+            label: "Payment intakes pending",
+            value: overview.payment_intakes_pending,
+          },
+          {
+            id: "reconciliation",
+            label: "Reconciliation unmatched",
+            value: overview.reconciliation_unmatched_24h,
+            tone: "danger",
+          },
+          {
+            id: "payout-queue",
+            label: "Payout queue pending",
+            value: overview.payout_queue_pending,
+          },
+          {
+            id: "mor-violations",
+            label: "MoR immutable violations",
+            value: overview.mor_immutable_violations_24h,
+            meta: `Clawback required: ${overview.clawback_required_24h}`,
+            tone: "premium",
+          },
+        ]}
+      />
 
       <div className="card">
         <h3 style={{ marginTop: 0 }}>Payout blockers (top 5)</h3>
@@ -112,25 +135,30 @@ export const FinanceOverviewPage: React.FC = () => {
             ))}
           </ul>
         ) : (
-          <div className="muted">No blockers detected.</div>
+          <EmptyState
+            title="No blockers detected"
+            description="Blocked payout reasons will appear here when the queue records a real blocker."
+            actionLabel="Refresh"
+            actionOnClick={() => setRetryKey((value) => value + 1)}
+          />
         )}
       </div>
 
       <div className="card">
         <h3 style={{ marginTop: 0 }}>Quick links</h3>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
-          <a className="ghost" href="/finance/invoices">
+        <div className="toolbar-actions">
+          <Link className="ghost" to="/finance/invoices">
             Invoices
-          </a>
-          <a className="ghost" href="/finance/payment-intakes">
+          </Link>
+          <Link className="ghost" to="/finance/payment-intakes">
             Payment intakes
-          </a>
-          <a className="ghost" href="/finance/reconciliation/imports">
+          </Link>
+          <Link className="ghost" to="/finance/reconciliation/imports">
             Reconciliation imports
-          </a>
-          <a className="ghost" href="/finance/payouts">
+          </Link>
+          <Link className="ghost" to="/finance/payouts">
             Payout queue
-          </a>
+          </Link>
         </div>
       </div>
     </div>

@@ -3,8 +3,8 @@ export type ClearingStatus = "PENDING" | "SENT" | "CONFIRMED" | "FAILED";
 export interface ClearingBatch {
   id: string;
   merchant_id: string;
-  batch_date: string;
-  currency: string;
+  date_from: string;
+  date_to: string;
   total_amount: number;
   status: ClearingStatus;
   operations_count?: number;

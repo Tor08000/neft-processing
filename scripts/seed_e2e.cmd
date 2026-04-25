@@ -1,5 +1,5 @@
 @echo off
-setlocal enabledelayedexpansion
+setlocal EnableExtensions DisableDelayedExpansion
 
 if "%GATEWAY_BASE%"=="" set "GATEWAY_BASE=http://localhost"
 if "%AUTH_BASE%"=="" set "AUTH_BASE=/api/v1/auth"
@@ -9,10 +9,10 @@ set "CORE_ADMIN_URL=%GATEWAY_BASE%%CORE_BASE%/api/v1/admin"
 set "CORE_CLIENT_URL=%GATEWAY_BASE%%CORE_BASE%/client/api/v1"
 set "CORE_PARTNER_URL=%GATEWAY_BASE%%CORE_BASE%/partner"
 
-if "%ADMIN_EMAIL%"=="" set "ADMIN_EMAIL=admin@example.com"
-if "%ADMIN_PASSWORD%"=="" set "ADMIN_PASSWORD=admin"
+if "%ADMIN_EMAIL%"=="" set "ADMIN_EMAIL=admin@neft.local"
+if "%ADMIN_PASSWORD%"=="" set "ADMIN_PASSWORD=Neft123!"
 if "%CLIENT_EMAIL%"=="" set "CLIENT_EMAIL=client@neft.local"
-if "%CLIENT_PASSWORD%"=="" set "CLIENT_PASSWORD=client"
+if "%CLIENT_PASSWORD%"=="" set "CLIENT_PASSWORD=Client123!"
 if "%PARTNER_EMAIL%"=="" set "PARTNER_EMAIL=partner@neft.local"
 if "%PARTNER_PASSWORD%"=="" set "PARTNER_PASSWORD=Partner123!"
 if "%PARTNER_LEGAL_STATUS%"=="" set "PARTNER_LEGAL_STATUS=VERIFIED"
@@ -23,9 +23,9 @@ set "ADMIN_TOKEN="
 set "CLIENT_TOKEN="
 set "PARTNER_TOKEN="
 
-call :login "%ADMIN_EMAIL%" "%ADMIN_PASSWORD%" ADMIN_TOKEN || goto :fail
-call :login "%CLIENT_EMAIL%" "%CLIENT_PASSWORD%" CLIENT_TOKEN || goto :fail
-call :login "%PARTNER_EMAIL%" "%PARTNER_PASSWORD%" PARTNER_TOKEN || goto :fail
+call :login "%ADMIN_EMAIL%" "%ADMIN_PASSWORD%" "admin" ADMIN_TOKEN || goto :fail
+call :login "%CLIENT_EMAIL%" "%CLIENT_PASSWORD%" "client" CLIENT_TOKEN || goto :fail
+call :login "%PARTNER_EMAIL%" "%PARTNER_PASSWORD%" "partner" PARTNER_TOKEN || goto :fail
 
 set "ADMIN_HEADER=Authorization: Bearer %ADMIN_TOKEN%"
 set "CLIENT_HEADER=Authorization: Bearer %CLIENT_TOKEN%"
@@ -64,10 +64,11 @@ exit /b 0
 :login
 set "EMAIL=%~1"
 set "PASSWORD=%~2"
-set "TOKEN_VAR=%~3"
+set "PORTAL=%~3"
+set "TOKEN_VAR=%~4"
 set "TOKEN="
 
-curl -s -S -X POST "%AUTH_URL%/login" -H "Content-Type: application/json" -d "{\"email\":\"%EMAIL%\",\"password\":\"%PASSWORD%\"}" > login.json
+curl -s -S -X POST "%AUTH_URL%/login" -H "Content-Type: application/json" -d "{\"email\":\"%EMAIL%\",\"password\":\"%PASSWORD%\",\"portal\":\"%PORTAL%\"}" > login.json
 for /f "usebackq tokens=*" %%t in (`python -c "import json; print(json.load(open('login.json')).get('access_token',''))"`) do set "TOKEN=%%t"
 if "%TOKEN%"=="" (
   echo [FAIL] No access_token returned for %EMAIL%.

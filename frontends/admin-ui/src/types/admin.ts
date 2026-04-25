@@ -1,24 +1,76 @@
 export type AdminRole =
+  | "NEFT_SUPPORT"
+  | "SUPPORT"
   | "NEFT_OPS"
+  | "OPS"
+  | "OPERATIONS"
   | "NEFT_FINANCE"
+  | "FINANCE"
+  | "ADMIN_FINANCE"
   | "NEFT_SALES"
+  | "SALES"
+  | "CRM"
+  | "ADMIN_CRM"
   | "NEFT_LEGAL"
+  | "LEGAL"
+  | "AUDITOR"
+  | "ANALYST"
+  | "OBSERVER"
+  | "READ_ONLY_ANALYST"
+  | "NEFT_OBSERVER"
   | "NEFT_SUPERADMIN"
   | "NEFT_ADMIN"
   | "ADMIN"
+  | "SUPERADMIN"
+  | "PLATFORM_ADMIN"
   | string;
+
+export type AdminRoleLevel =
+  | "superadmin"
+  | "platform_admin"
+  | "finance_admin"
+  | "support_admin"
+  | "operator"
+  | "commercial_admin"
+  | "legal_admin"
+  | "observer";
 
 export interface AdminPermission {
   read: boolean;
+  operate: boolean;
+  approve: boolean;
+  override: boolean;
+  manage: boolean;
   write: boolean;
 }
 
+export type AdminPermissionKey =
+  | "access"
+  | "ops"
+  | "runtime"
+  | "finance"
+  | "revenue"
+  | "cases"
+  | "commercial"
+  | "crm"
+  | "marketplace"
+  | "legal"
+  | "onboarding"
+  | "audit";
+
 export interface AdminPermissions {
+  access: AdminPermission;
   ops: AdminPermission;
+  runtime: AdminPermission;
   finance: AdminPermission;
-  sales: AdminPermission;
+  revenue: AdminPermission;
+  cases: AdminPermission;
+  commercial: AdminPermission;
+  crm: AdminPermission;
+  marketplace: AdminPermission;
   legal: AdminPermission;
-  superadmin: AdminPermission;
+  onboarding: AdminPermission;
+  audit: AdminPermission;
 }
 
 export interface AdminEnv {
@@ -37,6 +89,8 @@ export interface AdminUserProfile {
 export interface AdminMeResponse {
   admin_user: AdminUserProfile;
   roles: AdminRole[];
+  primary_role_level: AdminRoleLevel;
+  role_levels: AdminRoleLevel[];
   permissions: AdminPermissions;
   env: AdminEnv;
   environment?: AdminEnv;

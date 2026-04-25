@@ -4,11 +4,13 @@ import os
 
 from pathlib import Path
 
+import pytest
 import sqlalchemy as sa
 from alembic.config import Config
 from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.dialects.postgresql import ENUM as PGEnum
+from sqlalchemy.engine.url import make_url
 
 from app.db import Base
 from app.db.schema import DB_SCHEMA
@@ -81,6 +83,12 @@ def _alembic_head_revision() -> str | None:
 
 def test_db_schema_consistency() -> None:
     database_url = os.getenv("DATABASE_URL", "")
+    try:
+        drivername = make_url(database_url).drivername
+    except Exception:
+        drivername = ""
+    if not drivername.startswith("postgresql"):
+        pytest.skip("db schema consistency test requires a PostgreSQL DATABASE_URL")
     full_schema_expected = os.getenv("NEFT_FULL_SCHEMA_EXPECTED", "").strip().lower() in {
         "1",
         "true",

@@ -2,16 +2,17 @@
 setlocal EnableExtensions EnableDelayedExpansion
 
 if "%COMPOSE_FILE%"=="" set "COMPOSE_FILE=docker-compose.yml"
-if "%NEFT_BOOTSTRAP_ADMIN_EMAIL%"=="" set "NEFT_BOOTSTRAP_ADMIN_EMAIL=admin@example.com"
-if "%NEFT_BOOTSTRAP_ADMIN_PASSWORD%"=="" set "NEFT_BOOTSTRAP_ADMIN_PASSWORD=Admin123!"
+if "%NEFT_BOOTSTRAP_ADMIN_EMAIL%"=="" set "NEFT_BOOTSTRAP_ADMIN_EMAIL=admin@neft.local"
+if "%NEFT_BOOTSTRAP_ADMIN_PASSWORD%"=="" set "NEFT_BOOTSTRAP_ADMIN_PASSWORD=Neft123!"
 if "%NEFT_BOOTSTRAP_CLIENT_EMAIL%"=="" set "NEFT_BOOTSTRAP_CLIENT_EMAIL=client@neft.local"
 if "%NEFT_BOOTSTRAP_CLIENT_PASSWORD%"=="" set "NEFT_BOOTSTRAP_CLIENT_PASSWORD=Client123!"
 if "%NEFT_BOOTSTRAP_PARTNER_EMAIL%"=="" set "NEFT_BOOTSTRAP_PARTNER_EMAIL=partner@neft.local"
 if "%NEFT_BOOTSTRAP_PARTNER_PASSWORD%"=="" set "NEFT_BOOTSTRAP_PARTNER_PASSWORD=Partner123!"
+if "%NEFT_BOOTSTRAP_PASSWORD_VERSION%"=="" set "NEFT_BOOTSTRAP_PASSWORD_VERSION=2"
 if "%NEFT_DEMO_CLIENT_UUID%"=="" set "NEFT_DEMO_CLIENT_UUID=00000000-0000-0000-0000-000000000001"
 
 echo [INFO] Seeding auth users...
-docker compose -f "%COMPOSE_FILE%" exec -T auth-host python -c "import asyncio; from app.bootstrap import bootstrap_required_users; from app.settings import get_settings; asyncio.run(bootstrap_required_users(get_settings()))"
+docker compose -f "%COMPOSE_FILE%" exec -T -e NEFT_BOOTSTRAP_PASSWORD_VERSION=%NEFT_BOOTSTRAP_PASSWORD_VERSION% auth-host python -c "import asyncio; from app.bootstrap import bootstrap_required_users; from app.settings import get_settings; asyncio.run(bootstrap_required_users(get_settings()))"
 if errorlevel 1 (
   echo [FAIL] auth user seed failed
   exit /b 1

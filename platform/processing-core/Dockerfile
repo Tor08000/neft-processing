@@ -6,15 +6,7 @@ WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
-# кладём shared/python как отдельный модуль
-COPY shared/python /opt/python
-RUN pip install -e /opt/python
-ENV PYTHONPATH=/app
-
-# подключаем sitecustomize.py, чтобы он подхватывался автоматически
-COPY sitecustomize.py /app/sitecustomize.py
-
-# ставим зависимости core-api
+# Keep dependency layers independent from shared runtime code changes.
 COPY platform/processing-core/requirements.txt /tmp/requirements.txt
 RUN apt-get update && \
     apt-get install -y --no-install-recommends postgresql-client && \
@@ -22,7 +14,12 @@ RUN apt-get update && \
     pip install --upgrade pip && \
     pip install --no-cache-dir -r /tmp/requirements.txt
 
-# сам код core-api
+COPY shared/python /opt/python
+ENV PYTHONPATH=/app:/opt/python
+
+# sitecustomize is copied into /app so Python imports it automatically.
+COPY sitecustomize.py /app/sitecustomize.py
+
 COPY platform/processing-core /app
 
 # dev seed scripts
@@ -30,6 +27,9 @@ COPY scripts /app/scripts
 
 # docs (contracts event schema registry)
 COPY docs /app/docs
+
+# gateway route topology is part of the processing-core regression surface.
+COPY gateway /app/gateway
 
 # entrypoint
 RUN chmod +x entrypoint.sh

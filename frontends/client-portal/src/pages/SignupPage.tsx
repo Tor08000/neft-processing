@@ -9,6 +9,7 @@ import { useToast } from "../components/Toast/useToast";
 import { clearTokens, getAccessToken } from "../lib/apiClient";
 
 const PHONE_REGEX = /^[+()\d\s-]{6,}$/;
+const DEBUG_SIGNUP_FLOW = Boolean(import.meta.env.DEV && import.meta.env.VITE_CLIENT_DEBUG_SIGNUP === "true");
 
 function resolveContactPayload(value: string): { email?: string; phone?: string } | null {
   if (!value.trim()) return null;
@@ -85,7 +86,7 @@ export function SignupPage() {
         consent_personal_data: consentPersonal,
         consent_offer: consentOffer,
       });
-      if (import.meta.env.DEV) {
+      if (DEBUG_SIGNUP_FLOW) {
         console.info("[signup] success response keys", { keys: Object.keys(registerResponse).sort() });
       }
       const accessToken = registerResponse.access_token ?? registerResponse.token;
@@ -108,7 +109,7 @@ export function SignupPage() {
             throw err;
           }
         }
-        if (import.meta.env.DEV) {
+        if (DEBUG_SIGNUP_FLOW) {
           console.info("[signup] session activation finished", {
             tokenSaved: Boolean(getAccessToken()),
             hasRefreshToken: Boolean(registerResponse.refresh_token),
@@ -119,7 +120,9 @@ export function SignupPage() {
         await login({ email: contactPayload.email, password }, { source: "signup" });
       }
     } catch (err) {
-      console.error("Ошибка регистрации", err);
+      if (DEBUG_SIGNUP_FLOW) {
+        console.error("Ошибка регистрации", err);
+      }
       if (err instanceof ApiError) {
         if (err.status === 409) {
           setErrorKind(null);

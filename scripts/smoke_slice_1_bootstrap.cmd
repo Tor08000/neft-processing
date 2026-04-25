@@ -1,5 +1,5 @@
 @echo off
-setlocal EnableExtensions EnableDelayedExpansion
+setlocal EnableExtensions DisableDelayedExpansion
 
 if "%GATEWAY_BASE%"=="" set "GATEWAY_BASE=http://localhost"
 if "%AUTH_BASE%"=="" set "AUTH_BASE=/api/v1/auth"
@@ -11,7 +11,7 @@ if "%NEFT_BOOTSTRAP_CLIENT_EMAIL%"=="" (
   set "CLIENT_EMAIL=%NEFT_BOOTSTRAP_CLIENT_EMAIL%"
 )
 if "%NEFT_BOOTSTRAP_CLIENT_PASSWORD%"=="" (
-  set "CLIENT_PASSWORD=client"
+  set "CLIENT_PASSWORD=Client123!"
 ) else (
   set "CLIENT_PASSWORD=%NEFT_BOOTSTRAP_CLIENT_PASSWORD%"
 )
@@ -28,23 +28,27 @@ if "%NEFT_BOOTSTRAP_PARTNER_PASSWORD%"=="" (
 )
 
 if "%NEFT_BOOTSTRAP_ADMIN_EMAIL%"=="" (
-  set "ADMIN_EMAIL=admin@example.com"
+  set "ADMIN_EMAIL=admin@neft.local"
 ) else (
   set "ADMIN_EMAIL=%NEFT_BOOTSTRAP_ADMIN_EMAIL%"
 )
 if "%NEFT_BOOTSTRAP_ADMIN_PASSWORD%"=="" (
-  set "ADMIN_PASSWORD=admin"
+  set "ADMIN_PASSWORD=Neft123!"
 ) else (
   set "ADMIN_PASSWORD=%NEFT_BOOTSTRAP_ADMIN_PASSWORD%"
 )
 
 call :login portal_client "%CLIENT_EMAIL%" "%CLIENT_PASSWORD%" "client" || exit /b 1
 call :login portal_partner "%PARTNER_EMAIL%" "%PARTNER_PASSWORD%" "partner" || exit /b 1
-call :login admin "%ADMIN_EMAIL%" "%ADMIN_PASSWORD%" "" || exit /b 1
+call :login admin "%ADMIN_EMAIL%" "%ADMIN_PASSWORD%" "admin" || exit /b 1
 
-call :fetch_json "client portal/me" "%GATEWAY_BASE%%CORE_BASE%/portal/me" "-H \"Authorization: Bearer %portal_client_TOKEN%\"" "client_portal_me.json" || exit /b 1
-call :fetch_json "partner portal/me" "%GATEWAY_BASE%%CORE_BASE%/portal/me" "-H \"Authorization: Bearer %portal_partner_TOKEN%\"" "partner_portal_me.json" || exit /b 1
-call :fetch_json "admin v1/admin/me" "%GATEWAY_BASE%%CORE_BASE%/v1/admin/me" "-H \"Authorization: Bearer %admin_TOKEN%\"" "admin_me.json" || exit /b 1
+call set "PORTAL_CLIENT_TOKEN=%%portal_client_TOKEN%%"
+call set "PORTAL_PARTNER_TOKEN=%%portal_partner_TOKEN%%"
+call set "ADMIN_TOKEN=%%admin_TOKEN%%"
+
+call :fetch_json_auth "client portal/me" "%GATEWAY_BASE%%CORE_BASE%/portal/me" "%PORTAL_CLIENT_TOKEN%" "client_portal_me.json" || exit /b 1
+call :fetch_json_auth "partner portal/me" "%GATEWAY_BASE%%CORE_BASE%/portal/me" "%PORTAL_PARTNER_TOKEN%" "partner_portal_me.json" || exit /b 1
+call :fetch_json_auth "admin v1/admin/me" "%GATEWAY_BASE%%CORE_BASE%/v1/admin/me" "%ADMIN_TOKEN%" "admin_me.json" || exit /b 1
 
 call :print_portal_summary "client" "%TEMP%\client_portal_me.json" || exit /b 1
 call :print_portal_summary "partner" "%TEMP%\partner_portal_me.json" || exit /b 1
@@ -75,7 +79,8 @@ if not "%LOGIN_STATUS%"=="200" (
 )
 
 for /f "usebackq delims=" %%T in (`python -c "import json; from pathlib import Path; data=json.loads(Path(r'%LOGIN_FILE%').read_text(encoding='utf-8', errors='ignore') or '{}'); print(data.get('access_token',''))"`) do set "%LABEL%_TOKEN=%%T"
-if "!%LABEL%_TOKEN!"=="" (
+call set "TOKEN_VALUE=%%%LABEL%_TOKEN%%"
+if "%TOKEN_VALUE%"=="" (
   echo [FAIL] %LABEL% login missing access_token
   exit /b 1
 )
@@ -92,6 +97,31 @@ set "RESP_FILE=%TEMP%\%FILE_NAME%"
 set "RESP_STATUS_FILE=%TEMP%\slice1_resp_status_%RANDOM%.txt"
 
 curl -sS -o "%RESP_FILE%" -w "%%{http_code}" %HEADERS% "%URL%" > "%RESP_STATUS_FILE%"
+set /p RESP_STATUS=<"%RESP_STATUS_FILE%"
+if not "%RESP_STATUS%"=="200" (
+  echo [FAIL] %LABEL% HTTP %RESP_STATUS%
+  type "%RESP_FILE%"
+  exit /b 1
+)
+python -c "import json; from pathlib import Path; json.loads(Path(r'%RESP_FILE%').read_text(encoding='utf-8', errors='ignore'))" >NUL 2>&1
+if errorlevel 1 (
+  echo [FAIL] %LABEL% invalid JSON
+  type "%RESP_FILE%"
+  exit /b 1
+)
+
+echo [PASS] %LABEL%
+exit /b 0
+
+:fetch_json_auth
+set "LABEL=%~1"
+set "URL=%~2"
+set "TOKEN=%~3"
+set "FILE_NAME=%~4"
+set "RESP_FILE=%TEMP%\%FILE_NAME%"
+set "RESP_STATUS_FILE=%TEMP%\slice1_auth_resp_status_%RANDOM%.txt"
+
+curl -sS -o "%RESP_FILE%" -w "%%{http_code}" -H "Authorization: Bearer %TOKEN%" "%URL%" > "%RESP_STATUS_FILE%"
 set /p RESP_STATUS=<"%RESP_STATUS_FILE%"
 if not "%RESP_STATUS%"=="200" (
   echo [FAIL] %LABEL% HTTP %RESP_STATUS%

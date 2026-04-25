@@ -6,7 +6,7 @@ import { AuthProvider } from "../auth/AuthContext";
 import type { AuthSession } from "../api/types";
 
 const session: AuthSession = {
-  token: "token-1",
+  token: "test.header.payload",
   email: "client@demo.test",
   roles: ["CLIENT_OWNER"],
   subjectType: "CLIENT",
@@ -38,6 +38,26 @@ describe("ReconciliationRequestsPage", () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByText("Запросов пока нет.")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Запросов пока нет" })).toBeInTheDocument();
+  });
+
+  it("renders an access-limited state instead of a disabled request form for non-finance roles", async () => {
+    const limitedSession: AuthSession = {
+      ...session,
+      roles: ["CLIENT_DRIVER"],
+    };
+
+    render(
+      <MemoryRouter initialEntries={["/finance/reconciliation"]}>
+        <AuthProvider initialSession={limitedSession}>
+          <Routes>
+            <Route path="/finance/reconciliation" element={<ReconciliationRequestsPage />} />
+          </Routes>
+        </AuthProvider>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByRole("heading", { name: "Создание запроса недоступно" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Отправить запрос" })).not.toBeInTheDocument();
   });
 });

@@ -18,6 +18,7 @@ from app.models.fuel import (
     FleetNotificationPolicy,
     FleetNotificationPolicyScopeType,
     FleetNotificationSeverity,
+    NotificationDeliveryLog,
     WebhookDeliveryAttempt,
 )
 from app.services.fleet_notification_dispatcher import _now, dispatch_outbox_item
@@ -53,6 +54,7 @@ def _make_session() -> Session:
     FleetNotificationChannel.__table__.create(bind=engine)
     FleetNotificationPolicy.__table__.create(bind=engine)
     FleetNotificationOutbox.__table__.create(bind=engine)
+    NotificationDeliveryLog.__table__.create(bind=engine)
     WebhookDeliveryAttempt.__table__.create(bind=engine)
     session = SessionLocal()
     session._engine = engine
@@ -63,6 +65,7 @@ def _teardown(session: Session) -> None:
     engine = session._engine
     session.close()
     WebhookDeliveryAttempt.__table__.drop(bind=engine)
+    NotificationDeliveryLog.__table__.drop(bind=engine)
     FleetNotificationOutbox.__table__.drop(bind=engine)
     FleetNotificationPolicy.__table__.drop(bind=engine)
     FleetNotificationChannel.__table__.drop(bind=engine)
@@ -119,9 +122,11 @@ def test_webhook_outbound_signature_and_retry_headers() -> None:
         dispatch_outbox_item(session, outbox_id=str(outbox.id))
         assert len(server.received) == 2
         second = server.received[1]
-        assert first["headers"]["X-NEFT-Event-Id"] == second["headers"]["X-NEFT-Event-Id"]
-        assert first["headers"]["X-NEFT-Nonce"] != second["headers"]["X-NEFT-Nonce"]
-        assert first["headers"]["X-NEFT-Timestamp"] != second["headers"]["X-NEFT-Timestamp"]
+        first_headers = {key.lower(): value for key, value in first["headers"].items()}
+        second_headers = {key.lower(): value for key, value in second["headers"].items()}
+        assert first_headers["x-neft-event-id"] == second_headers["x-neft-event-id"]
+        assert first_headers["x-neft-nonce"] != second_headers["x-neft-nonce"]
+        assert first_headers["x-neft-timestamp"] != second_headers["x-neft-timestamp"]
     finally:
         server.shutdown()
         _teardown(session)

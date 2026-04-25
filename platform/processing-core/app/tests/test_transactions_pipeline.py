@@ -2,15 +2,19 @@ import os
 from uuid import uuid4
 
 import pytest
+from sqlalchemy import Column, MetaData, String, Table
 
-from app.db import Base, SessionLocal, engine
 from app.models.card import Card
 from app.models.client import Client
 from app.models.merchant import Merchant
+from app.models.account import Account, AccountBalance
+from app.models.audit_log import AuditLog
 from app.models.ledger_entry import LedgerEntry
 from app.models.operation import Operation, OperationStatus, RiskResult
 from app.models.terminal import Terminal
-from app.models.account import AccountBalance
+from app.models.risk_score import RiskLevel
+from app.models.unified_rule import UnifiedRulePolicy
+from app.services.decision import DecisionEngine, DecisionOutcome, DecisionResult
 from app.services.transactions_service import (
     AmountExceeded,
     PostingFailed,
@@ -19,6 +23,76 @@ from app.services.transactions_service import (
     refund_operation,
     reverse_operation,
 )
+from app.tests._scoped_router_harness import scoped_session_context
+
+
+_TRANSACTIONS_TEST_METADATA = MetaData()
+
+FLEET_OFFLINE_PROFILES_REFLECTED = Table(
+    "fleet_offline_profiles",
+    _TRANSACTIONS_TEST_METADATA,
+    Column("id", String(36), primary_key=True),
+)
+
+FUEL_STATIONS_REFLECTED = Table(
+    "fuel_stations",
+    _TRANSACTIONS_TEST_METADATA,
+    Column("id", String(64), primary_key=True),
+)
+
+TRANSACTIONS_PIPELINE_TEST_TABLES = (
+    FLEET_OFFLINE_PROFILES_REFLECTED,
+    FUEL_STATIONS_REFLECTED,
+    Client.__table__,
+    Card.__table__,
+    Merchant.__table__,
+    Terminal.__table__,
+    Operation.__table__,
+    Account.__table__,
+    AccountBalance.__table__,
+    LedgerEntry.__table__,
+    AuditLog.__table__,
+)
+
+MERCHANT_ID = "11111111-1111-1111-1111-111111111111"
+TERMINAL_ID = "t-1"
+CARD_ID = "card-1"
+
+
+class _LimitsResult:
+    def __init__(self, *, approved: bool, applied_rule_id: str = "rule-1"):
+        self.approved = approved
+        self.daily_limit = 500_000
+        self.limit_per_tx = 100_000
+        self.used_today = 0
+        self.new_used_today = 0
+        self.applied_rule_id = applied_rule_id
+
+    def model_dump(self):
+        return {
+            "approved": self.approved,
+            "applied_rule_id": self.applied_rule_id,
+            "daily_limit": self.daily_limit,
+            "limit_per_tx": self.limit_per_tx,
+            "used_today": self.used_today,
+            "new_used_today": self.new_used_today,
+        }
+
+
+class _ApprovedContractLimits:
+    approved = True
+    violations: list[object] = []
+
+
+def _allow_decision() -> DecisionResult:
+    return DecisionResult(
+        decision_id=str(uuid4()),
+        decision_version="test",
+        outcome=DecisionOutcome.ALLOW,
+        risk_score=0,
+        risk_level=RiskLevel.LOW,
+        explain={},
+    )
 
 
 @pytest.fixture(autouse=True)
@@ -36,28 +110,39 @@ def _mock_risk_engine(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
-def _setup_db():
-    Base.metadata.drop_all(bind=engine)
-    Base.metadata.create_all(bind=engine)
-    yield
-    Base.metadata.drop_all(bind=engine)
+def _allow_transaction_dependencies(monkeypatch: pytest.MonkeyPatch):
+    from app.services import transactions_service
+
+    monkeypatch.setattr(DecisionEngine, "evaluate", lambda *_args, **_kwargs: _allow_decision())
+    monkeypatch.setattr(
+        transactions_service,
+        "evaluate_with_db",
+        lambda *_args, **_kwargs: (UnifiedRulePolicy.ALLOW, [], None),
+    )
+    monkeypatch.setattr(
+        transactions_service,
+        "check_contractual_limits",
+        lambda *_args, **_kwargs: _ApprovedContractLimits(),
+    )
+
+    def _evaluate_limits(request, db=None):
+        return _LimitsResult(approved=request.amount <= 100_000)
+
+    monkeypatch.setattr(transactions_service, "evaluate_limits_locally", _evaluate_limits)
 
 
 @pytest.fixture
 def session():
-    db = SessionLocal()
-    try:
+    with scoped_session_context(tables=TRANSACTIONS_PIPELINE_TEST_TABLES) as db:
         yield db
-    finally:
-        db.close()
 
 
 def _seed_refs(db):
     client_pk = uuid4()
     db.add(Client(id=client_pk, name="Test", status="ACTIVE"))
-    db.add(Card(id="card-1", client_id=str(client_pk), status="ACTIVE"))
-    db.add(Merchant(id="m-1", name="M1", status="ACTIVE"))
-    db.add(Terminal(id="t-1", merchant_id="m-1", status="ACTIVE"))
+    db.add(Card(id=CARD_ID, client_id=str(client_pk), status="ACTIVE"))
+    db.add(Merchant(id=MERCHANT_ID, name="M1", status="ACTIVE"))
+    db.add(Terminal(id=TERMINAL_ID, merchant_id=MERCHANT_ID, status="ACTIVE"))
     db.commit()
     return str(client_pk)
 
@@ -67,9 +152,9 @@ def test_authorize_happy_path(session):
     op = authorize_operation(
         session,
         client_id=client_id,
-        card_id="card-1",
-        terminal_id="t-1",
-        merchant_id="m-1",
+        card_id=CARD_ID,
+        terminal_id=TERMINAL_ID,
+        merchant_id=MERCHANT_ID,
         product_id=None,
         product_type=None,
         amount=10_000,
@@ -93,9 +178,9 @@ def test_authorize_limit_failure(session):
     op = authorize_operation(
         session,
         client_id=client_id,
-        card_id="card-1",
-        terminal_id="t-1",
-        merchant_id="m-1",
+        card_id=CARD_ID,
+        terminal_id=TERMINAL_ID,
+        merchant_id=MERCHANT_ID,
         product_id=None,
         product_type=None,
         amount=200_000,  # above default per-tx limit
@@ -114,9 +199,9 @@ def test_risk_high_flag(session, monkeypatch):
     op = authorize_operation(
         session,
         client_id=client_id,
-        card_id="card-1",
-        terminal_id="t-1",
-        merchant_id="m-1",
+        card_id=CARD_ID,
+        terminal_id=TERMINAL_ID,
+        merchant_id=MERCHANT_ID,
         product_id=None,
         product_type=None,
         amount=5000,
@@ -132,9 +217,9 @@ def test_commit_reverse_and_refund(session):
     auth = authorize_operation(
         session,
         client_id=client_id,
-        card_id="card-1",
-        terminal_id="t-1",
-        merchant_id="m-1",
+        card_id=CARD_ID,
+        terminal_id=TERMINAL_ID,
+        merchant_id=MERCHANT_ID,
         product_id=None,
         product_type=None,
         amount=10_000,
@@ -156,9 +241,9 @@ def test_commit_reverse_and_refund(session):
     fresh_auth = authorize_operation(
         session,
         client_id=client_id,
-        card_id="card-1",
-        terminal_id="t-1",
-        merchant_id="m-1",
+        card_id=CARD_ID,
+        terminal_id=TERMINAL_ID,
+        merchant_id=MERCHANT_ID,
         product_id=None,
         product_type=None,
         amount=1_000,
@@ -175,9 +260,9 @@ def test_refund_creates_postings(session):
     auth = authorize_operation(
         session,
         client_id=client_id,
-        card_id="card-1",
-        terminal_id="t-1",
-        merchant_id="m-1",
+        card_id=CARD_ID,
+        terminal_id=TERMINAL_ID,
+        merchant_id=MERCHANT_ID,
         product_id=None,
         product_type=None,
         amount=1_000,
@@ -232,9 +317,9 @@ def test_hard_decline_stops_posting(session, monkeypatch):
     op = authorize_operation(
         session,
         client_id=client_id,
-        card_id="card-1",
-        terminal_id="t-1",
-        merchant_id="m-1",
+        card_id=CARD_ID,
+        terminal_id=TERMINAL_ID,
+        merchant_id=MERCHANT_ID,
         product_id=None,
         product_type=None,
         amount=1_000,
@@ -269,11 +354,11 @@ def test_posting_failure_rolls_back(session, monkeypatch):
 
     with pytest.raises(PostingFailed):
         authorize_operation(
-            session,
-            client_id=client_id,
-            card_id="card-1",
-            terminal_id="t-1",
-            merchant_id="m-1",
+        session,
+        client_id=client_id,
+        card_id=CARD_ID,
+        terminal_id=TERMINAL_ID,
+        merchant_id=MERCHANT_ID,
             product_id=None,
             product_type=None,
             amount=1_000,
@@ -288,4 +373,3 @@ def test_posting_failure_rolls_back(session, monkeypatch):
     assert op.status == OperationStatus.ERROR
     assert op.response_code == "POSTING_ERROR"
     assert session.query(LedgerEntry).count() == 0
-

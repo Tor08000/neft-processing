@@ -6,23 +6,29 @@ from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import RedirectResponse
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.models.export_jobs import ExportJob, ExportJobReportType, ExportJobStatus
+from app.models.marketplace_contracts import Contract
 from app.models.marketplace_orders import MarketplaceOrder
 from app.models.marketplace_settlement import MarketplaceSettlementSnapshot
 from app.models.partner_finance import (
     PartnerAct,
     PartnerInvoice,
+    PartnerLedgerDirection,
     PartnerLedgerEntry,
     PartnerLedgerEntryType,
     PartnerPayoutRequest,
     PartnerPayoutRequestStatus,
 )
 from app.models.payout_batch import PayoutBatch
+from app.models.settlement_v1 import SettlementItem, SettlementPeriod
 from app.schemas.partner_finance import (
     PartnerBalanceOut,
+    PartnerContractListResponse,
+    PartnerContractOut,
     PartnerDashboardBlockedPayouts,
     PartnerDashboardLegalSummary,
     PartnerDashboardSlaPenalties,
@@ -40,6 +46,10 @@ from app.schemas.partner_finance import (
     PartnerPayoutPreviewOut,
     PartnerPayoutRequestIn,
     PartnerPayoutRequestOut,
+    PartnerSettlementItemOut,
+    PartnerSettlementListResponse,
+    PartnerSettlementOut,
+    PartnerSettlementSnapshotOut,
 )
 from app.schemas.partner_trust import (
     LedgerExplainOut,
@@ -66,8 +76,11 @@ from app.services.partner_finance_service import (
 from app.services.partner_trust_metrics import metrics as partner_trust_metrics
 from app.services.reports_render import ExportRenderValidationError, normalize_filters
 from app.services.s3_storage import S3Storage
+from app.services.logistics.repository import id_equals, id_in
 from neft_shared.settings import get_settings
 
+# Canonical partner-finance semantics live here; `/api/core/partner/finance/*` is the north-star namespace.
+# Legacy `/api/v1/partner/*` mounts and redirect tails remain compatibility surfaces, not separate owners.
 router = APIRouter(prefix="/partner", tags=["partner-finance"])
 settings = get_settings()
 
@@ -200,6 +213,81 @@ def _audit_forbidden_access(
     )
 
 
+def _contract_to_partner_out(contract: Contract, *, partner_org_id: str) -> PartnerContractOut:
+    is_party_a = str(contract.party_a_id) == str(partner_org_id)
+    counterparty_type = contract.party_b_type if is_party_a else contract.party_a_type
+    counterparty_id = str(contract.party_b_id if is_party_a else contract.party_a_id)
+    return PartnerContractOut(
+        id=str(contract.id),
+        contract_number=contract.contract_number,
+        contract_type=contract.contract_type,
+        party_role="party_a" if is_party_a else "party_b",
+        counterparty_type=counterparty_type,
+        counterparty_id=counterparty_id,
+        currency=contract.currency,
+        status=contract.status,
+        effective_from=contract.effective_from,
+        effective_to=contract.effective_to,
+        created_at=contract.created_at,
+    )
+
+
+def _settlement_snapshot_out(snapshot: MarketplaceSettlementSnapshot) -> PartnerSettlementSnapshotOut:
+    return PartnerSettlementSnapshotOut(
+        id=str(snapshot.id),
+        order_id=str(snapshot.order_id),
+        gross_amount=Decimal(snapshot.gross_amount or 0),
+        platform_fee=Decimal(snapshot.platform_fee or 0),
+        penalties=Decimal(snapshot.penalties or 0),
+        partner_net=Decimal(snapshot.partner_net or 0),
+        currency=snapshot.currency,
+        finalized_at=snapshot.finalized_at,
+        hash=snapshot.hash,
+    )
+
+
+def _settlement_item_out(item: SettlementItem) -> PartnerSettlementItemOut:
+    return PartnerSettlementItemOut(
+        id=str(item.id),
+        source_type=item.source_type.value if hasattr(item.source_type, "value") else str(item.source_type),
+        source_id=str(item.source_id),
+        amount=Decimal(item.amount or 0),
+        direction=item.direction.value if hasattr(item.direction, "value") else str(item.direction),
+        created_at=item.created_at,
+    )
+
+
+def _settlement_to_partner_out(
+    period: SettlementPeriod,
+    *,
+    marketplace_snapshots_count: int = 0,
+    items: list[SettlementItem] | None = None,
+    marketplace_snapshots: list[MarketplaceSettlementSnapshot] | None = None,
+) -> PartnerSettlementOut:
+    return PartnerSettlementOut(
+        id=str(period.id),
+        partner_id=str(period.partner_id),
+        currency=period.currency,
+        period_start=period.period_start,
+        period_end=period.period_end,
+        status=period.status.value if hasattr(period.status, "value") else str(period.status),
+        total_gross=Decimal(period.total_gross or 0),
+        total_fees=Decimal(period.total_fees or 0),
+        total_refunds=Decimal(period.total_refunds or 0),
+        net_amount=Decimal(period.net_amount or 0),
+        period_hash=period.period_hash,
+        snapshot_payload=period.snapshot_payload,
+        created_at=period.created_at,
+        approved_at=period.approved_at,
+        paid_at=period.paid_at,
+        marketplace_snapshots_count=marketplace_snapshots_count,
+        items=[_settlement_item_out(item) for item in items] if items is not None else None,
+        marketplace_snapshots=[_settlement_snapshot_out(snapshot) for snapshot in marketplace_snapshots]
+        if marketplace_snapshots is not None
+        else None,
+    )
+
+
 @router.get("/balance", response_model=PartnerBalanceOut)
 def get_partner_balance(
     principal: Principal = Depends(require_permission("partner:finance:view")),
@@ -213,6 +301,133 @@ def get_partner_balance(
         balance_available=Decimal(account.balance_available or 0),
         balance_pending=Decimal(account.balance_pending or 0),
         balance_blocked=Decimal(account.balance_blocked or 0),
+    )
+
+
+@router.get("/contracts", response_model=PartnerContractListResponse)
+def list_partner_contracts(
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    principal: Principal = Depends(require_permission("partner:finance:view")),
+    db: Session = Depends(get_db),
+) -> PartnerContractListResponse:
+    partner_org_id = _ensure_capability(db, principal, "PARTNER_FINANCE_VIEW")
+    query = db.query(Contract).filter(
+        or_(id_equals(Contract.party_a_id, partner_org_id), id_equals(Contract.party_b_id, partner_org_id))
+    )
+    total = query.count()
+    rows = query.order_by(Contract.created_at.desc()).offset(offset).limit(limit).all()
+    return PartnerContractListResponse(
+        items=[_contract_to_partner_out(row, partner_org_id=partner_org_id) for row in rows],
+        total=total,
+        limit=limit,
+        offset=offset,
+    )
+
+
+@router.get("/contracts/{contract_id}", response_model=PartnerContractOut)
+def get_partner_contract(
+    contract_id: str,
+    request: Request,
+    principal: Principal = Depends(require_permission("partner:finance:view")),
+    db: Session = Depends(get_db),
+) -> PartnerContractOut:
+    partner_org_id = _ensure_capability(db, principal, "PARTNER_FINANCE_VIEW")
+    contract = (
+        db.query(Contract)
+        .filter(id_equals(Contract.id, contract_id))
+        .filter(or_(id_equals(Contract.party_a_id, partner_org_id), id_equals(Contract.party_b_id, partner_org_id)))
+        .one_or_none()
+    )
+    if not contract:
+        _audit_forbidden_access(
+            principal=principal,
+            request=request,
+            db=db,
+            entity_type="partner_contract",
+            entity_id=contract_id,
+        )
+        raise HTTPException(status_code=404, detail="contract_not_found")
+    return _contract_to_partner_out(contract, partner_org_id=partner_org_id)
+
+
+@router.get("/settlements", response_model=PartnerSettlementListResponse)
+def list_partner_settlements(
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    principal: Principal = Depends(require_permission("partner:finance:view")),
+    db: Session = Depends(get_db),
+) -> PartnerSettlementListResponse:
+    partner_org_id = _ensure_capability(db, principal, "PARTNER_FINANCE_VIEW")
+    query = db.query(SettlementPeriod).filter(id_equals(SettlementPeriod.partner_id, partner_org_id))
+    total = query.count()
+    periods = (
+        query.order_by(SettlementPeriod.period_start.desc(), SettlementPeriod.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+    period_ids = [str(period.id) for period in periods]
+    snapshot_counts: dict[str, int] = {period_id: 0 for period_id in period_ids}
+    if period_ids:
+        for settlement_id, count in (
+            db.query(MarketplaceSettlementSnapshot.settlement_id, func.count(MarketplaceSettlementSnapshot.id))
+            .filter(id_in(MarketplaceSettlementSnapshot.settlement_id, period_ids))
+            .group_by(MarketplaceSettlementSnapshot.settlement_id)
+            .all()
+        ):
+            snapshot_counts[str(settlement_id)] = int(count or 0)
+    return PartnerSettlementListResponse(
+        items=[
+            _settlement_to_partner_out(period, marketplace_snapshots_count=snapshot_counts.get(str(period.id), 0))
+            for period in periods
+        ],
+        total=total,
+        limit=limit,
+        offset=offset,
+    )
+
+
+@router.get("/settlements/{settlement_id}", response_model=PartnerSettlementOut)
+def get_partner_settlement(
+    settlement_id: str,
+    request: Request,
+    principal: Principal = Depends(require_permission("partner:finance:view")),
+    db: Session = Depends(get_db),
+) -> PartnerSettlementOut:
+    partner_org_id = _ensure_capability(db, principal, "PARTNER_FINANCE_VIEW")
+    period = (
+        db.query(SettlementPeriod)
+        .filter(id_equals(SettlementPeriod.id, settlement_id))
+        .filter(id_equals(SettlementPeriod.partner_id, partner_org_id))
+        .one_or_none()
+    )
+    if not period:
+        _audit_forbidden_access(
+            principal=principal,
+            request=request,
+            db=db,
+            entity_type="partner_settlement",
+            entity_id=settlement_id,
+        )
+        raise HTTPException(status_code=404, detail="settlement_not_found")
+    items = (
+        db.query(SettlementItem)
+        .filter(id_equals(SettlementItem.settlement_period_id, period.id))
+        .order_by(SettlementItem.created_at.asc())
+        .all()
+    )
+    snapshots = (
+        db.query(MarketplaceSettlementSnapshot)
+        .filter(id_equals(MarketplaceSettlementSnapshot.settlement_id, period.id))
+        .order_by(MarketplaceSettlementSnapshot.created_at.asc())
+        .all()
+    )
+    return _settlement_to_partner_out(
+        period,
+        marketplace_snapshots_count=len(snapshots),
+        items=items,
+        marketplace_snapshots=snapshots,
     )
 
 
@@ -301,6 +516,16 @@ def get_partner_ledger(
     if date_to:
         query = query.filter(PartnerLedgerEntry.created_at <= date_to)
     total = query.count()
+    credit_total = (
+        query.with_entities(func.coalesce(func.sum(PartnerLedgerEntry.amount), 0))
+        .filter(PartnerLedgerEntry.direction == PartnerLedgerDirection.CREDIT)
+        .scalar()
+    )
+    debit_total = (
+        query.with_entities(func.coalesce(func.sum(PartnerLedgerEntry.amount), 0))
+        .filter(PartnerLedgerEntry.direction == PartnerLedgerDirection.DEBIT)
+        .scalar()
+    )
     entries = (
         query.order_by(PartnerLedgerEntry.created_at.desc())
         .offset(resolved_offset)
@@ -327,7 +552,13 @@ def get_partner_ledger(
         ],
         entries=[_ledger_entry_summary(entry) for entry in entries],
         cursor=next_cursor,
+        next_cursor=next_cursor,
         total=total,
+        totals={
+            "in": Decimal(credit_total or 0),
+            "out": Decimal(debit_total or 0),
+            "net": Decimal(credit_total or 0) - Decimal(debit_total or 0),
+        },
     )
 
 
@@ -376,7 +607,7 @@ def explain_partner_ledger_entry(
                 )
                 if snapshot:
                     settlement_snapshot_hash = snapshot.hash
-                    settlement_breakdown_url = f"/api/core/partner/orders/{order_id}/settlement"
+                    settlement_breakdown_url = f"/api/core/v1/marketplace/partner/orders/{order_id}/settlement"
     if source_type == "payout_request" and source_id:
         source_label = f"Payout request {source_id}"
     if not source_type and not source_id:
@@ -466,17 +697,20 @@ def list_partner_payouts(
     )
 
 
-@router.get("/payouts/{payout_id}", response_model=PartnerPayoutRequestOut)
-def get_partner_payout(
-    payout_id: str,
-    principal: Principal = Depends(require_permission("partner:payouts:list")),
+@router.get("/payouts/preview", response_model=PartnerPayoutPreviewOut)
+def preview_partner_payout(
+    principal: Principal = Depends(require_permission("partner:finance:view")),
     db: Session = Depends(get_db),
-) -> PartnerPayoutRequestOut:
-    partner_org_id = _ensure_capability(db, principal, "PARTNER_FINANCE_VIEW")
-    payout = db.query(PartnerPayoutRequest).filter(PartnerPayoutRequest.id == payout_id).one_or_none()
-    if payout is None or str(payout.partner_org_id) != str(partner_org_id):
-        raise HTTPException(status_code=404, detail="payout_not_found")
-    return _payout_request_out(payout)
+) -> PartnerPayoutPreviewOut:
+    return _preview_partner_payout(principal=principal, db=db)
+
+
+@router.post("/payouts/preview", response_model=PartnerPayoutPreviewOut)
+def preview_partner_payout_post(
+    principal: Principal = Depends(require_permission("partner:finance:view")),
+    db: Session = Depends(get_db),
+) -> PartnerPayoutPreviewOut:
+    return _preview_partner_payout(principal=principal, db=db)
 
 
 @router.get("/payouts/history", response_model=PartnerPayoutHistoryResponse)
@@ -517,6 +751,19 @@ def list_partner_payout_history(
             )
         )
     return PartnerPayoutHistoryResponse(requests=items)
+
+
+@router.get("/payouts/{payout_id}", response_model=PartnerPayoutRequestOut)
+def get_partner_payout(
+    payout_id: str,
+    principal: Principal = Depends(require_permission("partner:payouts:list")),
+    db: Session = Depends(get_db),
+) -> PartnerPayoutRequestOut:
+    partner_org_id = _ensure_capability(db, principal, "PARTNER_FINANCE_VIEW")
+    payout = db.query(PartnerPayoutRequest).filter(PartnerPayoutRequest.id == payout_id).one_or_none()
+    if payout is None or str(payout.partner_org_id) != str(partner_org_id):
+        raise HTTPException(status_code=404, detail="payout_not_found")
+    return _payout_request_out(payout)
 
 
 @router.get("/payouts/{payout_id}/trace", response_model=PayoutTraceOut)
@@ -577,7 +824,7 @@ def trace_partner_payout(
                 settlement_snapshot_id=str(snapshot.id),
                 finalized_at=snapshot.finalized_at,
                 hash=snapshot.hash,
-                settlement_breakdown_url=f"/api/core/partner/orders/{snapshot.order_id}/settlement",
+                settlement_breakdown_url=f"/api/core/v1/marketplace/partner/orders/{snapshot.order_id}/settlement",
             )
         )
     state_value = batch.state.value if hasattr(batch.state, "value") else str(batch.state)
@@ -769,22 +1016,6 @@ def download_partner_doc(
     if not signed_url:
         raise HTTPException(status_code=503, detail="download_unavailable")
     return RedirectResponse(url=signed_url)
-
-
-@router.get("/payouts/preview", response_model=PartnerPayoutPreviewOut)
-def preview_partner_payout(
-    principal: Principal = Depends(require_permission("partner:finance:view")),
-    db: Session = Depends(get_db),
-) -> PartnerPayoutPreviewOut:
-    return _preview_partner_payout(principal=principal, db=db)
-
-
-@router.post("/payouts/preview", response_model=PartnerPayoutPreviewOut)
-def preview_partner_payout_post(
-    principal: Principal = Depends(require_permission("partner:finance:view")),
-    db: Session = Depends(get_db),
-) -> PartnerPayoutPreviewOut:
-    return _preview_partner_payout(principal=principal, db=db)
 
 
 def _preview_partner_payout(

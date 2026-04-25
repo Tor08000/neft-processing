@@ -11,9 +11,26 @@ from typing import Any
 import httpx
 
 from app.settings import get_settings
-from app.sign.providers.base import CertificateInfo, SignedResult, VerifyResult
+from app.sign.providers.base import (
+    CertificateInfo,
+    SignProviderAuthError,
+    SignProviderDegradedError,
+    SignProviderFailure,
+    SignProviderRateLimitError,
+    SignProviderTimeoutError,
+    SignedResult,
+    VerifyResult,
+)
 
 settings = get_settings()
+
+_PLACEHOLDER_CREDENTIALS = {"change-me", "changeme", "dev-key", "dev-secret", "test", "dummy", "placeholder"}
+
+
+def has_real_provider_x_credentials(api_key: str | None, api_secret: str | None) -> bool:
+    key = (api_key or "").strip()
+    secret = (api_secret or "").strip()
+    return bool(key) and bool(secret) and key.lower() not in _PLACEHOLDER_CREDENTIALS and secret.lower() not in _PLACEHOLDER_CREDENTIALS
 
 
 @dataclass(frozen=True)
@@ -36,8 +53,7 @@ class ProviderX:
         self.config = config
 
     def sign(self, payload: bytes, meta: dict[str, Any] | None = None) -> SignedResult:
-        if not self.config.base_url:
-            raise RuntimeError("provider_x_unconfigured")
+        self._ensure_configured()
         body = {
             "payload_base64": base64.b64encode(payload).decode("ascii"),
             "meta": meta or {},
@@ -56,8 +72,7 @@ class ProviderX:
         signature: bytes,
         meta: dict[str, Any] | None = None,
     ) -> VerifyResult:
-        if not self.config.base_url:
-            raise RuntimeError("provider_x_unconfigured")
+        self._ensure_configured()
         body = {
             "payload_base64": base64.b64encode(payload).decode("ascii"),
             "signature_base64": base64.b64encode(signature).decode("ascii"),
@@ -70,6 +85,13 @@ class ProviderX:
             certificate=_parse_certificate(response.get("certificate")),
         )
 
+    def _ensure_configured(self) -> None:
+        if not self.config.base_url or not has_real_provider_x_credentials(self.config.api_key, self.config.api_secret):
+            raise SignProviderDegradedError(
+                "Provider X URL and credentials must be configured before live signing",
+                code="provider_x_unconfigured",
+            )
+
     def _request(self, path: str, body: dict[str, Any]) -> dict[str, Any]:
         payload = json.dumps(body).encode("utf-8")
         timestamp = datetime.now(timezone.utc).isoformat()
@@ -80,9 +102,36 @@ class ProviderX:
             "X-Request-Signature": signature,
             "Content-Type": "application/json",
         }
-        with httpx.Client(timeout=self.config.timeout_seconds) as client:
-            response = client.post(f"{self.config.base_url}{path}", content=payload, headers=headers)
-        response.raise_for_status()
+        try:
+            with httpx.Client(timeout=self.config.timeout_seconds) as client:
+                response = client.post(f"{self.config.base_url}{path}", content=payload, headers=headers)
+        except httpx.TimeoutException as exc:
+            raise SignProviderTimeoutError("E-sign provider request timed out", code="esign_provider_timeout") from exc
+        except httpx.RequestError as exc:
+            raise SignProviderFailure(
+                "E-sign provider transport failed",
+                code="esign_provider_transport_error",
+                category="provider_error",
+            ) from exc
+
+        if response.status_code in {401, 403}:
+            raise SignProviderAuthError("E-sign provider rejected credentials", code="esign_provider_auth_failed")
+        if response.status_code == 429:
+            raise SignProviderRateLimitError("E-sign provider rate limit reached", code="esign_provider_rate_limited")
+        if response.status_code >= 500:
+            raise SignProviderFailure(
+                "E-sign provider returned server error",
+                code=f"esign_provider_http_{response.status_code}",
+                category="provider_error",
+            )
+        try:
+            response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            raise SignProviderFailure(
+                "E-sign provider rejected request",
+                code=f"esign_provider_http_{response.status_code}",
+                category="provider_error",
+            ) from exc
         return response.json()
 
 
@@ -108,6 +157,25 @@ class MockProviderX:
         return VerifyResult(verified=verified, error_code=None if verified else "signature_mismatch")
 
 
+class DegradedProviderX:
+    def sign(self, payload: bytes, meta: dict[str, Any] | None = None) -> SignedResult:
+        raise SignProviderDegradedError(
+            "Provider X transport is disabled or degraded in document-service",
+            code="provider_x_degraded",
+        )
+
+    def verify(
+        self,
+        payload: bytes,
+        signature: bytes,
+        meta: dict[str, Any] | None = None,
+    ) -> VerifyResult:
+        raise SignProviderDegradedError(
+            "Provider X transport is disabled or degraded in document-service",
+            code="provider_x_degraded",
+        )
+
+
 def _sign_payload(payload: bytes, *, secret: str, timestamp: str) -> str:
     key = secret.encode("utf-8")
     message = timestamp.encode("utf-8") + payload
@@ -124,4 +192,4 @@ def _parse_certificate(data: dict[str, Any] | None) -> CertificateInfo | None:
     return CertificateInfo(subject=data.get("subject"), valid_to=parsed_valid_to)
 
 
-__all__ = ["ProviderX", "MockProviderX", "ProviderXConfig"]
+__all__ = ["DegradedProviderX", "MockProviderX", "ProviderX", "ProviderXConfig"]

@@ -7,29 +7,49 @@ import pytest
 boto3 = pytest.importorskip("boto3")
 botocore = pytest.importorskip("botocore")
 from botocore.stub import ANY, Stubber
-from sqlalchemy import create_engine
+from sqlalchemy import Column, MetaData, String, Table, create_engine
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
 from app.db import Base
+from app.models.audit_log import AuditLog
 from app.models.invoice import Invoice, InvoiceLine, InvoicePdfStatus
 from app.services.invoice_pdf import InvoicePdfService
 
 
 @pytest.fixture
 def session():
-    engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
-    # register models
-    Base.metadata.create_all(engine)
-    SessionLocal = sessionmaker(bind=engine)
+    engine = create_engine(
+        "sqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    stub_metadata = MetaData()
+    Table("clearing_batch", stub_metadata, Column("id", String(36), primary_key=True))
+    Table("reconciliation_requests", stub_metadata, Column("id", String(36), primary_key=True))
+
+    stub_metadata.create_all(bind=engine)
+    Base.metadata.create_all(
+        bind=engine,
+        tables=[AuditLog.__table__, Invoice.__table__, InvoiceLine.__table__],
+    )
+    SessionLocal = sessionmaker(bind=engine, expire_on_commit=False)
     db = SessionLocal()
     try:
         yield db
     finally:
         db.close()
+        Base.metadata.drop_all(
+            bind=engine,
+            tables=[AuditLog.__table__, Invoice.__table__, InvoiceLine.__table__],
+        )
+        stub_metadata.drop_all(bind=engine)
+        engine.dispose()
 
 
 def test_generate_invoice_pdf_marks_ready(session, monkeypatch):
     monkeypatch.setattr("app.services.invoice_pdf.S3Storage.ensure_bucket", lambda self: None)
+    monkeypatch.setattr("app.services.invoice_pdf.S3Storage.exists", lambda self, key: False)
     invoice = Invoice(
         client_id="client-1",
         period_from=date(2024, 5, 1),

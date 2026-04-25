@@ -2,13 +2,11 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import Session, sessionmaker
-from sqlalchemy.pool import StaticPool
+from sqlalchemy.orm import Session
 
-from app.db import get_db
-from app.main import app
 from app.models.cases import Case, CaseKind, CasePriority, CaseQueue, CaseStatus
+from app.routers.cases import router as cases_router
+from app.tests._scoped_router_harness import CASES_TEST_TABLES, cases_dependency_overrides, router_client_context, scoped_session_context
 
 
 def _auth_headers(token: str) -> dict[str, str]:
@@ -17,30 +15,19 @@ def _auth_headers(token: str) -> dict[str, str]:
 
 @pytest.fixture()
 def db_session() -> Session:
-    engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
-    SessionLocal = sessionmaker(autocommit=False, autoflush=False, expire_on_commit=False, bind=engine)
-    Case.__table__.create(bind=engine)
-    session = SessionLocal()
-    try:
+    with scoped_session_context(tables=CASES_TEST_TABLES) as session:
         yield session
-    finally:
-        session.close()
-        Case.__table__.drop(bind=engine)
-        engine.dispose()
 
 
 @pytest.fixture()
 def client(db_session: Session):
-    def _override():
-        try:
-            yield db_session
-        finally:
-            pass
-
-    app.dependency_overrides[get_db] = _override
-    with TestClient(app) as test_client:
+    with router_client_context(
+        router=cases_router,
+        prefix="/api/core",
+        db_session=db_session,
+        dependency_overrides=cases_dependency_overrides(),
+    ) as test_client:
         yield test_client
-    app.dependency_overrides.pop(get_db, None)
 
 
 def _make_case(

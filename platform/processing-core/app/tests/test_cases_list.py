@@ -2,13 +2,11 @@ from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import Session, sessionmaker
-from sqlalchemy.pool import StaticPool
+from sqlalchemy.orm import Session
 
-from app.db import get_db
-from app.main import app
-from app.models.cases import Case, CaseComment, CaseKind, CasePriority, CaseSnapshot, CaseStatus
+from app.models.cases import Case, CaseKind, CasePriority, CaseQueue, CaseStatus
+from app.routers.cases import router as cases_router
+from app.tests._scoped_router_harness import CASES_TEST_TABLES, cases_dependency_overrides, router_client_context, scoped_session_context
 
 
 def _auth_headers(token: str) -> dict[str, str]:
@@ -17,34 +15,19 @@ def _auth_headers(token: str) -> dict[str, str]:
 
 @pytest.fixture()
 def db_session() -> Session:
-    engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
-    SessionLocal = sessionmaker(autocommit=False, autoflush=False, expire_on_commit=False, bind=engine)
-    Case.__table__.create(bind=engine)
-    CaseSnapshot.__table__.create(bind=engine)
-    CaseComment.__table__.create(bind=engine)
-    session = SessionLocal()
-    try:
+    with scoped_session_context(tables=CASES_TEST_TABLES) as session:
         yield session
-    finally:
-        session.close()
-        CaseComment.__table__.drop(bind=engine)
-        CaseSnapshot.__table__.drop(bind=engine)
-        Case.__table__.drop(bind=engine)
-        engine.dispose()
 
 
 @pytest.fixture()
 def client(db_session: Session):
-    def _override():
-        try:
-            yield db_session
-        finally:
-            pass
-
-    app.dependency_overrides[get_db] = _override
-    with TestClient(app) as test_client:
+    with router_client_context(
+        router=cases_router,
+        prefix="/api/core",
+        db_session=db_session,
+        dependency_overrides=cases_dependency_overrides(),
+    ) as test_client:
         yield test_client
-    app.dependency_overrides.pop(get_db, None)
 
 
 def _seed_case(db_session: Session, *, tenant_id: int, title: str, created_by: str) -> Case:
@@ -81,3 +64,47 @@ def test_list_cases_pagination(make_jwt, client: TestClient, db_session: Session
     assert resp_next.status_code == 200
     data_next = resp_next.json()
     assert len(data_next["items"]) == 1
+
+
+def test_list_cases_support_filters(make_jwt, client: TestClient, db_session: Session):
+    support_case = Case(
+        id=str(uuid4()),
+        tenant_id=1,
+        kind=CaseKind.SUPPORT,
+        entity_type="DOCUMENT",
+        entity_id="doc-1",
+        title="document-incident",
+        description="подпись не проходит",
+        status=CaseStatus.WAITING,
+        queue=CaseQueue.SUPPORT,
+        priority=CasePriority.HIGH,
+        created_by="user-1",
+        client_id="client-1",
+    )
+    dispute_case = Case(
+        id=str(uuid4()),
+        tenant_id=1,
+        kind=CaseKind.DISPUTE,
+        entity_type="INVOICE",
+        entity_id="inv-1",
+        title="invoice dispute",
+        description="нужна сверка",
+        status=CaseStatus.IN_PROGRESS,
+        queue=CaseQueue.FINANCE_OPS,
+        priority=CasePriority.MEDIUM,
+        created_by="user-2",
+        client_id="client-1",
+    )
+    db_session.add_all([support_case, dispute_case])
+    db_session.commit()
+
+    token = make_jwt(roles=("ADMIN",), extra={"tenant_id": 1})
+    response = client.get(
+        "/api/core/cases?queue=SUPPORT&entity_type=DOCUMENT&q=подпись",
+        headers=_auth_headers(token),
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["total"] == 1
+    assert body["items"][0]["id"] == support_case.id

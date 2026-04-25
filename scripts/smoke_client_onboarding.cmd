@@ -1,15 +1,22 @@
 @echo off
-setlocal EnableExtensions EnableDelayedExpansion
+setlocal EnableExtensions DisableDelayedExpansion
 
 if "%GATEWAY_BASE%"=="" set "GATEWAY_BASE=http://localhost"
 if "%AUTH_BASE%"=="" set "AUTH_BASE=/api/v1/auth"
 if "%CORE_BASE%"=="" set "CORE_BASE=/api/core"
 
-if "%CLIENT_EMAIL%"=="" set "CLIENT_EMAIL=client@neft.local"
-if "%CLIENT_PASSWORD%"=="" set "CLIENT_PASSWORD=client"
+if "%CLIENT_EMAIL%"=="" (
+  for /f "usebackq delims=" %%E in (`python -c "import uuid; print(f'client-onboarding-{uuid.uuid4().hex[:8]}@neft.local')"`) do set "CLIENT_EMAIL=%%E"
+)
+if "%CLIENT_PASSWORD%"=="" set "CLIENT_PASSWORD=Client123!"
 
+set "SIGNUP_BODY_FILE=%TEMP%\client_signup_body_%RANDOM%.json"
+set "SIGNUP_RESP_FILE=%TEMP%\client_signup_%RANDOM%.json"
 set "LOGIN_BODY_FILE=%TEMP%\client_login_body_%RANDOM%.json"
 set "LOGIN_RESP_FILE=%TEMP%\client_login_%RANDOM%.json"
+
+python -c "import json; from pathlib import Path; Path(r'%SIGNUP_BODY_FILE%').write_text(json.dumps({'email': r'%CLIENT_EMAIL%','password': r'%CLIENT_PASSWORD%','full_name': 'Client Onboarding Smoke'}), encoding='utf-8')"
+call :http_request "POST" "%GATEWAY_BASE%%AUTH_BASE%/signup" "" "%SIGNUP_BODY_FILE%" "200,201,409" "%SIGNUP_RESP_FILE%" || goto :fail
 
 python -c "import json; from pathlib import Path; Path(r'%LOGIN_BODY_FILE%').write_text(json.dumps({'email': r'%CLIENT_EMAIL%','password': r'%CLIENT_PASSWORD%','portal': 'client'}), encoding='utf-8')"
 call :http_request "POST" "%GATEWAY_BASE%%AUTH_BASE%/login" "" "%LOGIN_BODY_FILE%" "200" "%LOGIN_RESP_FILE%" || goto :fail
@@ -23,6 +30,7 @@ if /i "%CLIENT_TOKEN:~0,7%"=="Bearer " set "CLIENT_AUTH_HEADER=Authorization: %C
 set "PROFILE_BODY_FILE=%TEMP%\client_profile_body_%RANDOM%.json"
 set "PROFILE_RESP_FILE=%TEMP%\client_profile_%RANDOM%.json"
 python -c "import json; from pathlib import Path; Path(r'%PROFILE_BODY_FILE%').write_text(json.dumps({'org_type': 'LEGAL','name': 'ООО ТЕСТ','inn': '7707083893'}), encoding='utf-8')"
+python -c "import json, random; from pathlib import Path; weights=[2,4,10,3,5,9,4,6,8]; base=[7,7]+[random.randint(0,9) for _ in range(7)]; inn=''.join(map(str, base+[sum(d*w for d,w in zip(base, weights))%%11%%10])); Path(r'%PROFILE_BODY_FILE%').write_text(json.dumps({'org_type': 'LEGAL','name': 'OOO Client Smoke','inn': inn}), encoding='utf-8')"
 call :http_request "POST" "%GATEWAY_BASE%%CORE_BASE%/client/onboarding/profile" "%CLIENT_AUTH_HEADER%" "%PROFILE_BODY_FILE%" "200" "%PROFILE_RESP_FILE%" || goto :fail
 
 set "PORTAL_RESP_FILE=%TEMP%\client_portal_me_%RANDOM%.json"

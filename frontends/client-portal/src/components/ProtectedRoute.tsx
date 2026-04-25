@@ -16,7 +16,7 @@ export function ProtectedRoute() {
   }
 
   if (authStatus !== "authenticated" || !user) {
-    return <Navigate to={`/client/login?returnUrl=${encodeURIComponent(returnUrl)}`} replace />;
+    return <Navigate to={`/login?returnUrl=${encodeURIComponent(returnUrl)}`} replace />;
   }
 
   if (!hasClientRole) {

@@ -1,4 +1,4 @@
-import { test } from "@playwright/test";
+import { test } from "playwright/test";
 import {
   ADMIN_ROUTES,
   CLIENT_ROUTES,

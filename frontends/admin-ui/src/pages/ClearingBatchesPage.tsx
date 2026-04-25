@@ -82,9 +82,12 @@ export const ClearingBatchesPage: React.FC = () => {
   const operations = selectedBatchDetails?.operations ?? [];
 
   const batchColumns: Column<ClearingBatch>[] = [
-    { key: "batch_date", title: "Batch Date", render: (row) => formatDate(row.batch_date) },
+    {
+      key: "date_from",
+      title: "Period",
+      render: (row) => `${formatDate(row.date_from)} -> ${formatDate(row.date_to)}`,
+    },
     { key: "merchant_id", title: "Merchant", render: (row) => row.merchant_id },
-    { key: "currency", title: "Currency", render: (row) => row.currency },
     { key: "total_amount", title: "Total Amount", render: (row) => formatAmount(row.total_amount) },
     { key: "status", title: "Status", render: (row) => <StatusBadge status={row.status} /> },
   ];
@@ -142,12 +145,13 @@ export const ClearingBatchesPage: React.FC = () => {
             <div className="card" style={{ marginBottom: 12 }}>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
                 <div>
-                  <div style={{ fontWeight: 700 }}>{formatDate(selectedBatch.batch_date)}</div>
+                  <div style={{ fontWeight: 700 }}>
+                    {formatDate(selectedBatch.date_from)} {"->"} {formatDate(selectedBatch.date_to)}
+                  </div>
                   <div style={{ color: "#475569" }}>{selectedBatch.merchant_id}</div>
                 </div>
                 <StatusBadge status={selectedBatch.status} />
               </div>
-              <p style={{ marginBottom: 4 }}>Currency: {selectedBatch.currency}</p>
               <p style={{ marginBottom: 4 }}>Total amount: {formatAmount(selectedBatch.total_amount)}</p>
               <p style={{ marginBottom: 12 }}>
                 Operations: {selectedBatch.operations_count ?? operations.length}
@@ -161,10 +165,7 @@ export const ClearingBatchesPage: React.FC = () => {
                 </button>
                 <button
                   onClick={() => updateStatus("confirmed")}
-                  disabled={
-                    updateStatusMutation.isPending ||
-                    (selectedBatch.status !== "PENDING" && selectedBatch.status !== "SENT")
-                  }
+                  disabled={updateStatusMutation.isPending || selectedBatch.status !== "SENT"}
                 >
                   Mark confirmed
                 </button>

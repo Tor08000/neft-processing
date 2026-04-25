@@ -8,7 +8,7 @@ from app.services.logistics.navigator.noop import NoopNavigator
 
 @dataclass(frozen=True)
 class YandexStubNavigator:
-    provider: str = "yandex"
+    provider: str = "yandex_stub"
 
     def build_route(self, stops: list[GeoPoint]) -> RouteSnapshot:
         base = NoopNavigator(provider=self.provider)
@@ -19,7 +19,7 @@ class YandexStubNavigator:
         eta = base.estimate_eta(route)
         return ETAResult(
             eta_minutes=eta.eta_minutes,
-            assumptions=["stub_provider=yandex", *eta.assumptions],
+            assumptions=[f"stub_provider={self.provider}", *eta.assumptions],
             method="stub_straight_line",
         )
 

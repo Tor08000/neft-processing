@@ -30,16 +30,16 @@ assert_ok() {
   curl -fsS "${BASE_URL}${endpoint}" -H "Authorization: Bearer ${token}" >/dev/null
 }
 
-admin_token=$(login "${ADMIN_LOGIN:-admin@example.com}" "${ADMIN_PASSWORD:-change-me}" "admin")
-assert_ok "$admin_token" "/api/core/admin/me"
+admin_token=$(login "${ADMIN_LOGIN:-admin@neft.local}" "${ADMIN_PASSWORD:-Neft123!}" "admin")
+assert_ok "$admin_token" "/api/core/v1/admin/me"
 
-client_token=$(login "${CLIENT_LOGIN:-client@neft.local}" "${CLIENT_PASSWORD:-client}" "client")
+client_token=$(login "${CLIENT_LOGIN:-client@neft.local}" "${CLIENT_PASSWORD:-Client123!}" "client")
 assert_ok "$client_token" "/api/core/client/v1/me"
 
 partner_token=$(login "${PARTNER_LOGIN:-partner@neft.local}" "${PARTNER_PASSWORD:-Partner123!}" "partner")
 assert_ok "$partner_token" "/api/core/partner/me"
 
-wrong_portal_code=$(curl -sS -o /dev/null -w '%{http_code}' "${BASE_URL}/api/core/admin/me" -H "Authorization: Bearer ${client_token}")
+wrong_portal_code=$(curl -sS -o /dev/null -w '%{http_code}' "${BASE_URL}/api/core/v1/admin/me" -H "Authorization: Bearer ${client_token}")
 if [[ "$wrong_portal_code" != "403" ]]; then
   echo "Expected 403 for wrong portal token, got ${wrong_portal_code}"
   exit 1

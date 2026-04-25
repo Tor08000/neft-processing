@@ -6,6 +6,7 @@ import { AppEmptyState, AppErrorState, AppLoadingState } from "../components/sta
 import type { AccountingExportDetails } from "../types/exports";
 import { formatDate, formatDateTime } from "../utils/format";
 import { MoneyValue } from "../components/common/MoneyValue";
+import { FinanceOverview } from "@shared/brand/components";
 
 export function FinanceExportDetailsPage() {
   const { id } = useParams();
@@ -13,7 +14,6 @@ export function FinanceExportDetailsPage() {
   const [details, setDetails] = useState<AccountingExportDetails | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [actionStatus, setActionStatus] = useState<string | null>(null);
   const [retryKey, setRetryKey] = useState(0);
 
   useEffect(() => {
@@ -89,15 +89,24 @@ export function FinanceExportDetailsPage() {
       <section className="card">
         <h3>Totals</h3>
         {details.totals && Object.keys(details.totals).length ? (
-          <ul className="bullets">
-            {Object.entries(details.totals).map(([key, value]) => (
-              <li key={key}>
-                {key}: <MoneyValue amount={value} />
-              </li>
-            ))}
-          </ul>
+          <FinanceOverview
+            compact
+            items={Object.entries(details.totals).map(([key, value]) => ({
+              id: key,
+              label: key,
+              value: <MoneyValue amount={value} />,
+              tone: key.toLowerCase().includes("net")
+                ? "success"
+                : key.toLowerCase().includes("fee") || key.toLowerCase().includes("refund")
+                  ? "warning"
+                  : "info",
+            }))}
+          />
         ) : (
-          <p className="muted">Totals не доступны.</p>
+          <AppEmptyState
+            title="Totals ещё не рассчитаны"
+            description="Сводка появится после обработки строк выгрузки."
+          />
         )}
       </section>
 
@@ -116,44 +125,53 @@ export function FinanceExportDetailsPage() {
             ))}
           </div>
         ) : (
-          <p className="muted">События ERP отсутствуют.</p>
+          <AppEmptyState
+            title="Событий ERP пока нет"
+            description="Хронология появится после передачи выгрузки в ERP."
+          />
         )}
       </section>
 
       <section className="card">
         <h3>Reconciliation</h3>
         {details.reconciliation ? (
-          <dl className="meta-grid">
-            <div>
-              <dt className="label">Expected total</dt>
-              <dd>
-                <MoneyValue amount={details.reconciliation.expected_total ?? 0} />
-              </dd>
-            </div>
-            <div>
-              <dt className="label">Received total</dt>
-              <dd>
-                <MoneyValue amount={details.reconciliation.received_total ?? 0} />
-              </dd>
-            </div>
-            <div>
-              <dt className="label">Mismatch summary</dt>
-              <dd>{details.reconciliation.mismatch_summary ?? "—"}</dd>
-            </div>
-          </dl>
+          <FinanceOverview
+            compact
+            items={[
+              {
+                id: "expected-total",
+                label: "Expected total",
+                value: <MoneyValue amount={details.reconciliation.expected_total ?? 0} />,
+                tone: "info",
+              },
+              {
+                id: "received-total",
+                label: "Received total",
+                value: <MoneyValue amount={details.reconciliation.received_total ?? 0} />,
+                tone: "success",
+              },
+              {
+                id: "mismatch-summary",
+                label: "Mismatch summary",
+                value: details.reconciliation.mismatch_summary ?? "—",
+                tone: details.reconciliation.mismatch_summary ? "warning" : "default",
+              },
+            ]}
+          />
         ) : (
-          <p className="muted">Reconciliation не доступен.</p>
+          <AppEmptyState
+            title="Сверка пока недоступна"
+            description="Сводка появится после обработки импортов и подтверждения в ERP."
+          />
         )}
         <div className="actions">
-          <button
-            type="button"
-            className="primary"
-            onClick={() => setActionStatus("Request support queued")}
-          >
-            Request support
-          </button>
+          <Link className="primary" to="/client/support/new?topic=billing">
+            Написать в поддержку
+          </Link>
+          <Link className="ghost" to="/exports">
+            Вернуться к выгрузкам
+          </Link>
         </div>
-        {actionStatus ? <div className="muted small">{actionStatus}</div> : null}
       </section>
     </div>
   );

@@ -14,8 +14,12 @@ def _route_key(route: APIRoute, method: str) -> tuple[str, str]:
     return method, route.path
 
 
-def _endpoint_key(route: APIRoute) -> tuple[str, str, str]:
-    return route.endpoint.__module__, route.endpoint.__name__, route.path
+def _route_methods(route: APIRoute) -> tuple[str, ...]:
+    return tuple(sorted(method for method in (route.methods or set()) if method not in {"HEAD", "OPTIONS"}))
+
+
+def _endpoint_key(route: APIRoute) -> tuple[str, str, str, tuple[str, ...]]:
+    return route.endpoint.__module__, route.endpoint.__name__, route.path, _route_methods(route)
 
 
 def _iter_routes():
@@ -27,7 +31,11 @@ def _iter_routes():
 def test_routes_unique_method_path() -> None:
     ignored_methods = {"HEAD", "OPTIONS"}
     method_path_map: dict[tuple[str, str], list[APIRoute]] = defaultdict(list)
-    endpoint_path_map: dict[tuple[str, str, str], list[APIRoute]] = defaultdict(list)
+    # Compatibility pattern: one handler may intentionally support the same path
+    # across different HTTP methods (for example POST + PATCH). We still fail on
+    # duplicate method/path and duplicate operationId, but we only treat endpoint
+    # duplication as harmful when the handler/path/method-set is repeated.
+    endpoint_path_map: dict[tuple[str, str, str, tuple[str, ...]], list[APIRoute]] = defaultdict(list)
 
     for route in _iter_routes():
         methods = {method for method in (route.methods or set()) if method not in ignored_methods}
@@ -49,8 +57,9 @@ def test_routes_unique_method_path() -> None:
 
     if endpoint_duplicates:
         lines = ["Duplicate endpoint/module/path routes detected:"]
-        for (module, name, path), routes in sorted(endpoint_duplicates.items()):
-            lines.append(f"{module}.{name} {path} ({len(routes)})")
+        for (module, name, path, methods), routes in sorted(endpoint_duplicates.items()):
+            method_list = ",".join(methods)
+            lines.append(f"{module}.{name} {path} [{method_list}] ({len(routes)})")
         raise AssertionError("\n".join(lines))
 
 

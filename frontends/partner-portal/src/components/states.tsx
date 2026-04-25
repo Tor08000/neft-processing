@@ -47,13 +47,26 @@ export function ErrorState({
   description,
   correlationId,
   action,
+  onRetry,
+  retryLabel,
 }: {
   title?: string;
   description?: string;
   correlationId?: string | null;
   action?: ReactNode;
+  onRetry?: () => void;
+  retryLabel?: string;
 }) {
-  return <PartnerErrorState title={title} description={description} action={action} />;
+  return (
+    <PartnerErrorState
+      title={title}
+      description={description}
+      correlationId={correlationId}
+      action={action}
+      onRetry={onRetry}
+      retryLabel={retryLabel}
+    />
+  );
 }
 
 export function ForbiddenState({

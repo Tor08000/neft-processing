@@ -5,14 +5,19 @@ from enum import Enum
 from typing import Iterable
 
 from fastapi import HTTPException, Request
+from sqlalchemy import desc
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.models.audit_log import ActorType, AuditVisibility
+from app.models.subscriptions_v1 import ClientSubscription
 from app.services.audit_service import AuditService, RequestContext, request_context_from_request
 from app.services.entitlements_v2_service import (
     AVAILABILITY_ADDON,
     AVAILABILITY_DISABLED,
     AVAILABILITY_ENABLED,
+    EntitlementsSnapshot,
+    get_client_entitlements_snapshot,
     get_org_entitlements_snapshot,
 )
 
@@ -78,14 +83,56 @@ def get_subscription_status(db: Session, *, org_id: int) -> str | None:
     return _normalize_subscription_status(subscription.get("status"))
 
 
-def _resolve_org_id(token: dict) -> int:
-    org_id = token.get("client_id") or token.get("org_id")
-    if not org_id:
-        raise HTTPException(status_code=403, detail="missing_org")
+def _resolve_client_subscription_org_id(db: Session | None, *, client_id: str | None) -> int | None:
+    if db is None or not client_id:
+        return None
     try:
-        return int(org_id)
-    except (TypeError, ValueError):
-        raise HTTPException(status_code=403, detail="invalid_org")
+        row = (
+            db.query(ClientSubscription.tenant_id)
+            .filter(ClientSubscription.client_id == str(client_id))
+            .order_by(desc(ClientSubscription.created_at), desc(ClientSubscription.start_at))
+            .first()
+        )
+    except SQLAlchemyError:
+        return None
+    if row is None:
+        return None
+    return int(row[0])
+
+
+def _resolve_org_id(token: dict, *, db: Session | None = None) -> int:
+    for key in ("org_id", "tenant_id"):
+        value = token.get(key)
+        if value in (None, ""):
+            continue
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            continue
+
+    client_id = str(token.get("client_id") or "").strip() or None
+    resolved_from_subscription = _resolve_client_subscription_org_id(db, client_id=client_id)
+    if resolved_from_subscription is not None:
+        return resolved_from_subscription
+
+    if client_id:
+        try:
+            return int(client_id)
+        except (TypeError, ValueError):
+            pass
+
+    if not any(token.get(key) not in (None, "") for key in ("org_id", "client_id", "tenant_id")):
+        raise HTTPException(status_code=403, detail="missing_org")
+    raise HTTPException(status_code=403, detail="invalid_org")
+
+
+def _resolve_entitlements_snapshot(db: Session, *, token: dict, org_id: int) -> EntitlementsSnapshot:
+    client_id = str(token.get("client_id") or "").strip()
+    if client_id:
+        client_snapshot = get_client_entitlements_snapshot(db, client_id=client_id, org_id=org_id)
+        if client_snapshot is not None:
+            return client_snapshot
+    return get_org_entitlements_snapshot(db, org_id=org_id)
 
 
 def _feature_available(availability: str | None) -> bool:
@@ -169,8 +216,8 @@ def evaluate_entitlement(
     mode: str = "hard",
 ) -> EntitlementDecision:
     _ = mode
-    org_id = _resolve_org_id(token)
-    snapshot = get_org_entitlements_snapshot(db, org_id=org_id)
+    org_id = _resolve_org_id(token, db=db)
+    snapshot = _resolve_entitlements_snapshot(db, token=token, org_id=org_id)
     features = snapshot.entitlements.get("features") or {}
     subscription_status = _normalize_subscription_status(
         (snapshot.entitlements.get("subscription") or {}).get("status")
@@ -264,7 +311,7 @@ def enforce_entitlement(
         return
     org_id = None
     try:
-        org_id = _resolve_org_id(token)
+        org_id = _resolve_org_id(token, db=db)
     except HTTPException:
         org_id = None
     if decision.error_code in {"billing_soft_blocked", "billing_hard_blocked"}:

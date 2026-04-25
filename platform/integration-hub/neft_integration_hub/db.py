@@ -4,7 +4,8 @@ import os
 from contextlib import contextmanager
 from typing import Generator
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, inspect
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import declarative_base, sessionmaker
 
 from neft_integration_hub.settings import get_settings
@@ -48,10 +49,48 @@ def reset_engine() -> None:
     _SessionLocal = None
 
 
+def _env_bool(value: str | None) -> bool:
+    return (value or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def should_auto_create_schema() -> bool:
+    service_toggle = os.getenv("INTEGRATION_HUB_AUTO_CREATE_SCHEMA")
+    if service_toggle is not None:
+        return _env_bool(service_toggle)
+    return _env_bool(os.getenv("NEFT_AUTO_CREATE_SCHEMA"))
+
+
+def get_missing_tables() -> list[str]:
+    from neft_integration_hub import models  # noqa: F401
+
+    inspector = inspect(get_engine())
+    return [table_name for table_name in Base.metadata.tables.keys() if not inspector.has_table(table_name)]
+
+
+def get_schema_health() -> dict:
+    auto_create = should_auto_create_schema()
+    try:
+        missing_tables = get_missing_tables()
+    except SQLAlchemyError as exc:
+        return {
+            "ready": False,
+            "auto_create_schema": auto_create,
+            "missing_tables": [],
+            "error": exc.__class__.__name__,
+        }
+
+    return {
+        "ready": not missing_tables,
+        "auto_create_schema": auto_create,
+        "missing_tables": missing_tables,
+        "error": None,
+    }
+
+
 def init_db() -> None:
     from neft_integration_hub import models  # noqa: F401
 
-    if os.getenv("NEFT_AUTO_CREATE_SCHEMA") == "true":
+    if should_auto_create_schema():
         Base.metadata.create_all(bind=get_engine())
 
 
@@ -76,4 +115,15 @@ def session_scope():
         session.close()
 
 
-__all__ = ["Base", "get_db", "get_engine", "get_sessionmaker", "init_db", "reset_engine", "session_scope"]
+__all__ = [
+    "Base",
+    "get_db",
+    "get_engine",
+    "get_missing_tables",
+    "get_schema_health",
+    "get_sessionmaker",
+    "init_db",
+    "reset_engine",
+    "session_scope",
+    "should_auto_create_schema",
+]

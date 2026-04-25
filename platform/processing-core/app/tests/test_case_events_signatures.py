@@ -4,16 +4,23 @@ from uuid import uuid4
 import pytest
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import Session, sessionmaker
-from sqlalchemy.pool import StaticPool
+from sqlalchemy.orm import Session
 
+from app.api.dependencies.admin import require_admin_user
 from app.db import get_db
-from app.main import app
-from app.models.cases import Case, CaseComment, CaseEvent, CaseEventType, CaseKind, CasePriority, CaseSnapshot, CaseStatus
+from app.models.cases import Case, CaseEvent, CaseEventType, CaseKind, CasePriority, CaseStatus
+from app.routers.admin.cases import router as admin_cases_router
+from app.routers.cases import router as cases_router
 from app.services.audit_signing import AuditSigningError, LocalSigner
 from app.services.case_events_service import CaseEventChange, emit_case_event
+from app.tests._scoped_router_harness import (
+    CASES_TEST_TABLES,
+    cases_dependency_overrides,
+    require_admin_user_override,
+    scoped_session_context,
+)
 
 
 def _auth_headers(token: str) -> dict[str, str]:
@@ -41,36 +48,29 @@ def audit_signing_env(monkeypatch: pytest.MonkeyPatch, signing_key: bytes) -> No
 
 @pytest.fixture()
 def db_session() -> Session:
-    engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
-    SessionLocal = sessionmaker(autocommit=False, autoflush=False, expire_on_commit=False, bind=engine)
-    Case.__table__.create(bind=engine)
-    CaseSnapshot.__table__.create(bind=engine)
-    CaseComment.__table__.create(bind=engine)
-    CaseEvent.__table__.create(bind=engine)
-    session = SessionLocal()
-    try:
+    with scoped_session_context(tables=CASES_TEST_TABLES) as session:
         yield session
-    finally:
-        session.close()
-        CaseEvent.__table__.drop(bind=engine)
-        CaseComment.__table__.drop(bind=engine)
-        CaseSnapshot.__table__.drop(bind=engine)
-        Case.__table__.drop(bind=engine)
-        engine.dispose()
 
 
 @pytest.fixture()
 def client(db_session: Session):
-    def _override():
+    app = FastAPI()
+    app.include_router(cases_router, prefix="/api/core")
+    app.include_router(admin_cases_router, prefix="/api/core/v1/admin")
+
+    def _override_get_db():
         try:
             yield db_session
         finally:
             pass
 
-    app.dependency_overrides[get_db] = _override
+    app.dependency_overrides[get_db] = _override_get_db
+    for dependency, override in cases_dependency_overrides().items():
+        app.dependency_overrides[dependency] = override
+    app.dependency_overrides[require_admin_user] = require_admin_user_override
+
     with TestClient(app) as test_client:
         yield test_client
-    app.dependency_overrides.pop(get_db, None)
 
 
 def test_local_signer_signs_and_verifies(signing_key: bytes) -> None:

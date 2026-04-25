@@ -55,8 +55,19 @@ from app.services.subscription_service import (
     update_plan_modules,
     update_role_entitlements,
 )
+from app.services.token_claims import resolve_token_tenant_id
 
 router = APIRouter(prefix="/subscriptions", tags=["subscriptions"])
+
+
+def _tenant_id_from_token(db: Session, token: dict, client_id: str | None) -> int:
+    return resolve_token_tenant_id(
+        token,
+        db=db,
+        client_id=client_id,
+        default=DEFAULT_TENANT_ID,
+        error_detail="missing_tenant_context",
+    )
 
 
 def _plan_modules(db: Session, plan_id: str) -> list[SubscriptionPlanModule]:
@@ -494,10 +505,10 @@ def get_my_subscription(
     db: Session = Depends(get_db),
     token: dict = Depends(client_auth.verify_client_token),
 ) -> ClientSubscriptionOut:
-    tenant_id = int(token.get("tenant_id") or DEFAULT_TENANT_ID)
     client_id = token.get("client_id")
     if not client_id:
         raise HTTPException(status_code=403, detail="Missing client context")
+    tenant_id = _tenant_id_from_token(db, token, client_id)
 
     subscription = get_client_subscription(db, tenant_id=tenant_id, client_id=client_id)
     if not subscription:
@@ -524,10 +535,10 @@ def get_my_subscription_benefits(
     db: Session = Depends(get_db),
     token: dict = Depends(client_auth.verify_client_token),
 ) -> SubscriptionBenefitsOut:
-    tenant_id = int(token.get("tenant_id") or DEFAULT_TENANT_ID)
     client_id = token.get("client_id")
     if not client_id:
         raise HTTPException(status_code=403, detail="Missing client context")
+    tenant_id = _tenant_id_from_token(db, token, client_id)
 
     subscription = get_client_subscription(db, tenant_id=tenant_id, client_id=client_id)
     if not subscription:
@@ -550,10 +561,10 @@ def get_my_gamification_summary(
     db: Session = Depends(get_db),
     token: dict = Depends(client_auth.verify_client_token),
 ) -> GamificationSummary:
-    tenant_id = int(token.get("tenant_id") or DEFAULT_TENANT_ID)
     client_id = token.get("client_id")
     if not client_id:
         raise HTTPException(status_code=403, detail="Missing client context")
+    tenant_id = _tenant_id_from_token(db, token, client_id)
 
     subscription = get_client_subscription(db, tenant_id=tenant_id, client_id=client_id)
     if not subscription:

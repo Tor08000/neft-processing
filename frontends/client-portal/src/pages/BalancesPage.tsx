@@ -1,10 +1,12 @@
-import { type ChangeEvent, useEffect, useMemo, useState } from "react";
+import { type ChangeEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { fetchBalances } from "../api/balances";
 import { fetchStatements } from "../api/statements";
 import { useAuth } from "../auth/AuthContext";
 import type { BalanceItem } from "../types/balances";
 import type { Statement } from "../types/statements";
 import { MoneyValue } from "../components/common/MoneyValue";
+import { Table, type Column } from "../components/common/Table";
+import { FinanceOverview } from "@shared/brand/components";
 
 const todayIso = () => new Date().toISOString().slice(0, 10);
 
@@ -22,19 +24,24 @@ export function BalancesPage() {
     return { from, to };
   });
 
-  useEffect(() => {
+  const loadBalances = useCallback(() => {
     setLoading(true);
+    setError(null);
     Promise.all([
       fetchBalances(user),
       fetchStatements(user, { from: filters.from, to: filters.to }),
     ])
       .then(([balancesResp, statementsResp]) => {
-        setItems(balancesResp.items);
+        setItems(balancesResp.items ?? []);
         setStatements(statementsResp);
       })
       .catch((err: Error) => setError(err.message))
       .finally(() => setLoading(false));
-  }, [user, filters]);
+  }, [filters.from, filters.to, user]);
+
+  useEffect(() => {
+    loadBalances();
+  }, [loadBalances]);
 
   const totals = useMemo(() => {
     const totalCurrent = items.reduce((acc, item) => acc + Number(item.current ?? 0), 0);
@@ -48,84 +55,112 @@ export function BalancesPage() {
     setFilters((prev) => ({ ...prev, [name]: value }));
   };
 
-  if (loading) {
-    return <div className="card">Загружаем балансы...</div>;
+  if (!user) {
+    return null;
   }
 
-  if (error) {
-    return (
-      <div className="card error" role="alert">
-        {error}
-      </div>
-    );
-  }
+  const columns = useMemo<Column<BalanceItem>[]>(
+    () => [
+      { key: "currency", title: "Валюта", dataIndex: "currency" },
+      {
+        key: "current",
+        title: "Текущий баланс",
+        className: "neft-num",
+        render: (item) => <MoneyValue amount={item.current} currency={item.currency} />,
+      },
+      {
+        key: "available",
+        title: "Доступно",
+        className: "neft-num",
+        render: (item) => <MoneyValue amount={item.available} currency={item.currency} />,
+      },
+    ],
+    [],
+  );
 
   return (
-    <div className="card">
-      <div className="card__header">
+    <div className="stack">
+      <div className="page-header">
         <div>
-          <h2>Балансы и доступные средства</h2>
+          <h1>Балансы и доступные средства</h1>
           <p className="muted">Актуальные остатки и движение средств за период</p>
         </div>
-        <div className="filters">
-          <div className="filter">
-            <label htmlFor="from">Период с</label>
-            <input id="from" name="from" type="date" value={filters.from} onChange={handleFilterChange} />
-          </div>
-          <div className="filter">
-            <label htmlFor="to">Период по</label>
-            <input id="to" name="to" type="date" value={filters.to} onChange={handleFilterChange} />
-          </div>
-        </div>
       </div>
 
-      <div className="kpis">
-        <div className="kpi">
-          <p className="label">Текущий баланс</p>
-          <p className="value">
-            <MoneyValue amount={totals.totalCurrent} currency={items[0]?.currency ?? "RUB"} />
-          </p>
-        </div>
-        <div className="kpi">
-          <p className="label">Пополнено за период</p>
-          <p className="value success">
-            <MoneyValue amount={totals.totalTopup} currency={items[0]?.currency ?? "RUB"} />
-          </p>
-        </div>
-        <div className="kpi">
-          <p className="label">Израсходовано за период</p>
-          <p className="value warning">
-            <MoneyValue amount={totals.totalSpent} currency={items[0]?.currency ?? "RUB"} />
-          </p>
-        </div>
-      </div>
+      <section className="card">
+        <FinanceOverview
+          items={[
+            {
+              id: "current",
+              label: "Текущий баланс",
+              value: <MoneyValue amount={totals.totalCurrent} currency={items[0]?.currency ?? "RUB"} />,
+              tone: "info",
+            },
+            {
+              id: "topup",
+              label: "Пополнено за период",
+              value: <MoneyValue amount={totals.totalTopup} currency={items[0]?.currency ?? "RUB"} />,
+              tone: "success",
+            },
+            {
+              id: "spent",
+              label: "Израсходовано за период",
+              value: <MoneyValue amount={totals.totalSpent} currency={items[0]?.currency ?? "RUB"} />,
+              tone: "warning",
+            },
+          ]}
+        />
 
-      {items.length === 0 ? (
-        <p className="muted">Нет счетов, доступных для отображения.</p>
-      ) : (
-        <table className="table">
-          <thead>
-            <tr>
-              <th>Валюта</th>
-              <th>Текущий баланс</th>
-              <th>Доступно</th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((item) => (
-              <tr key={item.currency}>
-                <td>{item.currency}</td>
-                <td className="neft-num-cell">
-                  <MoneyValue amount={item.current} currency={item.currency} />
-                </td>
-                <td className="neft-num-cell">
-                  <MoneyValue amount={item.available} currency={item.currency} />
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+        <Table
+          columns={columns}
+          data={items}
+          loading={loading}
+          rowKey={(item) => item.currency}
+          toolbar={
+            <div className="filters">
+              <div className="filter">
+                <label htmlFor="balances-from">Период с</label>
+                <input
+                  id="balances-from"
+                  name="from"
+                  type="date"
+                  value={filters.from}
+                  onChange={handleFilterChange}
+                />
+              </div>
+              <div className="filter">
+                <label htmlFor="balances-to">Период по</label>
+                <input id="balances-to" name="to" type="date" value={filters.to} onChange={handleFilterChange} />
+              </div>
+            </div>
+          }
+          errorState={
+            error
+              ? {
+                  title: "Не удалось загрузить балансы",
+                  description: error,
+                  actionLabel: "Повторить",
+                  actionOnClick: loadBalances,
+                }
+              : undefined
+          }
+          emptyState={{
+            title: "Балансовые счета пока недоступны",
+            description: "Финансовый контур откроет здесь остатки и обороты после активации счёта организации.",
+            hint: `Период отчёта: ${filters.from} — ${filters.to}`,
+            actionLabel: "Обновить",
+            actionOnClick: loadBalances,
+          }}
+          footer={
+            error ? null : (
+              <div className="table-footer__content muted">
+                <span>Счетов: {items.length}</span>
+                <span>Проводок за период: {statements.length}</span>
+              </div>
+            )
+          }
+        />
+      </section>
     </div>
   );
 }

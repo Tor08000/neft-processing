@@ -37,7 +37,7 @@ def auto_link_for_order(
         return []
     transactions = (
         db.query(FuelTransaction)
-        .filter(FuelTransaction.vehicle_id == order.vehicle_id)
+        .filter(repository.id_equals(FuelTransaction.vehicle_id, order.vehicle_id))
         .filter(FuelTransaction.client_id == order.client_id)
         .order_by(FuelTransaction.occurred_at.desc())
         .limit(10)
@@ -71,7 +71,7 @@ def auto_link_fuel_tx(
 
     order = (
         db.query(LogisticsOrder)
-        .filter(LogisticsOrder.vehicle_id == transaction.vehicle_id)
+        .filter(repository.id_equals(LogisticsOrder.vehicle_id, transaction.vehicle_id))
         .filter(LogisticsOrder.client_id == transaction.client_id)
         .order_by(LogisticsOrder.created_at.desc())
         .first()
@@ -139,8 +139,10 @@ def auto_link_fuel_tx(
             time_delta_minutes=_time_delta_minutes(transaction.occurred_at, _preferred_stop_time(matched_stop)),
         )
         db.add(link)
+        db.flush()
+        link_id = str(link.id)
         db.commit()
-        db.refresh(link)
+        link = repository.refresh_by_id(db, link, FuelRouteLink, link_id)
 
         events.audit_event(
             db,
@@ -260,8 +262,10 @@ def _emit_signal(
         explain=explain,
     )
     db.add(signal)
+    db.flush()
+    signal_id = str(signal.id)
     db.commit()
-    db.refresh(signal)
+    signal = repository.refresh_by_id(db, signal, LogisticsRiskSignal, signal_id)
 
     events.audit_event(
         db,

@@ -22,6 +22,7 @@ from app.services.jwt_support import (
     resolve_jwks_key,
     should_refresh_jwks,
 )
+from app.services.admin_portal_access import ADMIN_ENVELOPE_ROLES
 
 PUBLIC_KEY_URL = os.getenv(
     "ADMIN_PUBLIC_KEY_URL",
@@ -42,7 +43,7 @@ ADMIN_ROLES = {
     role.strip()
     for role in os.getenv(
         "ADMIN_ROLES",
-        os.getenv("NEFT_ADMIN_ROLES", "ADMIN,NEFT_ADMIN,NEFT_SUPERADMIN,PLATFORM_ADMIN,SUPERADMIN"),
+        os.getenv("NEFT_ADMIN_ROLES", ",".join(sorted(ADMIN_ENVELOPE_ROLES))),
     ).split(",")
     if role.strip()
 }

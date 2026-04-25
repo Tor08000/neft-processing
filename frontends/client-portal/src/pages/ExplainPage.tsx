@@ -138,14 +138,15 @@ const ReasonTreeNode = ({
   return (
     <div className="explain-tree__node">
       <div className={`explain-tree__row${selectedId === node.id ? " is-selected" : ""}`}>
-        <button
-          type="button"
-          className="explain-tree__toggle"
-          onClick={() => onToggle(node.id)}
-          disabled={!hasChildren}
-        >
-          {hasChildren ? (isExpanded ? "−" : "+") : "•"}
-        </button>
+        {hasChildren ? (
+          <button type="button" className="explain-tree__toggle" onClick={() => onToggle(node.id)}>
+            {isExpanded ? "−" : "+"}
+          </button>
+        ) : (
+          <span className="explain-tree__toggle" aria-hidden>
+            •
+          </span>
+        )}
         <button type="button" className="explain-tree__title" onClick={() => onSelect(node)}>
           <span className="explain-tree__label">
             {node.title}
@@ -471,9 +472,6 @@ export function ExplainPage() {
             <button type="button" className="primary" onClick={() => void loadDiff()}>
               Сравнить
             </button>
-            <button type="button" className="ghost" disabled title="Экспорт скоро">
-              Экспорт
-            </button>
           </div>
         </div>
 
@@ -656,9 +654,6 @@ export function ExplainPage() {
           <button type="button" className="ghost" onClick={copyLink}>
             Скопировать ссылку
           </button>
-          <button type="button" className="ghost" title="В разработке" disabled>
-            Экспорт
-          </button>
           <Link className="ghost" to="/dashboard">
             На дашборд
           </Link>
@@ -762,15 +757,13 @@ export function ExplainPage() {
                 <label>
                   <input type="radio" checked={filter === "all"} onChange={() => setFilter("all")} /> Все
                 </label>
-                <label>
-                  <input
-                    type="radio"
-                    checked={filter === "linked"}
-                    onChange={() => setFilter("linked")}
-                    disabled={linkedEvidenceIds.size === 0}
-                  />{" "}
-                  Связанные
-                </label>
+                {linkedEvidenceIds.size > 0 ? (
+                  <label>
+                    <input type="radio" checked={filter === "linked"} onChange={() => setFilter("linked")} /> Связанные
+                  </label>
+                ) : selectedReasonId ? (
+                  <span className="muted small">Для выбранной причины нет связанных evidence.</span>
+                ) : null}
               </div>
             </div>
             <div className="explain-evidence">

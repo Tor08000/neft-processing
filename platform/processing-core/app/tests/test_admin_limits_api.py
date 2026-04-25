@@ -2,33 +2,46 @@ import os
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy.orm import Session
+
+os.environ["DISABLE_CELERY"] = "1"
+
+from app.api.dependencies.admin import require_admin_user
+from app.api.v1.endpoints.admin_limits import router as admin_router
+from app.models.fuel import FuelStation
+from app.models.groups import CardGroup, CardGroupMember, ClientGroup, ClientGroupMember
+from app.models.limit_rule import LimitRule
+from app.models.operation import Operation
+from app.services.limits import CheckAndReserveRequest, evaluate_limits_locally
+from app.tests._scoped_router_harness import router_client_context, scoped_session_context
 
 
-TEST_DB_URL = os.getenv("DATABASE_URL")
+ADMIN_LIMITS_TEST_TABLES = (
+    FuelStation.__table__,
+    Operation.__table__,
+    ClientGroup.__table__,
+    ClientGroupMember.__table__,
+    CardGroup.__table__,
+    CardGroupMember.__table__,
+    LimitRule.__table__,
+)
 
-if TEST_DB_URL and not TEST_DB_URL.startswith("sqlite"):
-    pytest.skip("admin limits API tests expect isolated SQLite database", allow_module_level=True)
 
-os.environ.setdefault("DATABASE_URL", "sqlite+pysqlite:///:memory:")
-
-from app.db import Base, engine  # noqa: E402
-from app.main import app  # noqa: E402
-from app.services.limits import CheckAndReserveRequest, evaluate_limits_locally  # noqa: E402
-
-
-@pytest.fixture(autouse=True)
-def clean_db():
-    Base.metadata.drop_all(bind=engine)
-    Base.metadata.create_all(bind=engine)
-    yield
-    Base.metadata.drop_all(bind=engine)
+@pytest.fixture()
+def db_session() -> Session:
+    with scoped_session_context(tables=ADMIN_LIMITS_TEST_TABLES) as session:
+        yield session
 
 
 @pytest.fixture
-def client(admin_auth_headers: dict):
-    with TestClient(app) as client:
-        client.headers.update(admin_auth_headers)
-        yield client
+def client(db_session: Session):
+    with router_client_context(
+        router=admin_router,
+        prefix="/api/v1",
+        db_session=db_session,
+        dependency_overrides={require_admin_user: lambda: {"roles": ["ADMIN"], "sub": "admin-1"}},
+    ) as api_client:
+        yield api_client
 
 
 def test_create_limit_rule_and_list_with_filter(client: TestClient):
@@ -142,7 +155,7 @@ def test_card_group_crud(client: TestClient):
     assert len(members_after.json()) == 0
 
 
-def test_limits_engine_works_with_created_rules(client: TestClient):
+def test_limits_engine_works_with_created_rules(client: TestClient, db_session: Session):
     payload = {
         "phase": "AUTH",
         "client_id": "ENG-CLIENT",
@@ -161,7 +174,7 @@ def test_limits_engine_works_with_created_rules(client: TestClient):
         amount=150,
     )
 
-    result = evaluate_limits_locally(req)
+    result = evaluate_limits_locally(req, db=db_session)
     assert result.approved is True
     assert result.limit_per_tx == 200
     assert result.daily_limit == 1_000

@@ -45,6 +45,7 @@ from app.services.commercial_layer import (
     require_plan_feature,
 )
 from app.services.pricing_service import apply_overages, calculate_monthly_usage
+from app.services.token_claims import DEFAULT_TENANT_ID, resolve_token_tenant_id
 
 router = APIRouter(prefix="/api", tags=["commercial-layer"])
 
@@ -62,12 +63,17 @@ def _serialize_onboarding_state(state: ClientOnboardingState) -> OnboardingState
 
 def _ensure_client_context(token: dict) -> tuple[str, int]:
     client_id = token.get("client_id")
-    tenant_id = token.get("tenant_id")
     if not client_id:
         raise HTTPException(status_code=403, detail="missing_client_context")
-    if tenant_id is None:
-        raise HTTPException(status_code=403, detail="missing_tenant_context")
-    return str(client_id), int(tenant_id)
+    return (
+        str(client_id),
+        resolve_token_tenant_id(
+            token,
+            client_id=str(client_id),
+            default=DEFAULT_TENANT_ID,
+            error_detail="missing_tenant_context",
+        ),
+    )
 
 
 def _month_bounds(now: Optional[datetime] = None) -> Tuple[datetime, datetime]:

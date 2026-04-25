@@ -93,6 +93,31 @@ export const PolicyCenterDetailPage = () => {
     return <ForbiddenPage />;
   }
 
+  if (error && !detail) {
+    return (
+      <div className="policy-detail">
+        <div className="page-header">
+          <div>
+            <h1>Policy</h1>
+            <div className="muted">Policy detail is unavailable.</div>
+          </div>
+          <div className="policy-detail__actions">
+            <Link className="button" to="/policies">
+              Back to list
+            </Link>
+            <button className="button" type="button" onClick={() => void loadDetail()}>
+              Retry
+            </button>
+          </div>
+        </div>
+        <div className="card card--error">
+          <strong>{error.title}</strong>
+          <div>{error.description}</div>
+        </div>
+      </div>
+    );
+  }
+
   if (loading || !detail) {
     return (
       <div className="policy-detail">
@@ -181,9 +206,6 @@ export const PolicyCenterDetailPage = () => {
       <section className="policy-section">
         <div className="policy-section__header">
           <h2>Explain</h2>
-          <button className="button" type="button" disabled>
-            View related cases
-          </button>
         </div>
         {explain ? <JsonViewer value={explain} title="Explain payload" /> : <BrandEmptyState title="Explain not available" />}
       </section>

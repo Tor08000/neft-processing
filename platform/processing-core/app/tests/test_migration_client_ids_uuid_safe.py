@@ -100,7 +100,7 @@ def test_upgrade_skips_missing_tables(monkeypatch: pytest.MonkeyPatch):
     assert ("client_cards", "client_id") not in dummy_op.alter_calls
     assert all("client_id" not in call for call in dummy_op.alter_calls)
     assert any(
-        "ALTER TABLE \"clients\" ALTER COLUMN \"id\" SET DEFAULT" in sql
+        "ALTER TABLE" in sql and '"clients"' in sql and 'ALTER COLUMN "id" SET DEFAULT gen_random_uuid()' in sql
         for sql in dummy_op.executed_sql
     )
 

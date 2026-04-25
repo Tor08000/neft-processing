@@ -33,8 +33,8 @@ def _format_csv_value(value: Any) -> str:
 
 
 def render_csv(headers: list[str], rows: list[dict[str, Any]]) -> bytes:
-    output = StringIO()
-    writer = csv.writer(output)
+    output = StringIO(newline="")
+    writer = csv.writer(output, lineterminator="\n")
     writer.writerow(headers)
     for row in rows:
         writer.writerow([_format_csv_value(row.get(header)) for header in headers])
@@ -47,4 +47,3 @@ def render_jsonl(headers: list[str], rows: list[dict[str, Any]]) -> bytes:
         ordered = {header: _format_value(row.get(header)) for header in headers}
         lines.append(json.dumps(ordered, ensure_ascii=False, separators=(",", ":")))
     return ("\n".join(lines) + "\n").encode("utf-8") if lines else b""
-

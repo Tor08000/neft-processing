@@ -1,14 +1,16 @@
 @echo off
 setlocal enabledelayedexpansion
 
-if "%GATEWAY_BASE%"=="" set "GATEWAY_BASE=http://localhost"
+if "%AUTH_HOST_BASE%"=="" set "AUTH_HOST_BASE=http://localhost:8002"
+if "%CORE_API_BASE%"=="" set "CORE_API_BASE=http://localhost:8001"
 if "%AUTH_BASE%"=="" set "AUTH_BASE=/api/v1/auth"
 if "%CORE_BASE%"=="" set "CORE_BASE=/api/core"
-set "AUTH_URL=%GATEWAY_BASE%%AUTH_BASE%"
-set "CORE_URL=%GATEWAY_BASE%%CORE_BASE%/api/v1/admin"
+set "AUTH_URL=%AUTH_HOST_BASE%%AUTH_BASE%"
+set "CORE_ROOT=%CORE_API_BASE%%CORE_BASE%"
+set "CORE_URL=%CORE_API_BASE%/api/v1/admin"
 
-if "%ADMIN_EMAIL%"=="" set "ADMIN_EMAIL=admin@example.com"
-if "%ADMIN_PASSWORD%"=="" set "ADMIN_PASSWORD=admin"
+if "%ADMIN_EMAIL%"=="" set "ADMIN_EMAIL=admin@neft.local"
+if "%ADMIN_PASSWORD%"=="" set "ADMIN_PASSWORD=Neft123!"
 
 set "TOKEN="
 set "AUTH_HEADER="
@@ -22,7 +24,7 @@ if "%TOKEN%"=="" exit /b 1
 set "AUTH_HEADER=Authorization: Bearer %TOKEN%"
 echo [OK] Token acquired.
 
-call :check_get "[2/16] /auth/me" "%AUTH_URL%/me" "%AUTH_HEADER%" "200" || goto :fail
+call :check_get "[2/16] Core admin verify" "%CORE_ROOT%/admin/auth/verify" "%AUTH_HEADER%" "204" || goto :fail
 call :check_get "[3/16] Billing periods" "%CORE_URL%/billing/periods" "%AUTH_HEADER%" "200" || goto :fail
 
 set "RUN_BODY={\"period_type\":\"ADHOC\",\"start_at\":\"2024-01-01T00:00:00Z\",\"end_at\":\"2024-01-01T01:00:00Z\",\"tz\":\"UTC\"}"

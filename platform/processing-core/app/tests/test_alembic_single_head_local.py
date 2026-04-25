@@ -7,11 +7,13 @@ from pathlib import Path
 from alembic.config import Config
 from alembic.script import ScriptDirectory
 
+from app.tests._path_helpers import find_repo_root
+
 
 def test_alembic_single_head_local(monkeypatch):
     """Ensure we keep a single alembic head in-tree without requiring docker."""
 
-    repo_root = Path(__file__).resolve().parents[4]
+    repo_root = find_repo_root(Path(__file__).resolve())
     app_root = repo_root / "platform" / "processing-core" / "app"
     monkeypatch.setenv("DATABASE_URL", os.environ.get("DATABASE_URL", "sqlite:///dummy.db"))
 

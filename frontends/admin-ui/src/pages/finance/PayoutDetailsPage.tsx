@@ -12,6 +12,8 @@ import {
 import { fetchAuditCorrelation } from "../../api/audit";
 import AdminWriteActionModal from "../../components/admin/AdminWriteActionModal";
 import BlockersPanel from "../../components/finance/BlockersPanel";
+import { EmptyState } from "../../components/common/EmptyState";
+import { ErrorState } from "../../components/common/ErrorState";
 import { Loader } from "../../components/Loader/Loader";
 import { useToast } from "../../components/Toast/useToast";
 import { Toast } from "../../components/Toast/Toast";
@@ -21,6 +23,7 @@ import { useAuth } from "../../auth/AuthContext";
 import { ApiError } from "../../api/http";
 import { CopyButton } from "../../components/CopyButton/CopyButton";
 import { JsonViewer } from "../../components/common/JsonViewer";
+import { FinanceOverview } from "@shared/brand/components";
 
 type ActionType = "approve" | "reject" | "mark-paid" | null;
 
@@ -34,7 +37,12 @@ export const PayoutDetailsPage: React.FC = () => {
   const [settlementError, setSettlementError] = useState<string | null>(null);
   const canWrite = Boolean(profile?.permissions.finance?.write) && !profile?.read_only;
 
-  const { data, isLoading, refetch } = useQuery({
+  const {
+    data,
+    isLoading,
+    error: payoutLoadError,
+    refetch,
+  } = useQuery({
     queryKey: ["payout-detail", payoutId],
     queryFn: () => fetchPayoutDetail(payoutId || ""),
     enabled: Boolean(payoutId),
@@ -42,19 +50,34 @@ export const PayoutDetailsPage: React.FC = () => {
 
   const requestId = useMemo(() => (errorMessage ? extractRequestId(new Error(errorMessage)) : null), [errorMessage]);
 
-  const partnerId = data?.partner_id ?? null;
+  const partnerId = data?.partner_org ?? null;
   const correlationId = data?.correlation_id ?? null;
-  const { data: ledgerData } = useQuery({
+  const {
+    data: ledgerData,
+    isLoading: ledgerLoading,
+    error: ledgerLoadError,
+    refetch: refetchLedger,
+  } = useQuery({
     queryKey: ["partner-ledger", partnerId],
     queryFn: () => fetchPartnerLedger(partnerId as string),
     enabled: Boolean(partnerId),
   });
-  const { data: settlementData } = useQuery({
+  const {
+    data: settlementData,
+    isLoading: settlementLoading,
+    error: settlementLoadError,
+    refetch: refetchSettlement,
+  } = useQuery({
     queryKey: ["partner-settlement", partnerId],
     queryFn: () => fetchPartnerSettlement(partnerId as string),
     enabled: Boolean(partnerId),
   });
-  const { data: auditData } = useQuery({
+  const {
+    data: auditData,
+    isLoading: auditLoading,
+    error: auditLoadError,
+    refetch: refetchAudit,
+  } = useQuery({
     queryKey: ["payout-audit", correlationId],
     queryFn: () => fetchAuditCorrelation(accessToken ?? "", correlationId ?? ""),
     enabled: Boolean(accessToken && correlationId),
@@ -86,12 +109,47 @@ export const PayoutDetailsPage: React.FC = () => {
     }
   };
 
+  if (!payoutId) {
+    return (
+      <EmptyState
+        title="Payout not found"
+        description="Open the payout from the queue to inspect its review chain."
+        actionLabel="Back to payout queue"
+        actionOnClick={() => window.location.assign("/finance/payouts")}
+      />
+    );
+  }
+
   if (isLoading) {
-    return <Loader label="Loading payout" />;
+    return (
+      <div className="card">
+        <Loader label="Loading payout" />
+      </div>
+    );
+  }
+
+  if (payoutLoadError) {
+    const description = payoutLoadError instanceof Error ? payoutLoadError.message : "Failed to load payout.";
+    return (
+      <ErrorState
+        title="Failed to load payout"
+        description={description}
+        requestId={extractRequestId(new Error(description))}
+        actionLabel="Retry"
+        onAction={() => void refetch()}
+      />
+    );
   }
 
   if (!data) {
-    return <div>Payout not found.</div>;
+    return (
+      <EmptyState
+        title="Payout not found"
+        description="The payout may have been removed from the current queue or is not available in this environment."
+        actionLabel="Refresh"
+        actionOnClick={() => void refetch()}
+      />
+    );
   }
 
   return (
@@ -106,28 +164,55 @@ export const PayoutDetailsPage: React.FC = () => {
       </div>
 
       {errorMessage ? (
-        <div style={{ color: "#dc2626" }}>
-          {errorMessage}
-          {requestId ? <div style={{ marginTop: 4 }}>Request ID: {requestId}</div> : null}
-        </div>
+        <ErrorState
+          title="Action failed"
+          description={errorMessage}
+          requestId={requestId}
+          actionLabel="Refresh payout"
+          onAction={() => void refetch()}
+        />
       ) : null}
 
-      <div className="card">
-        <div>Status: {data.status}</div>
-        <div>Partner org: {data.partner_org}</div>
-        <div>Partner ID: {data.partner_id ?? "—"}</div>
-        <div>
-          Amount: {data.amount} {data.currency}
-        </div>
-        <div>Created: {data.created_at ?? "—"}</div>
-        <div>Processed: {data.processed_at ?? "—"}</div>
-        <div>Legal status: {data.legal_status ?? "—"}</div>
-        <div>Settlement status: {data.settlement_status ?? "—"}</div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <span>Correlation ID: {data.correlation_id ?? "—"}</span>
-          {data.correlation_id ? <CopyButton value={data.correlation_id} /> : null}
-        </div>
-      </div>
+      <FinanceOverview
+        items={[
+          {
+            id: "status",
+            label: "Status",
+            value: data.status,
+            meta: `Created: ${data.created_at ?? "—"}`,
+            tone: data.status === "REQUESTED" ? "warning" : "info",
+          },
+          {
+            id: "amount",
+            label: "Amount",
+            value: `${data.amount} ${data.currency}`,
+            meta: `Processed: ${data.processed_at ?? "—"}`,
+            tone: "premium",
+          },
+          {
+            id: "partner",
+            label: "Partner org",
+            value: data.partner_org,
+          },
+          {
+            id: "legal",
+            label: "Legal status",
+            value: data.legal_status ?? "—",
+          },
+          {
+            id: "settlement",
+            label: "Settlement status",
+            value: data.settlement_state ?? "—",
+            tone: settlementError ? "danger" : "success",
+          },
+          {
+            id: "correlation",
+            label: "Correlation ID",
+            value: data.correlation_id ?? "—",
+            action: data.correlation_id ? <CopyButton value={data.correlation_id} /> : undefined,
+          },
+        ]}
+      />
 
       <BlockersPanel blockers={data.blockers} title="Blockers" />
 
@@ -135,12 +220,22 @@ export const PayoutDetailsPage: React.FC = () => {
         <h3 style={{ marginTop: 0 }}>Explain</h3>
         <div style={{ display: "grid", gap: 6 }}>
           <div>Legal status: {data.legal_status ?? "—"}</div>
-          <div>Invoices overdue: {data.invoices_overdue ? "Yes" : "No"}</div>
+          <div>Primary blocker: {data.block_reason ?? "—"}</div>
           <div>Settlement snapshot: {data.settlement_snapshot || settlementData ? "Present" : "Missing"}</div>
         </div>
         <div style={{ marginTop: 12 }}>
           <strong>Audit chain</strong>
-          {auditData?.items?.length || auditData?.events?.length ? (
+          {data.audit_events?.length ? (
+            <ul style={{ paddingLeft: 18, marginBottom: 0 }}>
+              {data.audit_events.map((event) => (
+                <li key={`${event.entity_type}-${event.entity_id}-${event.event_type}-${event.ts ?? "ts"}`}>
+                  {event.event_type}
+                  {event.ts ? ` · ${event.ts}` : ""}
+                  {event.reason ? ` · reason: ${event.reason}` : ""}
+                </li>
+              ))}
+            </ul>
+          ) : auditData?.items?.length || auditData?.events?.length ? (
             <ul style={{ paddingLeft: 18, marginBottom: 0 }}>
               {(auditData.items ?? auditData.events ?? []).slice(0, 6).map((event) => (
                 <li key={event.id ?? event.ts ?? JSON.stringify(event)}>
@@ -150,10 +245,29 @@ export const PayoutDetailsPage: React.FC = () => {
                 </li>
               ))}
             </ul>
+          ) : auditLoading ? (
+            <div style={{ marginTop: 8 }}>
+              <Loader label="Loading audit chain" />
+            </div>
+          ) : auditLoadError ? (
+            <ErrorState
+              title="Audit chain unavailable"
+              description={auditLoadError instanceof Error ? auditLoadError.message : "Failed to load audit correlation."}
+              actionLabel="Retry"
+              onAction={() => void refetchAudit()}
+            />
           ) : correlationId ? (
-            <div className="muted">No audit events for correlation.</div>
+            <EmptyState
+              title="No audit events for correlation"
+              description="No related audit events were returned for this payout correlation yet."
+              actionLabel="Retry"
+              actionOnClick={() => void refetchAudit()}
+            />
           ) : (
-            <div className="muted">No correlation id.</div>
+            <EmptyState
+              title="No correlation ID"
+              description="The payout has no linked correlation chain in this contour."
+            />
           )}
         </div>
       </div>
@@ -163,43 +277,77 @@ export const PayoutDetailsPage: React.FC = () => {
         {data.block_reason_tree ? (
           <JsonViewer value={data.block_reason_tree} redactionMode="audit" />
         ) : (
-          <div className="muted">No block tree data.</div>
+          <EmptyState
+            title="No block tree data"
+            description="Explain tree will appear here when the payout is blocked by a policy chain."
+          />
         )}
       </div>
 
       <div className="card">
         <h3 style={{ marginTop: 0 }}>Policy</h3>
-        <div>Min payout: {data.policy?.min_payout_amount ?? "—"}</div>
-        <div>Hold days: {data.policy?.payout_hold_days ?? "—"}</div>
-        <div>Schedule: {data.policy?.payout_schedule ?? "—"}</div>
+        {data.policy ? (
+          <>
+            <div>Min payout: {data.policy.min_payout_amount ?? "—"}</div>
+            <div>Hold days: {data.policy.payout_hold_days ?? "—"}</div>
+            <div>Schedule: {data.policy.payout_schedule ?? "—"}</div>
+          </>
+        ) : (
+          <EmptyState
+            title="Policy details unavailable"
+            description="No payout policy snapshot was attached to this payout."
+          />
+        )}
       </div>
 
-      <div
-        className="card"
-        style={{
-          border: settlementError ? "1px solid #dc2626" : undefined,
-          background: settlementError ? "rgba(220, 38, 38, 0.05)" : undefined,
-        }}
-      >
+      <div className="card">
         <h3 style={{ marginTop: 0 }}>Settlement snapshot</h3>
         {settlementError ? (
-          <div style={{ color: "#dc2626", marginBottom: 8 }}>
-            Settlement snapshot missing (reason: {settlementError})
-          </div>
-        ) : null}
-        {data.settlement_snapshot || settlementData ? (
+          <ErrorState
+            title="Settlement snapshot missing"
+            description={`Settlement snapshot is not available for this payout (${settlementError}).`}
+            actionLabel="Refresh settlement"
+            onAction={() => void refetchSettlement()}
+          />
+        ) : settlementLoading ? (
+          <Loader label="Loading settlement snapshot" />
+        ) : settlementLoadError ? (
+          <ErrorState
+            title="Settlement snapshot unavailable"
+            description={
+              settlementLoadError instanceof Error ? settlementLoadError.message : "Failed to load settlement snapshot."
+            }
+            actionLabel="Retry"
+            onAction={() => void refetchSettlement()}
+          />
+        ) : data.settlement_snapshot || settlementData ? (
           <JsonViewer value={data.settlement_snapshot ?? settlementData ?? {}} redactionMode="audit" />
         ) : (
-          <div className="muted">Нет settlement snapshot</div>
+          <EmptyState
+            title="No settlement snapshot"
+            description="This payout has not been linked to a settlement snapshot yet."
+          />
         )}
       </div>
 
       <div className="card">
         <h3 style={{ marginTop: 0 }}>Partner ledger</h3>
-        {ledgerData ? (
+        {ledgerLoading ? (
+          <Loader label="Loading partner ledger" />
+        ) : ledgerLoadError ? (
+          <ErrorState
+            title="Partner ledger unavailable"
+            description={ledgerLoadError instanceof Error ? ledgerLoadError.message : "Failed to load ledger snapshot."}
+            actionLabel="Retry"
+            onAction={() => void refetchLedger()}
+          />
+        ) : ledgerData ? (
           <JsonViewer value={ledgerData} redactionMode="audit" />
         ) : (
-          <div className="muted">Нет данных ledger</div>
+          <EmptyState
+            title="No ledger data"
+            description="Ledger snapshot will appear here after the payout enters the partner finance chain."
+          />
         )}
       </div>
 
@@ -214,7 +362,7 @@ export const PayoutDetailsPage: React.FC = () => {
             ))}
           </ul>
         ) : (
-          <div className="muted">No trace items.</div>
+          <EmptyState title="No trace items" description="Trace nodes will appear here when the payout accumulates related finance entities." />
         )}
       </div>
 
@@ -234,7 +382,7 @@ export const PayoutDetailsPage: React.FC = () => {
             Single correlation ID available. <CopyButton value={data.correlation_id} label="Copy" />
           </div>
         ) : (
-          <div className="muted">No correlation chain.</div>
+          <EmptyState title="No correlation chain" description="This payout does not have a linked correlation chain in the current owner payload." />
         )}
       </div>
 

@@ -67,6 +67,9 @@ class DummyConnection:
 
         return DummyResult([])
 
+    def execute(self, statement, params=None):  # noqa: ANN001
+        return self.exec_driver_sql(str(statement), params)
+
 
 class DummyOp:
     def __init__(self, connection: DummyConnection):
@@ -98,9 +101,25 @@ def connection(monkeypatch: pytest.MonkeyPatch) -> DummyConnection:
 
     dummy_op = DummyOp(conn)
     monkeypatch.setattr(migration, "op", dummy_op)
+    created_indexes: set[str] = set()
 
     def _table_exists(_, table_name: str, **__):  # noqa: ANN001
         return table_name in conn.tables
+
+    def _ensure_enum_type_exists(bind, type_name: str, values, schema=None):  # noqa: ANN001
+        if type_name in conn.types:
+            return
+        conn.types.add(type_name)
+        conn.statements.append(f'CREATE TYPE "{schema}"."{type_name}" AS ENUM ({", ".join(values)})')
+
+    def _create_index_if_not_exists(bind, index_name, table_name, columns, schema=None, **kwargs):  # noqa: ANN001
+        if index_name in created_indexes:
+            return
+        created_indexes.add(index_name)
+        conn.indexes.add(index_name)
+
+    monkeypatch.setattr(migration, "ensure_enum_type_exists", _ensure_enum_type_exists)
+    monkeypatch.setattr(migration, "create_index_if_not_exists", _create_index_if_not_exists)
 
     monkeypatch.setattr(migration, "table_exists", _table_exists)
     return conn

@@ -13,6 +13,8 @@ class ModelInfo:
     version: str
     trained_at: datetime
     metrics: dict
+    simulated: bool = True
+    provider_mode: str = "registry_only"
 
 
 class ModelRegistry:
@@ -28,7 +30,9 @@ class ModelRegistry:
             model_type=model_type,
             version=version,
             trained_at=datetime.now(timezone.utc),
-            metrics=metrics or {"accuracy": 0.7, "precision": 0.68, "recall": 0.65, "f1": 0.66},
+            metrics=metrics or {},
+            simulated=True,
+            provider_mode="registry_only",
         )
         self._models[model_type] = info
         return info

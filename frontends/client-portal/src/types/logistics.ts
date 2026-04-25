@@ -20,12 +20,33 @@ export type DriverDTO = {
   meta?: Record<string, unknown> | null;
 };
 
-export type TripStatus = "CREATED" | "IN_PROGRESS" | "COMPLETED";
+export type TripStatus = "CREATED" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED";
 
 export type TripPoint = {
   label?: string | null;
   lat?: number | null;
   lon?: number | null;
+};
+
+export type TripCreatePoint = {
+  label?: string | null;
+  lat?: number | null;
+  lon?: number | null;
+  planned_at?: string | null;
+};
+
+export type TripCreatePayload = {
+  title?: string | null;
+  vehicle_id?: string | null;
+  driver_id?: string | null;
+  start_planned_at?: string | null;
+  end_planned_at?: string | null;
+  origin: TripCreatePoint;
+  destination: TripCreatePoint;
+  stops?: TripCreatePoint[];
+  distance_km?: number | null;
+  planned_duration_minutes?: number | null;
+  meta?: Record<string, unknown> | null;
 };
 
 export type TripStopType = "START" | "STOP" | "END";
@@ -212,6 +233,29 @@ export type TripFuelResponse = {
   items: TripFuelItem[];
   totals: { liters: number; amount: number };
   alerts: FuelAlertItem[];
+};
+
+export type FuelConsumptionWritePayload = {
+  trip_id: string;
+  distance_km: number;
+  vehicle_kind: string;
+  idempotency_key?: string | null;
+};
+
+export type FuelConsumptionWriteResult = {
+  ok: boolean;
+  trip_id: string;
+  liters?: number | null;
+  method?: string | null;
+  source: "logistics_service" | string;
+  provider_mode?: string | null;
+  sandbox_proof?: Record<string, unknown> | null;
+  last_attempt?: Record<string, unknown> | null;
+  retryable?: boolean | null;
+  request_id?: string | null;
+  idempotency_key?: string | null;
+  idempotency_status?: string | null;
+  audit_event_id?: string | null;
 };
 
 export type FuelReportItem = {

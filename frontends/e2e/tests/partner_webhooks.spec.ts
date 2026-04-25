@@ -1,4 +1,4 @@
-import { test } from "@playwright/test";
+import { test } from "playwright/test";
 import { PARTNER_BASE_URL, expectHeading, expectTableOrEmptyState, loginPartner } from "./helpers";
 
 test("partner integrations webhooks page loads", async ({ page }) => {

@@ -12,6 +12,27 @@ from app.settings import Settings
 from app.tests.migration_helpers import run_auth_migrations
 
 
+async def _reset_auth_tables(connection: psycopg.AsyncConnection) -> None:
+    async with connection.cursor() as cur:
+        await cur.execute(
+            """
+            DROP TABLE IF EXISTS
+                auth_sessions,
+                sso_exchange_codes,
+                user_identities,
+                refresh_tokens,
+                oauth_identities,
+                user_clients,
+                user_roles,
+                users
+            CASCADE
+            """
+        )
+        await cur.execute("DROP TABLE IF EXISTS public.alembic_version")
+        await cur.execute("DROP TABLE IF EXISTS processing_auth.alembic_version_auth")
+        await connection.commit()
+
+
 @pytest.mark.anyio
 async def test_demo_login_against_real_db():
     try:
@@ -31,7 +52,7 @@ async def test_demo_login_against_real_db():
         )
         assert await cur.fetchone()
 
-    transport = httpx.ASGITransport(app=app, lifespan="on")
+    transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         response = await client.post(
             "/api/v1/auth/login",
@@ -53,10 +74,7 @@ async def test_bootstrap_required_users_seeds_demo_admin_and_allows_login():
     except Exception as exc:  # pragma: no cover - skip when DB unavailable
         pytest.skip(f"Postgres not available: {exc}")
 
-    async with conn.cursor() as cur:
-        await cur.execute("DROP TABLE IF EXISTS user_roles")
-        await cur.execute("DROP TABLE IF EXISTS users")
-        await conn.commit()
+    await _reset_auth_tables(conn)
     await conn.close()
 
     run_auth_migrations(db.DSN_ASYNC)
@@ -80,7 +98,7 @@ async def test_bootstrap_required_users_seeds_demo_admin_and_allows_login():
     assert admin_row["is_active"] is True
     assert {"ADMIN", "PLATFORM_ADMIN"}.issubset(admin_roles)
 
-    transport = httpx.ASGITransport(app=app, lifespan="on")
+    transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         response = await client.post(
             "/api/v1/auth/login",
@@ -114,7 +132,7 @@ async def test_bootstrap_required_users_resets_existing_demo_password_in_dev_mod
 
     await bootstrap.bootstrap_required_users(settings)
 
-    transport = httpx.ASGITransport(app=app, lifespan="on")
+    transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         response = await client.post(
             "/api/v1/auth/login",
@@ -145,7 +163,7 @@ async def test_bootstrap_required_users_resets_partner_demo_password_in_dev_mode
 
     await bootstrap.bootstrap_required_users(settings)
 
-    transport = httpx.ASGITransport(app=app, lifespan="on")
+    transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         response = await client.post(
             "/api/v1/auth/login",
@@ -169,7 +187,7 @@ async def test_demo_admin_login_and_wrong_password():
     run_auth_migrations(db.DSN_ASYNC)
     await bootstrap.bootstrap_demo_admin(settings)
 
-    transport = httpx.ASGITransport(app=app, lifespan="on")
+    transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         ok_response = await client.post(
             "/api/v1/auth/login",

@@ -19,6 +19,12 @@ from app.domains.client.signing.repo import ClientSigningRepository
 _ALLOWED_DOC_STATUSES = {GeneratedDocStatus.GENERATED.value, GeneratedDocStatus.SIGNED_BY_PLATFORM.value}
 
 
+def _normalize_utc_datetime(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
 @dataclass(slots=True)
 class ClientDocumentSigningService:
     docs_repo: ClientGeneratedDocumentsRepository
@@ -93,7 +99,7 @@ class ClientDocumentSigningService:
 
         existing = self.sign_repo.get_active_challenge(document_id=str(doc.id), user_id=user_id)
         now = datetime.now(timezone.utc)
-        if existing and existing.resend_available_at > now:
+        if existing and _normalize_utc_datetime(existing.resend_available_at) > now:
             raise HTTPException(status_code=429, detail={"error_code": "otp_resend_cooldown", "message": "OTP resend cooldown is active"})
         if existing:
             existing.status = "EXPIRED"
@@ -104,7 +110,7 @@ class ClientDocumentSigningService:
         challenge = self.sign_repo.create_otp_challenge(
             purpose="DOC_SIGN",
             document_id=str(doc.id),
-            client_id=str(doc.client_id),
+            client_id=str(doc.client_id) if doc.client_id is not None else None,
             user_id=user_id,
             channel=selected_channel,
             destination=destination,
@@ -140,13 +146,19 @@ class ClientDocumentSigningService:
         return result
 
     def _send_otp_to_hub(self, *, doc: ClientGeneratedDocument, challenge_id: str, channel: str, destination: str, code: str) -> str:
+        if self._test_mode():
+            return f"otp-test:{challenge_id}"
         text = f"NEFT: код для подписи документа {code}. Действует {max(1, self._otp_ttl_seconds() // 60)} минут."
         payload = {
             "channel": channel,
             "destination": destination,
             "message": text,
             "idempotency_key": f"otp:{challenge_id}",
-            "meta": {"client_id": str(doc.client_id), "user_id": str(doc.client_application_id or ''), "document_id": str(doc.id)},
+            "meta": {
+                "client_id": str(doc.client_id) if doc.client_id is not None else None,
+                "user_id": str(doc.client_application_id or ""),
+                "document_id": str(doc.id),
+            },
         }
         response = requests.post(f"{self._hub_url()}/api/int/v1/otp/send", json=payload, headers=self._hub_headers(), timeout=10)
         response.raise_for_status()
@@ -159,11 +171,13 @@ class ClientDocumentSigningService:
             raise HTTPException(status_code=404, detail={"error_code": "otp_not_found", "message": "OTP challenge not found"})
         if challenge.status == "USED":
             raise HTTPException(status_code=409, detail={"error_code": "otp_already_used", "message": "OTP challenge is already used"})
+        if challenge.status == "LOCKED":
+            raise HTTPException(status_code=429, detail={"error_code": "otp_locked", "message": "OTP challenge is locked"})
         if challenge.status not in {"SENT", "CONFIRMED"}:
             raise HTTPException(status_code=400, detail={"error_code": "otp_not_found", "message": "OTP challenge is not active"})
 
         now = datetime.now(timezone.utc)
-        if challenge.expires_at <= now:
+        if _normalize_utc_datetime(challenge.expires_at) <= now:
             challenge.status = "EXPIRED"
             self.sign_repo.save_challenge(challenge)
             raise HTTPException(status_code=400, detail={"error_code": "otp_expired", "message": "OTP challenge expired"})
@@ -201,9 +215,10 @@ class ClientDocumentSigningService:
             user_agent=user_agent,
             meta_json={"challenge_id": challenge_id, "channel": challenge.channel, "masked_destination": self._mask_destination(challenge.channel, challenge.destination)},
         )
-        if doc.client_id:
+        notification_owner = str(doc.client_id or doc.client_application_id or "")
+        if notification_owner:
             ClientDocflowNotificationsService(self.sign_repo.db).create(
-                client_id=str(doc.client_id),
+                client_id=notification_owner,
                 user_id=user_id,
                 title="Документ подписан",
                 body="Вы успешно подписали документ.",

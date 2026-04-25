@@ -210,7 +210,7 @@ class DisputeService:
 
     def _dispute_reserve(self, currency: str) -> int:
         return self.accounts_repo.get_or_create_account(
-            client_id="platform",
+            client_id=PLATFORM_OWNER_ID,
             owner_type=AccountOwnerType.PLATFORM,
             owner_id=PLATFORM_OWNER_ID,
             currency=currency,
@@ -229,7 +229,7 @@ class DisputeService:
 
     def _platform_adjustment(self, currency: str) -> int:
         return self.accounts_repo.get_or_create_account(
-            client_id="platform",
+            client_id=PLATFORM_OWNER_ID,
             owner_type=AccountOwnerType.PLATFORM,
             owner_id=PLATFORM_OWNER_ID,
             currency=currency,
@@ -295,7 +295,7 @@ class DisputeService:
             self._dispute_reserve(operation.currency) if use_reserve else self._partner_payable(operation)
         )
         revenue_account = self.accounts_repo.get_or_create_account(
-            client_id="platform",
+            client_id=PLATFORM_OWNER_ID,
             owner_type=AccountOwnerType.PLATFORM,
             owner_id=PLATFORM_OWNER_ID,
             currency=operation.currency,

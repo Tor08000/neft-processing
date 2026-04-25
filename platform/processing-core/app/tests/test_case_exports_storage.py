@@ -5,19 +5,20 @@ from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import Session, sessionmaker
-from sqlalchemy.pool import StaticPool
+from sqlalchemy.orm import Session
 
+from app.api.dependencies.admin import require_admin_user
 from app.db import get_db
-from app.main import app
 from app.models.audit_retention import AuditLegalHold, AuditLegalHoldScope, AuditPurgeLog
 from app.models.case_exports import CaseExport, CaseExportKind
 from app.models.cases import Case, CaseEvent, CaseKind, CasePriority, CaseQueue, CaseStatus
+from app.routers.admin.exports import router as admin_exports_router
 from app.services.audit_purge_service import purge_expired_exports
 from app.services.case_events_service import CaseEventActor
 from app.services.case_export_service import create_export
+from app.tests._scoped_router_harness import CASES_TEST_TABLES, require_admin_user_override, scoped_session_context
 
 
 class FakeExportStorage:
@@ -56,38 +57,32 @@ def _reset_fake_storage() -> None:
 
 @pytest.fixture()
 def db_session() -> Session:
-    engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
-    SessionLocal = sessionmaker(autocommit=False, autoflush=False, expire_on_commit=False, bind=engine)
-    Case.__table__.create(bind=engine)
-    CaseEvent.__table__.create(bind=engine)
-    CaseExport.__table__.create(bind=engine)
-    AuditLegalHold.__table__.create(bind=engine)
-    AuditPurgeLog.__table__.create(bind=engine)
-    session = SessionLocal()
-    try:
+    tables = (
+        *CASES_TEST_TABLES,
+        CaseExport.__table__,
+        AuditLegalHold.__table__,
+        AuditPurgeLog.__table__,
+    )
+    with scoped_session_context(tables=tables) as session:
         yield session
-    finally:
-        session.close()
-        AuditPurgeLog.__table__.drop(bind=engine)
-        AuditLegalHold.__table__.drop(bind=engine)
-        CaseExport.__table__.drop(bind=engine)
-        CaseEvent.__table__.drop(bind=engine)
-        Case.__table__.drop(bind=engine)
-        engine.dispose()
 
 
 @pytest.fixture()
 def client(db_session: Session):
-    def _override():
+    app = FastAPI()
+    app.include_router(admin_exports_router, prefix="/api/core/v1/admin")
+
+    def _override_get_db():
         try:
             yield db_session
         finally:
             pass
 
-    app.dependency_overrides[get_db] = _override
+    app.dependency_overrides[get_db] = _override_get_db
+    app.dependency_overrides[require_admin_user] = require_admin_user_override
+
     with TestClient(app) as test_client:
         yield test_client
-    app.dependency_overrides.pop(get_db, None)
 
 
 def _create_case(db_session: Session) -> Case:

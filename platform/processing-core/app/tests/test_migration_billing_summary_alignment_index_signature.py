@@ -30,6 +30,10 @@ class DummyConnection:
         self.executed.append(str(statement))
         return DummyResult()
 
+    def execute(self, statement, params=None):  # noqa: ANN001, ARG002
+        self.executed.append(str(statement))
+        return DummyResult()
+
 
 class DummyOp:
     def __init__(self):

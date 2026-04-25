@@ -12,6 +12,7 @@ import type {
   RevenueOverdueItem,
   RevenuePlanMixItem,
 } from "../../types/revenue";
+import { revenuePageCopy } from "../operatorKeyPageCopy";
 
 const formatMoney = (amount: number | null | undefined, currency = "RUB") => {
   if (amount === null || amount === undefined) return "—";
@@ -29,11 +30,11 @@ const formatMoney = (amount: number | null | undefined, currency = "RUB") => {
 };
 
 const bucketLabels: Record<OverdueBucket, string> = {
-  all: "Все",
-  "0_7": "0–7 дней",
-  "8_30": "8–30 дней",
-  "31_90": "31–90 дней",
-  "90_plus": "90+ дней",
+  all: revenuePageCopy.bucketLabels.all,
+  "0_7": revenuePageCopy.bucketLabels["0_7"],
+  "8_30": revenuePageCopy.bucketLabels["8_30"],
+  "31_90": revenuePageCopy.bucketLabels["31_90"],
+  "90_plus": revenuePageCopy.bucketLabels["90_plus"],
 };
 
 const downloadCsv = (filename: string, headers: string[], rows: string[][]) => {
@@ -105,8 +106,8 @@ export const RevenuePage: React.FC = () => {
 
   const planMixColumns: Column<RevenuePlanMixItem>[] = useMemo(
     () => [
-      { key: "plan", title: "План", render: (row) => row.plan },
-      { key: "orgs", title: "Орг.", render: (row) => row.orgs },
+      { key: "plan", title: revenuePageCopy.tableTitles.plan, render: (row) => row.plan },
+      { key: "orgs", title: revenuePageCopy.tableTitles.orgs, render: (row) => row.orgs },
       {
         key: "mrr",
         title: "MRR",
@@ -119,7 +120,7 @@ export const RevenuePage: React.FC = () => {
   const addonMixColumns: Column<RevenueAddonMixItem>[] = useMemo(
     () => [
       { key: "addon", title: "Add-on", render: (row) => row.addon },
-      { key: "orgs", title: "Орг.", render: (row) => row.orgs },
+      { key: "orgs", title: revenuePageCopy.tableTitles.orgs, render: (row) => row.orgs },
       { key: "mrr", title: "MRR", render: (row) => formatMoney(row.mrr, currency) },
     ],
     [currency],
@@ -129,7 +130,7 @@ export const RevenuePage: React.FC = () => {
     () => [
       {
         key: "org",
-        title: "Организация",
+        title: revenuePageCopy.tableTitles.organization,
         render: (row) => row.org_name ?? `#${row.org_id}`,
       },
       {
@@ -144,17 +145,17 @@ export const RevenuePage: React.FC = () => {
       },
       {
         key: "overdue_days",
-        title: "Просрочка (дни)",
+        title: revenuePageCopy.tableTitles.overdueDays,
         render: (row) => row.overdue_days,
       },
       {
         key: "amount",
-        title: "Сумма",
+        title: revenuePageCopy.tableTitles.amount,
         render: (row) => formatMoney(row.amount, row.currency ?? currency),
       },
       {
         key: "plan",
-        title: "План/статус",
+        title: revenuePageCopy.tableTitles.planStatus,
         render: (row) => `${row.subscription_plan ?? "—"} / ${row.subscription_status ?? "—"}`,
       },
     ],
@@ -187,8 +188,8 @@ export const RevenuePage: React.FC = () => {
         </div>
       </div>
 
-      {summaryQuery.error ? <div className="card error-state">Ошибка загрузки выручки</div> : null}
-      {summaryQuery.isLoading && !summary ? <div className="card">Загрузка...</div> : null}
+      {summaryQuery.error ? <div className="card error-state">{revenuePageCopy.states.loadError}</div> : null}
+      {summaryQuery.isLoading && !summary ? <div className="card">{revenuePageCopy.states.loading}</div> : null}
 
       {summary ? (
         <>
@@ -219,7 +220,7 @@ export const RevenuePage: React.FC = () => {
                     <div style={{ textAlign: "right" }}>{formatMoney(row.mrr, currency)}</div>
                   </div>
                 ))}
-                {!planMixDisplay.length ? <div className="muted">Нет данных</div> : null}
+                {!planMixDisplay.length ? <div className="muted">{revenuePageCopy.states.noData}</div> : null}
               </div>
             </section>
 
@@ -249,7 +250,7 @@ export const RevenuePage: React.FC = () => {
                     <div style={{ textAlign: "right" }}>{formatMoney(row.mrr, currency)}</div>
                   </div>
                 ))}
-                {!summary.addon_mix?.length ? <div className="muted">Нет данных</div> : null}
+                {!summary.addon_mix?.length ? <div className="muted">{revenuePageCopy.states.noData}</div> : null}
               </div>
             </section>
           </div>
@@ -335,7 +336,12 @@ export const RevenuePage: React.FC = () => {
                 </button>
               </div>
             </div>
-            <Table columns={overdueColumns} data={overdue} loading={overdueQuery.isLoading} emptyMessage="Нет просрочек" />
+            <Table
+              columns={overdueColumns}
+              data={overdue}
+              loading={overdueQuery.isLoading}
+              emptyMessage={revenuePageCopy.states.noOverdues}
+            />
           </section>
 
           <div className="card" style={{ marginTop: 16 }}>
@@ -343,8 +349,8 @@ export const RevenuePage: React.FC = () => {
               <h3>Mix details</h3>
             </div>
             <div className="card-grid" style={{ gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-              <Table columns={planMixColumns} data={planMixDisplay} emptyMessage="Нет планов" />
-              <Table columns={addonMixColumns} data={summary.addon_mix ?? []} emptyMessage="Нет add-ons" />
+              <Table columns={planMixColumns} data={planMixDisplay} emptyMessage={revenuePageCopy.states.noPlans} />
+              <Table columns={addonMixColumns} data={summary.addon_mix ?? []} emptyMessage={revenuePageCopy.states.noAddons} />
             </div>
           </div>
         </>

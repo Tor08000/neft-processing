@@ -1,35 +1,41 @@
-from datetime import date
+from datetime import date, datetime, timezone
 
 import pytest
 
-from app.db import Base, SessionLocal, engine
 from app.models.internal_ledger import (
     InternalLedgerAccountType,
     InternalLedgerEntry,
     InternalLedgerEntryDirection,
     InternalLedgerTransactionType,
 )
+from app.models.billing_period import BillingPeriod, BillingPeriodStatus
 from app.models.invoice import InvoicePdfStatus, InvoiceStatus
 from app.repositories.billing_repository import BillingInvoiceData, BillingLineData, BillingRepository
 from app.services.finance import FinanceService
 from app.services.internal_ledger import InternalLedgerLine, InternalLedgerService
+from app.tests._finance_test_harness import finance_invariant_session_context, seed_default_finance_thresholds
+
+
+ADMIN_FINANCE_TOKEN = {"roles": ["ADMIN", "ADMIN_FINANCE"], "sub": "ledger-tester"}
 
 
 @pytest.fixture(autouse=True)
-def clean_db():
-    Base.metadata.drop_all(bind=engine)
-    Base.metadata.create_all(bind=engine)
-    yield
-    Base.metadata.drop_all(bind=engine)
+def _disable_legal_graph(monkeypatch: pytest.MonkeyPatch):
+    class _NoopGraphBuilder:
+        def __init__(self, *args, **kwargs) -> None:
+            pass
+
+        def ensure_settlement_allocation_graph(self, *args, **kwargs) -> None:
+            return None
+
+    monkeypatch.setattr("app.services.finance.LegalGraphBuilder", _NoopGraphBuilder)
 
 
 @pytest.fixture
 def db_session():
-    session = SessionLocal()
-    try:
+    with finance_invariant_session_context() as session:
+        seed_default_finance_thresholds(session)
         yield session
-    finally:
-        session.close()
 
 
 def test_invoice_issued_posts_balanced_entries(db_session):
@@ -84,7 +90,12 @@ def test_payment_applied_is_idempotent(db_session):
     invoice.pdf_status = InvoicePdfStatus.READY
     db_session.commit()
 
-    repo.update_status(invoice.id, InvoiceStatus.SENT)
+    invoice = repo.update_status(invoice.id, InvoiceStatus.SENT)
+    period = db_session.get(BillingPeriod, invoice.billing_period_id)
+    assert period is not None
+    period.status = BillingPeriodStatus.FINALIZED
+    period.finalized_at = datetime.now(timezone.utc)
+    db_session.commit()
 
     service = FinanceService(db_session)
     result = service.apply_payment(
@@ -93,7 +104,7 @@ def test_payment_applied_is_idempotent(db_session):
         currency=invoice.currency,
         idempotency_key="payment:ledger-test",
         request_ctx=None,
-        token=None,
+        token=ADMIN_FINANCE_TOKEN,
     )
 
     entries_after_payment = db_session.query(InternalLedgerEntry).all()
@@ -105,7 +116,7 @@ def test_payment_applied_is_idempotent(db_session):
         currency=invoice.currency,
         idempotency_key="payment:ledger-test",
         request_ctx=None,
-        token=None,
+        token=ADMIN_FINANCE_TOKEN,
     )
     assert replay.is_replay is True
     assert db_session.query(InternalLedgerEntry).count() == 4

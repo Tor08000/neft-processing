@@ -5,9 +5,10 @@ from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
 
-from sqlalchemy import func
+from sqlalchemy import func, inspect
 from sqlalchemy.orm import Session
 
+from app.db.schema import DB_SCHEMA
 from app.models.fuel import FuelStation, FuelTransaction, FuelTransactionStatus
 from app.models.geo_metrics import GeoStationMetricsDaily
 
@@ -21,6 +22,19 @@ class GeoStationDailyAggregate:
     liters_sum: Decimal = Decimal("0")
     risk_red_count: int = 0
     risk_yellow_count: int = 0
+
+
+def _table_exists(db: Session, name: str) -> bool:
+    try:
+        bind = db.get_bind()
+        inspector = inspect(bind)
+        if inspector.has_table(name, schema=DB_SCHEMA):
+            return True
+        if bind.dialect.name != "postgresql":
+            return inspector.has_table(name)
+        return False
+    except Exception:
+        return False
 
 
 def _to_amount(transaction: FuelTransaction) -> Decimal:
@@ -50,6 +64,8 @@ def _risk_tags(transaction: FuelTransaction) -> set[str]:
 
 
 def rebuild_geo_station_metrics_for_day(db: Session, target_day: date) -> int:
+    if not _table_exists(db, FuelTransaction.__table__.name) or not _table_exists(db, GeoStationMetricsDaily.__table__.name):
+        return 0
     day_start = datetime.combine(target_day, time.min, tzinfo=timezone.utc)
     day_end = day_start + timedelta(days=1)
 
@@ -119,6 +135,8 @@ def fetch_top_station_metrics(
     risk_zone: str | None = None,
     health_status: str | None = None,
 ) -> list[dict]:
+    if not _table_exists(db, FuelStation.__table__.name) or not _table_exists(db, GeoStationMetricsDaily.__table__.name):
+        return []
     metric_columns = {
         "tx_count": func.sum(GeoStationMetricsDaily.tx_count),
         "amount_sum": func.sum(GeoStationMetricsDaily.amount_sum),

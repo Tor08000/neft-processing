@@ -12,6 +12,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from app import main as app_main
 from app.db import get_db
 from app.main import app
 from app.models.case_exports import CaseExport
@@ -60,6 +61,9 @@ def signing_key() -> bytes:
 
 @pytest.fixture(autouse=True)
 def audit_signing_env(monkeypatch: pytest.MonkeyPatch, signing_key: bytes) -> None:
+    monkeypatch.setenv("APP_ENV", "dev")
+    monkeypatch.setenv("ALLOW_MOCK_PROVIDERS_IN_PROD", "1")
+    monkeypatch.setattr(app_main.settings, "APP_ENV", "dev", raising=False)
     monkeypatch.setenv("AUDIT_SIGNING_MODE", "local")
     monkeypatch.setenv("AUDIT_SIGNING_REQUIRED", "true")
     monkeypatch.setenv("AUDIT_SIGNING_ALG", "ed25519")
@@ -113,10 +117,12 @@ def test_decision_memory_records_case_and_close(db_session: Session) -> None:
         db_session,
         tenant_id=1,
         kind=CaseKind.OPERATION,
+        entity_type=None,
         entity_id="op-1",
         kpi_key=None,
         window_days=None,
         title=None,
+        description=None,
         priority=CasePriority.MEDIUM,
         note="Created from explain",
         explain={"decision": "DECLINE", "score": 0.8},

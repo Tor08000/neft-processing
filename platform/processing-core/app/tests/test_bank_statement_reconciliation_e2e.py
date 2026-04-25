@@ -18,28 +18,33 @@ from app.models.integrations import (
 from app.models.invoice import Invoice, InvoiceLine
 from app.models.audit_log import ActorType
 from app.services.audit_service import RequestContext
+from app.tests._scoped_router_harness import scoped_session_context
 
 from ._path_root import find_repo_root
 
 ROOT = find_repo_root(Path(__file__).resolve())
 FIXTURES = ROOT / "fixtures" / "bank"
+if not FIXTURES.exists():
+    FIXTURES = find_repo_root(ROOT.parent) / "fixtures" / "bank"
 
-
-@pytest.fixture(autouse=True)
-def clean_db():
-    Base.metadata.drop_all(bind=engine)
-    Base.metadata.create_all(bind=engine)
-    yield
-    Base.metadata.drop_all(bind=engine)
+BANK_RECONCILIATION_TEST_TABLES = (
+    Base.metadata.tables["clients"],
+    Base.metadata.tables["audit_log"],
+    Base.metadata.tables["integration_files"],
+    Base.metadata.tables["bank_statements"],
+    Base.metadata.tables["bank_transactions"],
+    Base.metadata.tables["bank_reconciliation_runs"],
+    Base.metadata.tables["bank_reconciliation_matches"],
+    Base.metadata.tables["bank_reconciliation_diffs"],
+    Invoice.__table__,
+    InvoiceLine.__table__,
+)
 
 
 @pytest.fixture()
 def db_session():
-    session = SessionLocal()
-    try:
+    with scoped_session_context(tables=BANK_RECONCILIATION_TEST_TABLES) as session:
         yield session
-    finally:
-        session.close()
 
 
 def test_bank_statement_reconciliation_e2e(db_session):

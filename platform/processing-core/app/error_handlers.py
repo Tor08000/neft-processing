@@ -3,13 +3,14 @@ import logging
 from uuid import uuid4
 
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 
 def _is_admin_request(request: Request) -> bool:
-    return str(request.url.path).startswith(("/api/core/v1/admin", "/api/v1/admin"))
+    return str(request.url.path).startswith(("/api/core/v1/admin", "/api/core/admin", "/api/v1/admin"))
 
 
 def _admin_error_payload(
@@ -68,12 +69,14 @@ def add_exception_handlers(app: FastAPI):
                 ),
             )
         if isinstance(exc.detail, dict) and "detail" in exc.detail:
-            return JSONResponse(status_code=exc.status_code, content=exc.detail)
+            return JSONResponse(status_code=exc.status_code, content=jsonable_encoder(exc.detail))
         if isinstance(exc.detail, dict) and "error" in exc.detail:
             payload = dict(exc.detail)
             payload.setdefault("message", exc.detail.get("detail"))
             payload["request_id"] = payload.get("request_id") or request.headers.get("x-request-id")
-            return JSONResponse(status_code=exc.status_code, content=payload)
+            return JSONResponse(status_code=exc.status_code, content=jsonable_encoder(payload))
+        if isinstance(exc.detail, dict):
+            return JSONResponse(status_code=exc.status_code, content={"detail": jsonable_encoder(exc.detail)})
         return JSONResponse(
             status_code=exc.status_code,
             content={

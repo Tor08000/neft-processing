@@ -1,6 +1,7 @@
 import type { PortalMeResponse } from "../api/clientPortal";
-import { getPlanByCode, type CustomerType } from "@shared/subscriptions/catalog";
-import type { ClientJourneyState, JourneyDraft } from "./clientJourney";
+import { getPlanByCode } from "@shared/subscriptions/catalog";
+import type { ClientJourneyState } from "./clientJourney";
+import { resolveClientKind } from "../access/clientWorkspace";
 
 export type ClientMode = "personal" | "fleet";
 
@@ -16,16 +17,11 @@ const hasEnabledModule = (modules: unknown, key: string): boolean => {
   return false;
 };
 
-const hasFleetSignalsFromCustomerType = (customerType?: CustomerType | null): boolean =>
-  customerType === "LEGAL_ENTITY" || customerType === "SOLE_PROPRIETOR";
-
 export const resolveAvailableClientModes = ({
   journeyState,
-  draft,
   client,
 }: {
   journeyState: ClientJourneyState;
-  draft: JourneyDraft;
   client: PortalMeResponse | null;
 }): ClientMode[] => {
   if (journeyState !== "ACTIVE" && journeyState !== "TRIAL_ACTIVE" && journeyState !== "DEMO_SHOWCASE") {
@@ -36,17 +32,23 @@ export const resolveAvailableClientModes = ({
     return ["personal", "fleet"];
   }
 
-  const selectedPlan = getPlanByCode(draft.selectedPlan ?? client?.subscription?.plan_code ?? null);
+  if (resolveClientKind({ client }) !== "BUSINESS") {
+    return ["personal"];
+  }
+
+  const selectedPlan = getPlanByCode(client?.subscription?.plan_code ?? null);
   const modules = client?.modules;
   const entitlements = client?.entitlements_snapshot;
   const hasFleetByPlan = Boolean(selectedPlan?.modules.fleet || selectedPlan?.modules.logistics);
   const hasFleetByModules = hasEnabledModule(modules, "fleet") || hasEnabledModule(modules, "logistics");
   const hasFleetByEntitlements = hasEnabledModule(entitlements, "fleet") || hasEnabledModule(entitlements, "logistics");
   const hasFleetByCapabilities = (client?.capabilities ?? []).some((item) => FLEET_CAPABILITY_TOKENS.includes(item));
-  const hasFleetBySection = (client?.nav_sections ?? []).some((item) => item.code.toLowerCase().includes("fleet"));
-  const hasFleetByCustomer = hasFleetSignalsFromCustomerType(draft.customerType);
+  const hasFleetBySection = (client?.nav_sections ?? []).some((item) => {
+    const sectionCode = item.code.toLowerCase();
+    return sectionCode.includes("fleet") || sectionCode.includes("logistics");
+  });
 
-  if (hasFleetByPlan || hasFleetByModules || hasFleetByEntitlements || hasFleetByCapabilities || hasFleetBySection || hasFleetByCustomer) {
+  if (hasFleetByPlan || hasFleetByModules || hasFleetByEntitlements || hasFleetByCapabilities || hasFleetBySection) {
     return ["personal", "fleet"];
   }
 
@@ -55,4 +57,3 @@ export const resolveAvailableClientModes = ({
 
 export const resolveActiveClientMode = (currentMode: ClientMode, availableModes: ClientMode[]): ClientMode =>
   availableModes.includes(currentMode) ? currentMode : availableModes[0] ?? "personal";
-

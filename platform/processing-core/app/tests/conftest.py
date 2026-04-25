@@ -9,6 +9,7 @@ from sqlalchemy.engine.url import make_url
 from alembic import command
 from alembic.config import Config
 from sqlalchemy import create_engine, inspect, text
+from sqlalchemy.schema import MetaData
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.exc import OperationalError
 
@@ -63,6 +64,56 @@ if not os.getenv("DATABASE_URL"):
 
 from app.db.schema import DB_SCHEMA
 from app.integrations.fuel import models as fuel_models  # noqa: F401
+
+_SQLALCHEMY_DROP_ALL = MetaData.drop_all
+
+
+def _resolve_sqlalchemy_bind(bind):
+    if callable(bind):
+        try:
+            return bind()
+        except TypeError:
+            return bind
+    return bind
+
+
+def _quote_table_name(bind, table_name: str, *, schema: str | None) -> str:
+    preparer = bind.dialect.identifier_preparer
+    quoted_table = preparer.quote(table_name)
+    if not schema:
+        return quoted_table
+    return f"{preparer.quote_schema(schema)}.{quoted_table}"
+
+
+def _pytest_postgres_truncate_drop_all(self, bind=None, tables=None, **kwargs):
+    resolved_bind = _resolve_sqlalchemy_bind(bind)
+    table_list = list(tables or [])
+    if (
+        resolved_bind is not None
+        and table_list
+        and getattr(getattr(resolved_bind, "dialect", None), "name", None) == "postgresql"
+        and os.getenv("NEFT_PYTEST_SAFE_DROP_ALL", "1").lower() not in {"0", "false", "no"}
+    ):
+        schema = (os.getenv("NEFT_DB_SCHEMA") or DB_SCHEMA or "").strip() or None
+        inspector = inspect(resolved_bind)
+        existing_tables = set(inspector.get_table_names(schema=schema))
+        qualified_names = [
+            _quote_table_name(resolved_bind, table.name, schema=schema)
+            for table in table_list
+            if table.name in existing_tables
+        ]
+        if qualified_names:
+            statement = "TRUNCATE TABLE " + ", ".join(qualified_names) + " RESTART IDENTITY CASCADE"
+            if hasattr(resolved_bind, "begin"):
+                with resolved_bind.begin() as connection:
+                    connection.execute(text(statement))
+            else:
+                resolved_bind.execute(text(statement))
+        return None
+    return _SQLALCHEMY_DROP_ALL(self, bind=bind, tables=tables, **kwargs)
+
+
+MetaData.drop_all = _pytest_postgres_truncate_drop_all
 
 FASTAPI_SKIP_REASON = (
     "fastapi not installed; run in docker: docker compose exec -T core-api pytest -q -x"
@@ -390,8 +441,7 @@ def _check_required_tables(database_url: str, schema: str) -> None:
         engine.dispose()
 
 
-@pytest.fixture(scope="session", autouse=True)
-def ensure_db_ready(request: pytest.FixtureRequest) -> None:
+def _ensure_db_ready_for_request(request: pytest.FixtureRequest) -> None:
     if _should_skip_db_bootstrap(request.config):
         return
 
@@ -414,6 +464,11 @@ def ensure_db_ready(request: pytest.FixtureRequest) -> None:
         pytest.fail("postgres not available; start docker compose postgres")
     except Exception as exc:
         pytest.fail(f"DB bootstrap failed: {exc!r}")
+
+
+@pytest.fixture(scope="session", autouse=True)
+def ensure_db_ready(request: pytest.FixtureRequest) -> None:
+    _ensure_db_ready_for_request(request)
 
 
 @pytest.fixture(autouse=True)

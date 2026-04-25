@@ -95,14 +95,29 @@ def enqueue_notification_message(
     priority: NotificationPriority = NotificationPriority.NORMAL,
     dedupe_key: str,
     channels: list[NotificationChannel] | None = None,
+    aggregate_type: str | None = None,
+    aggregate_id: str | None = None,
+    tenant_client_id: str | None = None,
 ) -> NotificationMessage:
     existing = db.query(NotificationMessage).filter(NotificationMessage.dedupe_key == dedupe_key).one_or_none()
     if existing:
         return existing
+    resolved_aggregate_type = aggregate_type or (
+        subject_type.value.lower() if isinstance(subject_type, NotificationSubjectType) else str(subject_type).lower()
+    )
+    resolved_aggregate_id = str(aggregate_id or subject_id or dedupe_key)
+    resolved_tenant_client_id = tenant_client_id
+    if resolved_tenant_client_id is None:
+        subject_type_value = subject_type.value if isinstance(subject_type, NotificationSubjectType) else str(subject_type)
+        if subject_type_value.upper() == NotificationSubjectType.CLIENT.value:
+            resolved_tenant_client_id = str(subject_id)
     message = NotificationMessage(
         event_type=event_type,
         subject_type=subject_type,
         subject_id=str(subject_id),
+        aggregate_type=resolved_aggregate_type,
+        aggregate_id=resolved_aggregate_id,
+        tenant_client_id=str(resolved_tenant_client_id) if resolved_tenant_client_id is not None else None,
         channels=[
             channel.value if isinstance(channel, NotificationChannel) else str(channel) for channel in channels
         ]

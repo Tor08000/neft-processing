@@ -4,30 +4,61 @@ from datetime import date
 from uuid import uuid4
 
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from app.db import SessionLocal
-from app.main import app
+from app.api.v1.endpoints.edo_events import router as edo_events_router
+from app.db import get_db
 from app.models.audit_log import AuditLog
-from app.models.documents import Document, DocumentEdoStatus, DocumentStatus, DocumentType
+from app.models.documents import (
+    Document,
+    DocumentDirection,
+    DocumentEdoStatus,
+    DocumentStatus,
+    DocumentType,
+)
+from app.tests._scoped_router_harness import scoped_session_context
+
+
+EDO_EVENTS_TEST_TABLES = (
+    AuditLog.__table__,
+    Document.__table__,
+    DocumentEdoStatus.__table__,
+)
 
 
 @pytest.fixture
 def session() -> Session:
-    db = SessionLocal()
-    try:
+    with scoped_session_context(tables=EDO_EVENTS_TEST_TABLES) as db:
         yield db
-    finally:
-        db.close()
 
 
-def test_edo_event_updates_status_and_audit(session: Session):
+@pytest.fixture
+def api_client(session: Session):
+    app = FastAPI()
+    app.include_router(edo_events_router)
+
+    def override_get_db():
+        try:
+            yield session
+        finally:
+            pass
+
+    app.dependency_overrides[get_db] = override_get_db
+
+    with TestClient(app) as client:
+        yield client
+
+
+def test_edo_event_updates_status_and_audit(session: Session, api_client: TestClient):
     document_id = str(uuid4())
     document = Document(
         id=document_id,
         tenant_id=1,
         client_id="client-1",
+        direction=DocumentDirection.OUTBOUND,
+        title="January invoice",
         document_type=DocumentType.INVOICE,
         period_from=date(2025, 1, 1),
         period_to=date(2025, 1, 31),
@@ -52,8 +83,7 @@ def test_edo_event_updates_status_and_audit(session: Session):
         },
     }
 
-    with TestClient(app) as client:
-        response = client.post("/api/v1/edo/events", json=payload)
+    response = api_client.post("/api/v1/edo/events", json=payload)
 
     assert response.status_code == 202
     record = (

@@ -9,8 +9,11 @@ export function LoginPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const returnUrl = useMemo(() => searchParams.get("returnUrl") || "/products", [searchParams]);
-  const [email, setEmail] = useState("partner@neft.local");
-  const [password, setPassword] = useState("Partner123!");
+  const isDemoLoginEnabled = import.meta.env.VITE_DEMO_MODE === "true";
+  const demoEmail = "partner@neft.local";
+  const demoPassword = "Partner123!";
+  const [email, setEmail] = useState(isDemoLoginEnabled ? demoEmail : "");
+  const [password, setPassword] = useState(isDemoLoginEnabled ? demoPassword : "");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [fieldError, setFieldError] = useState<string | null>(null);
 
@@ -41,10 +44,12 @@ export function LoginPage() {
         </div>
         <h1>NEFT Platform</h1>
         <p className="muted">Используйте учётные данные партнёра для доступа.</p>
-        <div className="login-demo muted small">
-          <CopyChip label="Demo" value="partner@neft.local" />
-          <CopyChip label="Demo" value="Partner123!" />
-        </div>
+        {isDemoLoginEnabled ? (
+          <div className="login-demo muted small">
+            <CopyChip label="Demo email" value={demoEmail} />
+            <CopyChip label="Demo password" value={demoPassword} />
+          </div>
+        ) : null}
         {error ? (
           <div className="error" role="alert">
             {error}
@@ -62,7 +67,7 @@ export function LoginPage() {
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            placeholder="partner@neft.local"
+            placeholder={isDemoLoginEnabled ? demoEmail : "partner@example.com"}
             required
             autoComplete="username"
             className="neft-input neft-focus-ring"
@@ -76,7 +81,7 @@ export function LoginPage() {
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            placeholder="Partner123!"
+            placeholder="Password"
             required
             autoComplete="current-password"
             className="neft-input neft-focus-ring"

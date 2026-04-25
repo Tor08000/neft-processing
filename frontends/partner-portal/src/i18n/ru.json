@@ -3,7 +3,9 @@
     "title": "Partner Portal",
     "partnerLabel": "Партнёр {id}",
     "partnerFallback": "Кабинет партнёра",
-    "signedInAs": "Вы вошли как"
+    "signedInAs": "Вы вошли как",
+    "subscriptionDraft": "Черновик тарифа: {plan} · {state}",
+    "onboardingDisabled": "Онбординг отключён администратором."
   },
   "nav": {
     "dashboard": "Дашборд",
@@ -28,7 +30,12 @@
     "marketplaceProducts": "Мои товары",
     "marketplaceOffers": "Офферы",
     "supportRequests": "Запросы",
-    "settings": "Настройки"
+    "settings": "Настройки",
+    "serviceRequests": "Заявки услуг",
+    "partnerProfile": "Профиль партнёра",
+    "locations": "Точки и локации",
+    "users": "Пользователи",
+    "terms": "Условия"
   },
   "common": {
     "notAvailable": "—",
@@ -94,9 +101,18 @@
     "subtitle": "Обращения партнёра по заказам, выплатам и интеграциям.",
     "emptyTitle": "Обращений пока нет",
     "emptyDescription": "Создайте запрос, если возникла проблема с заказом или интеграцией.",
+    "detailNotFoundTitle": "Обращение не найдено",
+    "detailNotFoundDescription": "Откройте обращение из списка поддержки, чтобы увидеть текущий статус и историю обработки.",
+    "timelineEmptyTitle": "Хронология пока пуста",
+    "timelineEmptyDescription": "События появятся после проверки, назначения исполнителя или обновления статуса.",
     "fields": {
       "title": "Тема",
-      "description": "Описание"
+      "description": "Описание",
+      "subjectType": "Тип обращения",
+      "subject": "Предмет",
+      "createdAt": "Дата",
+      "created": "Создано",
+      "updated": "Обновлено"
     },
     "actions": {
       "submit": "Отправить запрос"
@@ -109,7 +125,19 @@
       "openRequest": "Открыть обращение"
     },
     "errors": {
-      "createFailed": "Не удалось создать обращение"
+      "createFailed": "Не удалось создать обращение",
+      "loadFailed": "Не удалось загрузить обращение"
+    },
+    "list": {
+      "filtersTitle": "Фильтры поддержки",
+      "filtersDescription": "Этот список остаётся canonical support/case read surface для партнёра: без скрытых workflow и без пустых broad tabs.",
+      "filteredTitle": "Обращения не найдены",
+      "filteredDescription": "Фильтры сузили выдачу слишком сильно. Сбросьте их, чтобы вернуться к полной очереди обращений.",
+      "resetFilters": "Сбросить фильтры",
+      "backToDashboard": "Вернуться на dashboard"
+    },
+    "sections": {
+      "timeline": "Хронология"
     }
   },
   "emptyStates": {
@@ -296,6 +324,311 @@
       "validation": "Проверьте обязательные поля.",
       "confirmSubmit": "Отправить оффер на модерацию?",
       "confirmArchive": "Архивировать оффер?"
+    },
+    "orderDetails": {
+      "title": "Заказ {{id}}",
+      "subtitle": "Входящий заказ маркетплейса",
+      "loading": "Загружаем заказ...",
+      "fields": {
+        "status": "Статус заказа",
+        "client": "Клиент",
+        "created": "Создан",
+        "amount": "Сумма",
+        "responseDue": "Ответ до",
+        "completionDue": "Завершение до"
+      },
+      "actions": {
+        "support": "Связаться с поддержкой",
+        "back": "Назад к списку",
+        "confirm": "Подтвердить",
+        "decline": "Отклонить",
+        "uploadProof": "Загрузить proof",
+        "complete": "Завершить",
+        "fail": "Не выполнено"
+      },
+      "lifecycle": {
+        "title": "Жизненный цикл заказа",
+        "deniedTitle": "Действия недоступны",
+        "deniedDescription": "У вашей роли нет доступа к изменениям заказа."
+      },
+      "tabs": {
+        "timeline": "Таймлайн",
+        "incidents": "Инциденты",
+        "sla": "SLA",
+        "payouts": "Выплаты"
+      },
+      "incidents": {
+        "loading": "Загружаем инциденты...",
+        "emptyTitle": "Инцидентов пока нет",
+        "emptyDescription": "Здесь появятся order-linked инциденты из canonical case contour, если по заказу уже открыт кейс.",
+        "errorTitle": "Не удалось загрузить инциденты",
+        "table": {
+          "id": "Кейс",
+          "title": "Название",
+          "status": "Статус",
+          "queue": "Очередь",
+          "source": "Источник",
+          "updated": "Обновлено"
+        }
+      },
+      "sla": {
+        "loading": "Загружаем SLA...",
+        "emptyTitle": "SLA отсутствует",
+        "emptyDescription": "Обязательства появятся после активации.",
+        "errorTitle": "Не удалось загрузить SLA",
+        "table": {
+          "metric": "Обязательство",
+          "deadline": "Дедлайн",
+          "remaining": "Осталось",
+          "status": "Статус",
+          "penalty": "Штраф"
+        }
+      },
+      "payouts": {
+        "loading": "Загружаем влияние на выплаты...",
+        "emptyTitle": "Выплата не найдена",
+        "emptyDescription": "Появится в ближайшем settlement периоде.",
+        "errorTitle": "Не удалось загрузить выплаты",
+        "fields": {
+          "settlementId": "Settlement ID",
+          "status": "Статус",
+          "period": "Период",
+          "netAmount": "К выплате"
+        },
+        "actions": {
+          "open": "Открыть выплату"
+        },
+        "frozenTitle": "Отдельная settlement-страница заказа заморожена",
+        "frozenDescription": "Отдельный owner для settlement-карточки заказа сейчас не смонтирован. Для payout-chain вопросов используйте финансы и обращения.",
+        "frozenNote": "Settlement breakdown выше остаётся текущим read-view по этому заказу.",
+        "openFinance": "Открыть финансы",
+        "openSupport": "Открыть обращения"
+      },
+      "settlement": {
+        "title": "Settlement breakdown",
+        "loading": "Загружаем расчёт...",
+        "errorTitle": "Не удалось загрузить расчёт",
+        "metrics": {
+          "gross": "Gross",
+          "fee": "Fee",
+          "penalties": "Штрафы",
+          "net": "Net"
+        },
+        "penalties": {
+          "table": {
+            "type": "Тип",
+            "reason": "Причина",
+            "amount": "Сумма",
+            "source": "Источник"
+          },
+          "actions": {
+            "support": "В обращения",
+            "sla": "SLA {{id}}"
+          }
+        },
+        "noPenaltiesTitle": "Штрафов пока нет",
+        "noPenaltiesDescription": "Если в payout-chain появятся удержания по этому заказу, они будут перечислены здесь.",
+        "snapshot": {
+          "finalizedAt": "Finalized at",
+          "hash": "Snapshot hash",
+          "pendingTitle": "Settlement snapshot пока недоступен",
+          "pendingDescription": "Snapshot появится после фиксации итогового settlement read model в payout-chain."
+        },
+        "pendingTitle": "Settlement snapshot ещё не финализирован",
+        "pendingDescription": "По заказу уже есть settlement evidence, но payout-chain ещё не опубликовал финальное состояние. До этого используйте финансы и обращения.",
+        "pendingActions": {
+          "openFinance": "Открыть финансы",
+          "openSupport": "Открыть обращения"
+        },
+        "emptyTitle": "Нет данных по расчёту",
+        "emptyDescription": "Settlement breakdown станет доступен после попадания заказа в payout-chain."
+      },
+      "notifications": {
+        "confirmed": "Заказ подтверждён.",
+        "declined": "Заказ отклонён.",
+        "proofUploaded": "Proof загружен.",
+        "completed": "Заказ завершён.",
+        "failed": "Заказ завершён с ошибкой."
+      },
+      "errors": {
+        "loadTitle": "Не удалось загрузить заказ",
+        "loadFailed": "Не удалось загрузить заказ",
+        "notFound": "Заказ не найден",
+        "timelineFailed": "Не удалось загрузить таймлайн",
+        "incidentsFailed": "Не удалось загрузить инциденты",
+        "slaFailed": "Не удалось загрузить SLA",
+        "payoutFailed": "Не удалось загрузить выплаты",
+        "actionFailed": "Действие не выполнено"
+      },
+      "supportTitle": "Проблема с заказом {{id}}",
+      "proofs": {
+        "title": "Proof",
+        "empty": "Пруфы ещё не загружены."
+      },
+      "modals": {
+        "close": "Закрыть",
+        "cancel": "Отмена",
+        "confirm": {
+          "title": "Подтвердить заказ",
+          "description": "Подтвердите возможность выполнения заказа."
+        },
+        "decline": {
+          "title": "Отклонить заказ",
+          "description": "Укажите причину и комментарий.",
+          "reason": "Причина отказа",
+          "reasonPlaceholder": "например, OUT_OF_STOCK",
+          "comment": "Комментарий",
+          "commentPlaceholder": "Поясните клиенту причину"
+        },
+        "proof": {
+          "title": "Загрузить proof",
+          "description": "Прикрепите фото или документ как доказательство.",
+          "kind": "Тип proof",
+          "attachment": "ID вложения (опционально)",
+          "attachmentPlaceholder": "Оставьте пустым для авто-ID",
+          "note": "Комментарий",
+          "notePlaceholder": "Опционально",
+          "kinds": {
+            "photo": "Фото",
+            "pdf": "PDF",
+            "act": "Акт",
+            "check": "Чек",
+            "other": "Другое"
+          }
+        },
+        "complete": {
+          "title": "Завершить заказ",
+          "description": "Добавьте итог выполнения.",
+          "summary": "Итог",
+          "placeholder": "Результат"
+        },
+        "fail": {
+          "title": "Заказ не выполнен",
+          "description": "Укажите причину.",
+          "reason": "Причина",
+          "placeholder": "Опишите проблему"
+        }
+      }
+    },
+    "servicesCatalogPage": {
+      "title": "Каталог услуг",
+      "subtitle": "Управляйте услугами и бронированиями.",
+      "empty": {
+        "filteredTitle": "Нет результатов фильтра",
+        "filteredDescription": "Измените фильтры или сбросьте настройки поиска."
+      },
+      "filters": {
+        "search": "Поиск",
+        "searchPlaceholder": "Название или описание",
+        "kind": "Тип",
+        "kindOptions": {
+          "service": "Услуга",
+          "product": "Товар"
+        },
+        "status": "Статус",
+        "statusOptions": {
+          "draft": "Черновик",
+          "active": "Активен",
+          "disabled": "Отключён",
+          "archived": "Архив"
+        },
+        "category": "Категория",
+        "categoryPlaceholder": "Категория"
+      },
+      "table": {
+        "title": "Название",
+        "name": "Название",
+        "kind": "Тип",
+        "category": "Категория",
+        "status": "Статус",
+        "price": "Цена",
+        "activeOffers": "Офферы",
+        "updatedAt": "Обновлено",
+        "actions": "Действия"
+      },
+      "actions": {
+        "disable": "Отключить",
+        "activate": "Активировать",
+        "resetFilters": "Сбросить фильтры"
+      },
+      "pagination": {
+        "prev": "Назад",
+        "next": "Вперёд",
+        "page": "Страница"
+      },
+      "errors": {
+        "loadFailed": "Не удалось загрузить каталог",
+        "requiredFields": "Заполните обязательные поля",
+        "saveFailed": "Не удалось сохранить элемент",
+        "updateStatusFailed": "Не удалось изменить статус"
+      },
+      "notifications": {
+        "saved": "Изменения сохранены",
+        "created": "Элемент каталога создан",
+        "disabled": "Элемент каталога отключён",
+        "activated": "Элемент каталога активирован"
+      },
+      "import": {
+        "title": "Импорт услуг",
+        "subtitle": "Загрузите CSV-файл для массового добавления услуг.",
+        "unavailableTitle": "Импорт недоступен",
+        "unavailableDescription": "Доступ только для PARTNER_OWNER или PARTNER_SERVICE_MANAGER.",
+        "csvFile": "CSV-файл",
+        "chooseFile": "Выбрать файл",
+        "fileNotChosen": "Файл не выбран",
+        "mode": "Режим",
+        "modes": {
+          "create": "Создать",
+          "update": "Обновить",
+          "upsert": "Создать или обновить"
+        },
+        "preview": "Предпросмотр",
+        "csvError": "Ошибка CSV:",
+        "previewSummary": "Сводка",
+        "rowsParsed": "Строк обработано: {count}",
+        "willCreate": "Будет создано: {count}",
+        "willUpdate": "Будет обновлено: {count}",
+        "errorsCount": "Ошибок: {count}",
+        "errorsTitle": "Ошибки импорта",
+        "table": {
+          "row": "Строка",
+          "description": "Описание"
+        },
+        "sampleTitle": "Пример строк (первые 20)",
+        "apply": "Применить импорт",
+        "resultTitle": "Результат импорта",
+        "resultCreated": "Создано: {count}",
+        "resultUpdated": "Обновлено: {count}",
+        "resultSkipped": "Пропущено: {count}",
+        "refreshList": "Обновить список",
+        "csvFormat": "Формат CSV",
+        "requiredFields": "Обязательные поля",
+        "sampleRow": "Пример строки",
+        "upload": "Загрузить",
+        "downloadTemplate": "Скачать шаблон",
+        "errors": {
+          "selectCsv": "Выберите CSV файл",
+          "row": "Строка {row}: {message}",
+          "previewFailed": "Не удалось выполнить preview",
+          "applyFailed": "Не удалось применить импорт"
+        }
+      },
+      "modal": {
+        "editTitle": "Редактировать элемент",
+        "createTitle": "Создать элемент",
+        "fields": {
+          "title": "Название *",
+          "kind": "Тип",
+          "category": "Категория",
+          "uom": "Ед. измерения *",
+          "uomPlaceholder": "шт / услуга / час",
+          "description": "Описание",
+          "status": "Статус"
+        },
+        "actions": {
+          "saveActivate": "Сохранить и активировать"
+        }
+      }
     }
   },
   "pricesPage": {
@@ -631,424 +964,389 @@
         "table": {
           "http": "HTTP",
           "error": "Error",
+          "deliveryError": "Ошибка доставки",
           "latency": "Latency",
           "nextRetry": "Next retry",
           "correlationId": "Correlation ID"
+        }
       }
-    }
-  },
-  "ordersPage": {
-    "title": "Заказы",
-    "filters": {
-      "period": "Период",
-      "presets": {
-        "today": "Сегодня",
-        "7d": "Последние 7 дней",
-        "30d": "30 дней",
-        "custom": "Произвольно"
+    },
+    "ordersPage": {
+      "title": "Заказы",
+      "empty": {
+        "filteredTitle": "Заказы не найдены",
+        "filteredDescription": "Измените фильтры или сбросьте их, чтобы вернуться к полному рабочему списку."
       },
-      "from": "Период с",
-      "to": "Период по",
-      "status": "Статус",
-      "search": "Поиск",
-      "searchPlaceholder": "Номер заказа или клиент",
-      "station": "Станция",
-      "stationPlaceholder": "АЗС/станция",
-      "service": "Услуга",
-      "servicePlaceholder": "Услуга",
-      "slaRisk": "Риск SLA",
-      "slaRiskNear": "Близко к дедлайну"
-    },
-    "actions": {
-      "saveFilters": "Сохранить фильтр"
-    },
-    "errors": {
-      "loadFailed": "Не удалось загрузить заказы",
-      "apiError": "Не удалось загрузить заказы"
-    },
-    "kpis": {
-      "today": "Сегодня",
-      "pending": "В обработке",
-      "documents": "Документы",
-      "total": "Всего"
-    },
-    "table": {
-      "orderId": "№ заказа",
-      "client": "Клиент",
-      "service": "Услуга",
-      "createdAt": "Создан",
-      "sla": "SLA",
-      "amount": "Сумма",
-      "status": "Статус",
-      "actions": "Действия"
-    },
-    "pagination": {
-      "prev": "Назад",
-      "next": "Вперёд",
-      "page": "Страница {{current}} из {{total}}"
-    }
-  },
-  "orderDetails": {
-    "title": "Заказ {id}",
-    "subtitle": "Входящий заказ маркетплейса",
-    "loading": "Загружаем заказ...",
-    "fields": {
-      "status": "Статус заказа",
-      "client": "Клиент",
-      "created": "Создан",
-      "amount": "Сумма",
-      "responseDue": "Ответ до",
-      "completionDue": "Завершение до"
-    },
-    "actions": {
-      "support": "Связаться с поддержкой",
-      "back": "Назад к списку",
-      "confirm": "Подтвердить",
-      "decline": "Отклонить",
-      "uploadProof": "Загрузить proof",
-      "complete": "Завершить",
-      "fail": "Не выполнено"
-    },
-    "lifecycle": {
-      "title": "Жизненный цикл заказа",
-      "deniedTitle": "Действия недоступны",
-      "deniedDescription": "У вашей роли нет доступа к изменениям заказа."
-    },
-    "tabs": {
-      "timeline": "Таймлайн",
-      "sla": "SLA",
-      "payouts": "Выплаты"
-    },
-    "sla": {
-      "loading": "Загружаем SLA...",
-      "emptyTitle": "SLA отсутствует",
-      "emptyDescription": "Обязательства появятся после активации.",
-      "errorTitle": "Не удалось загрузить SLA",
-      "table": {
-        "metric": "Обязательство",
-        "deadline": "Дедлайн",
-        "remaining": "Осталось",
-        "status": "Статус",
-        "penalty": "Штраф"
-      }
-    },
-    "payouts": {
-      "loading": "Загружаем влияние на выплаты...",
-      "emptyTitle": "Выплата не найдена",
-      "emptyDescription": "Появится в ближайшем settlement периоде.",
-      "errorTitle": "Не удалось загрузить выплаты",
-      "fields": {
-        "settlementId": "Settlement ID",
-        "status": "Статус",
+      "filters": {
         "period": "Период",
-        "netAmount": "К выплате"
+        "presets": {
+          "today": "Сегодня",
+          "7d": "Последние 7 дней",
+          "30d": "30 дней",
+          "custom": "Произвольно"
+        },
+        "from": "Период с",
+        "to": "Период по",
+        "status": "Статус",
+        "search": "Поиск",
+        "searchPlaceholder": "Номер заказа или клиент",
+        "station": "Станция",
+        "stationPlaceholder": "АЗС/станция",
+        "service": "Услуга",
+        "servicePlaceholder": "Услуга",
+        "slaRisk": "Риск SLA",
+        "slaRiskNear": "Близко к дедлайну"
       },
       "actions": {
-        "open": "Открыть выплату"
-      }
-    },
-    "notifications": {
-      "confirmed": "Заказ подтверждён.",
-      "declined": "Заказ отклонён.",
-      "proofUploaded": "Proof загружен.",
-      "completed": "Заказ завершён.",
-      "failed": "Заказ завершён с ошибкой."
-    },
-    "errors": {
-      "loadTitle": "Не удалось загрузить заказ",
-      "loadFailed": "Не удалось загрузить заказ",
-      "notFound": "Заказ не найден",
-      "timelineFailed": "Не удалось загрузить таймлайн",
-      "slaFailed": "Не удалось загрузить SLA",
-      "payoutFailed": "Не удалось загрузить выплаты",
-      "actionFailed": "Действие не выполнено"
-    },
-    "supportTitle": "Проблема с заказом {id}",
-    "proofs": {
-      "title": "Proof",
-      "empty": "Пруфы ещё не загружены."
-    },
-    "modals": {
-      "close": "Закрыть",
-      "cancel": "Отмена",
-      "confirm": "Подтвердить",
-      "confirm": {
-        "title": "Подтвердить заказ",
-        "description": "Подтвердите возможность выполнения заказа."
+        "saveFilters": "Сохранить фильтр",
+        "resetFilters": "Сбросить фильтры"
       },
-      "decline": {
-        "title": "Отклонить заказ",
-        "description": "Укажите причину и комментарий.",
-        "reason": "Причина отказа",
-        "reasonPlaceholder": "например, OUT_OF_STOCK",
-        "comment": "Комментарий",
-        "commentPlaceholder": "Поясните клиенту причину"
-      },
-      "proof": {
-        "title": "Загрузить proof",
-        "description": "Прикрепите фото или документ как доказательство.",
-        "kind": "Тип proof",
-        "attachment": "ID вложения (опционально)",
-        "attachmentPlaceholder": "Оставьте пустым для авто-ID",
-        "note": "Комментарий",
-        "notePlaceholder": "Опционально",
-        "kinds": {
-          "photo": "Фото",
-          "pdf": "PDF",
-          "act": "Акт",
-          "check": "Чек",
-          "other": "Другое"
-        }
-      },
-      "complete": {
-        "title": "Завершить заказ",
-        "description": "Добавьте итог выполнения.",
-        "summary": "Итог",
-        "placeholder": "Результат"
-      },
-      "fail": {
-        "title": "Заказ не выполнен",
-        "description": "Укажите причину.",
-        "reason": "Причина",
-        "placeholder": "Опишите проблему"
-      }
-    }
-  },
-  "servicesCatalogPage": {
-    "title": "Каталог услуг",
-    "subtitle": "Управляйте услугами и бронированиями.",
-    "empty": {
-      "filteredTitle": "Нет результатов фильтра",
-      "filteredDescription": "Измените фильтры или сбросьте настройки поиска."
-    },
-    "filters": {
-      "search": "Поиск",
-      "searchPlaceholder": "Название или описание",
-      "kind": "Тип",
-      "kindOptions": {
-        "service": "Услуга",
-        "product": "Товар"
-      },
-      "status": "Статус",
-      "statusOptions": {
-        "draft": "Черновик",
-        "active": "Активен",
-        "disabled": "Отключён",
-        "archived": "Архив"
-      },
-      "category": "Категория",
-      "categoryPlaceholder": "Категория"
-    },
-    "table": {
-      "title": "Название",
-      "name": "Название",
-      "kind": "Тип",
-      "category": "Категория",
-      "status": "Статус",
-      "price": "Цена",
-      "activeOffers": "Офферы",
-      "updatedAt": "Обновлено",
-      "actions": "Действия"
-    },
-    "actions": {
-      "disable": "Отключить",
-      "activate": "Активировать",
-      "resetFilters": "Сбросить фильтры"
-    },
-    "pagination": {
-      "prev": "Назад",
-      "next": "Вперёд",
-      "page": "Страница"
-    },
-    "errors": {
-      "loadFailed": "Не удалось загрузить каталог",
-      "requiredFields": "Заполните обязательные поля",
-      "saveFailed": "Не удалось сохранить элемент",
-      "updateStatusFailed": "Не удалось изменить статус"
-    },
-    "notifications": {
-      "saved": "Изменения сохранены",
-      "created": "Элемент каталога создан",
-      "disabled": "Элемент каталога отключён",
-      "activated": "Элемент каталога активирован"
-    },
-    "import": {
-      "title": "Импорт услуг",
-      "subtitle": "Загрузите CSV-файл для массового добавления услуг.",
-      "unavailableTitle": "Импорт недоступен",
-      "unavailableDescription": "Доступ только для PARTNER_OWNER или PARTNER_SERVICE_MANAGER.",
-      "csvFile": "CSV-файл",
-      "chooseFile": "Выбрать файл",
-      "fileNotChosen": "Файл не выбран",
-      "mode": "Режим",
-      "modes": {
-        "create": "Создать",
-        "update": "Обновить",
-        "upsert": "Создать или обновить"
-      },
-      "preview": "Предпросмотр",
-      "csvError": "Ошибка CSV:",
-      "previewSummary": "Сводка",
-      "rowsParsed": "Строк обработано: {count}",
-      "willCreate": "Будет создано: {count}",
-      "willUpdate": "Будет обновлено: {count}",
-      "errorsCount": "Ошибок: {count}",
-      "errorsTitle": "Ошибки импорта",
-      "table": {
-        "row": "Строка",
-        "description": "Описание"
-      },
-      "sampleTitle": "Пример строк (первые 20)",
-      "apply": "Применить импорт",
-      "resultTitle": "Результат импорта",
-      "resultCreated": "Создано: {count}",
-      "resultUpdated": "Обновлено: {count}",
-      "resultSkipped": "Пропущено: {count}",
-      "refreshList": "Обновить список",
-      "csvFormat": "Формат CSV",
-      "requiredFields": "Обязательные поля",
-      "sampleRow": "Пример строки",
-      "upload": "Загрузить",
-      "downloadTemplate": "Скачать шаблон",
       "errors": {
-        "selectCsv": "Выберите CSV файл",
-        "row": "Строка {row}: {message}",
-        "previewFailed": "Не удалось выполнить preview",
-        "applyFailed": "Не удалось применить импорт"
+        "loadFailed": "Не удалось загрузить заказы",
+        "apiError": "Не удалось загрузить заказы"
+      },
+      "kpis": {
+        "today": "Сегодня",
+        "pending": "В обработке",
+        "documents": "Документы",
+        "total": "Всего"
+      },
+      "table": {
+        "orderId": "№ заказа",
+        "client": "Клиент",
+        "service": "Услуга",
+        "createdAt": "Создан",
+        "sla": "SLA",
+        "amount": "Сумма",
+        "status": "Статус",
+        "actions": "Действия"
+      },
+      "pagination": {
+        "prev": "Назад",
+        "next": "Вперёд",
+        "page": "Страница {{current}} из {{total}}",
+        "shown": "Показано: {{visible}} из {{total}}"
       }
     },
-    "modal": {
-      "editTitle": "Редактировать элемент",
-      "createTitle": "Создать элемент",
-      "fields": {
-        "title": "Название *",
+    "servicesCatalogPage": {
+      "title": "Каталог услуг",
+      "subtitle": "Управляйте услугами и бронированиями.",
+      "empty": {
+        "filteredTitle": "Нет результатов фильтра",
+        "filteredDescription": "Измените фильтры или сбросьте настройки поиска."
+      },
+      "filters": {
+        "search": "Поиск",
+        "searchPlaceholder": "Название или описание",
+        "kind": "Тип",
+        "kindOptions": {
+          "service": "Услуга",
+          "product": "Товар"
+        },
+        "status": "Статус",
+        "statusOptions": {
+          "draft": "Черновик",
+          "active": "Активен",
+          "disabled": "Отключён",
+          "archived": "Архив"
+        },
+        "category": "Категория",
+        "categoryPlaceholder": "Категория"
+      },
+      "table": {
+        "title": "Название",
+        "name": "Название",
         "kind": "Тип",
         "category": "Категория",
-        "uom": "Ед. измерения *",
-        "uomPlaceholder": "шт / услуга / час",
-        "description": "Описание",
-        "status": "Статус"
+        "status": "Статус",
+        "price": "Цена",
+        "activeOffers": "Офферы",
+        "updatedAt": "Обновлено",
+        "actions": "Действия"
       },
       "actions": {
-        "saveActivate": "Сохранить и активировать"
+        "disable": "Отключить",
+        "activate": "Активировать",
+        "resetFilters": "Сбросить фильтры"
+      },
+      "pagination": {
+        "prev": "Назад",
+        "next": "Вперёд",
+        "page": "Страница"
+      },
+      "errors": {
+        "loadFailed": "Не удалось загрузить каталог",
+        "requiredFields": "Заполните обязательные поля",
+        "saveFailed": "Не удалось сохранить элемент",
+        "updateStatusFailed": "Не удалось изменить статус"
+      },
+      "notifications": {
+        "saved": "Изменения сохранены",
+        "created": "Элемент каталога создан",
+        "disabled": "Элемент каталога отключён",
+        "activated": "Элемент каталога активирован"
+      },
+      "import": {
+        "title": "Импорт услуг",
+        "subtitle": "Загрузите CSV-файл для массового добавления услуг.",
+        "unavailableTitle": "Импорт недоступен",
+        "unavailableDescription": "Доступ только для PARTNER_OWNER или PARTNER_SERVICE_MANAGER.",
+        "csvFile": "CSV-файл",
+        "chooseFile": "Выбрать файл",
+        "fileNotChosen": "Файл не выбран",
+        "mode": "Режим",
+        "modes": {
+          "create": "Создать",
+          "update": "Обновить",
+          "upsert": "Создать или обновить"
+        },
+        "preview": "Предпросмотр",
+        "csvError": "Ошибка CSV:",
+        "previewSummary": "Сводка",
+        "rowsParsed": "Строк обработано: {count}",
+        "willCreate": "Будет создано: {count}",
+        "willUpdate": "Будет обновлено: {count}",
+        "errorsCount": "Ошибок: {count}",
+        "errorsTitle": "Ошибки импорта",
+        "table": {
+          "row": "Строка",
+          "description": "Описание"
+        },
+        "sampleTitle": "Пример строк (первые 20)",
+        "apply": "Применить импорт",
+        "resultTitle": "Результат импорта",
+        "resultCreated": "Создано: {count}",
+        "resultUpdated": "Обновлено: {count}",
+        "resultSkipped": "Пропущено: {count}",
+        "refreshList": "Обновить список",
+        "csvFormat": "Формат CSV",
+        "requiredFields": "Обязательные поля",
+        "sampleRow": "Пример строки",
+        "upload": "Загрузить",
+        "downloadTemplate": "Скачать шаблон",
+        "errors": {
+          "selectCsv": "Выберите CSV файл",
+          "row": "Строка {row}: {message}",
+          "previewFailed": "Не удалось выполнить preview",
+          "applyFailed": "Не удалось применить импорт"
+        }
+      },
+      "modal": {
+        "editTitle": "Редактировать элемент",
+        "createTitle": "Создать элемент",
+        "fields": {
+          "title": "Название *",
+          "kind": "Тип",
+          "category": "Категория",
+          "uom": "Ед. измерения *",
+          "uomPlaceholder": "шт / услуга / час",
+          "description": "Описание",
+          "status": "Статус"
+        },
+        "actions": {
+          "saveActivate": "Сохранить и активировать"
+        }
+      }
+    },
+    "priceVersionPage": {
+      "loading": "Загружаем версию цен...",
+      "forbidden": "Роль не позволяет просматривать версию цен.",
+      "errors": {
+        "loadFailed": "Не удалось загрузить версию",
+        "loadTitle": "Ошибка загрузки (status {status})",
+        "validationFailed": "Не удалось запустить валидацию",
+        "publishFailed": "Не удалось опубликовать версию",
+        "rollbackFailed": "Не удалось выполнить rollback",
+        "importFailed": "Не удалось импортировать файл",
+        "apiError": "Ошибка: {message} (status {status})"
+      },
+      "confirmations": {
+        "validate": "Запустить валидацию версии?",
+        "publishTitle": "Опубликовать прайс-лист?",
+        "publishDescription": "Новые цены будут применяться ко всем новым операциям. Ранее созданные заказы не изменятся.",
+        "rollbackTitle": "Вернуться к предыдущей версии?",
+        "rollbackDescription": "Будет создана новая активная версия на основе выбранной.",
+        "import": "Импортировать файл в версию?"
+      },
+      "notifications": {
+        "validationOk": "Валидация пройдена",
+        "validationWithErrors": "Валидация завершена с ошибками",
+        "published": "Версия опубликована",
+        "rollbackCreated": "Rollback создан",
+        "importCompleted": "Импорт завершён. Ошибок: {errors}"
+      },
+      "upload": {
+        "csvErrors": "Найдено ошибок: {count}",
+        "csvRows": "Строк: {count}",
+        "jsonRows": "JSON записей: {count}",
+        "jsonError": "Ошибка JSON формата"
+      },
+      "empty": {
+        "notFoundTitle": "Версия не найдена",
+        "notFoundDescription": "Проверьте идентификатор версии и повторите запрос."
+      },
+      "header": {
+        "title": "Версия {id}",
+        "subtitle": "Статус и управление версией прайса."
+      },
+      "actions": {
+        "validate": "Валидировать",
+        "rollback": "Rollback"
+      },
+      "overview": {
+        "scope": "Scope",
+        "scopeAll": "Все станции",
+        "scopeCount": "{count} станций",
+        "items": "Items",
+        "errors": "Errors",
+        "createdAt": "Создано",
+        "createdBy": "Создатель",
+        "publishedAt": "Опубликовано"
+      },
+      "import": {
+        "csvFormat": "Формат CSV",
+        "requiredFields": "Обязательные поля: station_code (или station_id), product_code, price, currency, valid_from.",
+        "format": "Формат",
+        "file": "Файл",
+        "preview": "Preview: {text}",
+        "commit": "Commit import to version"
+      },
+      "preview": {
+        "search": "Поиск",
+        "searchPlaceholder": "station/product",
+        "errorsOnly": "Errors only",
+        "emptyTitle": "Нет элементов",
+        "emptyDescription": "Элементы появятся после импорта.",
+        "table": {
+          "station": "Station",
+          "product": "Product",
+          "price": "Price",
+          "currency": "Currency",
+          "validFrom": "Valid from",
+          "errors": "Errors"
+        }
+      },
+      "pagination": {
+        "page": "Страница {current}{total}",
+        "total": " из {total}"
+      },
+      "validate": {
+        "run": "Run validation",
+        "yes": "Да",
+        "no": "Нет",
+        "errors": "Errors",
+        "warnings": "Warnings",
+        "emptyTitle": "Валидация не запускалась",
+        "emptyDescription": "Запустите валидацию для получения отчёта.",
+        "sampleErrors": "Sample errors",
+        "recommendedActions": "Recommended actions"
+      },
+      "diff": {
+        "compareTo": "Compare to version",
+        "selectVersion": "Выберите версию",
+        "added": "Добавлено",
+        "removed": "Удалено",
+        "changed": "Изменено",
+        "table": {
+          "station": "Station",
+          "product": "Product",
+          "before": "Before",
+          "after": "After"
+        },
+        "emptyTitle": "Нет изменений",
+        "emptyDescription": "Выберите другую версию для сравнения.",
+        "selectTitle": "Выберите версию",
+        "selectDescription": "Выберите версию для расчёта diff."
+      },
+      "audit": {
+        "emptyTitle": "Нет событий",
+        "emptyDescription": "Аудит появится после действий с версией.",
+        "actor": "Actor: {actor}"
       }
     }
   },
-  "priceVersionPage": {
-    "loading": "Загружаем версию цен...",
-    "forbidden": "Роль не позволяет просматривать версию цен.",
+  "serviceDetailsPage": {
+    "title": "Карточка услуги",
+    "meta": {
+      "updated": "Обновлено {date}",
+      "locationId": "ID локации: {id}"
+    },
+    "tabs": {
+      "main": "Основное",
+      "media": "Медиа",
+      "locations": "Локации",
+      "schedule": "Расписание",
+      "preview": "Доступность"
+    },
+    "fields": {
+      "title": "Название",
+      "category": "Категория",
+      "description": "Описание",
+      "duration": "Длительность (мин)",
+      "requirements": "Требования",
+      "tags": "Теги",
+      "attributes": "Атрибуты (JSON)",
+      "location": "Локация",
+      "period": "Период"
+    },
     "errors": {
-      "loadFailed": "Не удалось загрузить версию",
-      "loadTitle": "Ошибка загрузки (status {status})",
-      "validationFailed": "Не удалось запустить валидацию",
-      "publishFailed": "Не удалось опубликовать версию",
-      "rollbackFailed": "Не удалось выполнить rollback",
-      "importFailed": "Не удалось импортировать файл",
-      "apiError": "Ошибка: {message} (status {status})"
-    },
-    "confirmations": {
-      "validate": "Запустить валидацию версии?",
-      "publishTitle": "Опубликовать прайс-лист?",
-      "publishDescription": "Новые цены будут применяться ко всем новым операциям. Ранее созданные заказы не изменятся.",
-      "rollbackTitle": "Вернуться к предыдущей версии?",
-      "rollbackDescription": "Будет создана новая активная версия на основе выбранной.",
-      "import": "Импортировать файл в версию?"
-    },
-    "notifications": {
-      "validationOk": "Валидация пройдена",
-      "validationWithErrors": "Валидация завершена с ошибками",
-      "published": "Версия опубликована",
-      "rollbackCreated": "Rollback создан",
-      "importCompleted": "Импорт завершён. Ошибок: {errors}"
-    },
-    "upload": {
-      "csvErrors": "Найдено ошибок: {count}",
-      "csvRows": "Строк: {count}",
-      "jsonRows": "JSON записей: {count}",
-      "jsonError": "Ошибка JSON формата"
-    },
-    "empty": {
-      "notFoundTitle": "Версия не найдена",
-      "notFoundDescription": "Проверьте идентификатор версии и повторите запрос."
-    },
-    "header": {
-      "title": "Версия {id}",
-      "subtitle": "Статус и управление версией прайса."
+      "loadFailed": "Не удалось загрузить карточку услуги",
+      "requiredFields": "Заполните обязательные поля",
+      "invalidDuration": "Длительность должна быть числом не менее 5 минут",
+      "invalidAttributes": "Атрибуты должны быть валидным JSON",
+      "saveFailed": "Не удалось сохранить изменения",
+      "submitFailed": "Не удалось отправить на модерацию",
+      "archiveFailed": "Не удалось архивировать"
     },
     "actions": {
-      "validate": "Валидировать",
-      "rollback": "Rollback"
+      "addLocation": "Добавить точку",
+      "addRule": "Добавить правило",
+      "addException": "Добавить исключение"
     },
-    "overview": {
-      "scope": "Scope",
-      "scopeAll": "Все станции",
-      "scopeCount": "{count} станций",
-      "items": "Items",
-      "errors": "Errors",
-      "createdAt": "Создано",
-      "createdBy": "Создатель",
-      "publishedAt": "Опубликовано"
+    "hints": {
+      "mediaUpload": "Добавьте ссылки на файлы, загруженные в хранилище."
     },
-    "import": {
-      "csvFormat": "Формат CSV",
-      "requiredFields": "Обязательные поля: station_code (или station_id), product_code, price, currency, valid_from.",
-      "format": "Формат",
-      "file": "Файл",
-      "preview": "Preview: {text}",
-      "commit": "Commit import to version"
+    "empty": {
+      "mediaTitle": "Медиа не добавлены",
+      "mediaDescription": "Загрузите хотя бы одно изображение.",
+      "locationsTitle": "Нет привязанных точек",
+      "locationsDescription": "Добавьте точку оказания услуги.",
+      "rulesTitle": "Правил нет",
+      "rulesDescription": "Добавьте расписание по дням недели.",
+      "exceptionsTitle": "Исключений нет",
+      "exceptionsDescription": "Добавьте закрытые даты или особые параметры доступности.",
+      "selectLocationTitle": "Выберите локацию",
+      "selectLocationDescription": "Чтобы управлять расписанием, выберите точку.",
+      "slotsTitle": "Нет слотов",
+      "slotsDescription": "Создайте расписание для генерации слотов."
     },
-    "preview": {
-      "search": "Поиск",
-      "searchPlaceholder": "station/product",
-      "errorsOnly": "Errors only",
-      "emptyTitle": "Нет элементов",
-      "emptyDescription": "Элементы появятся после импорта.",
-      "table": {
-        "station": "Station",
-        "product": "Product",
-        "price": "Price",
-        "currency": "Currency",
-        "validFrom": "Valid from",
-        "errors": "Errors"
-      }
-    },
-    "pagination": {
-      "page": "Страница {current}{total}",
-      "total": " из {total}"
-    },
-    "validate": {
-      "run": "Run validation",
-      "yes": "Да",
-      "no": "Нет",
-      "errors": "Errors",
-      "warnings": "Warnings",
-      "emptyTitle": "Валидация не запускалась",
-      "emptyDescription": "Запустите валидацию для получения отчёта.",
-      "sampleErrors": "Sample errors",
-      "recommendedActions": "Recommended actions"
-    },
-    "diff": {
-      "compareTo": "Compare to version",
-      "selectVersion": "Выберите версию",
-      "added": "Добавлено",
-      "removed": "Удалено",
-      "changed": "Изменено",
-      "table": {
-        "station": "Station",
-        "product": "Product",
-        "before": "Before",
-        "after": "After"
+    "schedule": {
+      "selectStation": "Выберите точку партнёра",
+      "selectLocation": "Выберите локацию",
+      "weeklyRules": "Правила недели",
+      "exceptions": "Исключения",
+      "closed": "Закрыто",
+      "byRule": "по правилу",
+      "ruleSummary": "{day} {from}–{to} · {duration} мин · {capacity} слота",
+      "weekdays": {
+        "mon": "Пн",
+        "tue": "Вт",
+        "wed": "Ср",
+        "thu": "Чт",
+        "fri": "Пт",
+        "sat": "Сб",
+        "sun": "Вс"
       },
-      "emptyTitle": "Нет изменений",
-      "emptyDescription": "Выберите другую версию для сравнения.",
-      "selectTitle": "Выберите версию",
-      "selectDescription": "Выберите версию для расчёта diff."
+      "capacityPlaceholder": "Количество слотов",
+      "slotsValue": "Слотов: {value}",
+      "exceptionSummary": "{from}–{to} · слотов: {value}"
     },
-    "audit": {
-      "emptyTitle": "Нет событий",
-      "emptyDescription": "Аудит появится после действий с версией.",
-      "actor": "Actor: {actor}"
+    "media": {
+      "placeholders": {
+        "attachmentId": "ID вложения",
+        "storage": "Хранилище",
+        "filePath": "Путь к файлу"
+      }
     }
   }
-}
 }

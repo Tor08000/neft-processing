@@ -2,8 +2,8 @@ from datetime import datetime, timezone
 from uuid import uuid4
 
 import pytest
+from sqlalchemy.orm import Session
 
-from app.db import Base, SessionLocal, engine
 from app.models.fleet import FleetDriver, FleetDriverStatus, FleetVehicle, FleetVehicleStatus
 from app.models.fuel import (
     FuelCard,
@@ -17,27 +17,19 @@ from app.models.fuel import (
     FuelStationNetwork,
     FuelNetwork,
     FuelStation,
+    FuelTransaction,
+    FuelTransactionStatus,
     FuelType,
 )
 from app.schemas.fuel import DeclineCode
 from app.services.fuel import limits
-
-
-@pytest.fixture(autouse=True)
-def _setup_db():
-    Base.metadata.drop_all(bind=engine)
-    Base.metadata.create_all(bind=engine)
-    yield
-    Base.metadata.drop_all(bind=engine)
+from app.tests._fuel_runtime_test_harness import fuel_runtime_session_context
 
 
 @pytest.fixture
-def session():
-    db = SessionLocal()
-    try:
+def session() -> Session:
+    with fuel_runtime_session_context() as db:
         yield db
-    finally:
-        db.close()
 
 
 def _seed_refs(db):
@@ -180,6 +172,25 @@ def test_count_limit_by_driver_declines(session):
             value=1,
             currency="RUB",
             active=True,
+        )
+    )
+    session.add(
+        FuelTransaction(
+            tenant_id=1,
+            client_id="client-1",
+            card_id=card.id,
+            vehicle_id=card.vehicle_id,
+            driver_id=card.driver_id,
+            station_id=station.id,
+            network_id=station.network_id,
+            occurred_at=datetime.now(timezone.utc),
+            fuel_type=FuelType.DIESEL,
+            volume_ml=1_000,
+            unit_price_minor=100,
+            amount_total_minor=100,
+            currency="RUB",
+            status=FuelTransactionStatus.AUTHORIZED,
+            external_ref=str(uuid4()),
         )
     )
     session.commit()

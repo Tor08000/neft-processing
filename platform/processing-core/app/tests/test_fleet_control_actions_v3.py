@@ -1,13 +1,9 @@
 from datetime import datetime, timezone
-from typing import Tuple
 from uuid import uuid4
 
 import pytest
-from sqlalchemy import create_engine
-from sqlalchemy.orm import Session, sessionmaker
-from sqlalchemy.pool import StaticPool
+from sqlalchemy.orm import Session
 
-from app.db import Base
 from app.models.crm import CRMClient, CRMClientStatus
 from app.models.fleet_intelligence import DriverBehaviorLevel, FIDriverScore
 from app.models.fleet_intelligence_actions import (
@@ -24,24 +20,14 @@ from app.models.fleet_intelligence_actions import (
 )
 from app.models.unified_explain import PrimaryReason
 from app.services.fleet_intelligence.control import actions, policies, repository
+from app.tests._fleet_intelligence_test_harness import FLEET_INTELLIGENCE_CONTROL_TEST_TABLES
+from app.tests._scoped_router_harness import scoped_session_context
 
 
 @pytest.fixture()
-def db_session() -> Tuple[Session, sessionmaker]:
-    engine = create_engine(
-        "sqlite://",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
-    SessionLocal = sessionmaker(autocommit=False, autoflush=False, expire_on_commit=False, bind=engine)
-    Base.metadata.create_all(bind=engine)
-    session = SessionLocal()
-    try:
-        yield session, SessionLocal
-    finally:
-        session.close()
-        Base.metadata.drop_all(bind=engine)
-        engine.dispose()
+def db_session() -> Session:
+    with scoped_session_context(tables=FLEET_INTELLIGENCE_CONTROL_TEST_TABLES) as session:
+        yield session
 
 
 def _seed_client(db: Session) -> CRMClient:
@@ -93,10 +79,9 @@ def test_policy_mapping_stable():
     assert actions_list[0].target_system == FIActionTargetSystem.CRM
 
 
-def test_apply_requires_reason_code(db_session: Tuple[Session, sessionmaker]):
-    db, _ = db_session
-    _seed_client(db)
-    insight = _seed_insight(db)
+def test_apply_requires_reason_code(db_session: Session):
+    _seed_client(db_session)
+    insight = _seed_insight(db_session)
     action = FISuggestedAction(
         insight_id=insight.id,
         action_code=FIActionCode.SUGGEST_RESTRICT_NIGHT_FUELING,
@@ -104,12 +89,12 @@ def test_apply_requires_reason_code(db_session: Tuple[Session, sessionmaker]):
         payload={"feature_flag": "RISK_BLOCKING_ENABLED", "enabled": True},
         status=FISuggestedActionStatus.APPROVED,
     )
-    db.add(action)
-    db.commit()
+    db_session.add(action)
+    db_session.commit()
 
     with pytest.raises(ValueError):
         actions.apply_suggested_action(
-            db,
+            db_session,
             action=action,
             reason_code="",
             reason_text=None,
@@ -117,11 +102,10 @@ def test_apply_requires_reason_code(db_session: Tuple[Session, sessionmaker]):
         )
 
 
-def test_apply_records_before_state(db_session: Tuple[Session, sessionmaker]):
-    db, _ = db_session
-    _seed_client(db)
-    insight = _seed_insight(db)
-    db.add(
+def test_apply_records_before_state(db_session: Session):
+    _seed_client(db_session)
+    insight = _seed_insight(db_session)
+    db_session.add(
         FIDriverScore(
             tenant_id=1,
             client_id="client-1",
@@ -139,19 +123,19 @@ def test_apply_records_before_state(db_session: Tuple[Session, sessionmaker]):
         payload={"feature_flag": "RISK_BLOCKING_ENABLED", "enabled": True},
         status=FISuggestedActionStatus.APPROVED,
     )
-    db.add(action)
-    db.commit()
+    db_session.add(action)
+    db_session.commit()
 
     applied = actions.apply_suggested_action(
-        db,
+        db_session,
         action=action,
         reason_code="ACK_IN_REVIEW",
         reason_text="apply",
         actor="tester",
     )
-    db.commit()
+    db_session.commit()
 
     assert applied.status in {FAppliedActionStatus.SUCCESS, FAppliedActionStatus.FAILED}
     assert applied.before_state
     assert "driver_score_7d" in applied.before_state
-    assert repository.list_applied_actions(db, insight_id=str(insight.id))
+    assert repository.list_applied_actions(db_session, insight_id=str(insight.id))

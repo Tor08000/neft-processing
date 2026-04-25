@@ -6,9 +6,17 @@ from uuid import UUID, uuid4
 
 import httpx
 import pytest
+from sqlalchemy import Column, MetaData, String, Table, create_engine, event
+from sqlalchemy.orm import Session
+from sqlalchemy.pool import StaticPool
 
-from app.db import Base, SessionLocal, engine
+from app.models.audit_log import AuditLog
 from app.models.client import Client
+from app.models.audit_signing_keys import AuditSigningKeyRecord
+from app.models.billing_flow import BillingInvoice
+from app.models.cases import Case, CaseComment, CaseEvent, CaseSnapshot
+from app.models.decision_memory import DecisionMemoryRecord
+from app.models.internal_ledger import InternalLedgerAccount, InternalLedgerEntry, InternalLedgerTransaction
 from app.models.notifications import (
     NotificationChannel,
     NotificationDelivery,
@@ -17,22 +25,70 @@ from app.models.notifications import (
     NotificationTemplate,
     NotificationTemplateContentType,
 )
+from app.models.reconciliation import ReconciliationLink, ReconciliationRun
 from app.services.billing_service import issue_invoice
 from app.services.notifications_v1 import dispatch_pending_notifications
 from app.services.case_events_service import CaseEventActor
 
 
-@pytest.fixture(autouse=True)
-def clean_db():
-    Base.metadata.drop_all(bind=engine)
-    Base.metadata.create_all(bind=engine)
-    yield
-    Base.metadata.drop_all(bind=engine)
+TEST_TABLES = (
+    AuditLog.__table__,
+    AuditSigningKeyRecord.__table__,
+    BillingInvoice.__table__,
+    Case.__table__,
+    CaseSnapshot.__table__,
+    CaseComment.__table__,
+    CaseEvent.__table__,
+    Client.__table__,
+    DecisionMemoryRecord.__table__,
+    InternalLedgerAccount.__table__,
+    InternalLedgerTransaction.__table__,
+    InternalLedgerEntry.__table__,
+    ReconciliationRun.__table__,
+    ReconciliationLink.__table__,
+    NotificationMessage.__table__,
+    NotificationTemplate.__table__,
+    NotificationDelivery.__table__,
+)
+
+
+def _engine():
+    engine = create_engine(
+        "sqlite+pysqlite:///:memory:",
+        future=True,
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+
+    @event.listens_for(engine, "connect")
+    def _enable_sqlite_fk(dbapi_connection, _connection_record) -> None:
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
+
+    return engine
 
 
 @pytest.fixture
-def db_session():
-    session = SessionLocal()
+def db_engine():
+    stub_metadata = MetaData()
+    Table("fleet_offline_profiles", stub_metadata, Column("id", String(36), primary_key=True))
+    engine = _engine()
+    stub_metadata.create_all(bind=engine)
+    for table in TEST_TABLES:
+        table.create(bind=engine, checkfirst=True)
+    try:
+        yield engine
+    finally:
+        for table in reversed(TEST_TABLES):
+            table.drop(bind=engine, checkfirst=True)
+        stub_metadata.drop_all(bind=engine, checkfirst=True)
+        engine.dispose()
+
+
+@pytest.fixture
+def db_session(db_engine):
+    session = Session(bind=db_engine, expire_on_commit=False)
     try:
         yield session
     finally:
@@ -81,6 +137,9 @@ def test_invoice_notification_sends_email(db_session, monkeypatch):
         .one()
     )
     assert outbox.template_code == "invoice_issued_email"
+    assert outbox.aggregate_type == "billing_invoice"
+    assert str(outbox.aggregate_id) == str(result.invoice.id)
+    assert str(outbox.tenant_client_id) == client_id
 
     monkeypatch.setenv("SMTP_HOST", "mailpit")
     monkeypatch.setenv("SMTP_PORT", "1025")

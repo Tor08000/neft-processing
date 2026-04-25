@@ -6,10 +6,15 @@ import httpx
 import pytest
 
 import app.services.transactions_service as transactions_service
-from app.db import Base, SessionLocal, engine
+from app.models.card import Card
+from app.models.client import Client
+from app.models.merchant import Merchant
 from app.models.operation import Operation, OperationStatus, OperationType, RiskResult as RiskLevel
+from app.models.risk_rule import RiskRule, RiskRuleAudit, RiskRuleVersion
+from app.models.terminal import Terminal
 from app.repositories.risk_rules_repository import RiskRulesRepository
 from app.services import risk_adapter, risk_rules
+from app.services.decision import DecisionOutcome, DecisionResult
 from app.services.risk_rules import (
     MetricType,
     RuleAction,
@@ -28,23 +33,25 @@ from app.services.risk_adapter import (
     evaluate_risk,
 )
 from app.services.transactions_service import authorize_operation
+from app.tests._scoped_router_harness import scoped_session_context
 
 
-@pytest.fixture(autouse=True)
-def _setup_db():
-    Base.metadata.drop_all(bind=engine)
-    Base.metadata.create_all(bind=engine)
-    yield
-    Base.metadata.drop_all(bind=engine)
+RISK_ADAPTER_TEST_TABLES = (
+    RiskRule.__table__,
+    RiskRuleVersion.__table__,
+    RiskRuleAudit.__table__,
+    Client.__table__,
+    Card.__table__,
+    Merchant.__table__,
+    Terminal.__table__,
+    Operation.__table__,
+)
 
 
 @pytest.fixture
 def session():
-    db = SessionLocal()
-    try:
+    with scoped_session_context(tables=RISK_ADAPTER_TEST_TABLES) as db:
         yield db
-    finally:
-        db.close()
 
 
 @pytest.fixture(autouse=True)
@@ -170,7 +177,7 @@ def test_ai_fallback_uses_rules(monkeypatch):
 
     result = asyncio.run(evaluate_risk(ctx))
 
-    assert result.decision.level in {RiskDecisionLevel.MEDIUM, RiskDecisionLevel.HIGH}
+    assert result.decision.level in {RiskDecisionLevel.MANUAL_REVIEW, RiskDecisionLevel.HIGH}
     assert result.source == "RULES_FALLBACK"
     assert "amount_above_threshold" in result.decision.reason_codes
     assert "ai_error" in result.flags
@@ -361,17 +368,43 @@ def test_ai_success_records_score_distribution(monkeypatch):
 
 
 def test_risk_block_declines_operation(monkeypatch, session):
-    from app.models.card import Card
-    from app.models.client import Client
-    from app.models.merchant import Merchant
-    from app.models.terminal import Terminal
-
     client_pk = uuid4()
     session.add(Client(id=client_pk, name="Test", status="ACTIVE"))
     session.add(Card(id="card-1", client_id=str(client_pk), status="ACTIVE"))
     session.add(Merchant(id="m-1", name="M1", status="ACTIVE"))
     session.add(Terminal(id="t-1", merchant_id="m-1", status="ACTIVE"))
     session.commit()
+
+    allow_decision = DecisionResult(
+        decision_id=str(uuid4()),
+        decision_version="1",
+        outcome=DecisionOutcome.ALLOW,
+        risk_score=5,
+        risk_level=None,
+        explain={},
+    )
+
+    approved_limits = type(
+        "_ApprovedLimits",
+        (),
+        {
+            "approved": True,
+            "daily_limit": None,
+            "limit_per_tx": None,
+            "used_today": None,
+            "new_used_today": None,
+            "applied_rule_id": None,
+            "model_dump": staticmethod(lambda: {"approved": True}),
+        },
+    )()
+
+    monkeypatch.setattr(transactions_service.DecisionEngine, "evaluate", lambda *_args, **_kwargs: allow_decision)
+    monkeypatch.setattr(
+        transactions_service,
+        "evaluate_with_db",
+        lambda *_args, **_kwargs: (transactions_service.UnifiedRulePolicy.ALLOW, [], None),
+    )
+    monkeypatch.setattr(transactions_service, "evaluate_limits_locally", lambda *_args, **_kwargs: approved_limits)
 
     def blocking_risk(context, db=None):
         return RiskEvaluation(

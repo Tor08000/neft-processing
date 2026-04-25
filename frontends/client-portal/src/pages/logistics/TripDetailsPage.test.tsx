@@ -13,6 +13,7 @@ import {
   fetchTripSlaImpact,
   fetchTripTracking,
   fetchTripFuel,
+  writeFuelConsumption,
 } from "../../api/logistics";
 
 vi.mock("../../api/logistics", () => ({
@@ -24,10 +25,11 @@ vi.mock("../../api/logistics", () => ({
   fetchTripDeviations: vi.fn(),
   fetchTripSlaImpact: vi.fn(),
   fetchTripFuel: vi.fn(),
+  writeFuelConsumption: vi.fn(),
 }));
 
 const session: AuthSession = {
-  token: "token-1",
+  token: "test.header.payload",
   email: "client@demo.test",
   roles: ["CLIENT_OWNER"],
   subjectType: "CLIENT",
@@ -116,6 +118,17 @@ describe("TripDetailsPage", () => {
       items: [{ id: "ftx-1", ts: "2026-02-08T11:00:00Z", vehicle_id: "veh-1", driver_id: "drv-1", liters: 40, amount: 3200, station_name: "AZS-1" }],
       totals: { liters: 40, amount: 3200 },
       alerts: [],
+    });
+    vi.mocked(writeFuelConsumption).mockResolvedValue({
+      ok: true,
+      trip_id: "trip-1",
+      liters: 54.15,
+      method: "integration_hub",
+      source: "logistics_service",
+      provider_mode: "sandbox",
+      audit_event_id: "audit-1",
+      idempotency_key: "client-ui-fuel:trip-1:180.500:truck",
+      idempotency_status: "created",
     });
   });
 
@@ -254,6 +267,27 @@ describe("TripDetailsPage", () => {
     fireEvent.click(screen.getByRole("button", { name: /Fuel/ }));
     expect(await screen.findByText("AZS-1")).toBeInTheDocument();
     expect(screen.getAllByText("40").length).toBeGreaterThan(0);
+  });
+
+  it("records fuel consumption through provider-backed write", async () => {
+    renderPage();
+    fireEvent.click(await screen.findByRole("button", { name: /Fuel/ }));
+    expect(await screen.findByText("Record fuel consumption")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Fuel distance"), { target: { value: "180.5" } });
+    fireEvent.change(screen.getByLabelText("Fuel vehicle kind"), { target: { value: "truck" } });
+    fireEvent.click(screen.getByRole("button", { name: "Record consumption" }));
+
+    await waitFor(() => expect(writeFuelConsumption).toHaveBeenCalledWith(
+      session.token,
+      {
+        trip_id: "trip-1",
+        distance_km: 180.5,
+        vehicle_kind: "truck",
+        idempotency_key: "client-ui-fuel:trip-1:180.500:truck",
+      },
+    ));
+    expect(await screen.findByText(/Provider sandbox returned 54.15 liters/)).toBeInTheDocument();
   });
 
 });

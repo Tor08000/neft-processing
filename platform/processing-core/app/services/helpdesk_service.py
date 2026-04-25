@@ -31,6 +31,7 @@ from app.services.audit_service import AuditService, RequestContext
 from app.services.client_notifications import ADMIN_TARGET_ROLES, ClientNotificationSeverity, create_notification
 from app.services.email_service import build_idempotency_key
 from app.services.email_templates import build_portal_url
+from app.services.support_cases import sync_support_ticket_case, sync_support_ticket_comment
 from app.services.support_ticket_sla import mark_first_response, mark_resolution
 
 logger = logging.getLogger(__name__)
@@ -572,6 +573,18 @@ def apply_helpdesk_inbound_event(
         db.add(comment)
         db.add(ticket)
         db.flush()
+        sync_support_ticket_case(
+            db,
+            ticket=ticket,
+            actor_id=HELPDESK_INBOUND_ACTOR_ID,
+        )
+        sync_support_ticket_comment(
+            db,
+            ticket=ticket,
+            author=HELPDESK_INBOUND_ACTOR_ID,
+            body=event.comment.body,
+            occurred_at=comment.created_at,
+        )
         audit_service.audit(
             event_type="helpdesk_inbound_comment_applied",
             entity_type="support_ticket",
@@ -599,6 +612,11 @@ def apply_helpdesk_inbound_event(
             mark_resolution(ticket, audit=audit_service, request_ctx=request_ctx)
         db.add(ticket)
         db.flush()
+        sync_support_ticket_case(
+            db,
+            ticket=ticket,
+            actor_id=HELPDESK_INBOUND_ACTOR_ID,
+        )
         audit_service.audit(
             event_type="helpdesk_inbound_status_applied",
             entity_type="support_ticket",

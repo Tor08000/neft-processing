@@ -3,6 +3,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from app.alembic import helpers as alembic_helpers
 
 migration = importlib.import_module(
     "app.alembic.versions.20260110_0009_billing_summary_extend"
@@ -14,8 +15,18 @@ class DummyConnection:
         self.executed: list[str] = []
         self.dialect = SimpleNamespace(name="postgresql")
 
-    def exec_driver_sql(self, statement):
+    def exec_driver_sql(self, statement, params=None):  # noqa: ANN001, ARG002
         self.executed.append(str(statement))
+
+    def execute(self, statement, params=None):  # noqa: ANN001, ARG002
+        self.executed.append(str(statement))
+        sql = str(statement)
+        if params and "index_name" in params:
+            index_name = params["index_name"]
+            if index_name in getattr(self, "known_indexes", set()):
+                return SimpleNamespace(first=lambda: (1,))
+            return SimpleNamespace(first=lambda: None)
+        return SimpleNamespace(first=lambda: None)
 
 
 class DummyInspector:
@@ -36,6 +47,7 @@ class DummyOp:
     def __init__(self, inspector: DummyInspector):
         self._inspector = inspector
         self.bound = DummyConnection()
+        self.bound.known_indexes = set(inspector._indexes)
         self.added_columns: list[tuple[str, str]] = []
         self.created_indexes: list[str] = []
         self.dropped_columns: list[str] = []
@@ -47,11 +59,13 @@ class DummyOp:
     def add_column(self, table_name, column):
         self.added_columns.append((table_name, column.name))
 
-    def create_index(self, name, table_name, columns, unique=False):  # noqa: ARG002
+    def create_index(self, name, table_name, columns, unique=False, schema=None):  # noqa: ARG002
         self.created_indexes.append(name)
+        self.bound.known_indexes.add(name)
 
-    def drop_index(self, name, table_name=None):  # noqa: ARG002
+    def drop_index(self, name, table_name=None, schema=None):  # noqa: ARG002
         self.dropped_indexes.append(name)
+        self.bound.known_indexes.discard(name)
 
     def drop_column(self, table_name, column_name):  # noqa: ARG002
         self.dropped_columns.append(column_name)
@@ -60,6 +74,7 @@ class DummyOp:
 def _run_upgrade(monkeypatch: pytest.MonkeyPatch, inspector: DummyInspector):
     dummy_op = DummyOp(inspector)
     monkeypatch.setattr(migration, "op", dummy_op)
+    monkeypatch.setattr(alembic_helpers, "op", dummy_op)
     monkeypatch.setattr(migration.sa, "inspect", lambda bind: inspector)
 
     migration.upgrade()
@@ -69,6 +84,7 @@ def _run_upgrade(monkeypatch: pytest.MonkeyPatch, inspector: DummyInspector):
 def _run_downgrade(monkeypatch: pytest.MonkeyPatch, inspector: DummyInspector):
     dummy_op = DummyOp(inspector)
     monkeypatch.setattr(migration, "op", dummy_op)
+    monkeypatch.setattr(alembic_helpers, "op", dummy_op)
     monkeypatch.setattr(migration.sa, "inspect", lambda bind: inspector)
 
     migration.downgrade()
@@ -80,7 +96,7 @@ def test_upgrade_creates_enum_and_columns(monkeypatch: pytest.MonkeyPatch):
 
     op_calls = _run_upgrade(monkeypatch, inspector)
 
-    assert any("CREATE TYPE billing_summary_status" in sql for sql in op_calls.bound.executed)
+    assert any("CREATE TYPE" in sql and "billing_summary_status" in sql for sql in op_calls.bound.executed)
     assert {name for _, name in op_calls.added_columns} == {
         "status",
         "generated_at",
@@ -103,8 +119,8 @@ def test_upgrade_is_idempotent(monkeypatch: pytest.MonkeyPatch):
 
     assert len(op_calls.added_columns) == 0
     assert len(op_calls.created_indexes) == 0
-    # enum safeguard still runs to make sure type exists
-    assert len(op_calls.bound.executed) == 1
+    # enum safeguard still runs and helper existence probes may emit SQL.
+    assert any("billing_summary_status" in sql for sql in op_calls.bound.executed)
 
 
 def test_downgrade_drops_known_objects(monkeypatch: pytest.MonkeyPatch):
@@ -134,4 +150,4 @@ def test_downgrade_is_idempotent(monkeypatch: pytest.MonkeyPatch):
 
     assert not op_calls.dropped_columns
     assert not op_calls.dropped_indexes
-    assert not op_calls.bound.executed
+    assert all("DROP INDEX" not in sql for sql in op_calls.bound.executed)

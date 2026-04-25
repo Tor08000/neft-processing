@@ -63,8 +63,7 @@ export interface RiskRulePayload {
 export interface RiskRulesQuery extends Record<string, unknown> {
   scope?: RuleScope;
   enabled?: boolean;
-  subject_id?: string;
-  reason?: string;
+  subject_ref?: string;
   limit?: number;
   offset?: number;
 }

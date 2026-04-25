@@ -1,19 +1,34 @@
 Core API service (FastAPI)
 
 
-## Client Portal API namespace
+## Portal bootstrap and client API namespace
 
-Canonical client endpoints are exposed under:
+Canonical portal bootstrap SSoT:
+
+- `GET /api/core/portal/me` (the only canonical bootstrap/profile endpoint for client/partner/admin portals)
+
+Compatibility surfaces:
+
+- `GET /api/core/client/me` (compatibility-full view built from the same portal bootstrap contract; shape-compatible with `/api/core/portal/me`, but not a second canonical endpoint)
+- `GET /api/core/partner/me` (compatibility projection built from the same portal bootstrap source, but with a reduced partner payload; not valid as the SSoT for `access_state`, `access_reason`, or UI gating)
+
+Legacy non-bootstrap surfaces:
+
+- `GET /api/v1/client/me` (legacy client profile endpoint; not a bootstrap contract)
+- `/api/client/*` and `/api/partner/*` from the legacy portal routers (business portal surfaces, not bootstrap/profile SSoT)
+
+Canonical client business endpoints are exposed under:
 
 - `/api/core/client/*`
-
-Current baseline endpoints:
-
-- `GET /api/core/portal/me` (single profile endpoint for client/partner/admin portals)
-- `GET /api/core/client/me` (legacy alias: redirects to `/api/core/portal/me`)
 - `GET /api/core/client/health`
 
-Compatibility aliases for `/api/core/client/v1/*` may exist for legacy integrations, but new integrations should use `/api/core/client/*`.
+Compatibility aliases for `/api/core/client/v1/*` may exist for legacy integrations, but new integrations should use `/api/core/client/*`, and new bootstrap consumers should use `/api/core/portal/me`.
+
+Current authenticated onboarding activation is contract-sign driven:
+
+- canonical activation path: `/api/core/client/contracts/{contract_id}/sign` and adjacent `/api/core/client/contracts/sign-simple`
+- `/api/core/client/onboarding/activate` remains a compatibility/internal route and is not the normal happy-path activation step for new consumers.
+`scripts/verify_all.cmd` is a runtime smoke/subset gate. It is useful for bootstrap and targeted regression checks, but it does not replace full `pytest` execution or `pytest -m contracts`.
 
 ## Operational scenarios (refund / reversal / dispute)
 
@@ -40,7 +55,7 @@ pytest platform/processing-core/app/tests/test_reversals.py -q
 pytest platform/processing-core/app/tests/test_disputes.py -q
 ```
 
-⚠️ Monorepo note  
+⚠️ Monorepo note
 Each service has isolated test dependencies. Run tests from the service root or via scoped pytest paths.
 
 ## Granting ADMIN role for auth-host

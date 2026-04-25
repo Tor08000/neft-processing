@@ -1,20 +1,26 @@
-# Service stubs (crm/logistics/document)
+# Service compatibility surfaces (crm/logistics/document)
 
 ## Зачем это нужно
 
-Сервисы `crm-service`, `logistics-service`, `document-service` — это технические заглушки.
-Они существуют, чтобы:
+Исторически `crm-service`, `logistics-service`, `document-service` шли как отдельный "stub" набор.
+Текущий repo-truth уже другой:
 
-- контейнеры были "живыми" и наблюдаемыми (health/metrics),
-- обеспечить понятные контракты интеграции,
-- безопасно заменить/развивать их позже без "архитектурной лжи".
+- `crm-service` — compatibility/shadow CRM surface, не canonical CRM owner
+- `logistics-service` — реальный logistics compute/preview service с explicit provider modes
+- `document-service` — реальный internal render/sign/verify service с explicit provider modes
 
-Текущая версия заглушек: `stub-v0`.
+Общее у них только одно: это отдельные внутренние сервисы с health/metrics и gateway routing.
 
 ## Где сейчас доменная логика
 
-Бизнес-логика этих доменов остаётся в `core-api` до переноса в отдельные сервисы.
-В заглушках нет БД, миграций, очередей и прочей инфраструктуры.
+Где сейчас owner truth:
+
+- CRM control plane owner: `processing-core` admin CRM (`/api/core/v1/admin/crm/*`)
+- CRM compatibility/shadow routes: `crm-service` (`/api/v1/crm/*`, `/api/crm/*`)
+- Logistics compute owner: `logistics-service`
+- Logistics snapshot/evidence owner: `processing-core`
+- Documents orchestration owner: `processing-core`
+- Signing/render engine owner: `document-service`
 
 ## Проверка доступности
 
@@ -24,7 +30,7 @@
 - `http://logistics-service:8000/health`
 - `http://document-service:8000/health`
 
-Ответ:
+Ответ health:
 
 ```json
 {"status": "ok", "service": "...", "version": "stub-v0"}

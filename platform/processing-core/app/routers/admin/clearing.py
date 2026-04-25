@@ -19,8 +19,9 @@ from app.services.clearing import (
     mark_batch_failed,
     retry_batch,
 )
-from app.services.clearing_daily import run_clearing_daily
+from app.services.clearing_runs import ClearingRunInProgress, ClearingRunService
 from app.services.clearing_service import run_admin_clearing
+from app.services.job_locks import make_stable_key
 
 router = APIRouter(prefix="/clearing", tags=["admin"])
 
@@ -31,6 +32,8 @@ def list_clearing_batches(
     status: str | None = None,
     date_from: date | None = Query(None),
     date_to: date | None = Query(None),
+    limit: int | None = Query(None, ge=1, le=1000),
+    offset: int | None = Query(None, ge=0),
     db: Session = Depends(get_db),
 ) -> list[ClearingBatchOut]:
     batches = list_batches(
@@ -39,6 +42,8 @@ def list_clearing_batches(
         status=status,
         date_from=date_from,
         date_to=date_to,
+        limit=limit,
+        offset=offset,
     )
     return [ClearingBatchOut.model_validate(batch) for batch in batches]
 

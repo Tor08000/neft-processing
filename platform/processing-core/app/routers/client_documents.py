@@ -4,7 +4,7 @@ from datetime import date, datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import Response
-from sqlalchemy import desc
+from sqlalchemy import desc, update
 from sqlalchemy.orm import Session
 
 from app.api.dependencies.client import client_portal_user
@@ -42,6 +42,7 @@ from app.security.service_auth import require_scope
 from app.services.policy import Action, actor_from_token, audit_access_denied, PolicyEngine, ResourceContext
 from app.services.documents_storage import DocumentsStorage
 from app.services.legal_graph import GraphContext, LegalGraphBuilder, LegalGraphWriteFailure, audit_graph_write_failure
+from app.services.token_claims import token_email
 from app.schemas.unified_rules import RuleEvaluationContext, RuleEvaluationObject, RuleEvaluationSubject
 from app.models.unified_rule import UnifiedRulePolicy, UnifiedRuleScope
 from app.services.unified_rules_engine import evaluate_with_db
@@ -49,6 +50,8 @@ from neft_shared.logging_setup import get_logger
 
 logger = get_logger(__name__)
 
+# Legacy closing-docs, acknowledgement, and risk contour. Keep for compatibility;
+# do not evolve this /api/v1/client/documents* surface as the canonical general documents API.
 router = APIRouter(prefix="/api/v1/client", tags=["client-documents"])
 
 
@@ -57,13 +60,6 @@ def _ensure_client_context(token: dict) -> str:
     if not client_id:
         raise HTTPException(status_code=403, detail="Missing client context")
     return str(client_id)
-
-
-def _ensure_tenant_context(token: dict) -> int:
-    tenant_id = token.get("tenant_id")
-    if tenant_id is None:
-        raise HTTPException(status_code=403, detail="Missing tenant context")
-    return int(tenant_id)
 
 
 def _load_document_abac(
@@ -396,15 +392,14 @@ def download_document(
     return Response(content=payload, media_type=file_record.content_type, headers=headers)
 
 
-@router.post("/documents/{document_id}/ack", response_model=DocumentAcknowledgementResponse, status_code=201)
-def acknowledge_document(
+def acknowledge_document_legacy_compatible(
+    *,
     document_id: str,
     request: Request,
-    token: dict = Depends(client_portal_user),
-    db: Session = Depends(get_db),
+    token: dict,
+    db: Session,
 ) -> DocumentAcknowledgementResponse:
     client_id = _ensure_client_context(token)
-    tenant_id = _ensure_tenant_context(token)
     request_ctx = request_context_from_request(request, token=_sanitize_token_for_audit(token))
 
     document = db.query(Document).filter(Document.id == document_id).one_or_none()
@@ -412,6 +407,7 @@ def acknowledge_document(
         raise HTTPException(status_code=404, detail="document_not_found")
     if document.client_id != client_id:
         raise HTTPException(status_code=403, detail="forbidden")
+    tenant_id = int(document.tenant_id)
 
     actor = actor_from_token(token)
 
@@ -490,10 +486,13 @@ def acknowledge_document(
         raise HTTPException(status_code=403, detail=decision.reason or "forbidden")
 
     ack_at = datetime.now(timezone.utc)
-    document.status = DocumentStatus.ACKNOWLEDGED
-    document.ack_at = ack_at
+    db.execute(
+        update(Document.__table__)
+        .where(Document.__table__.c.id == document.id)
+        .values(status=DocumentStatus.ACKNOWLEDGED.value, ack_at=ack_at)
+    )
     ack_by_user_id = token.get("user_id") or token.get("sub")
-    ack_by_email = token.get("email")
+    ack_by_email = token_email(token)
     if not ack_by_user_id or not ack_by_email:
         _audit_immutability_violation(
             db=db,
@@ -531,7 +530,7 @@ def acknowledge_document(
         visibility=AuditVisibility.PUBLIC,
         after={
             "document_type": document.document_type.value,
-            "ack_at": acknowledgement.ack_at,
+            "ack_at": acknowledgement.ack_at.isoformat() if acknowledgement.ack_at else None,
             "document_hash": acknowledgement.document_hash,
             "ack_hash": ack_hash,
         },
@@ -549,7 +548,7 @@ def acknowledge_document(
                 "ack_method": acknowledgement.ack_method,
                 "ack_ip": acknowledgement.ack_ip,
                 "ack_user_agent": acknowledgement.ack_user_agent,
-                "ack_at": acknowledgement.ack_at,
+                "ack_at": acknowledgement.ack_at.isoformat() if acknowledgement.ack_at else None,
             },
         )
     except Exception as exc:  # noqa: BLE001 - graph must not block acknowledgement
@@ -567,6 +566,8 @@ def acknowledge_document(
             request_ctx=request_ctx,
         )
 
+    db.commit()
+
     return DocumentAcknowledgementResponse(
         acknowledged=True,
         ack_at=acknowledgement.ack_at,
@@ -574,6 +575,17 @@ def acknowledge_document(
         document_object_key=acknowledgement.document_object_key,
         document_hash=acknowledgement.document_hash,
     )
+
+
+
+@router.post("/documents/{document_id}/ack", response_model=DocumentAcknowledgementResponse, status_code=201)
+def acknowledge_document(
+    document_id: str,
+    request: Request,
+    token: dict = Depends(client_portal_user),
+    db: Session = Depends(get_db),
+) -> DocumentAcknowledgementResponse:
+    return acknowledge_document_legacy_compatible(document_id=document_id, request=request, token=token, db=db)
 
 
 @router.post("/closing-packages/{package_id}/ack", response_model=ClosingPackageAckResponse)
@@ -584,13 +596,13 @@ def acknowledge_closing_package(
     db: Session = Depends(get_db),
 ) -> ClosingPackageAckResponse:
     client_id = _ensure_client_context(token)
-    tenant_id = _ensure_tenant_context(token)
 
     package = db.query(ClosingPackage).filter(ClosingPackage.id == package_id).one_or_none()
     if package is None:
         raise HTTPException(status_code=404, detail="closing_package_not_found")
     if package.client_id != client_id:
         raise HTTPException(status_code=403, detail="forbidden")
+    tenant_id = int(package.tenant_id)
 
     actor = actor_from_token(token)
     resource = ResourceContext(
@@ -638,5 +650,6 @@ def acknowledge_closing_package(
         after={"status": package.status.value, "ack_at": package.ack_at},
         request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(token)),
     )
+    db.commit()
 
     return ClosingPackageAckResponse(acknowledged=True, ack_at=package.ack_at)

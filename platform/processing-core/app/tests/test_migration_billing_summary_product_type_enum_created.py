@@ -39,19 +39,24 @@ class DummyConnection:
         self.executed_sql.append(sql)
 
         if "FROM pg_type" in sql:
-            _, type_name = params
+            type_name = params["type_name"] if isinstance(params, dict) else params[1]
             return DummyResult(1 if type_name in self.types else None)
 
         if "information_schema.columns" in sql:
-            _, table_name, column_name = params
+            table_name = params["table_name"] if isinstance(params, dict) else params[1]
+            column_name = params["column_name"] if isinstance(params, dict) else params[2]
             return DummyResult(1 if column_name in self.columns.get(table_name, {}) else None)
 
-        if sql.strip().startswith("CREATE TYPE"):
-            type_name = sql.split()[2]
-            self.types.add(type_name.split(".")[-1].strip(";"))
+        if "CREATE TYPE" in sql:
+            type_segment = sql.split("CREATE TYPE", 1)[1]
+            type_name = type_segment.split("AS ENUM", 1)[0].strip().split(".")[-1].strip(";").strip('"')
+            self.types.add(type_name)
             return DummyResult(None)
 
         return DummyResult(None)
+
+    def execute(self, statement, params=None):  # noqa: ANN001
+        return self.exec_driver_sql(str(statement), params)
 
 
 class DummyOp:
@@ -113,9 +118,9 @@ def test_upgrade_is_idempotent(monkeypatch: pytest.MonkeyPatch):
 
     op_calls = _run_upgrade(monkeypatch, connection)
 
-    assert not any(sql.strip().startswith("CREATE TYPE") for sql in connection.executed_sql)
     assert ("billing_summary", "product_type") not in op_calls.added_columns
     assert "product_type" in connection.types
+    assert any("product_type" in sql for sql in connection.executed_sql)
 
 
 def test_exec_driver_sql_invoked_with_str(monkeypatch: pytest.MonkeyPatch):

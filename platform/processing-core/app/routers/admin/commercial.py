@@ -1,14 +1,16 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from sqlalchemy import MetaData, Table, delete, insert, inspect, select, update
+from sqlalchemy import MetaData, Table, and_, delete, insert, inspect, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from app.api.dependencies.admin import require_admin_user
+from app.api.dependencies.admin_rbac import extract_admin_roles
+from app.services.admin_portal_access import admin_capability_allows
 from app.db import get_db
 from app.db.schema import DB_SCHEMA
 from app.schemas.commercial_admin import (
@@ -40,63 +42,142 @@ from app.services.partner_core_service import ensure_partner_profile
 
 router = APIRouter(prefix="/commercial", tags=["commercial-admin"])
 
-READ_ROLES = {"NEFT_SUPERADMIN", "NEFT_FINANCE", "NEFT_SUPPORT", "NEFT_SALES"}
-WRITE_ROLES = {"NEFT_SUPERADMIN", "NEFT_FINANCE", "NEFT_SALES"}
+
+def _utcnow() -> datetime:
+    return datetime.now(UTC)
+
+
+def _bind(db: Session):
+    try:
+        return db.connection()
+    except Exception:
+        return db.get_bind()
 
 
 def _table(db: Session, name: str) -> Table:
-    return Table(name, MetaData(), autoload_with=db.get_bind(), schema=DB_SCHEMA)
+    return Table(name, MetaData(), autoload_with=_bind(db), schema=DB_SCHEMA)
 
 
 def _table_exists(db: Session, name: str) -> bool:
-    inspector = inspect(db.get_bind())
-    return inspector.has_table(name, schema=DB_SCHEMA)
+    bind = _bind(db)
+    inspector = inspect(bind)
+    if inspector.has_table(name, schema=DB_SCHEMA):
+        return True
+    if bind.dialect.name != "postgresql":
+        return inspector.has_table(name)
+    return False
 
 
-def _extract_roles(token: dict) -> set[str]:
-    roles = token.get("roles") or []
-    if isinstance(roles, str):
-        roles = [roles]
-    role = token.get("role")
-    if role:
-        roles.append(role)
-    return {str(item).upper() for item in roles}
+def _subscription_storage(subscription: dict[str, Any]) -> str:
+    return str(subscription.get("_storage") or "org_subscriptions")
 
 
-def _ensure_role(token: dict, *, write: bool) -> None:
-    allowed = WRITE_ROLES if write else READ_ROLES
-    if not _extract_roles(token).intersection(allowed):
+def _uses_legacy_subscription(subscription: dict[str, Any]) -> bool:
+    return _subscription_storage(subscription) == "client_subscriptions"
+
+
+def _normalize_subscription_status(status: str | None) -> str | None:
+    if not status:
+        return None
+    upper = str(status).upper()
+    if upper == "PAST_DUE":
+        return "OVERDUE"
+    return upper
+
+
+def _legacy_status_for_storage(status: str | None) -> str | None:
+    normalized = _normalize_subscription_status(status)
+    if normalized == "OVERDUE":
+        return "PAST_DUE"
+    return normalized
+
+
+def _legacy_billing_cycle(plan: dict[str, Any] | None) -> str | None:
+    if not plan:
+        return None
+    try:
+        months = int(plan.get("billing_period_months") or 0)
+    except (TypeError, ValueError):
+        return None
+    if months == 12:
+        return "YEARLY"
+    if months >= 1:
+        return "MONTHLY"
+    return None
+
+
+def _load_legacy_subscription(db: Session, org_id: int) -> dict[str, Any]:
+    if not _table_exists(db, "client_subscriptions"):
+        raise HTTPException(status_code=404, detail="org_not_found")
+    client_subscriptions = _table(db, "client_subscriptions")
+    query = select(client_subscriptions).where(client_subscriptions.c.tenant_id == org_id)
+    if "created_at" in client_subscriptions.c:
+        query = query.order_by(client_subscriptions.c.created_at.desc())
+    elif "start_at" in client_subscriptions.c:
+        query = query.order_by(client_subscriptions.c.start_at.desc())
+    subscription = db.execute(query).mappings().first()
+    if not subscription:
+        raise HTTPException(status_code=404, detail="org_not_found")
+    payload = dict(subscription)
+    payload["_storage"] = "client_subscriptions"
+    payload["org_id"] = org_id
+    payload["status"] = _normalize_subscription_status(payload.get("status"))
+    return payload
+
+
+def _write_subscription_update(db: Session, *, subscription: dict[str, Any], values: dict[str, Any]) -> dict[str, Any]:
+    storage = _subscription_storage(subscription)
+    table = _table(db, storage)
+    update_values = dict(values)
+    if storage == "client_subscriptions":
+        if "status" in update_values:
+            update_values["status"] = _legacy_status_for_storage(update_values["status"])
+        if "effective_at" in update_values and "start_at" not in update_values:
+            update_values["start_at"] = update_values.pop("effective_at")
+    filtered = _filter_columns(table, update_values)
+    where_clause = table.c.id == subscription["id"]
+    if storage == "client_subscriptions" and "tenant_id" in table.c and subscription.get("tenant_id") is not None:
+        where_clause = table.c.tenant_id == subscription["tenant_id"]
+        if "end_at" in table.c:
+            where_clause = and_(where_clause, table.c.end_at.is_(None))
+        elif "ends_at" in table.c:
+            where_clause = and_(where_clause, table.c.ends_at.is_(None))
+    db.execute(update(table).where(where_clause).values(**filtered))
+    merged = {**subscription, **filtered}
+    if storage == "client_subscriptions" and "status" in filtered:
+        merged["status"] = _normalize_subscription_status(filtered.get("status"))
+    return merged
+
+
+def _ensure_role(token: dict, *, action: str) -> None:
+    roles = extract_admin_roles(token)
+    if not admin_capability_allows(roles, "commercial", action):
         raise HTTPException(status_code=403, detail="forbidden_admin_role")
 
 
 def _load_subscription(db: Session, org_id: int) -> dict[str, Any]:
-    if not _table_exists(db, "org_subscriptions"):
-        raise HTTPException(status_code=404, detail="org_not_found")
-    org_subscriptions = _table(db, "org_subscriptions")
-    subscription = (
-        db.execute(select(org_subscriptions).where(org_subscriptions.c.org_id == org_id))
-        .mappings()
-        .first()
-    )
-    if not subscription:
-        raise HTTPException(status_code=404, detail="org_not_found")
-    return dict(subscription)
+    if _table_exists(db, "org_subscriptions"):
+        org_subscriptions = _table(db, "org_subscriptions")
+        subscription = (
+            db.execute(select(org_subscriptions).where(org_subscriptions.c.org_id == org_id))
+            .mappings()
+            .first()
+        )
+        if subscription:
+            payload = dict(subscription)
+            payload["_storage"] = "org_subscriptions"
+            return payload
+    return _load_legacy_subscription(db, org_id)
 
 
 def _load_plan(db: Session, *, plan_code: str, plan_version: int) -> dict[str, Any]:
     if not _table_exists(db, "subscription_plans"):
         raise HTTPException(status_code=404, detail="plan_not_found")
     subscription_plans = _table(db, "subscription_plans")
-    plan = (
-        db.execute(
-            select(subscription_plans).where(
-                subscription_plans.c.code == plan_code,
-                subscription_plans.c.version == plan_version,
-            )
-        )
-        .mappings()
-        .first()
-    )
+    query = select(subscription_plans).where(subscription_plans.c.code == plan_code)
+    if "version" in subscription_plans.c:
+        query = query.where(subscription_plans.c.version == plan_version)
+    plan = db.execute(query).mappings().first()
     if not plan:
         raise HTTPException(status_code=404, detail="plan_not_found")
     return dict(plan)
@@ -203,6 +284,7 @@ def _build_state(db: Session, org_id: int) -> CommercialOrgStateOut:
 
     plan_code = None
     plan_version = None
+    plan = None
     if _table_exists(db, "subscription_plans"):
         subscription_plans = _table(db, "subscription_plans")
         plan = (
@@ -212,7 +294,7 @@ def _build_state(db: Session, org_id: int) -> CommercialOrgStateOut:
         )
         if plan:
             plan_code = plan.get("code")
-            plan_version = plan.get("version")
+            plan_version = plan.get("version") if "version" in plan else None
 
     support_plan_code = None
     if subscription.get("support_plan_id") and _table_exists(db, "support_plans"):
@@ -298,8 +380,8 @@ def _build_state(db: Session, org_id: int) -> CommercialOrgStateOut:
         subscription=CommercialSubscription(
             plan_code=plan_code,
             plan_version=plan_version,
-            status=subscription.get("status"),
-            billing_cycle=subscription.get("billing_cycle"),
+            status=_normalize_subscription_status(subscription.get("status")),
+            billing_cycle=subscription.get("billing_cycle") or _legacy_billing_cycle(plan),
             support_plan=support_plan_code,
             slo_tier=slo_tier_code,
         ),
@@ -357,7 +439,7 @@ def _save_org_roles(db: Session, *, org_id: int, roles: list[str]) -> None:
     orgs = _table(db, "orgs")
     update_values = {"roles": roles}
     if "updated_at" in orgs.c:
-        update_values["updated_at"] = datetime.utcnow()
+        update_values["updated_at"] = _utcnow()
     db.execute(update(orgs).where(orgs.c.id == org_id).values(**update_values))
     db.commit()
 
@@ -414,7 +496,6 @@ def _apply_plan_update(
     audit: bool,
 ) -> None:
     plan = _load_plan(db, plan_code=payload.plan_code, plan_version=payload.plan_version)
-    org_subscriptions = _table(db, "org_subscriptions")
     before = {
         "plan_id": subscription.get("plan_id"),
         "billing_cycle": subscription.get("billing_cycle"),
@@ -425,11 +506,7 @@ def _apply_plan_update(
         "billing_cycle": payload.billing_cycle,
         "status": payload.status,
     }
-    db.execute(
-        update(org_subscriptions)
-        .where(org_subscriptions.c.id == subscription["id"])
-        .values(**update_values)
-    )
+    subscription.update(_write_subscription_update(db, subscription=subscription, values=update_values))
     if audit:
         _audit_event(
             db,
@@ -460,6 +537,8 @@ def _apply_support_plan_update(
     reason: str | None,
     audit: bool,
 ) -> None:
+    if _uses_legacy_subscription(subscription):
+        raise HTTPException(status_code=404, detail="support_plan_not_supported")
     org_subscriptions = _table(db, "org_subscriptions")
     if "support_plan_id" not in org_subscriptions.c:
         raise HTTPException(status_code=404, detail="support_plan_not_supported")
@@ -497,6 +576,8 @@ def _apply_slo_tier_update(
     reason: str | None,
     audit: bool,
 ) -> None:
+    if _uses_legacy_subscription(subscription):
+        raise HTTPException(status_code=404, detail="slo_tier_not_supported")
     org_subscriptions = _table(db, "org_subscriptions")
     if "slo_tier_id" not in org_subscriptions.c:
         raise HTTPException(status_code=404, detail="slo_tier_not_supported")
@@ -558,8 +639,8 @@ def _apply_addon_update(
             "starts_at": payload.starts_at,
             "ends_at": payload.ends_at,
             "config_json": payload.config_json,
-            "updated_at": datetime.utcnow(),
-            "created_at": datetime.utcnow(),
+            "updated_at": _utcnow(),
+            "created_at": _utcnow(),
         },
     )
     stmt = pg_insert(org_addons).values(**values)
@@ -573,7 +654,7 @@ def _apply_addon_update(
                 "starts_at": payload.starts_at,
                 "ends_at": payload.ends_at,
                 "config_json": payload.config_json,
-                "updated_at": datetime.utcnow(),
+                "updated_at": _utcnow(),
             },
         ),
     )
@@ -652,8 +733,8 @@ def _apply_override_update(
             "feature_key": payload.feature_key,
             "availability": payload.availability,
             "limits_json": payload.limits_json,
-            "updated_at": datetime.utcnow(),
-            "created_at": datetime.utcnow(),
+            "updated_at": _utcnow(),
+            "created_at": _utcnow(),
         },
     )
     stmt = pg_insert(overrides).values(**values)
@@ -664,7 +745,7 @@ def _apply_override_update(
             {
                 "availability": payload.availability,
                 "limits_json": payload.limits_json,
-                "updated_at": datetime.utcnow(),
+                "updated_at": _utcnow(),
             },
         ),
     )
@@ -694,7 +775,7 @@ def get_commercial_state(
     token: dict = Depends(require_admin_user),
     db: Session = Depends(get_db),
 ) -> CommercialOrgStateOut:
-    _ensure_role(token, write=False)
+    _ensure_role(token, action="read")
     return _build_state(db, org_id)
 
 
@@ -708,10 +789,19 @@ def get_entitlements_snapshots(
     token: dict = Depends(require_admin_user),
     db: Session = Depends(get_db),
 ) -> CommercialEntitlementsSnapshotsResponse:
-    _ensure_role(token, write=False)
+    _ensure_role(token, action="read")
     _load_subscription(db, org_id)
     if not _table_exists(db, "org_entitlements_snapshot"):
-        return CommercialEntitlementsSnapshotsResponse(current=None, previous=[])
+        snapshot = get_org_entitlements_snapshot(db, org_id=org_id)
+        current = None
+        if snapshot.hash or snapshot.entitlements.get("subscription") or snapshot.entitlements.get("modules"):
+            current = CommercialEntitlementsSnapshotOut(
+                version=1,
+                hash=snapshot.hash,
+                computed_at=snapshot.computed_at,
+                entitlements=snapshot.entitlements,
+            )
+        return CommercialEntitlementsSnapshotsResponse(current=current, previous=[])
     snapshots = _table(db, "org_entitlements_snapshot")
     rows = (
         db.execute(
@@ -749,7 +839,7 @@ def update_commercial_state(
     token: dict = Depends(require_admin_user),
     db: Session = Depends(get_db),
 ) -> CommercialOrgStateOut:
-    _ensure_role(token, write=True)
+    _ensure_role(token, action="operate")
     subscription = _load_subscription(db, org_id)
     audit_enabled = not payload.dry_run
 
@@ -812,13 +902,13 @@ def update_commercial_state(
                 )
 
     if payload.dry_run:
+        preview_tx = db.begin_nested()
         try:
-            db.begin()
             apply_updates()
             state = _build_state(db, org_id)
-            db.rollback()
+            preview_tx.rollback()
         except Exception:
-            db.rollback()
+            preview_tx.rollback()
             raise
         return state
 
@@ -836,7 +926,7 @@ def add_org_role(
     token: dict = Depends(require_admin_user),
     db: Session = Depends(get_db),
 ) -> CommercialOrgRolesResponse:
-    _ensure_role(token, write=True)
+    _ensure_role(token, action="manage")
     before_roles = _load_org_roles(db, org_id)
     role = payload.role.upper()
     after_roles = sorted({*before_roles, role})
@@ -870,7 +960,7 @@ def remove_org_role(
     token: dict = Depends(require_admin_user),
     db: Session = Depends(get_db),
 ) -> CommercialOrgRolesResponse:
-    _ensure_role(token, write=True)
+    _ensure_role(token, action="manage")
     before_roles = _load_org_roles(db, org_id)
     role = payload.role.upper()
     after_roles = [item for item in before_roles if item != role]
@@ -898,7 +988,7 @@ def change_plan(
     token: dict = Depends(require_admin_user),
     db: Session = Depends(get_db),
 ) -> CommercialOrgStateOut:
-    _ensure_role(token, write=True)
+    _ensure_role(token, action="operate")
     subscription = _load_subscription(db, org_id)
     plan = _load_plan(db, plan_code=payload.plan_code, plan_version=payload.plan_version)
 
@@ -908,25 +998,23 @@ def change_plan(
         "status": subscription.get("status"),
     }
 
-    org_subscriptions = _table(db, "org_subscriptions")
     update_values: dict[str, Any] = {
         "plan_id": plan["id"],
         "billing_cycle": payload.billing_cycle,
         "status": payload.status,
     }
     if payload.effective_at:
-        if "effective_at" in org_subscriptions.c:
+        if _uses_legacy_subscription(subscription):
             update_values["effective_at"] = payload.effective_at
-        elif "start_at" in org_subscriptions.c:
-            update_values["start_at"] = payload.effective_at
-        elif "starts_at" in org_subscriptions.c:
-            update_values["starts_at"] = payload.effective_at
-
-    db.execute(
-        update(org_subscriptions)
-        .where(org_subscriptions.c.id == subscription["id"])
-        .values(**update_values)
-    )
+        else:
+            org_subscriptions = _table(db, "org_subscriptions")
+            if "effective_at" in org_subscriptions.c:
+                update_values["effective_at"] = payload.effective_at
+            elif "start_at" in org_subscriptions.c:
+                update_values["start_at"] = payload.effective_at
+            elif "starts_at" in org_subscriptions.c:
+                update_values["starts_at"] = payload.effective_at
+    subscription.update(_write_subscription_update(db, subscription=subscription, values=update_values))
 
     after = {
         "plan_id": plan["id"],
@@ -961,7 +1049,7 @@ def enable_addon(
     token: dict = Depends(require_admin_user),
     db: Session = Depends(get_db),
 ) -> CommercialOrgStateOut:
-    _ensure_role(token, write=True)
+    _ensure_role(token, action="operate")
     subscription = _load_subscription(db, org_id)
     addon = _load_addon(db, payload.addon_code)
 
@@ -987,8 +1075,8 @@ def enable_addon(
             "starts_at": payload.starts_at,
             "ends_at": payload.ends_at,
             "config_json": payload.config_json,
-            "updated_at": datetime.utcnow(),
-            "created_at": datetime.utcnow(),
+            "updated_at": _utcnow(),
+            "created_at": _utcnow(),
         },
     )
 
@@ -1001,7 +1089,7 @@ def enable_addon(
             "starts_at": payload.starts_at,
             "ends_at": payload.ends_at,
             "config_json": payload.config_json,
-            "updated_at": datetime.utcnow(),
+            "updated_at": _utcnow(),
         },
     )
     stmt = stmt.on_conflict_do_update(
@@ -1042,7 +1130,7 @@ def disable_addon(
     token: dict = Depends(require_admin_user),
     db: Session = Depends(get_db),
 ) -> CommercialOrgStateOut:
-    _ensure_role(token, write=True)
+    _ensure_role(token, action="operate")
     subscription = _load_subscription(db, org_id)
     addon = _load_addon(db, payload.addon_code)
 
@@ -1060,7 +1148,7 @@ def disable_addon(
     if before_row:
         update_values = _filter_columns(
             org_addons,
-            {"status": "CANCELED", "updated_at": datetime.utcnow()},
+            {"status": "CANCELED", "updated_at": _utcnow()},
         )
         db.execute(
             update(org_addons)
@@ -1096,7 +1184,7 @@ def upsert_override(
     token: dict = Depends(require_admin_user),
     db: Session = Depends(get_db),
 ) -> CommercialOrgStateOut:
-    _ensure_role(token, write=True)
+    _ensure_role(token, action="override")
     _ensure_override_guardrails(payload.reason, payload.confirm)
     subscription = _load_subscription(db, org_id)
     _validate_feature_key(db, payload.feature_key)
@@ -1120,8 +1208,8 @@ def upsert_override(
             "feature_key": payload.feature_key,
             "availability": payload.availability,
             "limits_json": payload.limits_json,
-            "updated_at": datetime.utcnow(),
-            "created_at": datetime.utcnow(),
+            "updated_at": _utcnow(),
+            "created_at": _utcnow(),
         },
     )
 
@@ -1133,7 +1221,7 @@ def upsert_override(
             {
                 "availability": payload.availability,
                 "limits_json": payload.limits_json,
-                "updated_at": datetime.utcnow(),
+                "updated_at": _utcnow(),
             },
         ),
     )
@@ -1169,7 +1257,7 @@ def remove_override(
     token: dict = Depends(require_admin_user),
     db: Session = Depends(get_db),
 ) -> CommercialOrgStateOut:
-    _ensure_role(token, write=True)
+    _ensure_role(token, action="override")
     _ensure_override_guardrails(reason, True)
     subscription = _load_subscription(db, org_id)
     _validate_feature_key(db, feature_key)
@@ -1218,17 +1306,10 @@ def change_status(
     token: dict = Depends(require_admin_user),
     db: Session = Depends(get_db),
 ) -> CommercialOrgStateOut:
-    _ensure_role(token, write=True)
+    _ensure_role(token, action="operate")
     subscription = _load_subscription(db, org_id)
-
-    org_subscriptions = _table(db, "org_subscriptions")
     before = {"status": subscription.get("status")}
-
-    db.execute(
-        update(org_subscriptions)
-        .where(org_subscriptions.c.id == subscription["id"])
-        .values(status=payload.status)
-    )
+    subscription.update(_write_subscription_update(db, subscription=subscription, values={"status": payload.status}))
 
     _audit_event(
         db,
@@ -1255,7 +1336,7 @@ def recompute_entitlements(
     token: dict = Depends(require_admin_user),
     db: Session = Depends(get_db),
 ) -> CommercialRecomputeResponse:
-    _ensure_role(token, write=True)
+    _ensure_role(token, action="operate")
     _load_subscription(db, org_id)
 
     snapshot = get_org_entitlements_snapshot(db, org_id=org_id, force_new_version=True)

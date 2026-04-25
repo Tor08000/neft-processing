@@ -8,9 +8,18 @@ from app.api.dependencies.redis import get_redis
 from app.db import get_db
 from app.schemas.marketplace.recommendations_v1 import RecommendationResponse, RecommendationWhyResponse
 from app.security.client_auth import require_client_user
+from app.services.entitlements_service import assert_module_enabled
 from app.services.marketplace_recommendations_service import MarketplaceRecommendationsService
 
 router = APIRouter(prefix="/marketplace/client/recommendations", tags=["client-portal-v1"])
+
+
+def _require_marketplace_client(token: dict, db: Session) -> str:
+    client_id = token.get("client_id")
+    if not client_id:
+        raise HTTPException(status_code=403, detail="forbidden")
+    assert_module_enabled(db, client_id=str(client_id), module_code="MARKETPLACE")
+    return str(client_id)
 
 
 def _extract_subscription_codes(token: dict) -> list[str]:
@@ -45,14 +54,12 @@ def list_recommendations(
     db: Session = Depends(get_db),
     redis: Redis = Depends(get_redis),
 ) -> RecommendationResponse:
-    client_id = token.get("client_id")
-    if not client_id:
-        raise HTTPException(status_code=403, detail="forbidden")
+    client_id = _require_marketplace_client(token, db)
     _ = mode
     service = MarketplaceRecommendationsService(db, redis=redis)
     return service.list_recommendations(
         tenant_id=token.get("tenant_id"),
-        client_id=str(client_id),
+        client_id=client_id,
         limit=limit,
         subscription_codes=_extract_subscription_codes(token),
         geo=_extract_geo(token),
@@ -66,13 +73,11 @@ def explain_recommendation(
     db: Session = Depends(get_db),
     redis: Redis = Depends(get_redis),
 ) -> RecommendationWhyResponse:
-    client_id = token.get("client_id")
-    if not client_id:
-        raise HTTPException(status_code=403, detail="forbidden")
+    client_id = _require_marketplace_client(token, db)
     service = MarketplaceRecommendationsService(db, redis=redis)
     payload = service.explain_why(
         tenant_id=token.get("tenant_id"),
-        client_id=str(client_id),
+        client_id=client_id,
         offer_id=offer_id,
         subscription_codes=_extract_subscription_codes(token),
         geo=_extract_geo(token),

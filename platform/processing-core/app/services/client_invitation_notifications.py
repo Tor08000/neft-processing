@@ -8,6 +8,7 @@ import requests
 from sqlalchemy.orm import Session
 
 from app.models.notification_outbox import NotificationOutbox
+from app.models.notifications import NotificationPriority, NotificationSubjectType
 from app.services.email_provider_runtime import get_email_provider_mode, is_email_degraded
 
 logger = logging.getLogger(__name__)
@@ -67,13 +68,27 @@ def _backoff(attempts: int) -> timedelta:
     return timedelta(hours=6)
 
 
-def enqueue_client_invitation_notification(db: Session, *, event_type: str, invitation_id: str, client_id: str, payload: dict) -> NotificationOutbox:
+def enqueue_client_invitation_notification(
+    db: Session,
+    *,
+    event_type: str,
+    invitation_id: str,
+    client_id: str,
+    payload: dict,
+    template_code: str,
+    dedupe_key: str,
+) -> NotificationOutbox:
     outbox = NotificationOutbox(
         event_type=event_type,
+        subject_type=NotificationSubjectType.CLIENT,
+        subject_id=client_id,
         aggregate_type="client_invitation",
         aggregate_id=invitation_id,
         tenant_client_id=client_id,
+        template_code=template_code,
         payload=payload,
+        priority=NotificationPriority.NORMAL,
+        dedupe_key=dedupe_key,
         status="NEW",
     )
     db.add(outbox)

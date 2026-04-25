@@ -20,6 +20,9 @@ def test_list_templates() -> None:
         "act_monthly",
         "reconciliation_act",
         "closing_package_cover_letter",
+        "offer_v1",
+        "agreement_v1",
+        "dpa_v1",
     }
 
 
@@ -60,6 +63,44 @@ def test_render_template_code(monkeypatch) -> None:
         meta={"source": "tests"},
         doc_id="doc-456",
         doc_type="INVOICE",
+        version=1,
+    )
+    response = client.post("/v1/render", json=payload.model_dump())
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["template_hash"]
+    assert body["schema_hash"]
+    assert renderer.calls == 1
+    main.app.dependency_overrides.clear()
+
+
+def test_render_client_onboarding_template_code(monkeypatch) -> None:
+    storage = DummyStorage()
+    renderer = DummyRenderer()
+
+    main.app.dependency_overrides[main.get_storage] = lambda: storage
+    main.app.dependency_overrides[main.get_renderer] = lambda: renderer
+
+    client = TestClient(main.app)
+    payload = RenderRequest(
+        template_code="offer_v1",
+        variables={
+            "company_name": "Smoke Docflow LLC",
+            "inn": "7701234567",
+            "ogrn": "1234567890123",
+            "email": "client@example.com",
+            "phone": None,
+            "application_id": "app-1",
+            "client_id": None,
+        },
+        output_format="PDF",
+        tenant_id=0,
+        client_id=None,
+        idempotency_key="client-onboarding:app-1:OFFER:v1:offer_v1",
+        meta={"source": "tests"},
+        doc_id="app-1-OFFER",
+        doc_type="OFFER",
         version=1,
     )
     response = client.post("/v1/render", json=payload.model_dump())

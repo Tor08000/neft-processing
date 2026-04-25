@@ -1,44 +1,90 @@
 from __future__ import annotations
 
+import base64
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 import pytest
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-from app.db import Base, SessionLocal, engine
 from app.models.audit_log import ActorType, AuditLog
-from app.models.cases import Case
+from app.models.cases import Case, CaseEvent
+from app.models.decision_memory import DecisionMemoryRecord
 from app.models.internal_ledger import (
+    InternalLedgerAccount,
     InternalLedgerEntry,
     InternalLedgerEntryDirection,
     InternalLedgerAccountType,
     InternalLedgerTransaction,
     InternalLedgerTransactionType,
 )
-from app.models.reconciliation import ReconciliationLink, ReconciliationLinkStatus
-from app.models.settlement_v1 import SettlementItem, SettlementPeriod, SettlementPeriodStatus, SettlementPayout
+from app.models.reconciliation import (
+    ExternalStatement,
+    ReconciliationDiscrepancy,
+    ReconciliationLink,
+    ReconciliationLinkStatus,
+    ReconciliationRun,
+)
+from app.models.settlement_v1 import (
+    SettlementAccount,
+    SettlementItem,
+    SettlementPeriod,
+    SettlementPeriodStatus,
+    SettlementPayout,
+)
 from app.services.audit_service import AuditService, RequestContext
 from app.services.case_events_service import verify_case_event_chain, verify_case_event_signatures
 from app.services.internal_ledger import InternalLedgerLine, InternalLedgerService
 from app.services.reconciliation_service import run_external_reconciliation, upload_external_statement
 from app.services.settlement_service import approve_settlement, calculate_settlement_period, execute_payout
 
+from ._scoped_router_harness import scoped_session_context
+
+
+SETTLEMENT_V1_TEST_TABLES = (
+    AuditLog.__table__,
+    Case.__table__,
+    CaseEvent.__table__,
+    DecisionMemoryRecord.__table__,
+    InternalLedgerAccount.__table__,
+    InternalLedgerTransaction.__table__,
+    InternalLedgerEntry.__table__,
+    ReconciliationRun.__table__,
+    ReconciliationDiscrepancy.__table__,
+    ReconciliationLink.__table__,
+    ExternalStatement.__table__,
+    SettlementAccount.__table__,
+    SettlementPeriod.__table__,
+    SettlementItem.__table__,
+    SettlementPayout.__table__,
+)
+
+
+
+@pytest.fixture()
+def signing_key() -> bytes:
+    private_key = Ed25519PrivateKey.generate()
+    return private_key.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.PKCS8,
+        encryption_algorithm=serialization.NoEncryption(),
+    )
+
 
 @pytest.fixture(autouse=True)
-def clean_db():
-    Base.metadata.drop_all(bind=engine)
-    Base.metadata.create_all(bind=engine)
-    yield
-    Base.metadata.drop_all(bind=engine)
+def audit_signing_env(monkeypatch: pytest.MonkeyPatch, signing_key: bytes) -> None:
+    monkeypatch.setenv("AUDIT_SIGNING_MODE", "local")
+    monkeypatch.setenv("AUDIT_SIGNING_REQUIRED", "true")
+    monkeypatch.setenv("AUDIT_SIGNING_ALG", "ed25519")
+    monkeypatch.setenv("AUDIT_SIGNING_KEY_ID", "local-test-key")
+    monkeypatch.setenv("AUDIT_SIGNING_PRIVATE_KEY_B64", base64.b64encode(signing_key).decode("utf-8"))
 
 
 @pytest.fixture
 def db_session():
-    session = SessionLocal()
-    try:
+    with scoped_session_context(tables=SETTLEMENT_V1_TEST_TABLES) as session:
         yield session
-    finally:
-        session.close()
 
 
 def _post_partner_entry(

@@ -1,8 +1,9 @@
 from datetime import datetime, timezone
+from uuid import uuid4
 
 import pytest
 
-from app.db import Base, SessionLocal, engine
+from app.models.billing_period import BillingPeriod, BillingPeriodType
 from app.models.crm import (
     CRMBillingCycle,
     CRMBillingMode,
@@ -13,7 +14,10 @@ from app.models.crm import (
     CRMContractStatus,
     CRMFeatureFlag,
     CRMFeatureFlagType,
+    CRMLimitProfile,
+    CRMRiskProfile,
     CRMSubscription,
+    CRMSubscriptionPeriodSegment,
     CRMSubscriptionStatus,
     CRMTariffPlan,
     CRMTariffStatus,
@@ -22,23 +26,27 @@ from app.models.crm import (
 )
 from app.services.crm.decision_context import build_decision_context
 from app.services.explain.sources import build_crm_section
+from app.tests._scoped_router_harness import scoped_session_context
 
 
-@pytest.fixture(autouse=True)
-def _setup_db():
-    Base.metadata.drop_all(bind=engine)
-    Base.metadata.create_all(bind=engine)
-    yield
-    Base.metadata.drop_all(bind=engine)
+CRM_EXPLAIN_TEST_TABLES = (
+    BillingPeriod.__table__,
+    CRMClient.__table__,
+    CRMContract.__table__,
+    CRMFeatureFlag.__table__,
+    CRMLimitProfile.__table__,
+    CRMRiskProfile.__table__,
+    CRMSubscription.__table__,
+    CRMSubscriptionPeriodSegment.__table__,
+    CRMTariffPlan.__table__,
+    CRMUsageCounter.__table__,
+)
 
 
 @pytest.fixture
 def session():
-    db = SessionLocal()
-    try:
+    with scoped_session_context(tables=CRM_EXPLAIN_TEST_TABLES) as db:
         yield db
-    finally:
-        db.close()
 
 
 def test_decision_context_from_subscription(session):
@@ -95,6 +103,7 @@ def test_decision_context_from_subscription(session):
 
 
 def test_explain_crm_section_contains_contract_metrics_and_flags(session):
+    billing_period_id = str(uuid4())
     client = CRMClient(
         id="client-2",
         tenant_id=1,
@@ -128,7 +137,14 @@ def test_explain_crm_section_contains_contract_metrics_and_flags(session):
         billing_day=1,
         started_at=datetime(2025, 2, 1, tzinfo=timezone.utc),
     )
-    session.add_all([client, contract, tariff, subscription])
+    billing_period = BillingPeriod(
+        id=billing_period_id,
+        period_type=BillingPeriodType.MONTHLY,
+        start_at=datetime(2025, 2, 1, tzinfo=timezone.utc),
+        end_at=datetime(2025, 2, 28, 23, 59, tzinfo=timezone.utc),
+        tz="Europe/Moscow",
+    )
+    session.add_all([client, contract, tariff, subscription, billing_period])
     session.flush()
     session.add_all(
         [
@@ -146,13 +162,13 @@ def test_explain_crm_section_contains_contract_metrics_and_flags(session):
             ),
             CRMUsageCounter(
                 subscription_id=subscription.id,
-                billing_period_id="period-1",
+                billing_period_id=billing_period_id,
                 metric=CRMUsageMetric.FUEL_TX_COUNT,
                 value=12,
             ),
             CRMUsageCounter(
                 subscription_id=subscription.id,
-                billing_period_id="period-1",
+                billing_period_id=billing_period_id,
                 metric=CRMUsageMetric.DRIVERS_COUNT,
                 value=3,
             ),

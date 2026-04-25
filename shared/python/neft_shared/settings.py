@@ -232,7 +232,7 @@ class Settings:
         "LEGAL_REQUIRED_DOCS",
         "TERMS,PRIVACY_POLICY,CONSENT_PERSONAL_DATA",
     )
-    BI_CLICKHOUSE_ENABLED: bool = os.getenv("BI_CLICKHOUSE_ENABLED", "0").lower() in {"1", "true", "yes"}
+    BI_CLICKHOUSE_ENABLED: bool = os.getenv("BI_CLICKHOUSE_ENABLED", "1").lower() in {"1", "true", "yes"}
     CLICKHOUSE_URL: str = os.getenv("CLICKHOUSE_URL", "http://clickhouse:8123")
     CLICKHOUSE_DB: str = os.getenv("CLICKHOUSE_DB", "neft_geo")
     GEO_ANALYTICS_BACKEND: str = os.getenv("GEO_ANALYTICS_BACKEND", "clickhouse")
@@ -250,9 +250,9 @@ class Settings:
     EDO_E2E_ENABLED: bool = os.getenv("EDO_E2E_ENABLED", "0").lower() in {"1", "true", "yes"}
     EDO_WEBHOOK_SIGNATURE_HEADER: str = os.getenv("EDO_WEBHOOK_SIGNATURE_HEADER", "x-sbis-signature")
 
-    # SMS/Voice notifications (stub providers)
-    SMS_PROVIDER: str = os.getenv("SMS_PROVIDER", "sms_stub")
-    VOICE_PROVIDER: str = os.getenv("VOICE_PROVIDER", "voice_stub")
+    # SMS/Voice notifications are disabled by default; local stubs must be selected explicitly.
+    SMS_PROVIDER: str = os.getenv("SMS_PROVIDER", "disabled")
+    VOICE_PROVIDER: str = os.getenv("VOICE_PROVIDER", "disabled")
     SMS_STUB_DELIVERY_DELAY_MS: int = int(os.getenv("SMS_STUB_DELIVERY_DELAY_MS", "1000"))
     SMS_STUB_FAIL_RATE: float = float(os.getenv("SMS_STUB_FAIL_RATE", "0.0"))
     VOICE_STUB_DELIVERY_DELAY_MS: int = int(os.getenv("VOICE_STUB_DELIVERY_DELAY_MS", "1000"))

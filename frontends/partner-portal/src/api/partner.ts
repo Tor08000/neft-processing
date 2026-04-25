@@ -121,90 +121,11 @@ export interface TransactionDetail extends TransactionListItem {
   moneyFlowUrl?: string | null;
 }
 
-export interface SettlementListItem {
-  id: string;
-  periodStart: string;
-  periodEnd: string;
-  grossAmount: number;
-  netAmount: number;
-  status: "draft" | "queued" | "sent" | "settled";
-  transactionsCount?: number | null;
-}
-
-export interface SettlementDetail extends SettlementListItem {
-  breakdowns?: SettlementBreakdown[];
-  commissions?: SettlementCommission[];
-  payoutBatches?: PayoutBatch[];
-  documents?: SettlementDocumentLink[];
-  edoStatus?: string | null;
-}
-
-export interface SettlementBreakdown {
-  station: string;
-  product: string;
-  amount: number;
-  count?: number | null;
-}
-
-export interface SettlementCommission {
-  label: string;
-  amount: number;
-}
-
-export interface SettlementDocumentLink {
-  id: string;
-  type: string;
-  status: string;
-}
-
-export interface PayoutBatch {
-  id: string;
-  status: "draft" | "sent" | "settled" | "failed";
-  exportFiles?: ExportFile[];
-  checksum?: string | null;
-  auditSummary?: string | null;
-}
-
 export interface ExportFile {
   id: string;
   name: string;
   url?: string | null;
   checksum?: string | null;
-}
-
-export interface PartnerDocumentListItem {
-  id: string;
-  type: string;
-  period: string;
-  amount?: number | null;
-  status: string;
-  signatureStatus?: string | null;
-  edoStatus?: string | null;
-}
-
-export interface PartnerDocumentDetail extends PartnerDocumentListItem {
-  files?: PartnerDocumentFile[];
-  signatures?: DocumentSignature[];
-  edoEvents?: EdoEvent[];
-}
-
-export interface PartnerDocumentFile {
-  id: string;
-  name: string;
-  url?: string | null;
-}
-
-export interface DocumentSignature {
-  signer: string;
-  status: string;
-  signedAt?: string | null;
-}
-
-export interface EdoEvent {
-  id: string;
-  status: string;
-  timestamp: string;
-  description?: string | null;
 }
 
 export interface ServiceCatalogItem {
@@ -266,32 +187,10 @@ export const fetchTransactions = (token: string, filters: TransactionFilters) =>
 export const fetchTransactionDetail = (token: string, transactionId: string) =>
   request<TransactionDetail>(`/partner/transactions/${transactionId}`, {}, token);
 
-export const fetchSettlements = (token: string) =>
-  request<PaginatedResponse<SettlementListItem>>("/partner/settlements", {}, token);
-
-export const fetchSettlementDetail = (token: string, settlementId: string) =>
-  request<SettlementDetail>(`/partner/settlements/${settlementId}`, {}, token);
-
-export const fetchPayoutBatches = (token: string) =>
-  request<PaginatedResponse<PayoutBatch>>("/partner/payout-batches", {}, token);
-
-export const fetchDocuments = (token: string) =>
-  request<PaginatedResponse<PartnerDocumentListItem>>("/partner/documents", {}, token);
-
-export const fetchDocumentDetail = (token: string, documentId: string) =>
-  request<PartnerDocumentDetail>(`/partner/documents/${documentId}`, {}, token);
-
 export const fetchServices = (token: string) =>
   request<PaginatedResponse<ServiceCatalogItem>>("/partner/services", {}, token);
 
 export const fetchSettings = (token: string) => request<PartnerSettings>("/partner/settings", {}, token);
-
-export const confirmSettlementReceived = (token: string, settlementId: string) =>
-  request(`/partner/settlements/${settlementId}/confirm`, { method: "POST" }, token);
-
-export const requestReconciliation = (token: string, settlementId: string) =>
-  request(`/partner/settlements/${settlementId}/reconciliation-requests`, { method: "POST" }, token);
-
 
 export const fetchFuelStationPrices = (token: string, stationId: string) =>
   request<FuelStationPricesResponse>(`/api/v1/fuel/stations/${stationId}/prices`, { method: "GET" }, { token, base: "core_root" });
@@ -322,11 +221,16 @@ export interface PartnerMeV1Response {
     code: string;
     legal_name: string;
     brand_name?: string | null;
+    partner_type?: string | null;
+    inn?: string | null;
+    ogrn?: string | null;
     status: string;
     contacts?: Record<string, unknown>;
   };
   my_roles: string[];
 }
+
+export type PartnerSelfProfileV1 = PartnerMeV1Response["partner"];
 
 export interface PartnerLocationV1 {
   id: string;
@@ -348,11 +252,19 @@ export interface PartnerTermsV1 {
   version: number;
   status: string;
   terms: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
 }
 
-export const fetchPartnerMeV1 = (token: string) => request<PartnerMeV1Response>("/partner/me", {}, token);
+export interface PartnerUserRoleV1 {
+  user_id: string;
+  roles: string[];
+  created_at: string;
+}
+
+export const fetchPartnerMeV1 = (token: string) => request<PartnerMeV1Response>("/partner/self-profile", {}, token);
 export const patchPartnerMeV1 = (token: string, payload: { brand_name?: string; contacts?: Record<string, unknown> }) =>
-  request<PartnerProfile>("/partner/me", { method: "PATCH", body: JSON.stringify(payload) }, token);
+  request<PartnerSelfProfileV1>("/partner/self-profile", { method: "PATCH", body: JSON.stringify(payload) }, token);
 export const fetchPartnerLocationsV1 = (token: string) => request<PartnerLocationV1[]>("/partner/locations", {}, token);
 export const createPartnerLocationV1 = (
   token: string,
@@ -362,9 +274,9 @@ export const patchPartnerLocationV1 = (token: string, id: string, payload: Parti
   request<PartnerLocationV1>(`/partner/locations/${id}`, { method: "PATCH", body: JSON.stringify(payload) }, token);
 export const deactivatePartnerLocationV1 = (token: string, id: string) =>
   request<PartnerLocationV1>(`/partner/locations/${id}`, { method: "DELETE" }, token);
-export const fetchPartnerUsersV1 = (token: string) => request<{ user_id: string; roles: string[] }[]>("/partner/users", {}, token);
+export const fetchPartnerUsersV1 = (token: string) => request<PartnerUserRoleV1[]>("/partner/users", {}, token);
 export const addPartnerUserV1 = (token: string, payload: { user_id?: string; email?: string; roles: string[] }) =>
-  request<{ user_id: string; roles: string[] }>("/partner/users", { method: "POST", body: JSON.stringify(payload) }, token);
+  request<PartnerUserRoleV1>("/partner/users", { method: "POST", body: JSON.stringify(payload) }, token);
 export const removePartnerUserV1 = (token: string, userId: string) =>
   request(`/partner/users/${userId}`, { method: "DELETE" }, token);
 export const fetchPartnerTermsV1 = (token: string) => request<PartnerTermsV1>("/partner/terms", {}, token);

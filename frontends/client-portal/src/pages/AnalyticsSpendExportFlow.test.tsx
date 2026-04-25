@@ -8,7 +8,7 @@ import type { AuthSession } from "../api/types";
 import { AnalyticsSpendPage } from "./AnalyticsSpendPage";
 
 const ownerSession: AuthSession = {
-  token: "token-analytics",
+  token: "test.analytics.owner",
   email: "owner@example.com",
   roles: ["CLIENT_OWNER"],
   subjectType: "CLIENT",

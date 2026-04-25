@@ -2,34 +2,25 @@ from decimal import Decimal
 from uuid import uuid4
 
 import pytest
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-
-from app.db import Base
 from app.models.operation import Operation, OperationStatus, OperationType
 from app.services.ledger.balance_service import BalanceService
-from app.services.operations_scenarios.disputes import DisputeService, DisputeStateError
+from app.services.operations_scenarios.disputes import (
+    PLATFORM_OWNER_ID,
+    DisputeService,
+    DisputeStateError,
+)
 from app.models.account import AccountOwnerType, AccountType
 
-engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
-SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False, expire_on_commit=False)
+from ._money_router_harness import OPERATIONAL_DISPUTE_REFUND_TEST_TABLES, money_session_context
 
-
-@pytest.fixture(autouse=True)
-def _reset_db():
-    Base.metadata.drop_all(bind=engine)
-    Base.metadata.create_all(bind=engine)
-    yield
-    Base.metadata.drop_all(bind=engine)
+MERCHANT_ID = "11111111-1111-1111-1111-111111111111"
+CLIENT_ID = "22222222-2222-2222-2222-222222222222"
 
 
 @pytest.fixture
 def session():
-    db = SessionLocal()
-    try:
+    with money_session_context(tables=OPERATIONAL_DISPUTE_REFUND_TEST_TABLES) as db:
         yield db
-    finally:
-        db.close()
 
 
 def _make_operation(db, *, amount: int = 100) -> Operation:
@@ -37,9 +28,9 @@ def _make_operation(db, *, amount: int = 100) -> Operation:
         operation_id=str(uuid4()),
         operation_type=OperationType.CAPTURE,
         status=OperationStatus.CAPTURED,
-        merchant_id="merchant-1",
+        merchant_id=MERCHANT_ID,
         terminal_id="term-1",
-        client_id="client-1",
+        client_id=CLIENT_ID,
         card_id="card-1",
         amount=amount,
         currency="RUB",
@@ -103,9 +94,9 @@ def test_dispute_accept_posts_refund_and_fee(session):
     client_account = service._client_main(op)
     reserve = service._dispute_reserve(op.currency)
     revenue_account = service.accounts_repo.get_or_create_account(
-        client_id="platform",
+        client_id=PLATFORM_OWNER_ID,
         owner_type=AccountOwnerType.PLATFORM,
-        owner_id="platform",
+        owner_id=PLATFORM_OWNER_ID,
         currency=op.currency,
         account_type=AccountType.TECHNICAL,
         tariff_id="DISPUTE_FEE_REVENUE",

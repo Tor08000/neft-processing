@@ -32,49 +32,22 @@ const isHiddenBadge = (meta: Record<string, unknown> | null | undefined) => {
 export const useAchievements = (
   options?: { showToast?: (kind: "success" | "error" | "info", text: string) => void },
 ): AchievementsResponse => {
-  const isDev = import.meta.env.DEV;
   const { user } = useAuth();
-  const mockData = useMemo<AchievementsResponse>(
+  const emptyData = useMemo<AchievementsResponse>(
     () => ({
-      badges: [
-        {
-          id: "stability",
-          icon: "◎",
-          title: "Стабильность платежей",
-          description: "7 дней без критических отказов",
-          details: "Как получить: поддерживать стабильность платежей без критических отказов 7 дней.",
-          status: "unlocked",
-        },
-        {
-          id: "discipline-invoices",
-          icon: "SLA",
-          title: "Дисциплина счетов",
-          description: "Все счета закрыты в срок",
-          details: "Как получить: закрывать счета в срок на протяжении 14 дней.",
-          status: "in-progress",
-          progress: 0.8,
-        },
-        {
-          id: "orders-quality",
-          icon: "✓",
-          title: "Качество заказов",
-          description: "95% операций без ручных корректировок",
-          details: "Как получить: держать долю операций без корректировок выше 95% за неделю.",
-          status: "unlocked",
-        },
-      ],
+      badges: [],
       streak: {
-        title: "Серия: 7 дней без ошибок",
-        description: "Операции проходят без критических отклонений.",
-        totalDays: 7,
-        currentDays: 6,
-        history: [true, true, true, true, true, true, false],
-        keepText: "Продлится, если операции проходят без критических отклонений.",
-        breakText: "Сорвется, если появятся критические отклонения или ручные корректировки.",
+        title: "Достижения пока не рассчитаны",
+        description: "Данные появятся после первой зафиксированной активности.",
+        totalDays: 0,
+        currentDays: 0,
+        history: [],
+        keepText: "Серия появится, когда система накопит достаточно событий.",
+        breakText: "При критических отклонениях серия будет сброшена.",
       },
       error: null,
       isLoading: false,
-      isMock: true,
+      isMock: false,
       reload: () => undefined,
     }),
     [],
@@ -83,34 +56,17 @@ export const useAchievements = (
   const [reloadKey, setReloadKey] = useState(0);
   const reload = useCallback(() => setReloadKey((prev) => prev + 1), []);
 
-  const toastOnce = useCallback(
-    (key: string, text: string) => {
-      if (!options?.showToast || typeof window === "undefined") return;
-      try {
-        const storageKey = `mock-toast-${key}`;
-        if (sessionStorage.getItem(storageKey)) {
-          return;
-        }
-        sessionStorage.setItem(storageKey, "1");
-      } catch {
-        return;
-      }
-      options.showToast("info", text);
-    },
-    [options],
-  );
-
   useEffect(() => {
     let active = true;
     const token = user?.token;
     if (!token) {
-      setApiData({ badges: [], streak: mockData.streak, error: "Требуется авторизация", isLoading: false, isMock: false, reload });
+      setApiData({ badges: [], streak: emptyData.streak, error: "Требуется авторизация", isLoading: false, isMock: false, reload });
       return;
     }
     setApiData((prev) =>
       prev
         ? { ...prev, isLoading: true, error: null }
-        : { badges: [], streak: mockData.streak, error: null, isLoading: true, isMock: false, reload },
+        : { badges: [], streak: emptyData.streak, error: null, isLoading: true, isMock: false, reload },
     );
     fetchAchievementsSummary(token)
       .then((data) => {
@@ -143,18 +99,16 @@ export const useAchievements = (
       })
       .catch((err) => {
         if (!active) return;
-        if (isDev) {
-          toastOnce("client-achievements", "Mock mode: Achievements");
-          setApiData({ ...mockData, reload });
-          return;
-        }
         const message = err instanceof Error ? err.message : "Не удалось загрузить достижения";
-        setApiData({ badges: [], streak: mockData.streak, error: message, isLoading: false, isMock: false, reload });
+        if (options?.showToast) {
+          options.showToast("error", message);
+        }
+        setApiData({ badges: [], streak: emptyData.streak, error: message, isLoading: false, isMock: false, reload });
       });
     return () => {
       active = false;
     };
-  }, [isDev, mockData, reload, reloadKey, toastOnce, user?.token]);
+  }, [emptyData, options, reload, reloadKey, user?.token]);
 
-  return apiData ?? mockData;
+  return apiData ?? emptyData;
 };

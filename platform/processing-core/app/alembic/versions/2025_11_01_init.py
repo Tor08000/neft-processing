@@ -40,9 +40,20 @@ def _create_schema(bind) -> None:
     op.execute(sa.text(f'CREATE SCHEMA IF NOT EXISTS "{SCHEMA}"'))
 
 
+def _resolved_schema(bind):
+    return SCHEMA if bind.dialect.name == "postgresql" else None
+
+
+def _fk(bind, table_name: str, column_name: str = "id") -> str:
+    if bind.dialect.name == "postgresql":
+        return f"{SCHEMA}.{table_name}.{column_name}"
+    return f"{table_name}.{column_name}"
+
+
 def upgrade():
     bind = op.get_bind()
     _create_schema(bind)
+    schema = _resolved_schema(bind)
 
     ensure_pg_enum(bind, "accounttype", ACCOUNT_TYPE_VALUES, schema=SCHEMA)
     ensure_pg_enum(bind, "accountstatus", ACCOUNT_STATUS_VALUES, schema=SCHEMA)
@@ -76,7 +87,7 @@ def upgrade():
             nullable=False,
         ),
         sa.PrimaryKeyConstraint("id"),
-        schema=SCHEMA,
+        schema=schema,
     )
 
     create_table_if_not_exists(
@@ -92,7 +103,7 @@ def upgrade():
         sa.Column("name", sa.String(), nullable=False),
         sa.Column("status", sa.String(length=32), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
-        schema=SCHEMA,
+        schema=schema,
     )
 
     create_table_if_not_exists(
@@ -103,7 +114,7 @@ def upgrade():
         sa.Column("status", sa.String(length=32), nullable=False),
         sa.Column("pan_masked", sa.String(length=32), nullable=True),
         sa.Column("expires_at", sa.String(length=16), nullable=True),
-        schema=SCHEMA,
+        schema=schema,
     )
 
     create_table_if_not_exists(
@@ -112,20 +123,22 @@ def upgrade():
         sa.Column("id", sa.String(length=64), primary_key=True, nullable=False),
         sa.Column("name", sa.String(length=255), nullable=False),
         sa.Column("status", sa.String(length=32), nullable=False),
-        schema=SCHEMA,
+        schema=schema,
     )
 
     create_table_if_not_exists(
         bind,
         "terminals",
         sa.Column("id", sa.String(length=64), primary_key=True, nullable=False),
-        sa.Column("merchant_id", sa.String(length=64), sa.ForeignKey(f"{SCHEMA}.merchants.id"), nullable=False),
+        sa.Column("merchant_id", sa.String(length=64), sa.ForeignKey(_fk(bind, "merchants")), nullable=False),
         sa.Column("status", sa.String(length=32), nullable=False),
         sa.Column("location", sa.String(length=255), nullable=True),
-        schema=SCHEMA,
+        schema=schema,
     )
 
 def downgrade():
+    bind = op.get_bind()
+    schema = _resolved_schema(bind)
     for table in (
         "terminals",
         "merchants",
@@ -133,4 +146,4 @@ def downgrade():
         "clients",
         "tariff_plans",
     ):
-        op.drop_table(table, schema=SCHEMA)
+        op.drop_table(table, schema=schema)

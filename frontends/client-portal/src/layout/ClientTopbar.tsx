@@ -9,9 +9,7 @@ interface ClientTopbarProps {
   items: ClientNavItem[];
   userEmail?: string | null;
   mode: ClientMode;
-  availableModes: ClientMode[];
   theme: "light" | "dark";
-  onSelectMode: (mode: ClientMode) => void;
   onToggleTheme: () => void;
   onToggleSidebar: () => void;
   onLogout: () => void;
@@ -26,7 +24,7 @@ const getSectionLabel = (activePath: string, items: ClientNavItem[]) => {
 
 const MODE_LABELS: Record<ClientMode, string> = {
   fleet: "Автопарк",
-  personal: "Частник",
+  personal: "Основной",
 };
 
 export function ClientTopbar({
@@ -35,9 +33,7 @@ export function ClientTopbar({
   items,
   userEmail,
   mode,
-  availableModes,
   theme,
-  onSelectMode,
   onToggleTheme,
   onToggleSidebar,
   onLogout,
@@ -58,6 +54,7 @@ export function ClientTopbar({
           ☰
         </button>
         <div className="neftc-topbar__title">
+          <div className="neftc-topbar__title-eyebrow">NEFT platform</div>
           <div className="neftc-topbar__title-main">{title}</div>
           <div className="neftc-topbar__title-subtitle">{sectionLabel}</div>
         </div>
@@ -77,23 +74,9 @@ export function ClientTopbar({
         <button type="button" className="neftc-pill" onClick={onToggleTheme}>
           Тема: {themeLabel}
         </button>
-        {availableModes.length > 1 ? (
-          <label className="neftc-pill" style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-            Режим:
-            <select
-              aria-label="Режим клиента"
-              value={mode}
-              onChange={(event) => onSelectMode(event.target.value as ClientMode)}
-              className="neft-input"
-            >
-              {availableModes.map((item) => (
-                <option key={item} value={item}>
-                  {MODE_LABELS[item]}
-                </option>
-              ))}
-            </select>
-          </label>
-        ) : null}
+        <span className="neftc-pill" data-testid="client-mode-indicator">
+          Контур: {modeLabel}
+        </span>
         <div className="neftc-topbar__profile">
           <div className="neftc-topbar__profile-meta">
             <div className="neftc-topbar__profile-name">{userEmail ?? "user@neft.app"}</div>

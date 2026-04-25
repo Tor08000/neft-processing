@@ -2,20 +2,28 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app.api.dependencies.client import client_portal_user
+from app.main import app
 from app.domains.documents.models import DocumentDirection
 from app.domains.documents.schemas import DocumentDetailsResponse, DocumentFileOut, DocumentListItem, DocumentsListResponse
-from app.main import app
 from app.routers.client_documents_v1 import _service
+
+
+@pytest.fixture(autouse=True)
+def _allow_prod_mock_guardrails(monkeypatch):
+    monkeypatch.setenv("ALLOW_MOCK_PROVIDERS_IN_PROD", "1")
 
 
 class FakeDocumentsService:
     def __init__(self, items: list[DocumentListItem]):
         self._items = items
 
-    def list_documents(self, *, client_id: str, direction: DocumentDirection, status, q, limit, offset):
+    def list_documents(self, *, client_id: str, direction: DocumentDirection, status, q, limit, offset, date_from=None, date_to=None):
+        if client_id != "client-a":
+            return DocumentsListResponse(items=[], total=0, limit=limit, offset=offset)
         filtered = [item for item in self._items if item.direction == direction.value]
         if q:
             q_lower = q.lower()
@@ -58,6 +66,9 @@ class FakeDocumentsService:
                     ],
                 )
         return None
+
+    def get_document_with_files(self, *, client_id: str, document_id: str):
+        return self.get_document(client_id=client_id, document_id=document_id)
 
 
 def _doc(doc_id: str, direction: str, title: str, number: str | None = None) -> DocumentListItem:

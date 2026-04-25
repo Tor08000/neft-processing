@@ -6,28 +6,28 @@ from pathlib import Path
 from uuid import uuid4
 
 import pytest
-from sqlalchemy import create_engine
-from sqlalchemy.orm import Session, sessionmaker
-from sqlalchemy.pool import StaticPool
+from sqlalchemy.orm import Session
 
-from app.db import Base
 from app.integrations.fuel.jobs import poll_provider
 from app.integrations.fuel.models import (
     FuelProviderAuthType,
     FuelProviderConnection,
     FuelProviderConnectionStatus,
+    FuelProviderRawEvent,
 )
 from app.integrations.fuel.providers.virtual_network.store import VirtualNetworkStore
-from app.models.cases import Case, CaseComment, CaseEvent, CaseEventType, CaseQueue, CaseSnapshot, CaseStatus
-from app.models.decision_memory import DecisionMemoryRecord
+from app.models.cases import Case
+from app.models.fleet import FuelCardGroupMember
 from app.models.fuel import (
     FleetActionBreachKind,
     FleetActionPolicy,
     FleetActionPolicyAction,
+    FleetPolicyExecution,
     FleetActionPolicyScopeType,
     FleetActionTriggerType,
     FleetNotificationOutbox,
     FleetNotificationSeverity,
+    FuelCardStatusEvent,
     FuelAnomaly,
     FuelAnomalyType,
     FuelCard,
@@ -38,9 +38,45 @@ from app.models.fuel import (
     FuelLimitType,
     FuelNetwork,
     FuelNetworkStatus,
+    FuelProvider,
     FuelStation,
     FuelStationStatus,
     FuelTransaction,
+    FuelLimitBreach,
+    FuelMerchant,
+    FuelIngestJob,
+)
+from app.tests._fuel_runtime_test_harness import FUEL_AUTHORIZE_TEST_TABLES, fuel_runtime_session_context
+from app.tests._scoped_router_harness import CASES_TEST_TABLES
+
+
+def _dedupe_tables(*tables):
+    seen: set[str] = set()
+    ordered = []
+    for table in tables:
+        key = str(table.key)
+        if key in seen:
+            continue
+        seen.add(key)
+        ordered.append(table)
+    return tuple(ordered)
+
+
+VIRTUAL_FUEL_NETWORK_TEST_TABLES = _dedupe_tables(
+    *FUEL_AUTHORIZE_TEST_TABLES,
+    *CASES_TEST_TABLES,
+    FuelProviderConnection.__table__,
+    FuelProviderRawEvent.__table__,
+    FuelProvider.__table__,
+    FuelMerchant.__table__,
+    FuelIngestJob.__table__,
+    FuelCardGroupMember.__table__,
+    FuelCardStatusEvent.__table__,
+    FuelLimitBreach.__table__,
+    FleetActionPolicy.__table__,
+    FleetPolicyExecution.__table__,
+    FleetNotificationOutbox.__table__,
+    FuelAnomaly.__table__,
 )
 
 CONFIG_TEMPLATE = """
@@ -63,18 +99,8 @@ prices:
 
 @pytest.fixture()
 def db_session() -> Session:
-    engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool).execution_options(
-        schema_translate_map={"bi": None},
-    )
-    Base.metadata.create_all(bind=engine)
-    SessionLocal = sessionmaker(autocommit=False, autoflush=False, expire_on_commit=False, bind=engine)
-    session = SessionLocal()
-    try:
+    with fuel_runtime_session_context(tables=VIRTUAL_FUEL_NETWORK_TEST_TABLES) as session:
         yield session
-    finally:
-        session.close()
-        Base.metadata.drop_all(bind=engine)
-        engine.dispose()
 
 
 @pytest.fixture()

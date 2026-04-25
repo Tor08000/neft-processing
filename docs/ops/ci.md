@@ -18,7 +18,8 @@ Release pipeline must enforce the following order. Any failure blocks release ta
 5. **Smoke (backend)**
    - `scripts\smoke_legal_gate.cmd`
    - `scripts\smoke_billing_v14.cmd`
-   - `scripts\smoke_edo_sbis_send.cmd`
+   - `scripts\smoke_edo_sbis_send.cmd` (`PASS` requires explicit external EDO env; disabled local runs must report `[SKIP]`, never fake-green)
+   - `scripts\smoke_admin_explain_e2e.cmd` (self-seeds a partner finance payout and verifies settlement snapshot + audit explain)
    - `scripts\smoke_fuel_ingest_batch.cmd`
 6. **BI smoke (if enabled)**
    - `scripts\smoke_bi_ops_dashboard.cmd`

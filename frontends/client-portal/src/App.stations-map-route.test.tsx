@@ -9,7 +9,7 @@ vi.mock("./pages/stations/StationsMapPage", () => ({
 }));
 
 const session: AuthSession = {
-  token: "token-1",
+  token: "test.header.payload",
   email: "client@demo.test",
   roles: ["CLIENT_USER"],
   subjectType: "CLIENT",
@@ -20,11 +20,13 @@ const session: AuthSession = {
 const emptyResponse = new Response(JSON.stringify({ items: [] }), { status: 200 });
 
 beforeEach(() => {
+  vi.stubEnv("VITE_DEMO_MODE", "true");
   vi.stubGlobal("fetch", vi.fn(() => Promise.resolve(emptyResponse)) as unknown as typeof fetch);
 });
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
   vi.restoreAllMocks();
 });
 

@@ -11,7 +11,7 @@ from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
-from alembic_helpers import ensure_pg_enum, ensure_pg_enum_value, table_exists
+from alembic_helpers import create_index_if_not_exists, ensure_pg_enum, ensure_pg_enum_value, table_exists
 from db.schema import resolve_db_schema
 
 SCHEMA = resolve_db_schema().schema
@@ -84,8 +84,8 @@ def upgrade() -> None:
             sa.UniqueConstraint("client_id", "plate_number", name="uq_fleet_vehicle_plate_client"),
             schema=SCHEMA,
         )
-        op.create_index("ix_fleet_vehicles_client_id", "fleet_vehicles", ["client_id"], schema=SCHEMA)
-        op.create_index("ix_fleet_vehicles_tenant_id", "fleet_vehicles", ["tenant_id"], schema=SCHEMA)
+        create_index_if_not_exists(bind, "ix_fleet_vehicles_client_id", "fleet_vehicles", ["client_id"], schema=SCHEMA)
+        create_index_if_not_exists(bind, "ix_fleet_vehicles_tenant_id", "fleet_vehicles", ["tenant_id"], schema=SCHEMA)
 
     if not table_exists(bind, "fleet_drivers", schema=SCHEMA):
         op.create_table(
@@ -109,8 +109,8 @@ def upgrade() -> None:
             sa.PrimaryKeyConstraint("id"),
             schema=SCHEMA,
         )
-        op.create_index("ix_fleet_drivers_client_id", "fleet_drivers", ["client_id"], schema=SCHEMA)
-        op.create_index("ix_fleet_drivers_tenant_id", "fleet_drivers", ["tenant_id"], schema=SCHEMA)
+        create_index_if_not_exists(bind, "ix_fleet_drivers_client_id", "fleet_drivers", ["client_id"], schema=SCHEMA)
+        create_index_if_not_exists(bind, "ix_fleet_drivers_tenant_id", "fleet_drivers", ["tenant_id"], schema=SCHEMA)
 
     if not table_exists(bind, "fuel_card_groups", schema=SCHEMA):
         op.create_table(
@@ -133,8 +133,8 @@ def upgrade() -> None:
             sa.PrimaryKeyConstraint("id"),
             schema=SCHEMA,
         )
-        op.create_index("ix_fuel_card_groups_client_id", "fuel_card_groups", ["client_id"], schema=SCHEMA)
-        op.create_index("ix_fuel_card_groups_tenant_id", "fuel_card_groups", ["tenant_id"], schema=SCHEMA)
+        create_index_if_not_exists(bind, "ix_fuel_card_groups_client_id", "fuel_card_groups", ["client_id"], schema=SCHEMA)
+        create_index_if_not_exists(bind, "ix_fuel_card_groups_tenant_id", "fuel_card_groups", ["tenant_id"], schema=SCHEMA)
 
     if not table_exists(bind, "fuel_cards", schema=SCHEMA):
         op.create_table(
@@ -164,9 +164,9 @@ def upgrade() -> None:
             sa.UniqueConstraint("tenant_id", "card_token", name="uq_fuel_cards_tenant_token"),
             schema=SCHEMA,
         )
-        op.create_index("ix_fuel_cards_card_token", "fuel_cards", ["card_token"], schema=SCHEMA)
-        op.create_index("ix_fuel_cards_client_id", "fuel_cards", ["client_id"], schema=SCHEMA)
-        op.create_index("ix_fuel_cards_tenant_id", "fuel_cards", ["tenant_id"], schema=SCHEMA)
+        create_index_if_not_exists(bind, "ix_fuel_cards_card_token", "fuel_cards", ["card_token"], schema=SCHEMA)
+        create_index_if_not_exists(bind, "ix_fuel_cards_client_id", "fuel_cards", ["client_id"], schema=SCHEMA)
+        create_index_if_not_exists(bind, "ix_fuel_cards_tenant_id", "fuel_cards", ["tenant_id"], schema=SCHEMA)
 
     if not table_exists(bind, "fuel_networks", schema=SCHEMA):
         op.create_table(
@@ -188,7 +188,7 @@ def upgrade() -> None:
             sa.PrimaryKeyConstraint("id"),
             schema=SCHEMA,
         )
-        op.create_index("ix_fuel_networks_provider_code", "fuel_networks", ["provider_code"], schema=SCHEMA, unique=True)
+        create_index_if_not_exists(bind, "ix_fuel_networks_provider_code", "fuel_networks", ["provider_code"], schema=SCHEMA, unique=True)
 
     if not table_exists(bind, "fuel_stations", schema=SCHEMA):
         op.create_table(
@@ -218,8 +218,8 @@ def upgrade() -> None:
             sa.UniqueConstraint("network_id", "station_code", name="uq_fuel_station_code_network"),
             schema=SCHEMA,
         )
-        op.create_index("ix_fuel_stations_network_id", "fuel_stations", ["network_id"], schema=SCHEMA)
-        op.create_index("ix_fuel_stations_station_code", "fuel_stations", ["station_code"], schema=SCHEMA)
+        create_index_if_not_exists(bind, "ix_fuel_stations_network_id", "fuel_stations", ["network_id"], schema=SCHEMA)
+        create_index_if_not_exists(bind, "ix_fuel_stations_station_code", "fuel_stations", ["station_code"], schema=SCHEMA)
 
     if not table_exists(bind, "fuel_transactions", schema=SCHEMA):
         op.create_table(
@@ -276,31 +276,36 @@ def upgrade() -> None:
             sa.PrimaryKeyConstraint("id"),
             schema=SCHEMA,
         )
-        op.create_index(
+        create_index_if_not_exists(
+            bind,
             "ix_fuel_transactions_client_time",
             "fuel_transactions",
             ["client_id", "occurred_at"],
             schema=SCHEMA,
         )
-        op.create_index(
+        create_index_if_not_exists(
+            bind,
             "ix_fuel_transactions_card_time",
             "fuel_transactions",
             ["card_id", "occurred_at"],
             schema=SCHEMA,
         )
-        op.create_index(
+        create_index_if_not_exists(
+            bind,
             "ix_fuel_transactions_vehicle_time",
             "fuel_transactions",
             ["vehicle_id", "occurred_at"],
             schema=SCHEMA,
         )
-        op.create_index(
+        create_index_if_not_exists(
+            bind,
             "ix_fuel_transactions_status_time",
             "fuel_transactions",
             ["status", "occurred_at"],
             schema=SCHEMA,
         )
-        op.create_index(
+        create_index_if_not_exists(
+            bind,
             "ix_fuel_transactions_external_ref",
             "fuel_transactions",
             ["external_ref"],
@@ -355,13 +360,15 @@ def upgrade() -> None:
             sa.PrimaryKeyConstraint("id"),
             schema=SCHEMA,
         )
-        op.create_index(
+        create_index_if_not_exists(
+            bind,
             "ix_fuel_limits_scope_active",
             "fuel_limits",
             ["tenant_id", "client_id", "scope_type", "scope_id", "active"],
             schema=SCHEMA,
         )
-        op.create_index(
+        create_index_if_not_exists(
+            bind,
             "ix_fuel_limits_validity",
             "fuel_limits",
             ["valid_from", "valid_to"],

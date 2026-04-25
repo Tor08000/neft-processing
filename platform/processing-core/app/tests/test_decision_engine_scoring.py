@@ -13,9 +13,9 @@ def test_scoring_rules_large_payment():
     )
     result = DecisionEngine().evaluate(ctx)
 
-    assert result.risk_level == RiskLevel.HIGH
+    assert result.risk_level == RiskLevel.VERY_HIGH
     assert result.outcome == DecisionOutcome.DECLINE
-    assert "amount_exceeds_single_limit" in result.explain["reason_codes"]
+    assert "amount_exceeds_single_limit" in result.explain["factors"]
 
 
 def test_scoring_rules_blocked_client():

@@ -34,6 +34,7 @@ type ClientContextValue = {
 
 const ClientContext = createContext<ClientContextValue | undefined>(undefined);
 const STORAGE_KEY = "neft_client_portal";
+const DEBUG_CLIENT_CONTEXT = Boolean(import.meta.env.DEV && import.meta.env.VITE_CLIENT_DEBUG_CONTEXT === "true");
 
 const readStoredPortal = (): PortalMeResponse | null => {
   const raw = localStorage.getItem(STORAGE_KEY);
@@ -214,7 +215,7 @@ export function ClientProvider({ children }: { children: React.ReactNode }) {
   const [portalState, setPortalState] = useState<PortalState>("LOADING");
 
   const loadClient = useCallback(async () => {
-    if (import.meta.env.DEV) {
+    if (DEBUG_CLIENT_CONTEXT) {
       console.info("[client-context:refresh] called", { has_user: Boolean(user) });
     }
     if (!user) {
@@ -230,7 +231,7 @@ export function ClientProvider({ children }: { children: React.ReactNode }) {
       setError(null);
       setPortalState("READY");
       persistPortal(demoPortal);
-      if (import.meta.env.DEV) {
+      if (DEBUG_CLIENT_CONTEXT) {
         console.info("[client-context:refresh] resolved", { portal_state: "READY", access_state: demoPortal.access_state, source: "demo" });
       }
       return;
@@ -243,13 +244,13 @@ export function ClientProvider({ children }: { children: React.ReactNode }) {
       setClient(data);
       setPortalState("READY");
       persistPortal(data);
-      if (import.meta.env.DEV) {
+      if (DEBUG_CLIENT_CONTEXT) {
         console.info("[client-context:refresh] resolved", { portal_state: "READY", access_state: data.access_state ?? null });
       }
     } catch (err) {
       if (err instanceof UnauthorizedError) {
         setPortalState("AUTH_REQUIRED");
-        if (import.meta.env.DEV) {
+        if (DEBUG_CLIENT_CONTEXT) {
           console.info("[client-context:refresh] resolved", { portal_state: "AUTH_REQUIRED", access_state: null });
         }
         logout();
@@ -258,7 +259,7 @@ export function ClientProvider({ children }: { children: React.ReactNode }) {
       if (err instanceof ApiError && err.status === 403) {
         setError({ kind: "ENTITLEMENT", status: 403, path: PORTAL_ME_URL, message: "forbidden" });
         setPortalState("FORBIDDEN");
-        if (import.meta.env.DEV) {
+        if (DEBUG_CLIENT_CONTEXT) {
           console.info("[client-context:refresh] resolved", { portal_state: "FORBIDDEN", access_state: null });
         }
         return;
@@ -269,7 +270,7 @@ export function ClientProvider({ children }: { children: React.ReactNode }) {
         if (cached) {
           setClient(cached);
           setPortalState("READY");
-          if (import.meta.env.DEV) {
+          if (DEBUG_CLIENT_CONTEXT) {
             console.info("[client-context:refresh] resolved", { portal_state: "READY", access_state: cached.access_state ?? null, source: "cache" });
           }
           return;
@@ -279,7 +280,7 @@ export function ClientProvider({ children }: { children: React.ReactNode }) {
       if (cached) {
         setClient(cached);
         setPortalState("READY");
-        if (import.meta.env.DEV) {
+        if (DEBUG_CLIENT_CONTEXT) {
           console.info("[client-context:refresh] resolved", { portal_state: "READY", access_state: cached.access_state ?? null, source: "cache" });
         }
         return;
@@ -287,7 +288,7 @@ export function ClientProvider({ children }: { children: React.ReactNode }) {
       console.error("Не удалось загрузить профиль клиента", err);
       setError(resolved.error);
       setPortalState(resolved.portalState);
-      if (import.meta.env.DEV) {
+      if (DEBUG_CLIENT_CONTEXT) {
         console.info("[client-context:refresh] resolved", { portal_state: resolved.portalState, access_state: null });
       }
     } finally {

@@ -1,9 +1,12 @@
-import { render, screen, waitFor } from "@testing-library/react";
+﻿import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { I18nextProvider } from "react-i18next";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { App } from "../App";
+import { AuthProvider } from "../auth/AuthContext";
 import type { AuthSession } from "../api/types";
+import i18n from "../i18n";
+import { MarketplaceOffersPage } from "./MarketplaceOffersPage";
 import type { MarketplaceOffer } from "../types/marketplace";
 
 const session: AuthSession = {
@@ -14,6 +17,12 @@ const session: AuthSession = {
   partnerId: "partner-1",
   expiresAt: Date.now() + 1000 * 60 * 60,
 };
+
+const jsonResponse = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), {
+    status,
+    headers: { "content-type": "application/json" },
+  });
 
 const buildOffer = (overrides: Partial<MarketplaceOffer> = {}): MarketplaceOffer => ({
   id: "offer-1",
@@ -50,7 +59,7 @@ const mockFetchFactory = () => {
   return (url: string, init?: RequestInit) => {
     if (url.includes("/marketplace/partner/offers") && init?.method === "POST" && url.endsWith(":submit")) {
       items[0] = { ...items[0], status: "PENDING_REVIEW" };
-      return new Response(JSON.stringify(items[0]), { status: 200 });
+      return jsonResponse(items[0]);
     }
     if (url.includes("/marketplace/partner/offers") && init?.method === "POST") {
       const payload = init?.body ? (JSON.parse(init.body as string) as Partial<MarketplaceOffer>) : {};
@@ -61,24 +70,35 @@ const mockFetchFactory = () => {
         price_amount: payload.price_amount ?? 1200,
       });
       items.push(created);
-      return new Response(JSON.stringify(created), { status: 201 });
+      return jsonResponse(created, 201);
     }
     if (url.includes("/marketplace/partner/offers/") && !url.includes(":submit") && init?.method === "PATCH") {
       const payload = init?.body ? (JSON.parse(init.body as string) as Partial<MarketplaceOffer>) : {};
       items[0] = { ...items[0], ...payload } as MarketplaceOffer;
-      return new Response(JSON.stringify(items[0]), { status: 200 });
+      return jsonResponse(items[0]);
     }
     if (url.includes("/marketplace/partner/offers/") && !url.endsWith(":submit")) {
       const offerId = url.split("/").pop() ?? "offer-1";
       const offer = items.find((item) => item.id === offerId) ?? items[0];
-      return new Response(JSON.stringify(offer), { status: 200 });
+      return jsonResponse(offer);
     }
     if (url.includes("/marketplace/partner/offers")) {
-      return new Response(JSON.stringify({ items, total: items.length, limit: 50, offset: 0 }), { status: 200 });
+      return jsonResponse({ items, total: items.length, limit: 50, offset: 0 });
     }
-    return new Response(JSON.stringify({ items: [] }), { status: 200 });
+    return jsonResponse({ items: [] });
   };
 };
+
+const renderPage = () =>
+  render(
+    <I18nextProvider i18n={i18n}>
+      <AuthProvider initialSession={session}>
+        <MemoryRouter initialEntries={["/marketplace/offers"]}>
+          <MarketplaceOffersPage />
+        </MemoryRouter>
+      </AuthProvider>
+    </I18nextProvider>,
+  );
 
 beforeEach(() => {
   const mockFetch = mockFetchFactory();
@@ -96,24 +116,17 @@ afterEach(() => {
 
 describe("MarketplaceOffersPage", () => {
   it("renders offers list", async () => {
-    render(
-      <MemoryRouter initialEntries={["/marketplace/offers"]}>
-        <App initialSession={session} />
-      </MemoryRouter>,
-    );
+    renderPage();
 
-    expect(await screen.findByText("Пакет мойки")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Офферы" })).toBeInTheDocument();
+    expect(screen.getByText("Пакет мойки")).toBeInTheDocument();
   });
 
   it("creates a draft offer", async () => {
     const user = userEvent.setup();
-    render(
-      <MemoryRouter initialEntries={["/marketplace/offers"]}>
-        <App initialSession={session} />
-      </MemoryRouter>,
-    );
+    renderPage();
 
-    await screen.findByText("Пакет мойки");
+    await screen.findByRole("heading", { name: "Офферы" });
 
     await user.type(screen.getByLabelText("ID предмета"), "product-new");
     await user.type(screen.getByLabelText("Цена"), "1500");
@@ -124,14 +137,9 @@ describe("MarketplaceOffersPage", () => {
 
   it("submits offer for review", async () => {
     const user = userEvent.setup();
-    render(
-      <MemoryRouter initialEntries={["/marketplace/offers"]}>
-        <App initialSession={session} />
-      </MemoryRouter>,
-    );
+    renderPage();
 
-    await screen.findByText("Пакет мойки");
-
+    await screen.findByRole("heading", { name: "Офферы" });
     await user.click(screen.getByRole("button", { name: "Отправить на модерацию" }));
 
     await waitFor(() => {

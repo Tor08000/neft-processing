@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "playwright/test";
 
 test("client outbound documents smoke: create + upload + download button", async ({ page }) => {
   await page.goto("/client/documents");

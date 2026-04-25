@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.api.dependencies.admin import require_admin_user
+from app.api.dependencies.admin_capability import require_admin_capability
 from app.db import get_db
 from app.models.client_invitations import ClientInvitation
 from app.schemas.client_portal_v1 import ClientInvitationActionResponse, ClientInvitationsResponse, ClientInvitationSummary
@@ -15,19 +15,28 @@ from app.schemas.client_portal_v1 import ClientInvitationActionResponse, ClientI
 router = APIRouter(prefix="/clients", tags=["admin"])
 
 
-@router.get("/{client_id}/invitations", response_model=ClientInvitationsResponse)
-def list_client_invitations(
-    client_id: str,
-    status: str = Query(default="ALL"),
-    q: str | None = Query(default=None),
-    sort: str = Query(default="created_at_desc"),
-    limit: int = Query(default=50, ge=1, le=200),
-    offset: int = Query(default=0, ge=0),
-    _: dict = Depends(require_admin_user),
-    db: Session = Depends(get_db),
+def _normalize_utc(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    if value.tzinfo is None or value.utcoffset() is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+def _list_invitations(
+    db: Session,
+    *,
+    client_id: str | None,
+    status: str,
+    q: str | None,
+    sort: str,
+    limit: int,
+    offset: int,
 ) -> ClientInvitationsResponse:
     now = datetime.now(timezone.utc)
-    query = db.query(ClientInvitation).filter(ClientInvitation.client_id == client_id)
+    query = db.query(ClientInvitation)
+    if client_id:
+        query = query.filter(ClientInvitation.client_id == client_id)
 
     status_upper = status.upper().strip()
     if status_upper not in {"ALL", "PENDING", "ACCEPTED", "REVOKED", "EXPIRED"}:
@@ -60,11 +69,17 @@ def list_client_invitations(
                 email=item.email,
                 role=(item.roles or [None])[0],
                 roles=item.roles or [],
-                status="EXPIRED" if item.status == "PENDING" and item.expires_at and item.expires_at < now else str(item.status),
-                expires_at=item.expires_at,
+                status=(
+                    "EXPIRED"
+                    if item.status == "PENDING"
+                    and _normalize_utc(item.expires_at)
+                    and _normalize_utc(item.expires_at) < now
+                    else str(item.status)
+                ),
+                expires_at=_normalize_utc(item.expires_at),
                 resent_count=int(item.resent_count or 0),
-                last_sent_at=item.last_sent_at,
-                created_at=item.created_at,
+                last_sent_at=_normalize_utc(item.last_sent_at),
+                created_at=_normalize_utc(item.created_at),
             )
             for item in rows
         ],
@@ -72,10 +87,54 @@ def list_client_invitations(
     )
 
 
+@router.get("/invitations", response_model=ClientInvitationsResponse)
+def list_all_client_invitations(
+    client_id: str | None = Query(default=None),
+    status: str = Query(default="ALL"),
+    q: str | None = Query(default=None),
+    sort: str = Query(default="created_at_desc"),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    _: dict = Depends(require_admin_capability("onboarding")),
+    db: Session = Depends(get_db),
+) -> ClientInvitationsResponse:
+    return _list_invitations(
+        db,
+        client_id=client_id,
+        status=status,
+        q=q,
+        sort=sort,
+        limit=limit,
+        offset=offset,
+    )
+
+
+@router.get("/{client_id}/invitations", response_model=ClientInvitationsResponse)
+def list_client_invitations(
+    client_id: str,
+    status: str = Query(default="ALL"),
+    q: str | None = Query(default=None),
+    sort: str = Query(default="created_at_desc"),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    _: dict = Depends(require_admin_capability("onboarding")),
+    db: Session = Depends(get_db),
+) -> ClientInvitationsResponse:
+    return _list_invitations(
+        db,
+        client_id=client_id,
+        status=status,
+        q=q,
+        sort=sort,
+        limit=limit,
+        offset=offset,
+    )
+
+
 @router.post("/invitations/{invitation_id}/resend", response_model=ClientInvitationActionResponse)
 def admin_resend_invitation(
     invitation_id: str,
-    _: dict = Depends(require_admin_user),
+    _: dict = Depends(require_admin_capability("onboarding", "operate")),
     db: Session = Depends(get_db),
 ) -> ClientInvitationActionResponse:
     invitation = db.query(ClientInvitation).filter(ClientInvitation.id == invitation_id).one_or_none()
@@ -102,7 +161,7 @@ def admin_resend_invitation(
 @router.post("/invitations/{invitation_id}/revoke", response_model=ClientInvitationActionResponse)
 def admin_revoke_invitation(
     invitation_id: str,
-    token: dict = Depends(require_admin_user),
+    token: dict = Depends(require_admin_capability("onboarding", "operate")),
     db: Session = Depends(get_db),
 ) -> ClientInvitationActionResponse:
     invitation = db.query(ClientInvitation).filter(ClientInvitation.id == invitation_id).one_or_none()

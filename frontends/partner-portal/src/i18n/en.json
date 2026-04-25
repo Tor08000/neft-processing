@@ -3,7 +3,9 @@
     "title": "Partner Portal",
     "partnerLabel": "Partner {id}",
     "partnerFallback": "Partner workspace",
-    "signedInAs": "Signed in as"
+    "signedInAs": "Signed in as",
+    "subscriptionDraft": "Subscription draft: {plan} · {state}",
+    "onboardingDisabled": "Onboarding is disabled by the administrator."
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -28,7 +30,12 @@
     "marketplaceProducts": "My products",
     "marketplaceOffers": "Offers",
     "supportRequests": "Requests",
-    "settings": "Settings"
+    "settings": "Settings",
+    "serviceRequests": "Service requests",
+    "partnerProfile": "Partner profile",
+    "locations": "Locations",
+    "users": "Users",
+    "terms": "Terms"
   },
   "common": {
     "notAvailable": "—",
@@ -94,9 +101,18 @@
     "subtitle": "All partner requests linked to orders, payouts, and integrations.",
     "emptyTitle": "No requests yet",
     "emptyDescription": "Create a request if you need support with orders or integrations.",
+    "detailNotFoundTitle": "Request not found",
+    "detailNotFoundDescription": "Open the request from the support inbox to inspect its current status and timeline.",
+    "timelineEmptyTitle": "No updates yet",
+    "timelineEmptyDescription": "The support timeline will appear here after the request is reviewed or reassigned.",
     "fields": {
       "title": "Title",
-      "description": "Description"
+      "description": "Description",
+      "subjectType": "Subject type",
+      "subject": "Subject",
+      "createdAt": "Date",
+      "created": "Created",
+      "updated": "Updated"
     },
     "actions": {
       "submit": "Submit request"
@@ -109,7 +125,19 @@
       "openRequest": "Open request"
     },
     "errors": {
-      "createFailed": "Failed to create request"
+      "createFailed": "Failed to create request",
+      "loadFailed": "Failed to load request"
+    },
+    "list": {
+      "filtersTitle": "Support filters",
+      "filtersDescription": "This list remains the canonical partner support/case read surface without hidden workflows or broad empty tabs.",
+      "filteredTitle": "No requests for current filters",
+      "filteredDescription": "The filters narrowed the list too much. Reset them to return to the full request inbox.",
+      "resetFilters": "Reset filters",
+      "backToDashboard": "Back to dashboard"
+    },
+    "sections": {
+      "timeline": "Timeline"
     }
   },
   "emptyStates": {
@@ -298,6 +326,311 @@
       "validation": "Check required fields.",
       "confirmSubmit": "Submit offer for moderation?",
       "confirmArchive": "Archive offer?"
+    },
+    "orderDetails": {
+      "title": "Order {{id}}",
+      "subtitle": "Incoming marketplace order",
+      "loading": "Loading order...",
+      "fields": {
+        "status": "Order status",
+        "client": "Client",
+        "created": "Created",
+        "amount": "Amount",
+        "responseDue": "Response due in",
+        "completionDue": "Completion due in"
+      },
+      "actions": {
+        "support": "Contact support",
+        "back": "Back to list",
+        "confirm": "Confirm",
+        "decline": "Decline",
+        "uploadProof": "Upload proof",
+        "complete": "Complete",
+        "fail": "Fail"
+      },
+      "lifecycle": {
+        "title": "Order lifecycle",
+        "deniedTitle": "Actions unavailable",
+        "deniedDescription": "Your role cannot manage this order."
+      },
+      "tabs": {
+        "timeline": "Timeline",
+        "incidents": "Incidents",
+        "sla": "SLA",
+        "payouts": "Payouts"
+      },
+      "incidents": {
+        "loading": "Loading incidents...",
+        "emptyTitle": "No incidents yet",
+        "emptyDescription": "Order-linked incidents will appear here once the canonical case contour receives them.",
+        "errorTitle": "Unable to load incidents",
+        "table": {
+          "id": "Case",
+          "title": "Title",
+          "status": "Status",
+          "queue": "Queue",
+          "source": "Source",
+          "updated": "Updated"
+        }
+      },
+      "sla": {
+        "loading": "Loading SLA...",
+        "emptyTitle": "No SLA obligations",
+        "emptyDescription": "SLA obligations will appear after activation.",
+        "errorTitle": "Unable to load SLA",
+        "table": {
+          "metric": "Obligation",
+          "deadline": "Deadline",
+          "remaining": "Remaining",
+          "status": "Status",
+          "penalty": "Penalty"
+        }
+      },
+      "payouts": {
+        "loading": "Loading payout impact...",
+        "emptyTitle": "No settlement yet",
+        "emptyDescription": "Will appear in the next settlement period.",
+        "errorTitle": "Unable to load payout data",
+        "fields": {
+          "settlementId": "Settlement ID",
+          "status": "Status",
+          "period": "Period",
+          "netAmount": "Net amount"
+        },
+        "actions": {
+          "open": "Open settlement"
+        },
+        "frozenTitle": "Order settlement workspace is frozen",
+        "frozenDescription": "A dedicated order-level settlement page is not mounted. Use finance and support for payout-chain follow-up.",
+        "frozenNote": "The settlement breakdown above remains the current read view for this order.",
+        "openFinance": "Open finance",
+        "openSupport": "Open requests"
+      },
+      "settlement": {
+        "title": "Settlement breakdown",
+        "loading": "Loading settlement breakdown...",
+        "errorTitle": "Unable to load settlement breakdown",
+        "metrics": {
+          "gross": "Gross",
+          "fee": "Fee",
+          "penalties": "Penalties",
+          "net": "Net"
+        },
+        "penalties": {
+          "table": {
+            "type": "Type",
+            "reason": "Reason",
+            "amount": "Amount",
+            "source": "Source"
+          },
+          "actions": {
+            "support": "Open requests",
+            "sla": "SLA {{id}}"
+          }
+        },
+        "noPenaltiesTitle": "No penalties yet",
+        "noPenaltiesDescription": "If payout-chain adds deductions for this order, they will appear here.",
+        "snapshot": {
+          "finalizedAt": "Finalized at",
+          "hash": "Snapshot hash",
+          "pendingTitle": "Settlement snapshot not available",
+          "pendingDescription": "The snapshot will appear after payout-chain stores a finalized settlement read model."
+        },
+        "pendingTitle": "Settlement snapshot is not finalized yet",
+        "pendingDescription": "The order already has settlement evidence, but payout-chain has not finalized it yet. Use finance and support until the final payout state is published.",
+        "pendingActions": {
+          "openFinance": "Open finance",
+          "openSupport": "Open requests"
+        },
+        "emptyTitle": "No settlement data",
+        "emptyDescription": "Settlement breakdown becomes available after the order enters the payout-chain."
+      },
+      "notifications": {
+        "confirmed": "Order confirmed.",
+        "declined": "Order declined.",
+        "proofUploaded": "Proof uploaded.",
+        "completed": "Order completed.",
+        "failed": "Order failed."
+      },
+      "errors": {
+        "loadTitle": "Unable to load order",
+        "loadFailed": "Unable to load order",
+        "notFound": "Order not found",
+        "timelineFailed": "Unable to load timeline",
+        "incidentsFailed": "Unable to load incidents",
+        "slaFailed": "Unable to load SLA",
+        "payoutFailed": "Unable to load payout data",
+        "actionFailed": "Action failed"
+      },
+      "supportTitle": "Issue with order {{id}}",
+      "proofs": {
+        "title": "Proofs",
+        "empty": "No proofs uploaded yet."
+      },
+      "modals": {
+        "close": "Close",
+        "cancel": "Cancel",
+        "confirm": {
+          "title": "Confirm order",
+          "description": "Confirm that you can fulfill this order."
+        },
+        "decline": {
+          "title": "Decline order",
+          "description": "Provide a reason and comment for decline.",
+          "reason": "Decline reason",
+          "reasonPlaceholder": "e.g., OUT_OF_STOCK",
+          "comment": "Comment",
+          "commentPlaceholder": "Provide details for the client"
+        },
+        "proof": {
+          "title": "Upload proof",
+          "description": "Attach a photo or document as proof of completion.",
+          "kind": "Proof type",
+          "attachment": "Attachment ID (optional)",
+          "attachmentPlaceholder": "Leave empty to auto-generate",
+          "note": "Note",
+          "notePlaceholder": "Optional comment",
+          "kinds": {
+            "photo": "Photo",
+            "pdf": "PDF",
+            "act": "Act",
+            "check": "Receipt",
+            "other": "Other"
+          }
+        },
+        "complete": {
+          "title": "Complete order",
+          "description": "Provide a completion summary.",
+          "summary": "Summary",
+          "placeholder": "Completion summary"
+        },
+        "fail": {
+          "title": "Fail order",
+          "description": "Provide a failure reason.",
+          "reason": "Reason",
+          "placeholder": "Describe the issue"
+        }
+      }
+    },
+    "servicesCatalogPage": {
+      "title": "Services and products catalog",
+      "subtitle": "Marketplace partner catalog",
+      "empty": {
+        "filteredTitle": "No results for current filters",
+        "filteredDescription": "Adjust the filters or reset the search."
+      },
+      "filters": {
+        "search": "Search",
+        "searchPlaceholder": "Title, description",
+        "kind": "Type",
+        "kindOptions": {
+          "service": "Service",
+          "product": "Product"
+        },
+        "status": "Status",
+        "statusOptions": {
+          "draft": "Draft",
+          "active": "Active",
+          "disabled": "Disabled",
+          "archived": "Archived"
+        },
+        "category": "Category",
+        "categoryPlaceholder": "e.g., car wash"
+      },
+      "table": {
+        "title": "Title",
+        "name": "Name",
+        "kind": "Type",
+        "category": "Category",
+        "status": "Status",
+        "price": "Price",
+        "activeOffers": "Active offers",
+        "updatedAt": "Updated",
+        "actions": "Actions"
+      },
+      "actions": {
+        "disable": "Disable",
+        "activate": "Activate",
+        "resetFilters": "Reset filters"
+      },
+      "pagination": {
+        "prev": "Back",
+        "next": "Next",
+        "page": "Page"
+      },
+      "errors": {
+        "loadFailed": "Unable to load catalog",
+        "requiredFields": "Fill in required fields",
+        "saveFailed": "Unable to save item",
+        "updateStatusFailed": "Unable to update status"
+      },
+      "notifications": {
+        "saved": "Changes saved",
+        "created": "Catalog item created",
+        "disabled": "Catalog item disabled",
+        "activated": "Catalog item activated"
+      },
+      "import": {
+        "title": "Catalog import",
+        "subtitle": "Upload a CSV file to bulk add services.",
+        "unavailableTitle": "Import unavailable",
+        "unavailableDescription": "Available only for PARTNER_OWNER or PARTNER_SERVICE_MANAGER.",
+        "csvFile": "CSV file",
+        "chooseFile": "Choose file",
+        "fileNotChosen": "No file chosen",
+        "mode": "Mode",
+        "modes": {
+          "create": "Create",
+          "update": "Update",
+          "upsert": "Create or update"
+        },
+        "preview": "Preview",
+        "csvError": "CSV error:",
+        "previewSummary": "Preview summary",
+        "rowsParsed": "Rows parsed: {count}",
+        "willCreate": "Will create: {count}",
+        "willUpdate": "Will update: {count}",
+        "errorsCount": "Errors count: {count}",
+        "errorsTitle": "Import errors",
+        "table": {
+          "row": "Row",
+          "description": "Description"
+        },
+        "sampleTitle": "Sample rows (first 20)",
+        "apply": "Apply import",
+        "resultTitle": "Import result",
+        "resultCreated": "Created: {count}",
+        "resultUpdated": "Updated: {count}",
+        "resultSkipped": "Skipped: {count}",
+        "refreshList": "Refresh list",
+        "csvFormat": "CSV format",
+        "requiredFields": "Required fields: kind, title, category, uom",
+        "sampleRow": "SERVICE,Service,Car wash,service,Full wash,ACTIVE",
+        "upload": "Upload",
+        "downloadTemplate": "Download template",
+        "errors": {
+          "selectCsv": "Select a CSV file",
+          "row": "Row {row}: {message}",
+          "previewFailed": "Unable to preview import",
+          "applyFailed": "Unable to apply import"
+        }
+      },
+      "modal": {
+        "editTitle": "Edit item",
+        "createTitle": "Create item",
+        "fields": {
+          "title": "Title *",
+          "kind": "Type",
+          "category": "Category",
+          "uom": "Unit of measure *",
+          "uomPlaceholder": "pcs / service / hour",
+          "description": "Description",
+          "status": "Status"
+        },
+        "actions": {
+          "saveActivate": "Save & Activate"
+        }
+      }
     }
   },
   "pricesPage": {
@@ -633,420 +966,389 @@
         "table": {
           "http": "HTTP",
           "error": "Error",
+          "deliveryError": "Delivery error",
           "latency": "Latency",
           "nextRetry": "Next retry",
           "correlationId": "Correlation ID"
+        }
       }
-    }
-  },
-  "ordersPage": {
-    "title": "Orders",
-    "filters": {
-      "period": "Period",
-      "presets": {
-        "today": "Today",
-        "7d": "7 days",
-        "30d": "30 days",
-        "custom": "Custom"
+    },
+    "ordersPage": {
+      "title": "Orders",
+      "empty": {
+        "filteredTitle": "No orders for current filters",
+        "filteredDescription": "Adjust the filters or reset them to return to the full working queue."
       },
-      "from": "From",
-      "to": "To",
-      "status": "Status",
-      "search": "Search",
-      "searchPlaceholder": "order_id, client, service",
-      "station": "Station",
-      "stationPlaceholder": "station_id",
-      "service": "Service",
-      "servicePlaceholder": "service_id",
-      "slaRisk": "SLA risk",
-      "slaRiskNear": "Near deadline"
-    },
-    "actions": {
-      "saveFilters": "Save filters"
-    },
-    "errors": {
-      "loadFailed": "Unable to load orders",
-      "apiError": "Unable to load orders"
-    },
-    "kpis": {
-      "today": "Orders today",
-      "pending": "Pending confirmation",
-      "documents": "Documents pending",
-      "total": "Total in selection"
-    },
-    "table": {
-      "orderId": "Order ID",
-      "client": "Client",
-      "service": "Service",
-      "createdAt": "Created",
-      "sla": "SLA timer",
-      "amount": "Amount",
-      "status": "Status",
-      "actions": "Actions"
-    },
-    "pagination": "Page {current} of {total}"
-  },
-  "orderDetails": {
-    "title": "Order {id}",
-    "subtitle": "Incoming marketplace order",
-    "loading": "Loading order...",
-    "fields": {
-      "status": "Order status",
-      "client": "Client",
-      "created": "Created",
-      "amount": "Amount",
-      "responseDue": "Response due in",
-      "completionDue": "Completion due in"
-    },
-    "actions": {
-      "support": "Contact support",
-      "back": "Back to list",
-      "confirm": "Confirm",
-      "decline": "Decline",
-      "uploadProof": "Upload proof",
-      "complete": "Complete",
-      "fail": "Fail"
-    },
-    "lifecycle": {
-      "title": "Order lifecycle",
-      "deniedTitle": "Actions unavailable",
-      "deniedDescription": "Your role cannot manage this order."
-    },
-    "tabs": {
-      "timeline": "Timeline",
-      "sla": "SLA",
-      "payouts": "Payouts"
-    },
-    "sla": {
-      "loading": "Loading SLA...",
-      "emptyTitle": "No SLA obligations",
-      "emptyDescription": "SLA obligations will appear after activation.",
-      "errorTitle": "Unable to load SLA",
-      "table": {
-        "metric": "Obligation",
-        "deadline": "Deadline",
-        "remaining": "Remaining",
-        "status": "Status",
-        "penalty": "Penalty"
-      }
-    },
-    "payouts": {
-      "loading": "Loading payout impact...",
-      "emptyTitle": "No settlement yet",
-      "emptyDescription": "Will appear in the next settlement period.",
-      "errorTitle": "Unable to load payout data",
-      "fields": {
-        "settlementId": "Settlement ID",
-        "status": "Status",
+      "filters": {
         "period": "Period",
-        "netAmount": "Net amount"
+        "presets": {
+          "today": "Today",
+          "7d": "7 days",
+          "30d": "30 days",
+          "custom": "Custom"
+        },
+        "from": "From",
+        "to": "To",
+        "status": "Status",
+        "search": "Search",
+        "searchPlaceholder": "order_id, client, service",
+        "station": "Station",
+        "stationPlaceholder": "station_id",
+        "service": "Service",
+        "servicePlaceholder": "service_id",
+        "slaRisk": "SLA risk",
+        "slaRiskNear": "Near deadline"
       },
       "actions": {
-        "open": "Open settlement"
-      }
-    },
-    "notifications": {
-      "confirmed": "Order confirmed.",
-      "declined": "Order declined.",
-      "proofUploaded": "Proof uploaded.",
-      "completed": "Order completed.",
-      "failed": "Order failed."
-    },
-    "errors": {
-      "loadTitle": "Unable to load order",
-      "loadFailed": "Unable to load order",
-      "notFound": "Order not found",
-      "timelineFailed": "Unable to load timeline",
-      "slaFailed": "Unable to load SLA",
-      "payoutFailed": "Unable to load payout data",
-      "actionFailed": "Action failed"
-    },
-    "supportTitle": "Issue with order {id}",
-    "proofs": {
-      "title": "Proofs",
-      "empty": "No proofs uploaded yet."
-    },
-    "modals": {
-      "close": "Close",
-      "cancel": "Cancel",
-      "confirm": "Confirm",
-      "confirm": {
-        "title": "Confirm order",
-        "description": "Confirm that you can fulfill this order."
+        "saveFilters": "Save filters",
+        "resetFilters": "Reset filters"
       },
-      "decline": {
-        "title": "Decline order",
-        "description": "Provide a reason and comment for decline.",
-        "reason": "Decline reason",
-        "reasonPlaceholder": "e.g., OUT_OF_STOCK",
-        "comment": "Comment",
-        "commentPlaceholder": "Provide details for the client"
-      },
-      "proof": {
-        "title": "Upload proof",
-        "description": "Attach a photo or document as proof of completion.",
-        "kind": "Proof type",
-        "attachment": "Attachment ID (optional)",
-        "attachmentPlaceholder": "Leave empty to auto-generate",
-        "note": "Note",
-        "notePlaceholder": "Optional comment",
-        "kinds": {
-          "photo": "Photo",
-          "pdf": "PDF",
-          "act": "Act",
-          "check": "Receipt",
-          "other": "Other"
-        }
-      },
-      "complete": {
-        "title": "Complete order",
-        "description": "Provide a completion summary.",
-        "summary": "Summary",
-        "placeholder": "Completion summary"
-      },
-      "fail": {
-        "title": "Fail order",
-        "description": "Provide a failure reason.",
-        "reason": "Reason",
-        "placeholder": "Describe the issue"
-      }
-    }
-  },
-  "servicesCatalogPage": {
-    "title": "Services and products catalog",
-    "subtitle": "Marketplace partner catalog",
-    "empty": {
-      "filteredTitle": "No results for current filters",
-      "filteredDescription": "Adjust the filters or reset the search."
-    },
-    "filters": {
-      "search": "Search",
-      "searchPlaceholder": "Title, description",
-      "kind": "Type",
-      "kindOptions": {
-        "service": "Service",
-        "product": "Product"
-      },
-      "status": "Status",
-      "statusOptions": {
-        "draft": "Draft",
-        "active": "Active",
-        "disabled": "Disabled",
-        "archived": "Archived"
-      },
-      "category": "Category",
-      "categoryPlaceholder": "e.g., car wash"
-    },
-    "table": {
-      "title": "Title",
-      "name": "Name",
-      "kind": "Type",
-      "category": "Category",
-      "status": "Status",
-      "price": "Price",
-      "activeOffers": "Active offers",
-      "updatedAt": "Updated",
-      "actions": "Actions"
-    },
-    "actions": {
-      "disable": "Disable",
-      "activate": "Activate",
-      "resetFilters": "Reset filters"
-    },
-    "pagination": {
-      "prev": "Back",
-      "next": "Next",
-      "page": "Page"
-    },
-    "errors": {
-      "loadFailed": "Unable to load catalog",
-      "requiredFields": "Fill in required fields",
-      "saveFailed": "Unable to save item",
-      "updateStatusFailed": "Unable to update status"
-    },
-    "notifications": {
-      "saved": "Changes saved",
-      "created": "Catalog item created",
-      "disabled": "Catalog item disabled",
-      "activated": "Catalog item activated"
-    },
-    "import": {
-      "title": "Catalog import",
-      "subtitle": "Upload a CSV file to bulk add services.",
-      "unavailableTitle": "Import unavailable",
-      "unavailableDescription": "Available only for PARTNER_OWNER or PARTNER_SERVICE_MANAGER.",
-      "csvFile": "CSV file",
-      "chooseFile": "Choose file",
-      "fileNotChosen": "No file chosen",
-      "mode": "Mode",
-      "modes": {
-        "create": "Create",
-        "update": "Update",
-        "upsert": "Create or update"
-      },
-      "preview": "Preview",
-      "csvError": "CSV error:",
-      "previewSummary": "Preview summary",
-      "rowsParsed": "Rows parsed: {count}",
-      "willCreate": "Will create: {count}",
-      "willUpdate": "Will update: {count}",
-      "errorsCount": "Errors count: {count}",
-      "errorsTitle": "Import errors",
-      "table": {
-        "row": "Row",
-        "description": "Description"
-      },
-      "sampleTitle": "Sample rows (first 20)",
-      "apply": "Apply import",
-      "resultTitle": "Import result",
-      "resultCreated": "Created: {count}",
-      "resultUpdated": "Updated: {count}",
-      "resultSkipped": "Skipped: {count}",
-      "refreshList": "Refresh list",
-      "csvFormat": "CSV format",
-      "requiredFields": "Required fields: kind, title, category, uom",
-      "sampleRow": "SERVICE,Service,Car wash,service,Full wash,ACTIVE",
-      "upload": "Upload",
-      "downloadTemplate": "Download template",
       "errors": {
-        "selectCsv": "Select a CSV file",
-        "row": "Row {row}: {message}",
-        "previewFailed": "Unable to preview import",
-        "applyFailed": "Unable to apply import"
+        "loadFailed": "Unable to load orders",
+        "apiError": "Unable to load orders"
+      },
+      "kpis": {
+        "today": "Orders today",
+        "pending": "Pending confirmation",
+        "documents": "Documents pending",
+        "total": "Total in selection"
+      },
+      "table": {
+        "orderId": "Order ID",
+        "client": "Client",
+        "service": "Service",
+        "createdAt": "Created",
+        "sla": "SLA timer",
+        "amount": "Amount",
+        "status": "Status",
+        "actions": "Actions"
+      },
+      "pagination": {
+        "prev": "Back",
+        "next": "Next",
+        "page": "Page {{current}} of {{total}}",
+        "shown": "Showing {{visible}} of {{total}}"
       }
     },
-    "modal": {
-      "editTitle": "Edit item",
-      "createTitle": "Create item",
-      "fields": {
-        "title": "Title *",
+    "servicesCatalogPage": {
+      "title": "Services and products catalog",
+      "subtitle": "Marketplace partner catalog",
+      "empty": {
+        "filteredTitle": "No results for current filters",
+        "filteredDescription": "Adjust the filters or reset the search."
+      },
+      "filters": {
+        "search": "Search",
+        "searchPlaceholder": "Title, description",
+        "kind": "Type",
+        "kindOptions": {
+          "service": "Service",
+          "product": "Product"
+        },
+        "status": "Status",
+        "statusOptions": {
+          "draft": "Draft",
+          "active": "Active",
+          "disabled": "Disabled",
+          "archived": "Archived"
+        },
+        "category": "Category",
+        "categoryPlaceholder": "e.g., car wash"
+      },
+      "table": {
+        "title": "Title",
+        "name": "Name",
         "kind": "Type",
         "category": "Category",
-        "uom": "Unit of measure *",
-        "uomPlaceholder": "pcs / service / hour",
-        "description": "Description",
-        "status": "Status"
+        "status": "Status",
+        "price": "Price",
+        "activeOffers": "Active offers",
+        "updatedAt": "Updated",
+        "actions": "Actions"
       },
       "actions": {
-        "saveActivate": "Save & Activate"
+        "disable": "Disable",
+        "activate": "Activate",
+        "resetFilters": "Reset filters"
+      },
+      "pagination": {
+        "prev": "Back",
+        "next": "Next",
+        "page": "Page"
+      },
+      "errors": {
+        "loadFailed": "Unable to load catalog",
+        "requiredFields": "Fill in required fields",
+        "saveFailed": "Unable to save item",
+        "updateStatusFailed": "Unable to update status"
+      },
+      "notifications": {
+        "saved": "Changes saved",
+        "created": "Catalog item created",
+        "disabled": "Catalog item disabled",
+        "activated": "Catalog item activated"
+      },
+      "import": {
+        "title": "Catalog import",
+        "subtitle": "Upload a CSV file to bulk add services.",
+        "unavailableTitle": "Import unavailable",
+        "unavailableDescription": "Available only for PARTNER_OWNER or PARTNER_SERVICE_MANAGER.",
+        "csvFile": "CSV file",
+        "chooseFile": "Choose file",
+        "fileNotChosen": "No file chosen",
+        "mode": "Mode",
+        "modes": {
+          "create": "Create",
+          "update": "Update",
+          "upsert": "Create or update"
+        },
+        "preview": "Preview",
+        "csvError": "CSV error:",
+        "previewSummary": "Preview summary",
+        "rowsParsed": "Rows parsed: {count}",
+        "willCreate": "Will create: {count}",
+        "willUpdate": "Will update: {count}",
+        "errorsCount": "Errors count: {count}",
+        "errorsTitle": "Import errors",
+        "table": {
+          "row": "Row",
+          "description": "Description"
+        },
+        "sampleTitle": "Sample rows (first 20)",
+        "apply": "Apply import",
+        "resultTitle": "Import result",
+        "resultCreated": "Created: {count}",
+        "resultUpdated": "Updated: {count}",
+        "resultSkipped": "Skipped: {count}",
+        "refreshList": "Refresh list",
+        "csvFormat": "CSV format",
+        "requiredFields": "Required fields: kind, title, category, uom",
+        "sampleRow": "SERVICE,Service,Car wash,service,Full wash,ACTIVE",
+        "upload": "Upload",
+        "downloadTemplate": "Download template",
+        "errors": {
+          "selectCsv": "Select a CSV file",
+          "row": "Row {row}: {message}",
+          "previewFailed": "Unable to preview import",
+          "applyFailed": "Unable to apply import"
+        }
+      },
+      "modal": {
+        "editTitle": "Edit item",
+        "createTitle": "Create item",
+        "fields": {
+          "title": "Title *",
+          "kind": "Type",
+          "category": "Category",
+          "uom": "Unit of measure *",
+          "uomPlaceholder": "pcs / service / hour",
+          "description": "Description",
+          "status": "Status"
+        },
+        "actions": {
+          "saveActivate": "Save & Activate"
+        }
+      }
+    },
+    "priceVersionPage": {
+      "loading": "Loading price version...",
+      "forbidden": "Your role cannot access this price version.",
+      "errors": {
+        "loadFailed": "Unable to load price version",
+        "loadTitle": "Load error (status {status})",
+        "validationFailed": "Unable to start validation",
+        "publishFailed": "Unable to publish version",
+        "rollbackFailed": "Unable to rollback version",
+        "importFailed": "Unable to import file",
+        "apiError": "Error: {message} (status {status})"
+      },
+      "confirmations": {
+        "validate": "Run version validation?",
+        "publishTitle": "Publish price list?",
+        "publishDescription": "New prices will apply to all new operations. Existing orders will not change.",
+        "rollbackTitle": "Return to the previous version?",
+        "rollbackDescription": "A new active version will be created based on the selected one.",
+        "import": "Import file into version?"
+      },
+      "notifications": {
+        "validationOk": "Validation passed",
+        "validationWithErrors": "Validation completed with errors",
+        "published": "Version published",
+        "rollbackCreated": "Rollback created",
+        "importCompleted": "Import completed. Errors: {errors}"
+      },
+      "upload": {
+        "csvErrors": "Errors found: {count}",
+        "csvRows": "Rows: {count}",
+        "jsonRows": "JSON records: {count}",
+        "jsonError": "Invalid JSON format"
+      },
+      "empty": {
+        "notFoundTitle": "Version not found",
+        "notFoundDescription": "Check the version ID and try again."
+      },
+      "header": {
+        "title": "Version {id}",
+        "subtitle": "Price version status and management."
+      },
+      "actions": {
+        "validate": "Validate",
+        "rollback": "Rollback"
+      },
+      "overview": {
+        "scope": "Scope",
+        "scopeAll": "All stations",
+        "scopeCount": "{count} stations",
+        "items": "Items",
+        "errors": "Errors",
+        "createdAt": "Created",
+        "createdBy": "Created by",
+        "publishedAt": "Published"
+      },
+      "import": {
+        "csvFormat": "CSV format",
+        "requiredFields": "Required fields: station_code (or station_id), product_code, price, currency, valid_from.",
+        "format": "Format",
+        "file": "File",
+        "preview": "Preview: {text}",
+        "commit": "Commit import to version"
+      },
+      "preview": {
+        "search": "Search",
+        "searchPlaceholder": "station/product",
+        "errorsOnly": "Errors only",
+        "emptyTitle": "No items",
+        "emptyDescription": "Items will appear after import.",
+        "table": {
+          "station": "Station",
+          "product": "Product",
+          "price": "Price",
+          "currency": "Currency",
+          "validFrom": "Valid from",
+          "errors": "Errors"
+        }
+      },
+      "pagination": {
+        "page": "Page {current}{total}",
+        "total": " of {total}"
+      },
+      "validate": {
+        "run": "Run validation",
+        "yes": "Yes",
+        "no": "No",
+        "errors": "Errors",
+        "warnings": "Warnings",
+        "emptyTitle": "Validation has not been run",
+        "emptyDescription": "Run validation to see the report.",
+        "sampleErrors": "Sample errors",
+        "recommendedActions": "Recommended actions"
+      },
+      "diff": {
+        "compareTo": "Compare to version",
+        "selectVersion": "Select version",
+        "added": "Added",
+        "removed": "Removed",
+        "changed": "Changed",
+        "table": {
+          "station": "Station",
+          "product": "Product",
+          "before": "Before",
+          "after": "After"
+        },
+        "emptyTitle": "No changes",
+        "emptyDescription": "Choose another version to compare.",
+        "selectTitle": "Select a version",
+        "selectDescription": "Select a version to calculate diff."
+      },
+      "audit": {
+        "emptyTitle": "No events",
+        "emptyDescription": "Audit will appear after actions on the version.",
+        "actor": "Actor: {actor}"
       }
     }
   },
-  "priceVersionPage": {
-    "loading": "Loading price version...",
-    "forbidden": "Your role cannot access this price version.",
+  "serviceDetailsPage": {
+    "title": "Service card",
+    "meta": {
+      "updated": "Updated {date}",
+      "locationId": "Location ID: {id}"
+    },
+    "tabs": {
+      "main": "Main",
+      "media": "Media",
+      "locations": "Locations",
+      "schedule": "Schedule",
+      "preview": "Availability"
+    },
+    "fields": {
+      "title": "Title",
+      "category": "Category",
+      "description": "Description",
+      "duration": "Duration (min)",
+      "requirements": "Requirements",
+      "tags": "Tags",
+      "attributes": "Attributes (JSON)",
+      "location": "Location",
+      "period": "Period"
+    },
     "errors": {
-      "loadFailed": "Unable to load price version",
-      "loadTitle": "Load error (status {status})",
-      "validationFailed": "Unable to start validation",
-      "publishFailed": "Unable to publish version",
-      "rollbackFailed": "Unable to rollback version",
-      "importFailed": "Unable to import file",
-      "apiError": "Error: {message} (status {status})"
-    },
-    "confirmations": {
-      "validate": "Run version validation?",
-      "publishTitle": "Publish price list?",
-      "publishDescription": "New prices will apply to all new operations. Existing orders will not change.",
-      "rollbackTitle": "Return to the previous version?",
-      "rollbackDescription": "A new active version will be created based on the selected one.",
-      "import": "Import file into version?"
-    },
-    "notifications": {
-      "validationOk": "Validation passed",
-      "validationWithErrors": "Validation completed with errors",
-      "published": "Version published",
-      "rollbackCreated": "Rollback created",
-      "importCompleted": "Import completed. Errors: {errors}"
-    },
-    "upload": {
-      "csvErrors": "Errors found: {count}",
-      "csvRows": "Rows: {count}",
-      "jsonRows": "JSON records: {count}",
-      "jsonError": "Invalid JSON format"
-    },
-    "empty": {
-      "notFoundTitle": "Version not found",
-      "notFoundDescription": "Check the version ID and try again."
-    },
-    "header": {
-      "title": "Version {id}",
-      "subtitle": "Price version status and management."
+      "loadFailed": "Failed to load service card",
+      "requiredFields": "Fill in the required fields",
+      "invalidDuration": "Duration must be a number of at least 5 minutes",
+      "invalidAttributes": "Attributes must be valid JSON",
+      "saveFailed": "Failed to save changes",
+      "submitFailed": "Failed to submit for review",
+      "archiveFailed": "Failed to archive"
     },
     "actions": {
-      "validate": "Validate",
-      "rollback": "Rollback"
+      "addLocation": "Add location",
+      "addRule": "Add rule",
+      "addException": "Add exception"
     },
-    "overview": {
-      "scope": "Scope",
-      "scopeAll": "All stations",
-      "scopeCount": "{count} stations",
-      "items": "Items",
-      "errors": "Errors",
-      "createdAt": "Created",
-      "createdBy": "Created by",
-      "publishedAt": "Published"
+    "hints": {
+      "mediaUpload": "Add links to files uploaded to storage."
     },
-    "import": {
-      "csvFormat": "CSV format",
-      "requiredFields": "Required fields: station_code (or station_id), product_code, price, currency, valid_from.",
-      "format": "Format",
-      "file": "File",
-      "preview": "Preview: {text}",
-      "commit": "Commit import to version"
+    "empty": {
+      "mediaTitle": "No media added",
+      "mediaDescription": "Upload at least one image.",
+      "locationsTitle": "No linked locations",
+      "locationsDescription": "Add a service location.",
+      "rulesTitle": "No rules",
+      "rulesDescription": "Add a weekly schedule.",
+      "exceptionsTitle": "No exceptions",
+      "exceptionsDescription": "Add closed dates or custom availability settings.",
+      "selectLocationTitle": "Select a location",
+      "selectLocationDescription": "Select a location to manage the schedule.",
+      "slotsTitle": "No slots",
+      "slotsDescription": "Create a schedule to generate slots."
     },
-    "preview": {
-      "search": "Search",
-      "searchPlaceholder": "station/product",
-      "errorsOnly": "Errors only",
-      "emptyTitle": "No items",
-      "emptyDescription": "Items will appear after import.",
-      "table": {
-        "station": "Station",
-        "product": "Product",
-        "price": "Price",
-        "currency": "Currency",
-        "validFrom": "Valid from",
-        "errors": "Errors"
-      }
-    },
-    "pagination": {
-      "page": "Page {current}{total}",
-      "total": " of {total}"
-    },
-    "validate": {
-      "run": "Run validation",
-      "yes": "Yes",
-      "no": "No",
-      "errors": "Errors",
-      "warnings": "Warnings",
-      "emptyTitle": "Validation has not been run",
-      "emptyDescription": "Run validation to see the report.",
-      "sampleErrors": "Sample errors",
-      "recommendedActions": "Recommended actions"
-    },
-    "diff": {
-      "compareTo": "Compare to version",
-      "selectVersion": "Select version",
-      "added": "Added",
-      "removed": "Removed",
-      "changed": "Changed",
-      "table": {
-        "station": "Station",
-        "product": "Product",
-        "before": "Before",
-        "after": "After"
+    "schedule": {
+      "selectStation": "Select a partner station",
+      "selectLocation": "Select a location",
+      "weeklyRules": "Weekly rules",
+      "exceptions": "Exceptions",
+      "closed": "Closed",
+      "byRule": "by rule",
+      "ruleSummary": "{day} {from}–{to} · {duration} min · {capacity} slots",
+      "weekdays": {
+        "mon": "Mon",
+        "tue": "Tue",
+        "wed": "Wed",
+        "thu": "Thu",
+        "fri": "Fri",
+        "sat": "Sat",
+        "sun": "Sun"
       },
-      "emptyTitle": "No changes",
-      "emptyDescription": "Choose another version to compare.",
-      "selectTitle": "Select a version",
-      "selectDescription": "Select a version to calculate diff."
+      "capacityPlaceholder": "Slot count",
+      "slotsValue": "Slots: {value}",
+      "exceptionSummary": "{from}–{to} · slots: {value}"
     },
-    "audit": {
-      "emptyTitle": "No events",
-      "emptyDescription": "Audit will appear after actions on the version.",
-      "actor": "Actor: {actor}"
+    "media": {
+      "placeholders": {
+        "attachmentId": "Attachment ID",
+        "storage": "Storage",
+        "filePath": "File path"
+      }
     }
   }
-}
 }

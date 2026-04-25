@@ -15,26 +15,24 @@ export const PayoutQueuePage: React.FC = () => {
   const [offset, setOffset] = useState(0);
   const [status, setStatus] = useState("");
   const [blocked, setBlocked] = useState<"" | "yes" | "no">("");
-  const [partner, setPartner] = useState("");
   const [debouncedFilters, setDebouncedFilters] = useState({
     status: "",
     blocked: "",
-    partner: "",
     offset: 0,
   });
+  const hasActiveFilters = Boolean(status.trim() || blocked);
 
   useEffect(() => {
     const handler = window.setTimeout(() => {
-      setDebouncedFilters({ status, blocked, partner, offset });
+      setDebouncedFilters({ status, blocked, offset });
     }, 400);
     return () => window.clearTimeout(handler);
-  }, [status, blocked, partner, offset]);
+  }, [status, blocked, offset]);
 
   const filters = useMemo(
     () => ({
       status: debouncedFilters.status || undefined,
       blocked: debouncedFilters.blocked === "yes" ? true : debouncedFilters.blocked === "no" ? false : undefined,
-      partner: debouncedFilters.partner || undefined,
       limit,
       offset: debouncedFilters.offset,
     }),
@@ -60,13 +58,13 @@ export const PayoutQueuePage: React.FC = () => {
       render: (row) => `${row.net_amount ?? row.amount} ${row.currency}`,
     },
     { key: "status", title: "Status", render: (row) => row.status },
-    { key: "blocked_reason", title: "Blocked reason", render: (row) => row.blocked_reason ?? row.blockers?.join(", ") ?? "—" },
+    { key: "block_reason", title: "Blocked reason", render: (row) => row.block_reason ?? row.blockers?.join(", ") ?? "—" },
     {
       key: "correlation",
       title: "Correlation",
       render: (row) =>
         row.correlation_id ? (
-          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          <div className="table-row-actions">
             <Link to={`/audit?correlation_id=${encodeURIComponent(row.correlation_id)}`}>Open</Link>
             <CopyButton value={row.correlation_id} label="Copy" />
           </div>
@@ -81,7 +79,7 @@ export const PayoutQueuePage: React.FC = () => {
     <div className="stack">
       <div className="page-header">
         <h1>Payout queue</h1>
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        <div className="toolbar-actions">
           <button type="button" className="ghost" onClick={() => refetch()}>
             Refresh
           </button>
@@ -89,37 +87,77 @@ export const PayoutQueuePage: React.FC = () => {
         </div>
       </div>
 
-      <div className="card" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        <div className="filters">
-          <div className="filter">
-            <span className="label">Status</span>
-            <input value={status} onChange={(event) => setStatus(event.target.value)} placeholder="status" />
+      <Table
+        columns={columns}
+        data={items}
+        loading={isLoading}
+        toolbar={
+          <div className="filters">
+            <div className="filter">
+              <span className="label">Status</span>
+              <input
+                value={status}
+                onChange={(event) => {
+                  setStatus(event.target.value);
+                  setOffset(0);
+                }}
+                placeholder="status"
+              />
+            </div>
+            <div className="filter">
+              <span className="label">Blocked</span>
+              <select
+                value={blocked}
+                onChange={(event) => {
+                  setBlocked(event.target.value as "" | "yes" | "no");
+                  setOffset(0);
+                }}
+              >
+                <option value="">All</option>
+                <option value="yes">Blocked</option>
+                <option value="no">Unblocked</option>
+              </select>
+            </div>
           </div>
-          <div className="filter">
-            <span className="label">Blocked</span>
-            <select value={blocked} onChange={(event) => setBlocked(event.target.value as "" | "yes" | "no")}>
-              <option value="">All</option>
-              <option value="yes">Blocked</option>
-              <option value="no">Unblocked</option>
-            </select>
+        }
+        errorState={
+          error
+            ? {
+                title: "Failed to load payout queue",
+                description: (error as Error).message,
+                actionLabel: "Retry",
+                actionOnClick: () => refetch(),
+                requestId: extractRequestId(error),
+              }
+            : undefined
+        }
+        emptyState={{
+          title: hasActiveFilters ? "No payouts for current filters" : "Payout queue is empty",
+          description: hasActiveFilters
+            ? "Adjust or reset the filters to return to the full payout review queue."
+            : "Requested and blocked partner payouts will appear here.",
+          primaryAction: hasActiveFilters
+            ? {
+                label: "Reset filters",
+                onClick: () => {
+                  setStatus("");
+                  setBlocked("");
+                  setOffset(0);
+                },
+              }
+            : {
+                label: "Refresh",
+                onClick: () => refetch(),
+              },
+        }}
+        footer={
+          <div className="table-footer__content">
+            <span className="muted">Visible payouts: {items.length} / {total}</span>
+            <Pagination total={total} limit={limit} offset={offset} onChange={(value) => setOffset(value)} />
           </div>
-          <div className="filter">
-            <span className="label">Partner</span>
-            <input value={partner} onChange={(event) => setPartner(event.target.value)} placeholder="partner id/name" />
-          </div>
-        </div>
-      </div>
-
-      {error ? (
-        <div style={{ color: "#dc2626" }}>
-          {(error as Error).message}
-          {extractRequestId(error) ? <div style={{ marginTop: 4 }}>Request ID: {extractRequestId(error)}</div> : null}
-        </div>
-      ) : null}
-
-      <Table columns={columns} data={items} loading={isLoading} onRowClick={(row) => navigate(`/finance/payouts/${row.payout_id}`)} />
-
-      <Pagination total={total} limit={limit} offset={offset} onChange={(value) => setOffset(value)} />
+        }
+        onRowClick={(row) => navigate(`/finance/payouts/${row.payout_id}`)}
+      />
     </div>
   );
 };

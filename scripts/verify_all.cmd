@@ -2,8 +2,7 @@
 setlocal EnableExtensions EnableDelayedExpansion
 
 REM ===== Timestamp =====
-for /f "tokens=2 delims==" %%I in ('wmic os get LocalDateTime /value') do set "dt=%%I"
-set "ts=%dt:~0,4%-%dt:~4,2%-%dt:~6,2%_%dt:~8,4%"
+for /f "usebackq delims=" %%I in (`python -c "from datetime import datetime; print(datetime.now().strftime('%%Y-%%m-%%d_%%H%%M'))"`) do set "ts=%%I"
 
 REM ===== Paths =====
 set "LOG_DIR=logs"
@@ -28,7 +27,10 @@ REM ===== Snapshot header =====
   echo.
   echo **Generated:** %date% %time%
   echo.
-  echo ## Steps
+  echo **Verification scope:** runtime smoke and targeted pytest subset only; this is not a full backend truth gate.
+  echo **Contract coverage:** verify_all does not replace full contract execution such as pytest -m contracts.
+  echo.
+  echo ## Steps ^(subset/smoke^)
   echo ^| Step ^| Status ^| Details ^|
   echo ^|---^|---^|---^|
 ) > "%SNAPSHOT_FILE%"
@@ -121,7 +123,7 @@ call :run_cmd "4.2 auth-host jwks smoke" "curl -i http://localhost:8002/.well-kn
 call :run_cmd "4.3 core openapi portal/me" "curl -s http://localhost:8001/api/openapi.json ^| findstr /I \"portal/me\"" || goto finalize
 
 set "ADMIN_LOGIN_FILE=%TEMP%\\verify_admin_login_%RANDOM%.json"
-call :run_cmd "4.4 admin login via gateway" "curl -sS -o \"%ADMIN_LOGIN_FILE%\" -H \"Content-Type: application/json\" -d \"{\\\"email\\\":\\\"admin@example.com\\\",\\\"password\\\":\\\"admin\\\"}\" %GATEWAY_BASE%%AUTH_BASE%/login" || goto finalize
+call :run_cmd "4.4 admin login via gateway" "curl -sS -o \"%ADMIN_LOGIN_FILE%\" -H \"Content-Type: application/json\" -d \"{\\\"email\\\":\\\"admin@neft.local\\\",\\\"password\\\":\\\"Neft123!\\\"}\" %GATEWAY_BASE%%AUTH_BASE%/login" || goto finalize
 for /f "usebackq delims=" %%T in (`python -c "import json; from pathlib import Path; data=json.loads(Path(r'%ADMIN_LOGIN_FILE%').read_text(encoding='utf-8',errors='ignore') or '{}'); print(data.get('access_token',''))"`) do set "ADMIN_TOKEN=%%T"
 if "%ADMIN_TOKEN%"=="" (
   call :mark_fail "4.4 admin login via gateway" "No admin token returned"
@@ -134,7 +136,7 @@ call :check_not_401 "4.7 core legal/required (admin token)" "%GATEWAY_BASE%%CORE
 call :run_cmd "4.7.1 core legal accept (admin token)" "python scripts\\smoke_legal_accept.py --base %GATEWAY_BASE%%CORE_BASE% --token %ADMIN_TOKEN%" || goto finalize
 
 set "CLIENT_LOGIN_FILE=%TEMP%\\verify_client_login_%RANDOM%.json"
-call :run_cmd "4.8 client login via gateway" "curl -sS -o \"%CLIENT_LOGIN_FILE%\" -H \"Content-Type: application/json\" -d \"{\\\"email\\\":\\\"client@neft.local\\\",\\\"password\\\":\\\"client\\\",\\\"portal\\\":\\\"client\\\"}\" %GATEWAY_BASE%%AUTH_BASE%/login" || goto finalize
+call :run_cmd "4.8 client login via gateway" "curl -sS -o \"%CLIENT_LOGIN_FILE%\" -H \"Content-Type: application/json\" -d \"{\\\"email\\\":\\\"client@neft.local\\\",\\\"password\\\":\\\"Client123!\\\",\\\"portal\\\":\\\"client\\\"}\" %GATEWAY_BASE%%AUTH_BASE%/login" || goto finalize
 for /f "usebackq delims=" %%T in (`python -c "import json; from pathlib import Path; data=json.loads(Path(r'%CLIENT_LOGIN_FILE%').read_text(encoding='utf-8',errors='ignore') or '{}'); print(data.get('access_token',''))"`) do set "CLIENT_TOKEN=%%T"
 if "%CLIENT_TOKEN%"=="" (
   call :mark_fail "4.8 client login via gateway" "No client token returned"
@@ -306,12 +308,13 @@ call :run_cmd "5.x %script%" "%script%"
 exit /b %errorlevel%
 
 :run_pytest_subset
-set "step=6. Pytest smoke subset"
+set "step=6. Pytest subset and contract smoke"
 
 call :run_cmd "6.1 core tests subset" "docker compose exec -T core-api sh -lc ""pytest app/tests/test_transactions_pipeline.py app/tests/test_invoice_state_machine.py app/tests/test_settlement_v1.py app/tests/test_reconciliation_v1.py app/tests/test_documents_lifecycle.py""" || exit /b 1
 call :run_cmd "6.2 integration-hub webhooks" "docker compose exec -T integration-hub sh -lc ""pytest neft_integration_hub/tests/test_webhooks.py""" || exit /b 1
+call :run_cmd "6.3 core OpenAPI uniqueness contract smoke" "docker compose exec -T core-api sh -lc ""VERIFY_STRICT_ROUTES=1 pytest app/tests/contracts/api/test_openapi_uniqueness.py -q""" || exit /b 1
 
-call :mark_ok "%step%" "All pytest checks OK"
+call :mark_ok "%step%" "All targeted pytest checks OK"
 exit /b 0
 
 :mark_ok

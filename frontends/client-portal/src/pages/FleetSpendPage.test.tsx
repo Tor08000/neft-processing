@@ -2,11 +2,13 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { App } from "../App";
 import type { AuthSession } from "../api/types";
+import { AuthProvider } from "../auth/AuthContext";
+import { I18nProvider } from "../i18n";
+import { FleetSpendPage } from "./FleetSpendPage";
 
 const session: AuthSession = {
-  token: "token-1",
+  token: "test.header.payload",
   email: "client@demo.test",
   roles: ["CLIENT_OWNER"],
   subjectType: "CLIENT",
@@ -18,9 +20,12 @@ describe("FleetSpendPage", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
+    window.localStorage.clear();
+    window.sessionStorage.clear();
   });
 
   it("renders filters and triggers export", async () => {
+    const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
     const fetchMock = vi.fn((input: RequestInfo) => {
       const url = input.toString();
       if (url.includes("/client/fleet/groups")) {
@@ -44,12 +49,16 @@ describe("FleetSpendPage", () => {
 
     render(
       <MemoryRouter initialEntries={["/fleet/spend"]}>
-        <App initialSession={session} />
+        <I18nProvider locale="ru">
+          <AuthProvider initialSession={session}>
+            <FleetSpendPage />
+          </AuthProvider>
+        </I18nProvider>
       </MemoryRouter>,
     );
 
     expect(await screen.findByText(/Fleet · Spend/i)).toBeInTheDocument();
-    expect(screen.getByText(/Группа/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Группа/i)).toBeInTheDocument();
     expect(screen.getByRole("option", { name: "Card A" })).toBeInTheDocument();
 
     const exportButton = screen.getByRole("button", { name: /Экспорт CSV/i });
@@ -58,5 +67,6 @@ describe("FleetSpendPage", () => {
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining("/client/fleet/transactions/export"), expect.anything()),
     );
+    await waitFor(() => expect(openSpy).toHaveBeenCalledWith("https://export.test/file.csv", "_blank", "noopener"));
   });
 });

@@ -47,7 +47,7 @@ class Account(Base):
         primary_key=True,
         autoincrement=True,
     )
-    client_id = Column(String(64), nullable=False, index=True)
+    client_id = Column(GUID(), nullable=False, index=True)
     owner_type = Column(SAEnum(AccountOwnerType), nullable=False, index=True, default=AccountOwnerType.CLIENT)
     owner_id = Column(GUID(), nullable=True, index=True)
     card_id = Column(String(64), ForeignKey("cards.id"), nullable=True, index=True)

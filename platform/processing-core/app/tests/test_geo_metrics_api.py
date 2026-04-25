@@ -97,3 +97,26 @@ def test_geo_metrics_endpoint_sorted_by_amount_sum() -> None:
     assert payload["items"][0]["amount_sum"] == 2000.0
     assert payload["items"][1]["station_id"] == str(s1.id)
     assert payload["items"][1]["station_name"] == "A station"
+
+
+def test_geo_metrics_endpoint_returns_empty_when_metrics_tables_are_missing() -> None:
+    engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+    testing_session_local = sessionmaker(autocommit=False, autoflush=False, expire_on_commit=False, bind=engine, class_=Session)
+
+    app = FastAPI(generate_unique_id_function=generate_unique_id)
+    app.include_router(geo_router, prefix="")
+
+    def override_get_db():
+        db = testing_session_local()
+        try:
+            yield db
+        finally:
+            db.close()
+
+    app.dependency_overrides[get_db] = override_get_db
+
+    with TestClient(app) as client:
+        response = client.get("/api/v1/geo/stations/metrics?date_from=2026-02-12&date_to=2026-02-12&metric=amount_sum&limit=20")
+
+    assert response.status_code == 200
+    assert response.json()["items"] == []

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, date
 
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.models.fleet import FleetDriver, FleetVehicle
@@ -103,9 +103,19 @@ def list_active_limits(
     else:
         query = query.filter(FuelLimit.scope_id == scope_id)
     if fuel_type_code is not None:
-        query = query.filter(FuelLimit.fuel_type_code.in_([None, fuel_type_code]))
-    query = query.filter(FuelLimit.station_id.in_([None, station_id]))
-    query = query.filter(FuelLimit.station_network_id.in_([None, station_network_id]))
+        query = query.filter(or_(FuelLimit.fuel_type_code.is_(None), FuelLimit.fuel_type_code == fuel_type_code))
+    else:
+        query = query.filter(FuelLimit.fuel_type_code.is_(None))
+    if station_id is not None:
+        query = query.filter(or_(FuelLimit.station_id.is_(None), FuelLimit.station_id == station_id))
+    else:
+        query = query.filter(FuelLimit.station_id.is_(None))
+    if station_network_id is not None:
+        query = query.filter(
+            or_(FuelLimit.station_network_id.is_(None), FuelLimit.station_network_id == station_network_id)
+        )
+    else:
+        query = query.filter(FuelLimit.station_network_id.is_(None))
     query = query.filter(func.coalesce(FuelLimit.valid_from, at) <= at)
     query = query.filter(func.coalesce(FuelLimit.valid_to, at) >= at)
     query = query.filter(func.coalesce(FuelLimit.currency, currency) == currency)

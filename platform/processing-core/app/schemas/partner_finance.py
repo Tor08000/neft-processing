@@ -39,6 +39,7 @@ class PartnerLedgerListResponse(BaseModel):
     items: list[PartnerLedgerEntryOut] | None = None
     entries: list[PartnerLedgerEntrySummary] | None = None
     cursor: str | None = None
+    next_cursor: str | None = None
     total: int | None = None
     totals: dict[str, Decimal] | None = None
 
@@ -156,3 +157,73 @@ class PartnerDocSummary(BaseModel):
 
 class PartnerDocsResponse(BaseModel):
     items: list[PartnerDocSummary]
+
+
+class PartnerContractOut(BaseModel):
+    id: str
+    contract_number: str
+    contract_type: str
+    party_role: str
+    counterparty_type: str
+    counterparty_id: str
+    currency: str
+    status: str
+    effective_from: datetime
+    effective_to: datetime | None = None
+    created_at: datetime
+
+
+class PartnerContractListResponse(BaseModel):
+    items: list[PartnerContractOut]
+    total: int
+    limit: int
+    offset: int
+
+
+class PartnerSettlementItemOut(BaseModel):
+    id: str
+    source_type: str
+    source_id: str
+    amount: Decimal
+    direction: str
+    created_at: datetime
+
+
+class PartnerSettlementSnapshotOut(BaseModel):
+    id: str
+    order_id: str
+    gross_amount: Decimal
+    platform_fee: Decimal
+    penalties: Decimal
+    partner_net: Decimal
+    currency: str
+    finalized_at: datetime | None = None
+    hash: str | None = None
+
+
+class PartnerSettlementOut(BaseModel):
+    id: str
+    partner_id: str
+    currency: str
+    period_start: datetime
+    period_end: datetime
+    status: str
+    total_gross: Decimal
+    total_fees: Decimal
+    total_refunds: Decimal
+    net_amount: Decimal
+    period_hash: str | None = None
+    snapshot_payload: dict | None = None
+    created_at: datetime
+    approved_at: datetime | None = None
+    paid_at: datetime | None = None
+    marketplace_snapshots_count: int = 0
+    items: list[PartnerSettlementItemOut] | None = None
+    marketplace_snapshots: list[PartnerSettlementSnapshotOut] | None = None
+
+
+class PartnerSettlementListResponse(BaseModel):
+    items: list[PartnerSettlementOut]
+    total: int
+    limit: int
+    offset: int
