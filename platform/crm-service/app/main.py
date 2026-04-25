@@ -3,12 +3,15 @@ from __future__ import annotations
 from typing import Callable
 
 from fastapi import FastAPI, Request, Response
-from prometheus_client import CONTENT_TYPE_LATEST, Counter, Gauge, generate_latest
 
 from app.db import Base, engine
+from app.metrics_compat import CONTENT_TYPE_LATEST, Counter, Gauge, generate_latest
 from app.models import *  # noqa: F403
 from app.routers import audit, comments, contacts, deals, pipelines, tasks
 
+# Compatibility/shadow CRM surface:
+# - canonical CRM control plane owner lives in processing-core admin CRM
+# - this service still serves /api/v1/crm/* tails until external consumers are explicitly retired
 SERVICE_NAME = "crm-service"
 SERVICE_VERSION = "v1.0.0"
 METRIC_PREFIX = "crm_service"

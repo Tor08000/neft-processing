@@ -49,7 +49,7 @@ def test_login_request_accepts_legacy_login_username():
 
 
 def test_client_demo_login_local_domain_ok(monkeypatch):
-    password_hash = hash_password("client")
+    password_hash = hash_password("Neft123!")
     demo_user = User(
         id="00000000-0000-0000-0000-000000000001",
         email="client@neft.local",
@@ -73,7 +73,7 @@ def test_client_demo_login_local_domain_ok(monkeypatch):
 
     response = _client().post(
         "/api/v1/auth/login",
-        json={"email": "client@neft.local", "password": "client", "portal": "client"},
+        json={"email": "client@neft.local", "password": "Neft123!", "portal": "client"},
     )
 
     assert response.status_code == 200
@@ -147,10 +147,10 @@ def test_client_login_db_unreachable(monkeypatch):
 
 
 def test_admin_login_accepts_username(monkeypatch):
-    password_hash = hash_password("admin123")
+    password_hash = hash_password("Neft123!")
     demo_user = User(
         id="00000000-0000-0000-0000-00000000000a",
-        email="admin@example.com",
+        email="admin@neft.local",
         username="admin",
         full_name="Demo Admin",
         password_hash=password_hash,
@@ -172,14 +172,14 @@ def test_admin_login_accepts_username(monkeypatch):
 
     response = _client().post(
         "/api/v1/auth/login",
-        json={"username": "admin", "password": "admin123", "portal": "admin"},
+        json={"username": "admin", "password": "Neft123!", "portal": "admin"},
     )
 
     assert response.status_code == 200
-    assert response.json()["email"] == "admin@example.com"
+    assert response.json()["email"] == "admin@neft.local"
 
 def test_login_returns_503_when_rsa_invalid(monkeypatch):
-    password_hash = hash_password("client")
+    password_hash = hash_password("Neft123!")
     demo_user = User(
         id="00000000-0000-0000-0000-000000000003",
         email="client@neft.local",
@@ -207,7 +207,7 @@ def test_login_returns_503_when_rsa_invalid(monkeypatch):
 
     response = _client().post(
         "/api/v1/auth/login",
-        json={"email": "client@neft.local", "password": "client", "portal": "client"},
+        json={"email": "client@neft.local", "password": "Neft123!", "portal": "client"},
     )
 
     assert response.status_code == 503
@@ -215,7 +215,7 @@ def test_login_returns_503_when_rsa_invalid(monkeypatch):
 
 
 def test_login_requires_portal(monkeypatch):
-    password_hash = hash_password("client")
+    password_hash = hash_password("Neft123!")
     demo_user = User(
         id="00000000-0000-0000-0000-000000000004",
         email="client@neft.local",
@@ -239,7 +239,7 @@ def test_login_requires_portal(monkeypatch):
 
     response = _client().post(
         "/api/v1/auth/login",
-        json={"email": "client@neft.local", "password": "client"},
+        json={"email": "client@neft.local", "password": "Neft123!"},
     )
 
     assert response.status_code == 200
@@ -251,7 +251,7 @@ def _decode_claims(token: str) -> dict:
 
 
 def test_login_sets_client_portal_claims(monkeypatch):
-    password_hash = hash_password("client")
+    password_hash = hash_password("Neft123!")
     demo_user = User(
         id="00000000-0000-0000-0000-000000000005",
         email="client@neft.local",
@@ -276,7 +276,7 @@ def test_login_sets_client_portal_claims(monkeypatch):
 
     response = _client().post(
         "/api/v1/auth/login",
-        json={"email": "client@neft.local", "password": "client", "portal": "client"},
+        json={"email": "client@neft.local", "password": "Neft123!", "portal": "client"},
     )
 
     assert response.status_code == 200
@@ -292,7 +292,7 @@ def test_login_sets_client_portal_claims(monkeypatch):
 
 
 def test_login_sets_admin_portal_claims(monkeypatch):
-    password_hash = hash_password("admin123")
+    password_hash = hash_password("Neft123!")
     demo_user = User(
         id="00000000-0000-0000-0000-000000000006",
         email="admin@neft.local",
@@ -316,7 +316,7 @@ def test_login_sets_admin_portal_claims(monkeypatch):
 
     response = _client().post(
         "/api/v1/auth/login",
-        json={"email": "admin@neft.local", "password": "admin123", "portal": "admin"},
+        json={"email": "admin@neft.local", "password": "Neft123!", "portal": "admin"},
     )
 
     assert response.status_code == 200
@@ -331,7 +331,7 @@ def test_login_sets_admin_portal_claims(monkeypatch):
 
 
 def test_login_sets_partner_portal_claims(monkeypatch):
-    password_hash = hash_password("partner")
+    password_hash = hash_password("Partner123!")
     demo_user = User(
         id="00000000-0000-0000-0000-000000000008",
         email="partner@neft.local",
@@ -356,7 +356,7 @@ def test_login_sets_partner_portal_claims(monkeypatch):
 
     response = _client().post(
         "/api/v1/auth/login",
-        json={"email": "partner@neft.local", "password": "partner", "portal": "partner"},
+        json={"email": "partner@neft.local", "password": "Partner123!", "portal": "partner"},
     )
 
     assert response.status_code == 200
@@ -369,7 +369,7 @@ def test_login_sets_partner_portal_claims(monkeypatch):
     assert claims.get("portal") == "partner"
 
 def test_login_omits_demo_org_in_prod(monkeypatch):
-    password_hash = hash_password("client")
+    password_hash = hash_password("Neft123!")
     demo_user = User(
         id="00000000-0000-0000-0000-000000000007",
         email="client@neft.local",
@@ -394,7 +394,7 @@ def test_login_omits_demo_org_in_prod(monkeypatch):
 
     response = _client().post(
         "/api/v1/auth/login",
-        json={"email": "client@neft.local", "password": "client", "portal": "client"},
+        json={"email": "client@neft.local", "password": "Neft123!", "portal": "client"},
     )
 
     assert response.status_code == 200
@@ -409,7 +409,7 @@ def test_login_blocked_when_force_sso_and_password_disabled(monkeypatch):
 
     response = _client().post(
         "/api/v1/auth/login",
-        json={"email": "client@neft.local", "password": "client", "portal": "client"},
+        json={"email": "client@neft.local", "password": "Neft123!", "portal": "client"},
     )
 
     assert response.status_code == 403
@@ -426,7 +426,7 @@ def test_oauth_start_returns_503_when_oidc_disabled(monkeypatch):
 
 
 def test_login_access_token_contains_sid(monkeypatch):
-    password_hash = hash_password("client")
+    password_hash = hash_password("Neft123!")
     demo_user = User(
         id="00000000-0000-0000-0000-000000000099",
         email="client@neft.local",
@@ -458,10 +458,48 @@ def test_login_access_token_contains_sid(monkeypatch):
 
     response = _client().post(
         "/api/v1/auth/login",
-        json={"email": "client@neft.local", "password": "client", "portal": "client"},
+        json={"email": "client@neft.local", "password": "Neft123!", "portal": "client"},
     )
 
     assert response.status_code == 200
     claims = _decode_claims(response.json()["access_token"])
     assert claims.get("sid") == "11111111-1111-1111-1111-111111111111"
     assert claims.get("jti")
+
+
+def test_login_omits_sid_and_refresh_token_when_session_persistence_skipped(monkeypatch):
+    password_hash = hash_password("Neft123!")
+    demo_user = User(
+        id="00000000-0000-0000-0000-000000000100",
+        email="client@neft.local",
+        full_name="Demo Client",
+        password_hash=password_hash,
+        is_active=True,
+        created_at=None,
+    )
+
+    async def fake_get_user(*, email: str | None = None, username: str | None = None):
+        candidate = email or username
+        if candidate and candidate.lower() == "client@neft.local":
+            return demo_user
+        return None
+
+    async def fake_get_roles(_user_id: str):
+        return ["CLIENT_OWNER"]
+
+    async def fail_create_session(**_kwargs):
+        raise RuntimeError("session store unavailable")
+
+    monkeypatch.setattr(auth, "_get_user_from_db", fake_get_user)
+    monkeypatch.setattr(auth, "_get_roles_for_user", fake_get_roles)
+    monkeypatch.setattr(auth, "_create_session", fail_create_session)
+
+    response = _client().post(
+        "/api/v1/auth/login",
+        json={"email": "client@neft.local", "password": "Neft123!", "portal": "client"},
+    )
+
+    assert response.status_code == 200
+    claims = _decode_claims(response.json()["access_token"])
+    assert "sid" not in claims
+    assert response.json()["refresh_token"] is None

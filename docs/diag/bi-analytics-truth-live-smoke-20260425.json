@@ -1,0 +1,115 @@
+{
+  "captured_at": "2026-04-25T16:30:13.153416+00:00",
+  "classification": "VERIFIED_RUNTIME",
+  "decision": "ClickHouse-backed BI dashboards are launch-gated and verified in the local compose runtime.",
+  "runtime": {
+    "launch_gate": "cmd /c scripts\\compose_launch_gate.cmd",
+    "bi_clickhouse_enabled": true,
+    "clickhouse_service": "running",
+    "core_api_health": "healthy",
+    "sync_required": true
+  },
+  "sync_runs": {
+    "init": {
+      "id": "c6c55ab8-8422-417f-b109-580710541896",
+      "type": "INIT",
+      "status": "COMPLETED",
+      "rows_written": 0,
+      "started_at": "2026-04-25T16:30:13.071885Z",
+      "finished_at": "2026-04-25T16:30:13.090946Z",
+      "error": null
+    },
+    "incremental": {
+      "id": "7a6baced-759a-4067-ae5d-b538f8584c86",
+      "type": "INCREMENTAL",
+      "status": "COMPLETED",
+      "rows_written": 0,
+      "started_at": "2026-04-25T16:30:13.143495Z",
+      "finished_at": "2026-04-25T16:30:13.153416Z",
+      "error": null
+    }
+  },
+  "smoke_scripts": [
+    {
+      "script": "scripts\\smoke_bi_ops_dashboard.cmd",
+      "exit_code": 0,
+      "result": "PASS",
+      "payload": {
+        "totals": {
+          "total_orders": 0,
+          "sla_breaches": 0,
+          "avg_resolution_time": null,
+          "p95_resolution_time": null
+        },
+        "meta": {
+          "period_from": "2024-01-01",
+          "period_to": "2024-01-31",
+          "currency": "RUB",
+          "mart_version": "v1"
+        }
+      }
+    },
+    {
+      "script": "scripts\\smoke_bi_partner_dashboard.cmd",
+      "exit_code": 0,
+      "result": "PASS",
+      "payload": {
+        "items_count": 0,
+        "meta": {
+          "period_from": "2024-01-01",
+          "period_to": "2024-01-31",
+          "currency": "RUB",
+          "mart_version": "v1"
+        }
+      }
+    },
+    {
+      "script": "scripts\\smoke_bi_client_spend_dashboard.cmd",
+      "exit_code": 0,
+      "result": "PASS",
+      "payload": {
+        "items_count": 0,
+        "meta": {
+          "period_from": "2024-01-01",
+          "period_to": "2024-01-31",
+          "currency": "RUB",
+          "mart_version": "v1"
+        }
+      }
+    },
+    {
+      "script": "scripts\\smoke_bi_cfo_dashboard.cmd",
+      "exit_code": 0,
+      "result": "PASS",
+      "payload": {
+        "totals": {
+          "gross_revenue": 0,
+          "net_revenue": 0,
+          "commission_income": 0,
+          "vat": 0,
+          "refunds": 0,
+          "penalties": 0,
+          "margin": 0
+        },
+        "meta": {
+          "period_from": "2024-01-01",
+          "period_to": "2024-01-31",
+          "currency": "RUB",
+          "mart_version": "v1"
+        }
+      }
+    }
+  ],
+  "sentinel_tests": [
+    "platform/processing-core/app/tests/test_bi_optional_truth.py",
+    "platform/processing-core/app/tests/test_bi_client_dashboards_wave1.py",
+    "platform/processing-core/app/tests/test_bi_client_dashboards_wave2.py",
+    "platform/processing-core/app/tests/test_bi_client_dashboards_wave3.py",
+    "platform/processing-core/app/tests/test_bi_raw_v1.py",
+    "platform/processing-core/app/tests/test_bi_exports_v1_1.py"
+  ],
+  "launch_gate_rule": {
+    "runtime_state": "BI_CLICKHOUSE_ENABLED=true requires ClickHouse sync success plus 200 dashboard payload evidence.",
+    "disabled_state": "BI_CLICKHOUSE_ENABLED=false still fails closed with bi_disabled, but no longer satisfies the local launch gate."
+  }
+}

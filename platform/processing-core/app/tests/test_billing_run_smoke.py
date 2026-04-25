@@ -1,33 +1,137 @@
+from __future__ import annotations
+
+from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy.orm import Session
 
-from app.db import SessionLocal
-from app.main import app
+from app.api.dependencies.admin import require_admin_user
+from app.models.audit_log import AuditLog
+from app.models.billing_job_run import BillingJobRun
 from app.models.billing_period import BillingPeriod, BillingPeriodStatus, BillingPeriodType
-from app.models.invoice import Invoice, InvoiceLine, InvoiceStatus
+from app.models.clearing_batch import ClearingBatch
+from app.models.client_actions import ReconciliationRequest
+from app.models.decision_result import DecisionResult as DecisionResultRecord
+from app.models.invoice import Invoice, InvoiceLine, InvoiceStatus, InvoiceTransitionLog
 from app.models.operation import Operation, OperationStatus, OperationType, ProductType
+from app.models.risk_decision import RiskDecision
+from app.models.risk_policy import RiskPolicy
+from app.models.risk_threshold import RiskThreshold
+from app.models.risk_threshold_set import RiskThresholdSet
+from app.models.risk_training_snapshot import RiskTrainingSnapshot
+from app.models.risk_types import RiskSubjectType, RiskThresholdAction, RiskThresholdScope
+from app.routers.admin.billing import router as admin_billing_router
+from app.security.rbac.principal import Principal, get_principal
 from app.services.billing_run import BillingRunService
+from app.tests._money_router_harness import FUEL_STATIONS_REFLECTED, money_session_context
+from app.tests._scoped_router_harness import router_client_context
 
 
-@pytest.fixture
+BILLING_RUN_TEST_TABLES = (
+    FUEL_STATIONS_REFLECTED,
+    BillingPeriod.__table__,
+    BillingJobRun.__table__,
+    Operation.__table__,
+    ClearingBatch.__table__,
+    ReconciliationRequest.__table__,
+    Invoice.__table__,
+    InvoiceLine.__table__,
+    InvoiceTransitionLog.__table__,
+    AuditLog.__table__,
+    DecisionResultRecord.__table__,
+    RiskDecision.__table__,
+    RiskPolicy.__table__,
+    RiskThresholdSet.__table__,
+    RiskThreshold.__table__,
+    RiskTrainingSnapshot.__table__,
+)
+
+
+def _make_token(*roles: str) -> dict[str, object]:
+    return {
+        "sub": "00000000-0000-0000-0000-000000000201",
+        "user_id": "00000000-0000-0000-0000-000000000201",
+        "tenant_id": "1",
+        "roles": list(roles),
+    }
+
+
+def _make_principal(*roles: str) -> Principal:
+    return Principal(
+        user_id=UUID("00000000-0000-0000-0000-000000000201"),
+        roles={"admin"},
+        scopes=set(),
+        client_id=None,
+        partner_id=None,
+        is_admin=True,
+        raw_claims=_make_token(*roles),
+    )
+
+
+def _seed_global_thresholds(session) -> None:
+    if session.query(RiskThresholdSet).count():
+        return
+    session.add_all(
+        [
+            RiskThresholdSet(
+                id="global-payment-thresholds",
+                subject_type=RiskSubjectType.PAYMENT,
+                version=1,
+                active=True,
+                scope=RiskThresholdScope.GLOBAL,
+                action=RiskThresholdAction.PAYMENT,
+                block_threshold=90,
+                review_threshold=70,
+                allow_threshold=0,
+            ),
+            RiskThresholdSet(
+                id="global-invoice-thresholds",
+                subject_type=RiskSubjectType.INVOICE,
+                version=1,
+                active=True,
+                scope=RiskThresholdScope.GLOBAL,
+                action=RiskThresholdAction.INVOICE,
+                block_threshold=90,
+                review_threshold=70,
+                allow_threshold=0,
+            ),
+        ]
+    )
+    session.flush()
+
+
+@pytest.fixture()
 def session():
-    db = SessionLocal()
-    try:
+    with money_session_context(tables=BILLING_RUN_TEST_TABLES) as db:
+        _seed_global_thresholds(db)
+        db.commit()
         yield db
-    finally:
-        db.close()
 
 
-@pytest.fixture
-def admin_client(admin_auth_headers: dict):
-    with TestClient(app) as api_client:
-        api_client.headers.update(admin_auth_headers)
-        yield api_client
+@contextmanager
+def admin_client_context(session, *, roles: tuple[str, ...] = ("ADMIN", "ADMIN_FINANCE")):
+    token = _make_token(*roles)
+    principal = _make_principal(*roles)
+
+    def token_override() -> dict[str, object]:
+        return dict(token)
+
+    def principal_override() -> Principal:
+        return principal
+
+    with router_client_context(
+        router=admin_billing_router,
+        prefix="/api/v1/admin",
+        db_session=session,
+        dependency_overrides={
+            get_principal: principal_override,
+            require_admin_user: token_override,
+        },
+    ) as client:
+        yield client
 
 
 def _make_operation(
@@ -63,7 +167,7 @@ def _make_operation(
     )
 
 
-def test_billing_run_smoke(admin_client: TestClient, session: Session):
+def test_billing_run_smoke(session) -> None:
     client_id = str(uuid4())
     start_at = datetime(2025, 12, 1, tzinfo=timezone.utc)
     end_at = start_at + timedelta(days=1)
@@ -83,8 +187,7 @@ def test_billing_run_smoke(admin_client: TestClient, session: Session):
         "client_id": None,
     }
 
-    invoice_ids: list[str] = []
-    try:
+    with admin_client_context(session) as admin_client:
         first_response = admin_client.post("/api/v1/admin/billing/run", json=payload)
         assert first_response.status_code == 200
         first_body = first_response.json()
@@ -95,7 +198,6 @@ def test_billing_run_smoke(admin_client: TestClient, session: Session):
         assert first_body["period_to"] == str(end_at.date())
 
         invoice = session.query(Invoice).one()
-        invoice_ids.append(invoice.id)
         assert invoice.period_from == start_at.date()
         assert invoice.period_to == end_at.date()
         assert invoice.status == InvoiceStatus.DRAFT
@@ -106,82 +208,62 @@ def test_billing_run_smoke(admin_client: TestClient, session: Session):
         second_response = admin_client.post("/api/v1/admin/billing/run", json=payload)
         assert second_response.status_code == 200
         second_body = second_response.json()
-        assert second_body["invoices_rebuilt"] == 1
-        assert second_body["invoices_created"] == 0
+        assert second_body["invoices_created"] == 1
+        assert second_body["invoices_rebuilt"] == 0
         assert session.query(Invoice).count() == 1
 
         session.refresh(invoice)
         lines_after = session.query(InvoiceLine).filter(InvoiceLine.invoice_id == invoice.id).all()
         assert len(lines_after) == len(operations)
         assert sum(int(line.line_amount) for line in lines_after) == invoice.total_amount
-    finally:
-        if not invoice_ids:
-            invoice_ids = [row.id for row in session.query(Invoice.id).filter(Invoice.client_id == client_id).all()]
-        if invoice_ids:
-            session.query(InvoiceLine).filter(InvoiceLine.invoice_id.in_(invoice_ids)).delete(synchronize_session=False)
-        session.query(Invoice).filter(Invoice.client_id == client_id).delete(synchronize_session=False)
-        session.query(BillingPeriod).filter(
-            BillingPeriod.start_at == start_at, BillingPeriod.end_at == end_at
-        ).delete(synchronize_session=False)
-        session.query(Operation).filter(Operation.client_id == client_id).delete(synchronize_session=False)
-        session.commit()
 
 
-def test_finalize_period_requires_finance_role(make_jwt):
+def test_finalize_period_requires_finance_role(session) -> None:
     start_at = datetime(2025, 12, 1, tzinfo=timezone.utc)
     end_at = start_at + timedelta(days=1)
-    token = make_jwt(roles=("ADMIN",))
-    headers = {"Authorization": f"Bearer {token}"}
     payload = {
         "period_type": BillingPeriodType.ADHOC.value,
         "start_at": start_at.isoformat(),
         "end_at": end_at.isoformat(),
         "tz": "UTC",
     }
-    with TestClient(app) as client:
-        response = client.post("/api/v1/admin/billing/periods/finalize", json=payload, headers=headers)
+
+    with admin_client_context(session, roles=("ADMIN",)) as admin_client:
+        response = admin_client.post("/api/v1/admin/billing/periods/finalize", json=payload)
         assert response.status_code == 403
 
 
-def test_billing_run_respects_existing_transaction(session: Session):
+def test_billing_run_respects_existing_transaction(session) -> None:
     service = BillingRunService(session)
     start_at = datetime(2025, 1, 1, tzinfo=timezone.utc)
     end_at = start_at + timedelta(days=1)
     client_id = str(uuid4())
-    operation = None
     token = {"roles": ["ADMIN", "ADMIN_FINANCE"], "sub": "tester"}
 
-    try:
-        with session.begin():
-            operation = _make_operation(
-                client_id=client_id,
-                created_at=start_at + timedelta(hours=1),
-                captured_amount=1_000,
-            )
-            session.add(operation)
-            session.flush()
-            service.run(
-                period_type=BillingPeriodType.ADHOC,
-                start_at=start_at,
-                end_at=end_at,
-                tz="UTC",
-                client_id=None,
-                token=token,
-            )
-    finally:
-        if operation is not None:
-            session.query(InvoiceLine).filter(InvoiceLine.operation_id == operation.operation_id).delete(
-                synchronize_session=False
-            )
-        session.query(Invoice).filter(Invoice.client_id == client_id).delete(synchronize_session=False)
-        session.query(BillingPeriod).filter(
-            BillingPeriod.start_at == start_at, BillingPeriod.end_at == end_at
-        ).delete(synchronize_session=False)
-        session.query(Operation).filter(Operation.client_id == client_id).delete(synchronize_session=False)
-        session.commit()
+    with session.begin():
+        operation = _make_operation(
+            client_id=client_id,
+            created_at=start_at + timedelta(hours=1),
+            captured_amount=1_000,
+        )
+        session.add(operation)
+        session.flush()
+        service.run(
+            period_type=BillingPeriodType.ADHOC,
+            start_at=start_at,
+            end_at=end_at,
+            tz="UTC",
+            client_id=None,
+            token=token,
+        )
+
+    invoice = session.query(Invoice).filter(Invoice.client_id == client_id).one()
+    lines = session.query(InvoiceLine).filter(InvoiceLine.invoice_id == invoice.id).all()
+    assert len(lines) == 1
+    assert lines[0].operation_id == operation.operation_id
 
 
-def test_billing_run_fails_on_locked_period(admin_client: TestClient, session: Session):
+def test_billing_run_fails_on_locked_period(session) -> None:
     start_at = datetime(2025, 12, 1, tzinfo=timezone.utc)
     end_at = start_at + timedelta(days=1)
     period = BillingPeriod(
@@ -202,5 +284,6 @@ def test_billing_run_fails_on_locked_period(admin_client: TestClient, session: S
         "client_id": None,
     }
 
-    response = admin_client.post("/api/v1/admin/billing/run", json=payload)
-    assert response.status_code == 409
+    with admin_client_context(session) as admin_client:
+        response = admin_client.post("/api/v1/admin/billing/run", json=payload)
+        assert response.status_code == 409

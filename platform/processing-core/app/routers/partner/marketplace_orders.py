@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -26,6 +26,7 @@ from app.schemas.marketplace.orders import (
     OrderDeclineRequest,
     ProofCreateRequest,
 )
+from app.schemas.cases import CaseListResponse, CaseResponse
 from app.schemas.partner_trust import (
     FeeExplainOut,
     PartnerOrderSettlementOut,
@@ -35,9 +36,11 @@ from app.schemas.partner_trust import (
 )
 from app.security.rbac.guard import require_permission
 from app.security.rbac.principal import Principal
+from app.services.case_escalation_service import compute_sla_state
 from app.services.audit_service import AuditService, AuditVisibility, _sanitize_token_for_audit, request_context_from_request
 from app.services.marketplace_orders_service import MarketplaceOrdersService, MarketplaceOrdersServiceError
 from app.services.partner_trust_metrics import metrics as partner_trust_metrics
+from app.services.token_claims import DEFAULT_TENANT_ID, resolve_token_tenant_id
 
 router = APIRouter(prefix="/v1/marketplace/partner/orders", tags=["partner-portal-v1"])
 
@@ -51,14 +54,27 @@ def _ensure_partner_context(principal: Principal) -> str:
     return str(principal.partner_id)
 
 
+def _marketplace_request_context(*, request: Request, principal: Principal):
+    tenant_id = resolve_token_tenant_id(
+        principal.raw_claims,
+        default=DEFAULT_TENANT_ID,
+        error_detail="missing_tenant_context",
+    )
+    return request_context_from_request(
+        request,
+        token=_sanitize_token_for_audit(principal.raw_claims),
+        tenant_id_override=tenant_id,
+    )
+
+
 def _order_out(order) -> OrderOut:
     return OrderOut(
         id=str(order.id),
         client_id=str(order.client_id),
         partner_id=str(order.partner_id),
         status=order.status.value if hasattr(order.status, "value") else order.status,
-        payment_status=order.payment_status,
-        payment_method=order.payment_method,
+        payment_status=order.payment_status.value if hasattr(order.payment_status, "value") else order.payment_status,
+        payment_method=order.payment_method.value if hasattr(order.payment_method, "value") else order.payment_method,
         currency=order.currency,
         subtotal_amount=order.subtotal_amount,
         discount_amount=order.discount_amount,
@@ -197,9 +213,7 @@ def list_partner_orders(
     db: Session = Depends(get_db),
 ) -> OrderListResponse:
     partner_id = _ensure_partner_context(principal)
-    service = MarketplaceOrdersService(
-        db, request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(principal.raw_claims))
-    )
+    service = MarketplaceOrdersService(db, request_ctx=_marketplace_request_context(request=request, principal=principal))
     items, total = service.list_orders_for_partner(
         partner_id=partner_id,
         status=status,
@@ -219,9 +233,7 @@ def get_partner_order(
     db: Session = Depends(get_db),
 ) -> OrderDetailOut:
     partner_id = _ensure_partner_context(principal)
-    service = MarketplaceOrdersService(
-        db, request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(principal.raw_claims))
-    )
+    service = MarketplaceOrdersService(db, request_ctx=_marketplace_request_context(request=request, principal=principal))
     try:
         order = service.get_order_for_partner(order_id=order_id, partner_id=partner_id)
         events = service.list_order_events(order_id=order_id)
@@ -245,15 +257,44 @@ def list_partner_order_events(
     db: Session = Depends(get_db),
 ) -> list[OrderEventOut]:
     partner_id = _ensure_partner_context(principal)
-    service = MarketplaceOrdersService(
-        db, request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(principal.raw_claims))
-    )
+    service = MarketplaceOrdersService(db, request_ctx=_marketplace_request_context(request=request, principal=principal))
     try:
         _ = service.get_order_for_partner(order_id=order_id, partner_id=partner_id)
         events = service.list_order_events(order_id=order_id)
     except MarketplaceOrdersServiceError as exc:
         _handle_service_error(exc)
     return [_event_out(event) for event in events]
+
+
+@router.get("/{order_id}/incidents", response_model=CaseListResponse)
+def list_partner_order_incidents(
+    order_id: str,
+    request: Request,
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    principal: Principal = Depends(require_permission("partner:marketplace:orders:*")),
+    db: Session = Depends(get_db),
+) -> CaseListResponse:
+    partner_id = _ensure_partner_context(principal)
+    service = MarketplaceOrdersService(db, request_ctx=_marketplace_request_context(request=request, principal=principal))
+    try:
+        items, total = service.list_order_cases_for_partner(
+            order_id=order_id,
+            partner_id=partner_id,
+            limit=limit,
+            offset=offset,
+        )
+    except MarketplaceOrdersServiceError as exc:
+        _handle_service_error(exc)
+    now = datetime.now(timezone.utc)
+    for item in items:
+        item.sla_state = compute_sla_state(item, now=now)
+    return CaseListResponse(
+        items=[CaseResponse.model_validate(item) for item in items],
+        total=total,
+        limit=limit,
+        next_cursor=None,
+    )
 
 
 @router.get("/{order_id}/settlement", response_model=PartnerOrderSettlementOut)
@@ -272,12 +313,10 @@ def get_partner_order_settlement(
             entity_id=str(order_id),
             action="FORBIDDEN",
             visibility=AuditVisibility.INTERNAL,
-            request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(principal.raw_claims)),
+            request_ctx=_marketplace_request_context(request=request, principal=principal),
         )
         raise HTTPException(status_code=403, detail="forbidden")
-    service = MarketplaceOrdersService(
-        db, request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(principal.raw_claims))
-    )
+    service = MarketplaceOrdersService(db, request_ctx=_marketplace_request_context(request=request, principal=principal))
     try:
         order = order_record or service.get_order_for_partner(order_id=order_id, partner_id=partner_id)
     except MarketplaceOrdersServiceError as exc:
@@ -324,9 +363,7 @@ def confirm_order(
     db: Session = Depends(get_db),
 ) -> OrderOut:
     partner_id = _ensure_partner_context(principal)
-    service = MarketplaceOrdersService(
-        db, request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(principal.raw_claims))
-    )
+    service = MarketplaceOrdersService(db, request_ctx=_marketplace_request_context(request=request, principal=principal))
     try:
         order = service.confirm_order(
             partner_id=partner_id,
@@ -348,9 +385,7 @@ def decline_order(
     db: Session = Depends(get_db),
 ) -> OrderOut:
     partner_id = _ensure_partner_context(principal)
-    service = MarketplaceOrdersService(
-        db, request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(principal.raw_claims))
-    )
+    service = MarketplaceOrdersService(db, request_ctx=_marketplace_request_context(request=request, principal=principal))
     try:
         order = service.decline_order(
             partner_id=partner_id,
@@ -374,9 +409,7 @@ def upload_proof(
     db: Session = Depends(get_db),
 ) -> OrderProofOut:
     partner_id = _ensure_partner_context(principal)
-    service = MarketplaceOrdersService(
-        db, request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(principal.raw_claims))
-    )
+    service = MarketplaceOrdersService(db, request_ctx=_marketplace_request_context(request=request, principal=principal))
     try:
         proof = service.add_proof(
             partner_id=partner_id,
@@ -400,9 +433,7 @@ def complete_order(
     db: Session = Depends(get_db),
 ) -> OrderOut:
     partner_id = _ensure_partner_context(principal)
-    service = MarketplaceOrdersService(
-        db, request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(principal.raw_claims))
-    )
+    service = MarketplaceOrdersService(db, request_ctx=_marketplace_request_context(request=request, principal=principal))
     try:
         order = service.complete_order(
             partner_id=partner_id,

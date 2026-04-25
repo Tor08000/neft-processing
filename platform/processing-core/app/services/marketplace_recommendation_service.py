@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Iterable
@@ -42,6 +43,13 @@ _BADGE_TEXTS: dict[str, str] = {
 }
 
 
+@dataclass(frozen=True)
+class RecommendationBuildResult:
+    items: list[dict]
+    model: str
+    assumptions: list[str]
+
+
 class MarketplaceRecommendationService:
     def __init__(self, db: Session) -> None:
         self.db = db
@@ -69,16 +77,12 @@ class MarketplaceRecommendationService:
         tenant_id: str | None,
         client_id: str,
         limit: int,
-    ) -> list[dict]:
+    ) -> RecommendationBuildResult:
         mode = os.getenv("RECOMMENDER_MODE", "rules").lower()
+        assumptions: list[str] = []
         if mode == "ml":
-            ml_items = self._ml_stub_recommendations(
-                tenant_id=tenant_id,
-                client_id=client_id,
-                limit=limit,
-            )
-            if ml_items:
-                return ml_items
+            assumptions.append("ml_mode_requested_but_not_configured")
+            mode = "rules"
         now = datetime.now(timezone.utc)
         query = self.db.query(OfferCandidate).filter(OfferCandidate.client_id == client_id)
         if tenant_id:
@@ -95,7 +99,11 @@ class MarketplaceRecommendationService:
             .all()
         )
         if not candidates:
-            return self._fallback_recommendations(limit=limit)
+            return RecommendationBuildResult(
+                items=self._fallback_recommendations(limit=limit),
+                model="catalog_fallback_v1",
+                assumptions=assumptions or ["candidate_graph_empty"],
+            )
 
         product_ids = [candidate.product_id for candidate in candidates]
         products = (
@@ -146,8 +154,16 @@ class MarketplaceRecommendationService:
                 }
             )
         if not items:
-            return self._fallback_recommendations(limit=limit)
-        return items
+            return RecommendationBuildResult(
+                items=self._fallback_recommendations(limit=limit),
+                model="catalog_fallback_v1",
+                assumptions=assumptions or ["candidate_items_empty"],
+            )
+        return RecommendationBuildResult(
+            items=items,
+            model="offer_rules_v1",
+            assumptions=assumptions,
+        )
 
     def _fallback_recommendations(self, *, limit: int) -> list[dict]:
         products, _ = self.catalog_service.list_published_products(limit=limit, offset=0)
@@ -172,15 +188,6 @@ class MarketplaceRecommendationService:
                 }
             )
         return items
-
-    def _ml_stub_recommendations(
-        self,
-        *,
-        tenant_id: str | None,
-        client_id: str,
-        limit: int,
-    ) -> list[dict]:
-        return []
 
     def list_related_products(self, *, product_id: str, limit: int) -> list[MarketplaceProduct]:
         product = self.db.query(MarketplaceProduct).filter(MarketplaceProduct.id == product_id).one_or_none()

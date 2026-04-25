@@ -120,7 +120,7 @@ def get_demo_users() -> list[DemoUser]:
     )
 
     client_email = _env_or_default("NEFT_BOOTSTRAP_CLIENT_EMAIL", "client@neft.local")
-    client_password = _env_or_default("NEFT_BOOTSTRAP_CLIENT_PASSWORD", "Neft123!")
+    client_password = _env_or_default("NEFT_BOOTSTRAP_CLIENT_PASSWORD", "Client123!")
     client_full_name = _env_or_default(
         "NEFT_BOOTSTRAP_CLIENT_FULL_NAME",
         _env_or_default(
@@ -205,6 +205,18 @@ async def ensure_user(
             (normalized_email,),
         )
         existing_user = await cur.fetchone()
+        email_normalized = False
+
+        if not existing_user and normalized_username:
+            await cur.execute(
+                """
+                SELECT id, email, username, full_name, password_hash, is_active, bootstrap_password_version, tenant_id
+                FROM users
+                WHERE lower(username) = lower(%s)
+                """,
+                (normalized_username,),
+            )
+            existing_user = await cur.fetchone()
 
         if existing_user and UUID(str(existing_user.get("tenant_id"))) != resolved_tenant_id:
             raise RuntimeError(
@@ -251,6 +263,13 @@ async def ensure_user(
                     (user_id,),
                 )
                 active_reset = True
+
+            if normalized_email != (existing_user.get("email") or "").strip().lower():
+                await cur.execute(
+                    "UPDATE users SET email = %s WHERE id = %s",
+                    (normalized_email, user_id),
+                )
+                email_normalized = True
 
             existing_hash = existing_user.get("password_hash")
             if force_password:
@@ -312,18 +331,19 @@ async def ensure_user(
             str(password_reset).lower(),
         )
         logger.info(
-            "demo user sync: email=%s password_reset=%s roles_changed=%s active_reset=%s full_name_updated=%s",
+            "demo user sync: email=%s password_reset=%s roles_changed=%s active_reset=%s full_name_updated=%s email_normalized=%s",
             normalized_email,
             password_reset,
             roles_changed,
             active_reset,
             full_name_updated,
+            email_normalized,
         )
 
         if not existing_user:
             return "created"
 
-        if password_reset or roles_changed or active_reset or full_name_updated:
+        if password_reset or roles_changed or active_reset or full_name_updated or email_normalized:
             return "updated"
 
         return "skipped"

@@ -12,8 +12,11 @@ export function LoginPage() {
   const { login, error, authError } = useAuth();
   const { portalState, refresh } = useClient();
   const [searchParams] = useSearchParams();
-  const [email, setEmail] = useState("client@neft.local");
-  const [password, setPassword] = useState("Neft123!");
+  const isDemoLoginEnabled = import.meta.env.VITE_DEMO_MODE === "true";
+  const demoEmail = "client@neft.local";
+  const demoPassword = "Client123!";
+  const [email, setEmail] = useState(isDemoLoginEnabled ? demoEmail : "");
+  const [password, setPassword] = useState(isDemoLoginEnabled ? demoPassword : "");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [signupNotice, setSignupNotice] = useState<string | null>(null);
   const [fieldError, setFieldError] = useState<string | null>(null);
@@ -109,11 +112,17 @@ export function LoginPage() {
           <AppLogo variant="full" size={72} />
         </div>
         <h1>NEFT Platform</h1>
-        <p className="muted">Используйте демо-учётные данные, чтобы продолжить работу.</p>
-        <div className="login-demo muted small">
-          <CopyChip label="Demo email" value="client@neft.local" onCopy={() => showToast("success", "Скопировано")} />
-          <CopyChip label="Demo password" value="Neft123!" onCopy={() => showToast("success", "Скопировано")} />
-        </div>
+        <p className="muted">
+          {isDemoLoginEnabled
+            ? "Используйте демо-учётные данные, чтобы продолжить работу."
+            : "Войдите под учётными данными клиента, чтобы продолжить работу."}
+        </p>
+        {isDemoLoginEnabled ? (
+          <div className="login-demo muted small">
+            <CopyChip label="Demo email" value={demoEmail} onCopy={() => showToast("success", "Скопировано")} />
+            <CopyChip label="Demo password" value={demoPassword} onCopy={() => showToast("success", "Скопировано")} />
+          </div>
+        ) : null}
         {portalStateMessage ? (
           <div className="error" role="alert" tabIndex={-1} ref={errorRef}>
             {portalStateMessage}
@@ -171,7 +180,7 @@ export function LoginPage() {
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            placeholder="client@neft.local"
+            placeholder={isDemoLoginEnabled ? demoEmail : "client@example.com"}
             required
             autoComplete="username"
             disabled={isSubmitting}
@@ -189,7 +198,7 @@ export function LoginPage() {
             onChange={(e) => setPassword(e.target.value)}
             onKeyUp={(event) => setCapsLockOn(event.getModifierState("CapsLock"))}
             onBlur={() => setCapsLockOn(false)}
-            placeholder="Neft123!"
+            placeholder="Password"
             required
             autoComplete="current-password"
             disabled={isSubmitting}

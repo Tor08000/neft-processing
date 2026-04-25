@@ -1,4 +1,4 @@
-# Client Portal E2E Runbook (Windows CMD)
+﻿# Client Portal E2E Runbook (Windows CMD)
 
 This runbook validates Client Portal bootstrap, access states, and onboarding scenarios using the SSoT endpoint `GET /api/core/portal/me`. Portal UI must only derive access state from SSoT fields: org, subscription, entitlements_snapshot, capabilities, and gating flags (features).【F:platform/processing-core/app/schemas/portal_me.py†L7-L78】
 
@@ -27,7 +27,7 @@ Use this table to confirm UI state and avoid generic error screens.
 | Tech error | 5xx/parse crash | TECH_ERROR |
 
 ## Scenario A — New client (P1)
-Goal: signup/login → `/portal/me` NEEDS_ONBOARDING → create org → select plan → contract sign → ACTIVE → cards/docs/users.
+Goal: signup/login → `/portal/me` NEEDS_ONBOARDING → create org → select plan → generate contract → contract sign → verify `/portal/me` ACTIVE → cards/docs/users.
 
 1) **Login** (obtain client token)
 ```cmd
@@ -60,11 +60,11 @@ curl -i -X POST %CORE_BASE%/client/contracts/generate -H "Authorization: Bearer 
 curl -i -X POST %CORE_BASE%/client/contracts/sign -H "Authorization: Bearer %CLIENT_TOKEN%" -d "{\"otp\":\"0000\"}"
 ```
 
-7) **Activate**
+7) **Verify activation via bootstrap**
 ```cmd
-curl -i -X POST %CORE_BASE%/client/onboarding/activate -H "Authorization: Bearer %CLIENT_TOKEN%"
+curl -i %CORE_BASE%/portal/me -H "Authorization: Bearer %CLIENT_TOKEN%"
 ```
-Expected: `org.status=ACTIVE`, `subscription.status=ACTIVE` in `/portal/me` response.【F:platform/processing-core/app/schemas/portal_me.py†L14-L43】
+Expected: `org.status=ACTIVE`, `subscription.status=ACTIVE`, and final client access in `/portal/me` response.【F:platform/processing-core/app/schemas/portal_me.py†L14-L43】
 
 8) **Validate core features**
 ```cmd
@@ -72,6 +72,10 @@ curl -i %CORE_BASE%/v1/client/cards -H "Authorization: Bearer %CLIENT_TOKEN%"
 curl -i %CORE_BASE%/client/documents -H "Authorization: Bearer %CLIENT_TOKEN%"
 curl -i %CORE_BASE%/v1/client/users -H "Authorization: Bearer %CLIENT_TOKEN%"
 ```
+
+Compatibility/internal note:
+- `POST /client/onboarding/activate` still exists, but it is not the normal happy-path activation step for new consumers.
+- Current authenticated onboarding activation is contract-sign driven; `onboarding/activate` is a guarded compatibility/internal route after the same minimum subscription + contract prerequisites already hold.
 
 ## Scenario B — Overdue (P2)
 Goal: subscription OVERDUE → `/portal/me` OVERDUE → pay → ACTIVE.

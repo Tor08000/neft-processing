@@ -1,0 +1,187 @@
+{
+  "captured_at": "2026-04-25T16:29:59.017327+00:00",
+  "scope": "external-provider-sandbox-proof",
+  "classification": "VERIFIED_RUNTIME",
+  "providers": {
+    "diadok": {
+      "service": "integration-hub",
+      "provider": "diadok",
+      "mode": "sandbox",
+      "status": "CONFIGURED",
+      "configured": true,
+      "last_success_at": null,
+      "last_error_code": null,
+      "message": "DIADOK EDO transport",
+      "sandbox_proof": true,
+      "last_attempt": null,
+      "retryable": false
+    },
+    "sbis": {
+      "service": "integration-hub",
+      "provider": "sbis",
+      "mode": "sandbox",
+      "status": "CONFIGURED",
+      "configured": true,
+      "last_success_at": null,
+      "last_error_code": null,
+      "message": "SBIS EDO sandbox transport",
+      "sandbox_proof": true,
+      "last_attempt": null,
+      "retryable": false
+    },
+    "smtp_email": {
+      "service": "integration-hub",
+      "provider": "smtp_email",
+      "mode": "sandbox",
+      "status": "CONFIGURED",
+      "configured": true,
+      "last_success_at": null,
+      "last_error_code": null,
+      "message": "SMTP email provider",
+      "sandbox_proof": true,
+      "last_attempt": null,
+      "retryable": false
+    },
+    "otp_sms": {
+      "service": "integration-hub",
+      "provider": "otp_sms",
+      "mode": "sandbox",
+      "status": "CONFIGURED",
+      "configured": true,
+      "last_success_at": null,
+      "last_error_code": null,
+      "message": "OTP/SMS vendor adapter is provider-gated until concrete vendor credentials are supplied",
+      "sandbox_proof": true,
+      "last_attempt": null,
+      "retryable": false
+    },
+    "notifications": {
+      "service": "integration-hub",
+      "provider": "notifications",
+      "mode": "sandbox",
+      "status": "CONFIGURED",
+      "configured": true,
+      "last_success_at": null,
+      "last_error_code": null,
+      "message": "Webhook delivery remains runtime-backed; email/multichannel delivery is provider-gated",
+      "sandbox_proof": true,
+      "last_attempt": null,
+      "retryable": false
+    },
+    "webhook_intake": {
+      "service": "integration-hub",
+      "provider": "webhook_intake",
+      "mode": "dev_unsigned_allowed",
+      "status": "DEGRADED",
+      "configured": false,
+      "last_success_at": null,
+      "last_error_code": "webhook_signature_policy_degraded",
+      "message": "Unsigned webhook intake is allowed only outside production",
+      "sandbox_proof": false,
+      "last_attempt": null,
+      "retryable": false
+    },
+    "bank_api": {
+      "service": "integration-hub",
+      "provider": "bank_api",
+      "mode": "sandbox",
+      "status": "CONFIGURED",
+      "configured": true,
+      "last_success_at": null,
+      "last_error_code": null,
+      "message": "Bank API sandbox contract proof is enabled without production credentials",
+      "sandbox_proof": true,
+      "last_attempt": null,
+      "retryable": false
+    },
+    "erp_1c": {
+      "service": "integration-hub",
+      "provider": "erp_1c",
+      "mode": "sandbox",
+      "status": "CONFIGURED",
+      "configured": true,
+      "last_success_at": null,
+      "last_error_code": null,
+      "message": "ERP/1C sandbox contract proof is enabled without production credentials",
+      "sandbox_proof": true,
+      "last_attempt": null,
+      "retryable": false
+    },
+    "fuel_provider": {
+      "service": "integration-hub",
+      "provider": "fuel_provider",
+      "mode": "sandbox",
+      "status": "CONFIGURED",
+      "configured": true,
+      "last_success_at": null,
+      "last_error_code": null,
+      "message": "Fuel provider sandbox contract proof is enabled without production credentials",
+      "sandbox_proof": true,
+      "last_attempt": null,
+      "retryable": false
+    },
+    "logistics_provider": {
+      "service": "integration-hub",
+      "provider": "logistics_provider",
+      "mode": "sandbox",
+      "status": "CONFIGURED",
+      "configured": true,
+      "last_success_at": null,
+      "last_error_code": null,
+      "message": "Logistics provider sandbox contract proof is enabled without production credentials",
+      "sandbox_proof": true,
+      "last_attempt": null,
+      "retryable": false
+    }
+  },
+  "runtime_results": {
+    "otp_1": {
+      "provider_message_id": "sandbox:cd2065d7-5c95-44e2-a20e-520dbf2bec9e",
+      "status": "sent",
+      "mode": "sandbox"
+    },
+    "otp_2": {
+      "provider_message_id": "sandbox:cd2065d7-5c95-44e2-a20e-520dbf2bec9e",
+      "status": "sent",
+      "mode": "sandbox"
+    },
+    "email": {
+      "status": "sent",
+      "message_id": "sandbox:17a20ae1-fc8f-40cd-8ee5-667e0adcb6d2",
+      "mode": "sandbox"
+    },
+    "notifications": {
+      "status": "accepted",
+      "mode": "sandbox",
+      "provider": "sandbox",
+      "provider_message_id": "sandbox:372944a4-330b-48dd-b199-57e6e8824fb4"
+    },
+    "fuel": {
+      "ok": true,
+      "request_id": "b90379dd-8d82-4168-be06-d3c51368356f",
+      "trip_id": "sandbox-trip",
+      "liters": 34.55,
+      "method": "integration_hub",
+      "provider_mode": "sandbox",
+      "sandbox_proof": {
+        "contract": "fuel_consumption.v1",
+        "formula": "round(distance_km * 0.28, 2)",
+        "distance_km": 123.4,
+        "vehicle_kind": "truck",
+        "idempotency_key": "sandbox-fuel-20260425"
+      },
+      "last_attempt": {
+        "attempt": 1,
+        "status": "success",
+        "provider": "fuel_provider",
+        "mode": "sandbox",
+        "request_id": "b90379dd-8d82-4168-be06-d3c51368356f"
+      },
+      "retryable": false,
+      "idempotency_key": "sandbox-fuel-20260425"
+    }
+  },
+  "commands": [
+    "scripts\\smoke_external_provider_sandbox.cmd"
+  ]
+}

@@ -5,7 +5,7 @@ from enum import Enum
 from sqlalchemy import Column, DateTime, Index, Integer, String, Text, func
 
 from app.db import Base
-from app.db.types import ExistingEnum, GUID, new_uuid_str
+from app.db.types import ExistingEnum, new_uuid_str
 
 
 class SupportRequestScopeType(str, Enum):
@@ -39,7 +39,7 @@ class SupportRequestPriority(str, Enum):
 class SupportRequest(Base):
     __tablename__ = "support_requests"
 
-    id = Column(GUID(), primary_key=True, default=new_uuid_str)
+    id = Column(String(36), primary_key=True, default=new_uuid_str)
     tenant_id = Column(Integer, nullable=False, index=True)
     client_id = Column(String(64), nullable=True, index=True)
     partner_id = Column(String(64), nullable=True, index=True)
@@ -54,9 +54,9 @@ class SupportRequest(Base):
         nullable=False,
         index=True,
     )
-    subject_id = Column(GUID(), nullable=True, index=True)
+    subject_id = Column(String(36), nullable=True, index=True)
     correlation_id = Column(String(128), nullable=True)
-    event_id = Column(GUID(), nullable=True)
+    event_id = Column(String(36), nullable=True)
     title = Column(String(255), nullable=False)
     description = Column(Text, nullable=False)
     status = Column(

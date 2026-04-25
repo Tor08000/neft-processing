@@ -1,28 +1,34 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
+  disableFeature,
+  enableFeature,
   getClient,
+  getClientDecisionContext,
   getClientFeatures,
   listContracts,
   listLimitProfiles,
   listRiskProfiles,
   listSubscriptions,
   updateClient,
-  enableFeature,
-  disableFeature,
 } from "../../api/crm";
+import { ADMIN_API_BASE } from "../../api/base";
 import { useAuth } from "../../auth/AuthContext";
-import { ClientForm } from "../../components/crm/ClientForm";
-import { FeatureFlagsPanel } from "../../components/crm/FeatureFlagsPanel";
 import { DataTable, type DataColumn } from "../../components/common/DataTable";
+import { EmptyState } from "../../components/common/EmptyState";
+import { ErrorState } from "../../components/common/ErrorState";
 import { JsonViewer } from "../../components/common/JsonViewer";
+import { Loader } from "../../components/Loader/Loader";
 import { Tabs } from "../../components/common/Tabs";
 import { Toast } from "../../components/common/Toast";
-import { useToast } from "../../components/Toast/useToast";
+import { ClientForm } from "../../components/crm/ClientForm";
+import { FeatureFlagsPanel } from "../../components/crm/FeatureFlagsPanel";
 import { StatusBadge } from "../../components/StatusBadge/StatusBadge";
+import { useToast } from "../../components/Toast/useToast";
 import type { CrmClient, CrmContract, CrmProfile, CrmSubscription } from "../../types/crm";
 import { describeError, formatError } from "../../utils/apiErrors";
-import { ADMIN_API_BASE } from "../../api/base";
+
+const EMPTY_VALUE = "-";
 
 export const ClientDetailsPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -33,35 +39,77 @@ export const ClientDetailsPage: React.FC = () => {
   const [contracts, setContracts] = useState<CrmContract[]>([]);
   const [subscriptions, setSubscriptions] = useState<CrmSubscription[]>([]);
   const [features, setFeatures] = useState<Record<string, boolean>>({});
+  const [activeContractId, setActiveContractId] = useState<string | null>(null);
+  const [limitProfileId, setLimitProfileId] = useState<string | null>(null);
+  const [riskProfileId, setRiskProfileId] = useState<string | null>(null);
   const [limitProfiles, setLimitProfiles] = useState<CrmProfile[]>([]);
   const [riskProfiles, setRiskProfiles] = useState<CrmProfile[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [loadErrorDetails, setLoadErrorDetails] = useState<string | undefined>(undefined);
   const [tab, setTab] = useState("overview");
   const [saving, setSaving] = useState(false);
   const [canToggleFeatures, setCanToggleFeatures] = useState(true);
 
-  useEffect(() => {
-    if (!accessToken || !id) return;
+  const loadClient = useCallback(() => {
+    if (!accessToken || !id) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
+    setLoadError(null);
+    setLoadErrorDetails(undefined);
+    setClient(null);
+    setContracts([]);
+    setSubscriptions([]);
+    setFeatures({});
+    setActiveContractId(null);
+    setLimitProfileId(null);
+    setRiskProfileId(null);
+    setLimitProfiles([]);
+    setRiskProfiles([]);
     Promise.all([
       getClient(accessToken, id),
+      getClientDecisionContext(accessToken, id),
       listContracts(accessToken, { client_id: id }),
       listSubscriptions(accessToken, { client_id: id }),
       getClientFeatures(accessToken, id),
       listLimitProfiles(accessToken),
       listRiskProfiles(accessToken),
     ])
-      .then(([clientResponse, contractResponse, subscriptionResponse, featuresResponse, limitResponse, riskResponse]) => {
-        setClient(clientResponse);
-        setContracts(contractResponse.items);
-        setSubscriptions(subscriptionResponse.items);
-        setFeatures(featuresResponse ?? {});
-        setLimitProfiles(limitResponse.items ?? []);
-        setRiskProfiles(riskResponse.items ?? []);
+      .then(
+        ([
+          clientResponse,
+          decisionContext,
+          contractResponse,
+          subscriptionResponse,
+          featuresResponse,
+          limitResponse,
+          riskResponse,
+        ]) => {
+          setClient(clientResponse);
+          setContracts(contractResponse.items);
+          setSubscriptions(subscriptionResponse.items);
+          setFeatures(featuresResponse ?? {});
+          setActiveContractId(decisionContext.active_contract?.id ?? null);
+          setLimitProfileId(decisionContext.limit_profile?.id ?? null);
+          setRiskProfileId(decisionContext.risk_profile?.id ?? null);
+          setLimitProfiles(limitResponse.items ?? []);
+          setRiskProfiles(riskResponse.items ?? []);
+        },
+      )
+      .catch((error: unknown) => {
+        const summary = describeError(error);
+        setLoadError(summary.message);
+        setLoadErrorDetails(summary.details);
+        showToast("error", formatError(error));
       })
-      .catch((error: unknown) => showToast("error", formatError(error)))
       .finally(() => setLoading(false));
   }, [accessToken, id, showToast]);
+
+  useEffect(() => {
+    loadClient();
+  }, [loadClient]);
 
   const handleUpdate = async (values: Partial<CrmClient>) => {
     if (!accessToken || !id) return;
@@ -97,33 +145,37 @@ export const ClientDetailsPage: React.FC = () => {
   const contractColumns: DataColumn<CrmContract>[] = useMemo(
     () => [
       { key: "contract_number", title: "Contract" },
-      { key: "status", title: "Status", render: (row) => (row.status ? <StatusBadge status={row.status} /> : "-") },
+      {
+        key: "status",
+        title: "Status",
+        render: (row) => (row.status ? <StatusBadge status={row.status} /> : EMPTY_VALUE),
+      },
       {
         key: "period",
         title: "Valid",
-        render: (row) => `${row.valid_from ?? "-"} → ${row.valid_to ?? "-"}`,
+        render: (row) => `${row.valid_from ?? EMPTY_VALUE} -> ${row.valid_to ?? EMPTY_VALUE}`,
       },
-      { key: "tariff_plan_id", title: "Tariff" },
+      { key: "billing_mode", title: "Billing mode" },
+      { key: "currency", title: "Currency" },
     ],
     [],
   );
 
   const subscriptionColumns: DataColumn<CrmSubscription>[] = useMemo(
     () => [
-      { key: "subscription_id", title: "Subscription" },
-      { key: "status", title: "Status", render: (row) => (row.status ? <StatusBadge status={row.status} /> : "-") },
-      { key: "tariff_id", title: "Tariff" },
+      { key: "subscription_id", title: "Subscription", render: (row) => row.id },
+      {
+        key: "status",
+        title: "Status",
+        render: (row) => (row.status ? <StatusBadge status={row.status} /> : EMPTY_VALUE),
+      },
+      { key: "tariff_plan_id", title: "Tariff" },
       { key: "billing_day", title: "Billing day" },
     ],
     [],
   );
 
-  const latestSubscription = subscriptions[0];
-  const quickCfoExplainLink = latestSubscription?.subscription_id
-    ? `/crm/subscriptions/${latestSubscription.subscription_id}/cfo-explain${
-        latestSubscription.last_period_id ? `?period_id=${latestSubscription.last_period_id}` : ""
-      }`
-    : null;
+  const activeSubscription = subscriptions.find((item) => item.status === "ACTIVE") ?? subscriptions[0] ?? null;
   const fleetReportLinks = client?.client_id
     ? [
         {
@@ -142,11 +194,39 @@ export const ClientDetailsPage: React.FC = () => {
     : [];
 
   if (loading) {
-    return <div>Loading...</div>;
+    return <Loader label="Loading client detail" />;
+  }
+
+  if (!id) {
+    return (
+      <EmptyState
+        title="Client ID is required"
+        description="Open the client detail page from the CRM clients list."
+        primaryAction={{ label: "Back to clients", onClick: () => navigate("/crm/clients") }}
+      />
+    );
+  }
+
+  if (loadError) {
+    return (
+      <ErrorState
+        title="Failed to load client detail"
+        description={loadError}
+        details={loadErrorDetails}
+        actionLabel="Retry"
+        onAction={() => void loadClient()}
+      />
+    );
   }
 
   if (!client) {
-    return <div>Client not found</div>;
+    return (
+      <EmptyState
+        title="Client not found"
+        description="The requested client is missing or no longer available."
+        primaryAction={{ label: "Back to clients", onClick: () => navigate("/crm/clients") }}
+      />
+    );
   }
 
   return (
@@ -154,11 +234,6 @@ export const ClientDetailsPage: React.FC = () => {
       <Toast toast={toast} />
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <h1>Client {client.client_id}</h1>
-        {quickCfoExplainLink && (
-          <button type="button" onClick={() => navigate(quickCfoExplainLink)}>
-            CFO Explain
-          </button>
-        )}
       </div>
       <Tabs
         tabs={[
@@ -175,12 +250,12 @@ export const ClientDetailsPage: React.FC = () => {
       {tab === "overview" && (
         <div style={{ display: "grid", gap: 16 }}>
           <div style={{ display: "grid", gap: 6 }}>
-            <div>Status: {client.status ? <StatusBadge status={client.status} /> : "-"}</div>
-            <div>Legal name: {client.legal_name ?? "-"}</div>
-            <div>Country: {client.country ?? "-"}</div>
-            <div>Timezone: {client.timezone ?? "-"}</div>
-            <div>Active contract: {client.active_contract_id ?? "-"}</div>
-            <div>Active subscription: {client.active_subscription_id ?? "-"}</div>
+            <div>Status: {client.status ? <StatusBadge status={client.status} /> : EMPTY_VALUE}</div>
+            <div>Legal name: {client.legal_name ?? EMPTY_VALUE}</div>
+            <div>Country: {client.country ?? EMPTY_VALUE}</div>
+            <div>Timezone: {client.timezone ?? EMPTY_VALUE}</div>
+            <div>Active contract: {activeContractId ?? EMPTY_VALUE}</div>
+            <div>Active subscription: {activeSubscription?.id ?? EMPTY_VALUE}</div>
           </div>
           <div style={{ border: "1px solid #e2e8f0", padding: 16, borderRadius: 12 }}>
             <h3>Fleet intelligence reports</h3>
@@ -209,7 +284,7 @@ export const ClientDetailsPage: React.FC = () => {
         <DataTable
           data={contracts}
           columns={contractColumns}
-          onRowClick={(row) => navigate(`/crm/contracts/${row.contract_id ?? row.id}`)}
+          onRowClick={(row) => navigate(`/crm/contracts/${row.id}`)}
         />
       )}
 
@@ -217,7 +292,7 @@ export const ClientDetailsPage: React.FC = () => {
         <DataTable
           data={subscriptions}
           columns={subscriptionColumns}
-          onRowClick={(row) => navigate(`/crm/subscriptions/${row.subscription_id ?? row.id}`)}
+          onRowClick={(row) => navigate(`/crm/subscriptions/${row.id}`)}
         />
       )}
 
@@ -229,11 +304,11 @@ export const ClientDetailsPage: React.FC = () => {
         <div style={{ display: "grid", gap: 16 }}>
           <div>
             <div style={{ fontWeight: 600 }}>Assigned limit profile</div>
-            <div>{client.limit_profile_id ?? "-"}</div>
+            <div>{limitProfileId ?? EMPTY_VALUE}</div>
           </div>
           <div>
             <div style={{ fontWeight: 600 }}>Assigned risk profile</div>
-            <div>{client.risk_profile_id ?? "-"}</div>
+            <div>{riskProfileId ?? EMPTY_VALUE}</div>
           </div>
           <div>
             <details>

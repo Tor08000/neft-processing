@@ -70,7 +70,7 @@ class DocumentAcknowledgement(Base):
         UniqueConstraint("client_id", "document_type", "document_id", name="uq_document_acknowledgements_scope"),
     )
 
-    id = Column(GUID(), primary_key=True, default=new_uuid_str)
+    id = Column(String(36), primary_key=True, default=new_uuid_str)
     tenant_id = Column(Integer, nullable=False, index=True)
     client_id = Column(String(64), nullable=False, index=True)
     document_type = Column(String(64), nullable=False)
@@ -103,7 +103,7 @@ class InvoiceThread(Base):
     __tablename__ = "invoice_threads"
     __table_args__ = (UniqueConstraint("invoice_id", name="uq_invoice_thread_invoice"),)
 
-    id = Column(GUID(), primary_key=True, default=new_uuid_str)
+    id = Column(String(36), primary_key=True, default=new_uuid_str)
     invoice_id = Column(String(36), ForeignKey("invoices.id"), nullable=False, index=True)
     client_id = Column(String(64), nullable=False, index=True)
     status = Column(
@@ -122,8 +122,8 @@ class InvoiceThread(Base):
 class InvoiceMessage(Base):
     __tablename__ = "invoice_messages"
 
-    id = Column(GUID(), primary_key=True, default=new_uuid_str)
-    thread_id = Column(GUID(), ForeignKey("invoice_threads.id"), nullable=False, index=True)
+    id = Column(String(36), primary_key=True, default=new_uuid_str)
+    thread_id = Column(String(36), ForeignKey("invoice_threads.id"), nullable=False, index=True)
     sender_type = Column(
         ExistingEnum(InvoiceMessageSenderType, name="invoice_message_sender_type"),
         nullable=False,

@@ -43,7 +43,7 @@ set "CORE_PORTAL=%CORE_BASE%/portal"
 
 curl -s -o "%TEMP%\admin_login.json" -w "%%{http_code}" -X POST "%AUTH_URL%/login" ^
   -H "Content-Type: application/json" ^
-  -d "{\"email\":\"admin@example.com\",\"password\":\"admin\",\"portal\":\"admin\"}"
+  -d "{\"email\":\"admin@neft.local\",\"password\":\"Neft123!\",\"portal\":\"admin\"}"
 for /f "usebackq delims=" %%T in (`python -c "import json; print(json.load(open(r'%TEMP%\\admin_login.json')).get('access_token',''))"`) do set "ADMIN_TOKEN=%%T"
 
 curl -s -o "%TEMP%\seed_partner.json" -w "%%{http_code}" -X POST "%CORE_ADMIN%/seed/partner-money" ^
@@ -53,7 +53,7 @@ curl -s -o "%TEMP%\seed_partner.json" -w "%%{http_code}" -X POST "%CORE_ADMIN%/s
 
 curl -s -o "%TEMP%\partner_login.json" -w "%%{http_code}" -X POST "%AUTH_URL%/login" ^
   -H "Content-Type: application/json" ^
-  -d "{\"email\":\"partner@neft.local\",\"password\":\"partner\",\"portal\":\"partner\"}"
+  -d "{\"email\":\"partner@neft.local\",\"password\":\"Partner123!\",\"portal\":\"partner\"}"
 for /f "usebackq delims=" %%T in (`python -c "import json; print(json.load(open(r'%TEMP%\\partner_login.json')).get('access_token',''))"`) do set "PARTNER_TOKEN=%%T"
 
 curl -s -o "%TEMP%\partner_verify.json" -w "%%{http_code}" -X GET "%CORE_PARTNER%/auth/verify" ^
@@ -61,7 +61,7 @@ curl -s -o "%TEMP%\partner_verify.json" -w "%%{http_code}" -X GET "%CORE_PARTNER
 curl -s -o "%TEMP%\portal_me.json" -w "%%{http_code}" -X GET "%CORE_PORTAL%/me" ^
   -H "Authorization: Bearer %PARTNER_TOKEN%"
 
-curl -s -o "%TEMP%\partner_dashboard.json" -w "%%{http_code}" -X GET "%CORE_PARTNER%/dashboard" ^
+curl -s -o "%TEMP%\partner_dashboard.json" -w "%%{http_code}" -X GET "%CORE_PARTNER%/finance/dashboard" ^
   -H "Authorization: Bearer %PARTNER_TOKEN%"
 curl -s -o "%TEMP%\partner_ledger.json" -w "%%{http_code}" -X GET "%CORE_PARTNER%/ledger?limit=5" ^
   -H "Authorization: Bearer %PARTNER_TOKEN%"

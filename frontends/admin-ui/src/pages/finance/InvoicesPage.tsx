@@ -101,54 +101,65 @@ export const InvoicesPage: React.FC = () => {
         </div>
       </div>
 
-      <Suspense fallback={<Loader label="Loading filters" />}>
-        <div className="card" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          <div className="filters">
-            <DateRangeFilter
-              label="Period"
-              from={dateRange.from}
-              to={dateRange.to}
-              onChange={(range) => {
-                setOffset(0);
-                setDateRange(range);
-              }}
-            />
-            <div className="filter">
-              <span className="label">Org</span>
-              <input
-                placeholder="org_id"
-                value={orgId}
-                onChange={(event) => {
+      <Table
+        columns={columns}
+        data={items}
+        loading={isLoading}
+        toolbar={
+          <Suspense fallback={<Loader label="Loading filters" />}>
+            <div className="filters">
+              <DateRangeFilter
+                label="Period"
+                from={dateRange.from}
+                to={dateRange.to}
+                onChange={(range) => {
                   setOffset(0);
-                  setOrgId(event.target.value);
+                  setDateRange(range);
                 }}
               />
+              <div className="filter">
+                <span className="label">Org</span>
+                <input
+                  placeholder="org_id"
+                  value={orgId}
+                  onChange={(event) => {
+                    setOffset(0);
+                    setOrgId(event.target.value);
+                  }}
+                />
+              </div>
+              <div className="filter">
+                <span className="label">Status</span>
+                <input
+                  placeholder="status"
+                  value={status}
+                  onChange={(event) => {
+                    setOffset(0);
+                    setStatus(event.target.value);
+                  }}
+                />
+              </div>
             </div>
-            <div className="filter">
-              <span className="label">Status</span>
-              <input
-                placeholder="status"
-                value={status}
-                onChange={(event) => {
-                  setOffset(0);
-                  setStatus(event.target.value);
-                }}
-              />
-            </div>
+          </Suspense>
+        }
+        errorState={
+          error
+            ? {
+                title: "Failed to load invoices",
+                description: (error as Error).message,
+                actionLabel: "Retry",
+                actionOnClick: () => refetch(),
+                requestId: extractRequestId(error),
+              }
+            : undefined
+        }
+        footer={
+          <div className="table-footer__content">
+            <Pagination total={total} limit={limit} offset={offset} onChange={(value) => setOffset(value)} />
           </div>
-        </div>
-      </Suspense>
-
-      {error ? (
-        <div style={{ color: "#dc2626" }}>
-          {(error as Error).message}
-          {extractRequestId(error) ? <div style={{ marginTop: 4 }}>Request ID: {extractRequestId(error)}</div> : null}
-        </div>
-      ) : null}
-
-      <Table columns={columns} data={items} loading={isLoading} onRowClick={(row) => navigate(`/finance/invoices/${row.id}`)} />
-
-      <Pagination total={total} limit={limit} offset={offset} onChange={(value) => setOffset(value)} />
+        }
+        onRowClick={(row) => navigate(`/finance/invoices/${row.id}`)}
+      />
     </div>
   );
 };

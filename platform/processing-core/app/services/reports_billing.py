@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from typing import Iterable
 
 from sqlalchemy import func
@@ -12,6 +12,10 @@ from app.models.billing_summary import BillingSummary, BillingSummaryStatus
 from app.models.operation import Operation
 from app.services.billing_periods import BillingPeriodConflict, BillingPeriodService, period_bounds_for_dates
 from app.services.billing_summary_hash import hash_payload
+
+
+def _utcnow() -> datetime:
+    return datetime.now(UTC)
 
 
 def _capture_aggregation_query(
@@ -116,7 +120,7 @@ def build_billing_summary_for_date(
                 operations_count=payload["operations_count"],
                 status=BillingSummaryStatus.PENDING,
                 hash=payload_hash,
-                generated_at=datetime.utcnow(),
+                generated_at=_utcnow(),
             )
             db.add(summary)
         else:
@@ -125,7 +129,7 @@ def build_billing_summary_for_date(
             summary.operations_count = payload["operations_count"]
             summary.status = BillingSummaryStatus.PENDING
             summary.hash = payload_hash
-            summary.generated_at = datetime.utcnow()
+            summary.generated_at = _utcnow()
             summary.finalized_at = None
 
         result.append(summary)
@@ -150,7 +154,7 @@ def finalize_billing_summary(db: Session, summary_id: str) -> BillingSummary:
     if period and period.status != BillingPeriodStatus.OPEN:
         raise BillingPeriodConflict(f"Billing period {period.id} is {period.status.value}")
     summary.status = BillingSummaryStatus.FINALIZED
-    summary.finalized_at = datetime.utcnow()
+    summary.finalized_at = _utcnow()
     db.add(summary)
     db.commit()
     db.refresh(summary)

@@ -2,15 +2,27 @@ from __future__ import annotations
 
 import os
 
+import pytest
 import sqlalchemy as sa
 from sqlalchemy import create_engine
+from sqlalchemy.engine.url import make_url
 
 from app.tests.conftest import _reset_schema, _run_alembic_upgrade
+
+
+def _require_postgres(database_url: str) -> None:
+    try:
+        drivername = make_url(database_url).drivername
+    except Exception:
+        drivername = ""
+    if not drivername.startswith("postgresql"):
+        pytest.skip("system alembic schema tests require a PostgreSQL DATABASE_URL")
 
 
 def test_alembic_head_creates_core_tables() -> None:
     database_url = os.getenv("DATABASE_URL", "")
     assert database_url, "DATABASE_URL must be set for alembic head test"
+    _require_postgres(database_url)
 
     schema = "system_alembic_head"
     _reset_schema(database_url, schema)
@@ -63,6 +75,7 @@ def test_alembic_head_creates_core_tables() -> None:
 def test_alembic_head_creates_processing_core_operations() -> None:
     database_url = os.getenv("DATABASE_URL", "")
     assert database_url, "DATABASE_URL must be set for alembic head test"
+    _require_postgres(database_url)
 
     schema = "processing_core"
     _reset_schema(database_url, schema)

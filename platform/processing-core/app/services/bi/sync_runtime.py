@@ -5,6 +5,8 @@ from time import perf_counter
 
 from neft_shared.logging_setup import get_logger
 from neft_shared.settings import get_settings
+from sqlalchemy import func
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from app.models.bi import BiSyncRun, BiSyncRunStatus, BiSyncRunType, BiWatermark
@@ -21,6 +23,17 @@ class BiSyncError(Exception):
 
 
 def _upsert_watermark(db: Session, name: str, ts: datetime) -> None:
+    bind = db.get_bind()
+    if bind.dialect.name == "postgresql":
+        stmt = pg_insert(BiWatermark.__table__).values(name=name, last_updated_at=ts)
+        stmt = stmt.on_conflict_do_update(
+            index_elements=[BiWatermark.name],
+            set_={"last_updated_at": ts, "updated_at": func.now()},
+        )
+        db.execute(stmt)
+        db.flush()
+        return
+
     watermark = db.query(BiWatermark).filter(BiWatermark.name == name).one_or_none()
     if not watermark:
         watermark = BiWatermark(name=name)

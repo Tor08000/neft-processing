@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from app.models.fuel import FuelLimit, FuelLimitPeriod, FuelLimitScopeType, FuelLimitType
@@ -29,19 +29,21 @@ class LimitResolution:
 
 
 def _period_bounds(period: FuelLimitPeriod, at: datetime, tz_name: str) -> tuple[datetime, datetime]:
+    if at.tzinfo is None:
+        at = at.replace(tzinfo=timezone.utc)
     local = at.astimezone(ZoneInfo(tz_name))
     start = local.replace(hour=0, minute=0, second=0, microsecond=0)
     if period == FuelLimitPeriod.DAILY:
-        return start, start + timedelta(days=1)
+        return start.astimezone(timezone.utc), (start + timedelta(days=1)).astimezone(timezone.utc)
     if period == FuelLimitPeriod.WEEKLY:
         week_start = start - timedelta(days=start.weekday())
-        return week_start, week_start + timedelta(days=7)
+        return week_start.astimezone(timezone.utc), (week_start + timedelta(days=7)).astimezone(timezone.utc)
     month_start = start.replace(day=1)
     if month_start.month == 12:
         month_end = month_start.replace(year=month_start.year + 1, month=1)
     else:
         month_end = month_start.replace(month=month_start.month + 1)
-    return month_start, month_end
+    return month_start.astimezone(timezone.utc), month_end.astimezone(timezone.utc)
 
 
 _SCOPE_PRIORITY = {

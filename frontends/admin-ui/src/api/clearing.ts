@@ -11,7 +11,11 @@ export async function fetchClearingBatches(params: {
 }
 
 export async function fetchClearingBatchDetails(id: string): Promise<ClearingBatchDetails> {
-  return apiGet(`/clearing/batches/${id}`);
+  const batch = await apiGet<ClearingBatch>(`/clearing/batches/${id}`);
+  return {
+    batch,
+    operations: batch.operations ?? [],
+  };
 }
 
 export async function markBatchSent(id: string): Promise<ClearingBatch> {

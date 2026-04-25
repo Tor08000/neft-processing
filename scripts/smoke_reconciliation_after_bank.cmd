@@ -7,8 +7,8 @@ if "%CORE_BASE%"=="" set "CORE_BASE=/api/core"
 set "AUTH_URL=%GATEWAY_BASE%%AUTH_BASE%"
 set "CORE_URL=%GATEWAY_BASE%%CORE_BASE%/api/v1/admin"
 
-if "%ADMIN_EMAIL%"=="" set "ADMIN_EMAIL=admin@example.com"
-if "%ADMIN_PASSWORD%"=="" set "ADMIN_PASSWORD=admin"
+if "%ADMIN_EMAIL%"=="" set "ADMIN_EMAIL=admin@neft.local"
+if "%ADMIN_PASSWORD%"=="" set "ADMIN_PASSWORD=Neft123!"
 
 set "TOKEN="
 set "AUTH_HEADER="

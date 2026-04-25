@@ -6,31 +6,42 @@ interface SubscriptionFormProps {
   onSubmit: (values: Partial<CrmSubscription>) => void | Promise<void>;
   submitting?: boolean;
   submitLabel?: string;
+  showClientId?: boolean;
+  showTenantId?: boolean;
+  showTariffPlanId?: boolean;
 }
+
+const toDateInput = (value?: string | null) => (value ? value.slice(0, 10) : "");
 
 export const SubscriptionForm: React.FC<SubscriptionFormProps> = ({
   initialValues,
   onSubmit,
   submitting,
   submitLabel = "Сохранить",
+  showClientId = true,
+  showTenantId = true,
+  showTariffPlanId = true,
 }) => {
+  const [tenantId, setTenantId] = useState(String(initialValues?.tenant_id ?? ""));
   const [clientId, setClientId] = useState(initialValues?.client_id ?? "");
-  const [tariffId, setTariffId] = useState(initialValues?.tariff_id ?? "");
+  const [tariffPlanId, setTariffPlanId] = useState(initialValues?.tariff_plan_id ?? "");
   const [billingDay, setBillingDay] = useState(String(initialValues?.billing_day ?? ""));
-  const [startedAt, setStartedAt] = useState(initialValues?.started_at ?? "");
+  const [startedAt, setStartedAt] = useState(toDateInput(initialValues?.started_at));
 
   useEffect(() => {
+    setTenantId(String(initialValues?.tenant_id ?? ""));
     setClientId(initialValues?.client_id ?? "");
-    setTariffId(initialValues?.tariff_id ?? "");
+    setTariffPlanId(initialValues?.tariff_plan_id ?? "");
     setBillingDay(String(initialValues?.billing_day ?? ""));
-    setStartedAt(initialValues?.started_at ?? "");
+    setStartedAt(toDateInput(initialValues?.started_at));
   }, [initialValues]);
 
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault();
     onSubmit({
+      tenant_id: tenantId ? Number(tenantId) : undefined,
       client_id: clientId,
-      tariff_id: tariffId,
+      tariff_plan_id: tariffPlanId,
       billing_day: billingDay ? Number(billingDay) : undefined,
       started_at: startedAt || undefined,
     });
@@ -38,14 +49,24 @@ export const SubscriptionForm: React.FC<SubscriptionFormProps> = ({
 
   return (
     <form onSubmit={handleSubmit} style={{ display: "grid", gap: 12 }}>
-      <label>
-        Client ID
-        <input value={clientId} onChange={(e) => setClientId(e.target.value)} required />
-      </label>
-      <label>
-        Tariff ID
-        <input value={tariffId} onChange={(e) => setTariffId(e.target.value)} required />
-      </label>
+      {showTenantId && (
+        <label>
+          Tenant ID
+          <input value={tenantId} onChange={(e) => setTenantId(e.target.value)} required />
+        </label>
+      )}
+      {showClientId && (
+        <label>
+          Client ID
+          <input value={clientId} onChange={(e) => setClientId(e.target.value)} required />
+        </label>
+      )}
+      {showTariffPlanId && (
+        <label>
+          Tariff plan ID
+          <input value={tariffPlanId} onChange={(e) => setTariffPlanId(e.target.value)} required />
+        </label>
+      )}
       <label>
         Billing day
         <input value={billingDay} onChange={(e) => setBillingDay(e.target.value)} />

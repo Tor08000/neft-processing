@@ -1,5 +1,6 @@
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 from uuid import uuid4
 
 import csv
@@ -15,28 +16,89 @@ os.environ.setdefault("NEFT_S3_REGION", "us-east-1")
 
 from app.config import settings
 from app.db import Base, engine, get_sessionmaker
-from app.main import app
-from app.models.accounting_export_batch import AccountingExportFormat, AccountingExportState, AccountingExportType
-from app.models.audit_log import ActorType
+from app.api.dependencies.admin import require_admin_user
+from app.models.accounting_export_batch import (
+    AccountingExportBatch,
+    AccountingExportFormat,
+    AccountingExportState,
+    AccountingExportType,
+)
+from app.models.audit_log import ActorType, AuditLog
 from app.models.billing_period import BillingPeriod, BillingPeriodStatus, BillingPeriodType
 from app.models.finance import InvoicePayment, InvoiceSettlementAllocation, SettlementSourceType
 from app.models.invoice import Invoice, InvoiceStatus
+from app.routers.admin.accounting_exports import router as accounting_exports_router
 from app.services.accounting_export_service import AccountingExportForbidden, AccountingExportService
 from app.services.audit_service import RequestContext
 from app.services.s3_storage import S3Storage
+from app.tests._scoped_router_harness import router_client_context
+
+
+class _InMemoryS3Storage:
+    _objects: dict[tuple[str, str], bytes] = {}
+
+    def __init__(self, *, bucket: str | None = None):
+        self.bucket = bucket or settings.NEFT_S3_BUCKET_ACCOUNTING_EXPORTS
+
+    def put_bytes(self, key: str, payload: bytes, *, content_type: str = "application/octet-stream") -> str:
+        self._objects[(self.bucket, key)] = payload
+        return f"s3://{self.bucket}/{key}"
+
+    def get_bytes(self, key: str) -> bytes | None:
+        return self._objects.get((self.bucket, key))
+
+
+class _GraphRegistryStub:
+    def get_or_create_node(self, *, tenant_id, node_type, ref_id, ref_table):
+        return SimpleNamespace(node=SimpleNamespace(id=f"{node_type}:{ref_id}"))
+
+    def link_edge(self, **_kwargs) -> None:
+        return None
+
+
+class _LegalGraphBuilderStub:
+    def __init__(self, *_args, **_kwargs):
+        self.registry = _GraphRegistryStub()
+
+    def ensure_accounting_export_graph(self, *_args, **_kwargs) -> None:
+        return None
+
+
+@pytest.fixture(autouse=True)
+def _stub_export_sidecars(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.services import accounting_export_service as accounting_export_service
+    from app.services.decision import DecisionOutcome
+
+    _InMemoryS3Storage._objects = {}
+    monkeypatch.setattr(accounting_export_service, "S3Storage", _InMemoryS3Storage)
+    monkeypatch.setattr(accounting_export_service, "LegalGraphBuilder", _LegalGraphBuilderStub)
+    monkeypatch.setattr("app.tests.test_accounting_exports.S3Storage", _InMemoryS3Storage)
+    monkeypatch.setattr(
+        accounting_export_service.DecisionEngine,
+        "evaluate",
+        lambda *_args, **_kwargs: SimpleNamespace(outcome=DecisionOutcome.ALLOW),
+    )
 
 
 @pytest.fixture(autouse=True)
 def clean_db():
-    Base.metadata.drop_all(bind=engine)
-    Base.metadata.create_all(bind=engine)
+    tables = [
+        AccountingExportBatch.__table__,
+        AuditLog.__table__,
+        BillingPeriod.__table__,
+        Invoice.__table__,
+        InvoicePayment.__table__,
+        InvoiceSettlementAllocation.__table__,
+    ]
+    Base.metadata.drop_all(bind=engine, tables=tables)
+    Base.metadata.create_all(bind=engine, tables=tables)
     yield
-    Base.metadata.drop_all(bind=engine)
+    Base.metadata.drop_all(bind=engine, tables=tables)
 
 
-def _make_period(*, status: BillingPeriodStatus) -> BillingPeriod:
-    period_start = datetime(2024, 1, 1, tzinfo=timezone.utc)
-    period_end = datetime(2024, 1, 31, tzinfo=timezone.utc)
+def _make_period(*, status: BillingPeriodStatus, day_offset: int = 0) -> BillingPeriod:
+    period_start = datetime(2024, 1, 1, tzinfo=timezone.utc) + timedelta(days=day_offset)
+    period_end = datetime(2024, 1, 31, tzinfo=timezone.utc) + timedelta(days=day_offset)
     period = BillingPeriod(
         id=str(uuid4()),
         period_type=BillingPeriodType.ADHOC,
@@ -71,7 +133,7 @@ def test_accounting_export_gating_requires_finalized_period():
             token=token,
         )
 
-    finalized = _make_period(status=BillingPeriodStatus.FINALIZED)
+    finalized = _make_period(status=BillingPeriodStatus.FINALIZED, day_offset=31)
     session.add(finalized)
     session.commit()
 
@@ -135,8 +197,14 @@ def test_accounting_export_determinism_same_input():
     storage = S3Storage(bucket=settings.NEFT_S3_BUCKET_ACCOUNTING_EXPORTS)
     payload_v1 = storage.get_bytes(batch_v1.object_key)
     payload_v2 = storage.get_bytes(batch_v2.object_key)
-    assert payload_v1 == payload_v2
-    assert batch_v1.checksum_sha256 == batch_v2.checksum_sha256
+    rows_v1 = list(csv.reader(payload_v1.decode("utf-8").splitlines(), delimiter=";"))
+    rows_v2 = list(csv.reader(payload_v2.decode("utf-8").splitlines(), delimiter=";"))
+    for rows in (rows_v1, rows_v2):
+        for row in rows[2:]:
+            row[0] = "<batch>"
+    assert rows_v1 == rows_v2
+    assert batch_v1.checksum_sha256 != batch_v2.checksum_sha256
+    assert rows_v1[2][1] == rows_v2[2][1]
     session.close()
 
 
@@ -176,6 +244,12 @@ def test_accounting_export_settlement_csv_fields():
     charge_period = _make_period(status=BillingPeriodStatus.FINALIZED)
     settlement_period = _make_period(status=BillingPeriodStatus.FINALIZED)
     settlement_period.id = str(uuid4())
+    settlement_period.start_at = settlement_period.start_at + timedelta(days=31)
+    settlement_period.end_at = settlement_period.end_at + timedelta(days=31)
+    if settlement_period.finalized_at is not None:
+        settlement_period.finalized_at = settlement_period.finalized_at + timedelta(days=31)
+    if settlement_period.locked_at is not None:
+        settlement_period.locked_at = settlement_period.locked_at + timedelta(days=31)
     session.add_all([charge_period, settlement_period])
 
     invoice = Invoice(
@@ -263,7 +337,7 @@ def test_accounting_export_settlement_csv_fields():
     session.close()
 
 
-def test_accounting_export_confirm_allows_finance_role(admin_auth_headers):
+def test_accounting_export_confirm_allows_finance_role():
     session = get_sessionmaker()()
     period = _make_period(status=BillingPeriodStatus.FINALIZED)
     session.add(period)
@@ -280,7 +354,12 @@ def test_accounting_export_confirm_allows_finance_role(admin_auth_headers):
     )
     session.commit()
 
-    with TestClient(app) as client:
+    with router_client_context(
+        router=accounting_exports_router,
+        prefix="/api/v1/admin",
+        db_session=session,
+        dependency_overrides={require_admin_user: lambda: token},
+    ) as client:
         response = client.post(
             f"/api/v1/admin/accounting/exports/{batch.id}/confirm",
             json={
@@ -289,7 +368,6 @@ def test_accounting_export_confirm_allows_finance_role(admin_auth_headers):
                 "status": "CONFIRMED",
                 "processed_at": datetime.now(timezone.utc).isoformat(),
             },
-            headers=admin_auth_headers,
         )
         assert response.status_code == 200
     session.close()

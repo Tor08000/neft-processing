@@ -3,7 +3,7 @@ from __future__ import annotations
 from sqlalchemy.orm import Session
 
 from app.models.crm import CRMContract, CRMContractStatus
-from app.schemas.crm import CRMContractCreate
+from app.schemas.crm import CRMContractCreate, CRMContractUpdate
 from app.services.audit_service import RequestContext
 from app.services.crm import events, repository, sync
 
@@ -92,4 +92,26 @@ def set_contract_status(
     return contract
 
 
-__all__ = ["create_contract", "set_contract_status"]
+def update_contract(
+    db: Session,
+    *,
+    contract: CRMContract,
+    payload: CRMContractUpdate,
+    request_ctx: RequestContext | None,
+) -> CRMContract:
+    update_data = payload.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(contract, field, value)
+    contract = repository.update_contract(db, contract)
+    events.audit_event(
+        db,
+        event_type=events.CRM_CONTRACT_UPDATED,
+        entity_type="crm_contract",
+        entity_id=str(contract.id),
+        payload={"status": contract.status.value, "contract_number": contract.contract_number},
+        request_ctx=request_ctx,
+    )
+    return contract
+
+
+__all__ = ["create_contract", "set_contract_status", "update_contract"]

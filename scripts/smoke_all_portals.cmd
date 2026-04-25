@@ -1,5 +1,5 @@
 @echo off
-setlocal EnableExtensions EnableDelayedExpansion
+setlocal EnableExtensions DisableDelayedExpansion
 chcp 65001 >nul
 
 set "SCRIPT_NAME=smoke_all_portals"
@@ -10,11 +10,11 @@ if "%CORE_BASE%"=="" set "CORE_BASE=%BASE_URL%/api/core"
 if "%CORE_ADMIN%"=="" set "CORE_ADMIN=%CORE_BASE%/v1/admin"
 
 if "%CLIENT_EMAIL%"=="" set "CLIENT_EMAIL=client@neft.local"
-if "%CLIENT_PASSWORD%"=="" set "CLIENT_PASSWORD=client"
+if "%CLIENT_PASSWORD%"=="" set "CLIENT_PASSWORD=Client123!"
 if "%PARTNER_EMAIL%"=="" set "PARTNER_EMAIL=partner@neft.local"
 if "%PARTNER_PASSWORD%"=="" set "PARTNER_PASSWORD=Partner123!"
-if "%ADMIN_EMAIL%"=="" set "ADMIN_EMAIL=admin@example.com"
-if "%ADMIN_PASSWORD%"=="" set "ADMIN_PASSWORD=admin"
+if "%ADMIN_EMAIL%"=="" set "ADMIN_EMAIL=admin@neft.local"
+if "%ADMIN_PASSWORD%"=="" set "ADMIN_PASSWORD=Neft123!"
 
 call "%~dp0smoke_partner_money_e2e.cmd" >nul 2>nul
 if errorlevel 1 goto :fail

@@ -39,10 +39,12 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
     setError(null);
     setPortalState("LOADING");
     try {
-      await verifyPartnerAuth(user);
       const data = await fetchPortalMe(user);
       setPortal(data);
       setPortalState("READY");
+      void verifyPartnerAuth(user).catch((err) => {
+        console.warn("Partner auth verify diagnostic failed", err);
+      });
     } catch (err) {
       if (err instanceof UnauthorizedError) {
         setPortalState("AUTH_REQUIRED");

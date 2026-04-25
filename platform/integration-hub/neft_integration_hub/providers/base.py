@@ -23,4 +23,43 @@ class EdoProviderAdapter(Protocol):
         ...
 
 
-__all__ = ["EdoProviderAdapter", "ProviderStatus"]
+class ProviderFailure(RuntimeError):
+    def __init__(
+        self,
+        message: str,
+        *,
+        code: str,
+        error_type: str = "provider_error",
+        retryable: bool = False,
+        provider: str | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.code = code
+        self.error_type = error_type
+        self.retryable = retryable
+        self.provider = provider
+
+
+class ProviderTimeoutError(ProviderFailure):
+    def __init__(self, message: str, *, code: str = "provider_timeout", provider: str | None = None) -> None:
+        super().__init__(message, code=code, error_type="timeout", retryable=True, provider=provider)
+
+
+class ProviderAuthError(ProviderFailure):
+    def __init__(self, message: str, *, code: str = "provider_auth_error", provider: str | None = None) -> None:
+        super().__init__(message, code=code, error_type="auth_error", retryable=False, provider=provider)
+
+
+class ProviderDegradedError(ProviderFailure):
+    def __init__(self, message: str, *, code: str = "provider_degraded", provider: str | None = None) -> None:
+        super().__init__(message, code=code, error_type="degraded", retryable=False, provider=provider)
+
+
+__all__ = [
+    "EdoProviderAdapter",
+    "ProviderAuthError",
+    "ProviderDegradedError",
+    "ProviderFailure",
+    "ProviderStatus",
+    "ProviderTimeoutError",
+]

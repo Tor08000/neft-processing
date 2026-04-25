@@ -50,6 +50,19 @@ class DocumentEdoService:
     def _provider() -> str:
         return os.getenv("EDO_PROVIDER", "").strip().lower()
 
+    @classmethod
+    def _configured_provider(cls) -> str:
+        provider = cls._provider()
+        if not provider or provider == "mock":
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "error_code": "EDO_NOT_CONFIGURED",
+                    "message": "EDO provider is not configured",
+                },
+            )
+        return provider
+
     @staticmethod
     def _hub_url() -> str:
         return os.getenv("INTEGRATION_HUB_URL", "http://integration-hub:8080").rstrip("/")
@@ -78,7 +91,8 @@ class DocumentEdoService:
     def _guard_prod(self) -> None:
         if not self._is_prod():
             return
-        if not self._provider() or self._provider_mode() == "mock":
+        self._configured_provider()
+        if self._provider_mode() == "mock":
             raise HTTPException(
                 status_code=422,
                 detail={
@@ -87,10 +101,10 @@ class DocumentEdoService:
                 },
             )
 
-    def _send_to_hub(self, *, document: Document, files: list) -> EdoHubSendResult:
+    def _send_to_hub(self, *, provider: str, document: Document, files: list) -> EdoHubSendResult:
         payload = {
             "idempotency_key": f"doc:{document.id}:v1",
-            "provider": self._provider() or "mock",
+            "provider": provider,
             "document": {
                 "document_id": str(document.id),
                 "client_id": str(document.client_id),
@@ -156,15 +170,16 @@ class DocumentEdoService:
         document = self.repo.get_document(client_id=client_id, document_id=document_id)
         if document is None:
             raise HTTPException(status_code=404, detail="document_not_found")
-        files = self.repo.list_document_files(document_id=document_id)
-
-        self._validate_send_preconditions(document, len(files))
-        self._guard_prod()
 
         existing = self.repo.get_edo_state(document_id=document_id)
         idempotent_statuses = {EdoStatus.SENT.value, EdoStatus.DELIVERED.value, EdoStatus.SIGNED.value, EdoStatus.QUEUED.value, EdoStatus.SENDING.value}
         if existing and existing.edo_status in idempotent_statuses:
             return existing
+
+        files = self.repo.list_document_files(document_id=document_id)
+        self._validate_send_preconditions(document, len(files))
+        provider = self._configured_provider()
+        self._guard_prod()
 
         now = self._now()
         if existing is None:
@@ -172,7 +187,7 @@ class DocumentEdoService:
                 id=str(uuid4()),
                 document_id=document_id,
                 client_id=document.client_id,
-                provider=self._provider() or "mock",
+                provider=provider,
                 provider_mode=self._provider_mode(),
                 edo_status=EdoStatus.NEW.value,
                 attempts_send=0,
@@ -195,7 +210,7 @@ class DocumentEdoService:
         )
 
         try:
-            result = self._send_to_hub(document=document, files=files)
+            result = self._send_to_hub(provider=provider, document=document, files=files)
         except requests.RequestException as exc:
             existing.edo_status = EdoStatus.PROVIDER_UNAVAILABLE.value
             existing.last_error_code = "PROVIDER_UNAVAILABLE"
@@ -269,7 +284,7 @@ class DocumentEdoService:
 
             prev_status = state.edo_status
             try:
-                status = self._status_from_hub(edo_message_id=state.edo_message_id, provider=state.provider or self._provider() or "mock")
+                status = self._status_from_hub(edo_message_id=state.edo_message_id, provider=state.provider or self._provider())
                 state.edo_status = status.edo_status
                 state.last_status_at = status.updated_at or now
                 state.last_error_code = None

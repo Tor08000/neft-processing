@@ -1,8 +1,8 @@
 from datetime import datetime, timezone
+from uuid import uuid4
 
 import pytest
 
-from app.db import Base, SessionLocal, engine
 from app.models.fuel import (
     FuelCard,
     FuelCardStatus,
@@ -16,29 +16,36 @@ from app.models.fuel import (
 )
 from app.schemas.admin.unified_explain import UnifiedExplainView
 from app.services.explain.unified import build_unified_explain
-
-
-@pytest.fixture(autouse=True)
-def _setup_db():
-    Base.metadata.drop_all(bind=engine)
-    Base.metadata.create_all(bind=engine)
-    yield
-    Base.metadata.drop_all(bind=engine)
+from app.tests._explain_test_harness import EXPLAIN_UNIFIED_FUEL_TEST_TABLES
+from app.tests._scoped_router_harness import scoped_session_context
 
 
 @pytest.fixture
 def session():
-    db = SessionLocal()
-    try:
+    with scoped_session_context(tables=EXPLAIN_UNIFIED_FUEL_TEST_TABLES) as db:
         yield db
-    finally:
-        db.close()
 
 
 def test_accountant_view_from_limit_explain(session):
-    network = FuelNetwork(name="Network", provider_code="provider", status=FuelNetworkStatus.ACTIVE)
-    station = FuelStation(network_id=network.id, name="Station", status=FuelStationStatus.ACTIVE)
-    card = FuelCard(tenant_id=1, client_id="client-1", card_token="card-1", status=FuelCardStatus.ACTIVE)
+    network = FuelNetwork(
+        id=str(uuid4()),
+        name="Network",
+        provider_code="provider",
+        status=FuelNetworkStatus.ACTIVE,
+    )
+    station = FuelStation(
+        network_id=network.id,
+        station_network_id=None,
+        name="Station",
+        status=FuelStationStatus.ACTIVE,
+    )
+    card = FuelCard(
+        id=str(uuid4()),
+        tenant_id=1,
+        client_id="client-1",
+        card_token="card-1",
+        status=FuelCardStatus.ACTIVE,
+    )
     session.add_all([network, station, card])
     session.flush()
 

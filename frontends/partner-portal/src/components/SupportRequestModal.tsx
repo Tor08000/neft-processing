@@ -85,7 +85,7 @@ export function SupportRequestModal({
             <div className="notice">
               <strong>{t("supportRequests.modal.createdTitle")}</strong>
             </div>
-            <Link className="link-button" to={`/support/requests/${result.id}`} onClick={onClose}>
+            <Link className="link-button" to={`/cases/${result.id}`} onClick={onClose}>
               {t("supportRequests.modal.openRequest")}
             </Link>
           </div>

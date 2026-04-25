@@ -134,29 +134,42 @@ def onboarding_profile(
     owner_id = _get_owner_id(token)
     onboarding = _get_onboarding(db, token=token, owner_id=owner_id)
     token_client_id = str(token.get("client_id") or "").strip() or None
+    token_client_uuid = None
     if token_client_id:
         try:
-            UUID(token_client_id)
+            token_client_uuid = UUID(token_client_id)
         except (TypeError, ValueError):
             raise HTTPException(status_code=400, detail="invalid_client_id")
 
+    org_type = payload.client_type or payload.org_type
     client = None
-    if token_client_id:
-        client = db.query(Client).filter(Client.id == token_client_id).one_or_none()
+    if token_client_uuid is not None:
+        client = db.query(Client).filter(Client.id == token_client_uuid).one_or_none()
     elif onboarding:
-        client = db.query(Client).filter(Client.id == onboarding.client_id).one_or_none()
+        try:
+            onboarding_client_uuid = UUID(str(onboarding.client_id))
+        except (TypeError, ValueError):
+            onboarding_client_uuid = None
+        if onboarding_client_uuid is not None:
+            client = db.query(Client).filter(Client.id == onboarding_client_uuid).one_or_none()
 
     client_columns = _table_columns(db, "clients")
     if client is None:
         client_payload = {
             "id": uuid4(),
             "name": payload.name,
+            "legal_name": None if str(org_type).upper() == "INDIVIDUAL" else payload.name,
+            "full_name": payload.name if str(org_type).upper() == "INDIVIDUAL" else None,
             "status": "ONBOARDING",
         }
-        if token_client_id:
-            client_payload["id"] = UUID(token_client_id)
+        if token_client_uuid is not None:
+            client_payload["id"] = token_client_uuid
         if "inn" in client_columns:
             client_payload["inn"] = payload.inn
+        if "ogrn" in client_columns:
+            client_payload["ogrn"] = payload.ogrn
+        if "org_type" in client_columns:
+            client_payload["org_type"] = org_type
         client = Client(**client_payload)
         db.add(client)
         try:
@@ -167,15 +180,21 @@ def onboarding_profile(
 
     if payload.name:
         client.name = payload.name
+        client.legal_name = None if str(org_type).upper() == "INDIVIDUAL" else payload.name
+        client.full_name = payload.name if str(org_type).upper() == "INDIVIDUAL" else None
     if "inn" in client_columns:
         client.inn = payload.inn
+    if "ogrn" in client_columns:
+        client.ogrn = payload.ogrn
+    if "org_type" in client_columns:
+        client.org_type = org_type
     if "status" in client_columns and client.status != "ONBOARDING":
         client.status = "ONBOARDING"
 
     profile_data = payload.model_dump()
     if payload.model_extra:
         profile_data.update(payload.model_extra)
-    org_type = payload.client_type or payload.org_type or profile_data.get("org_type") or profile_data.get("client_type")
+    org_type = org_type or profile_data.get("org_type") or profile_data.get("client_type")
     if org_type and "org_type" not in profile_data:
         profile_data["org_type"] = org_type
 
@@ -316,7 +335,15 @@ def onboarding_contract_sign(
     contract.signed_at = now
     contract.signature_meta = signature_meta
 
-    client = db.query(Client).filter(Client.id == onboarding.client_id).one_or_none()
+    try:
+        onboarding_client_uuid = UUID(str(onboarding.client_id))
+    except (TypeError, ValueError):
+        onboarding_client_uuid = None
+    client = (
+        db.query(Client).filter(Client.id == onboarding_client_uuid).one_or_none()
+        if onboarding_client_uuid is not None
+        else None
+    )
     if not client:
         raise HTTPException(status_code=404, detail="client_not_found")
 

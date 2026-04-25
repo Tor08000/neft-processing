@@ -63,7 +63,7 @@ def test_partner_me_for_linked_user() -> None:
     client, session_factory = _make_client()
     _seed_partner(session_factory)
 
-    me = client.get("/api/core/partner/me")
+    me = client.get("/api/core/partner/self-profile")
     assert me.status_code == 200
     body = me.json()
     assert body["partner"]["code"] == "demo-partner"
@@ -72,7 +72,7 @@ def test_partner_me_for_linked_user() -> None:
 
 def test_partner_me_denies_unlinked_user() -> None:
     client, _ = _make_client()
-    response = client.get("/api/core/partner/me")
+    response = client.get("/api/core/partner/self-profile")
     assert response.status_code == 403
     assert response.json()["detail"] == "partner_not_linked"
 
@@ -137,9 +137,49 @@ def test_partner_users_owner_can_add_remove_non_owner_forbidden() -> None:
     assert forbidden.status_code == 403
 
 
+def test_partner_profile_write_requires_manage_role() -> None:
+    client, session_factory = _make_client()
+    _seed_partner(session_factory)
+
+    db = session_factory()
+    try:
+        partner_id = str(db.query(Partner).first().id)
+        db.add(PartnerUserRole(partner_id=partner_id, user_id="partner-manager-1", roles=["PARTNER_MANAGER"]))
+        db.add(PartnerUserRole(partner_id=partner_id, user_id="partner-analyst-1", roles=["PARTNER_ANALYST"]))
+        db.commit()
+    finally:
+        db.close()
+
+    client.app.dependency_overrides[partner_portal_user] = lambda: {"user_id": "partner-manager-1", "portal": "partner"}
+    allowed = client.patch("/api/core/partner/self-profile", json={"brand_name": "Managed partner"})
+    assert allowed.status_code == 200
+    assert allowed.json()["brand_name"] == "Managed partner"
+
+    client.app.dependency_overrides[partner_portal_user] = lambda: {"user_id": "partner-analyst-1", "portal": "partner"}
+    forbidden = client.patch("/api/core/partner/self-profile", json={"brand_name": "Should fail"})
+    assert forbidden.status_code == 403
+
+
+def test_partner_locations_write_requires_manage_role() -> None:
+    client, session_factory = _make_client()
+    _seed_partner(session_factory)
+
+    db = session_factory()
+    try:
+        partner_id = str(db.query(Partner).first().id)
+        db.add(PartnerUserRole(partner_id=partner_id, user_id="partner-analyst-1", roles=["PARTNER_ANALYST"]))
+        db.commit()
+    finally:
+        db.close()
+
+    client.app.dependency_overrides[partner_portal_user] = lambda: {"user_id": "partner-analyst-1", "portal": "partner"}
+    created = client.post("/api/core/partner/locations", json={"title": "АЗС №1", "address": "Москва"})
+    assert created.status_code == 403
+
+
 def test_guard_rejects_non_partner_token() -> None:
     client, session_factory = _make_client()
     _seed_partner(session_factory)
     client.app.dependency_overrides[partner_portal_user] = lambda: (_ for _ in ()).throw(HTTPException(status_code=403, detail="wrong_portal"))
-    response = client.get("/api/core/partner/me")
+    response = client.get("/api/core/partner/self-profile")
     assert response.status_code == 403

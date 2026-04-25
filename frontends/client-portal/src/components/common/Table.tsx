@@ -18,6 +18,8 @@ export interface TableProps<T> {
   columns: Column<T>[];
   data: T[];
   loading?: boolean;
+  toolbar?: ReactNode;
+  footer?: ReactNode;
   errorState?: {
     title: string;
     description?: string;
@@ -29,6 +31,7 @@ export interface TableProps<T> {
     title: string;
     description?: string;
     hint?: string;
+    icon?: ReactNode;
     primaryAction?: {
       label: string;
       onClick: () => void;
@@ -55,13 +58,33 @@ const renderNumber = (value: number) => {
   );
 };
 
-export function Table<T>({ columns, data, loading, errorState, emptyState, emptyMessage, onRowClick, rowKey }: TableProps<T>) {
+export function Table<T>({
+  columns,
+  data,
+  loading,
+  toolbar,
+  footer,
+  errorState,
+  emptyState,
+  emptyMessage,
+  onRowClick,
+  rowKey,
+}: TableProps<T>) {
   const { density, setDensity } = useTableDensity();
+  const footerNode = footer ? <div className="table-footer">{footer}</div> : null;
+  const header = toolbar ? (
+    <div className="surface-toolbar">
+      <div className="table-toolbar__content">{toolbar}</div>
+      <TableDensityToggle density={density} onChange={setDensity} />
+    </div>
+  ) : (
+    <TableDensityToggle density={density} onChange={setDensity} />
+  );
 
   if (loading) {
     return (
       <div className="table-shell">
-        <TableDensityToggle density={density} onChange={setDensity} />
+        {header}
         <div className={`table-container table-density-${density}`}>
           <div className="table-scroll">
             <table className="table neft-table">
@@ -76,6 +99,7 @@ export function Table<T>({ columns, data, loading, errorState, emptyState, empty
             </table>
           </div>
         </div>
+        {footerNode}
       </div>
     );
   }
@@ -83,7 +107,7 @@ export function Table<T>({ columns, data, loading, errorState, emptyState, empty
   if (errorState) {
     return (
       <div className="table-shell">
-        <TableDensityToggle density={density} onChange={setDensity} />
+        {header}
         <ErrorState
           title={errorState.title}
           description={errorState.description}
@@ -91,6 +115,7 @@ export function Table<T>({ columns, data, loading, errorState, emptyState, empty
           onAction={errorState.actionOnClick}
           details={errorState.details}
         />
+        {footerNode}
       </div>
     );
   }
@@ -98,12 +123,13 @@ export function Table<T>({ columns, data, loading, errorState, emptyState, empty
   if (!data.length && (emptyState || emptyMessage)) {
     return (
       <div className="table-shell">
-        <TableDensityToggle density={density} onChange={setDensity} />
+        {header}
         {emptyState ? (
           <EmptyState
             title={emptyState.title}
             description={emptyState.description ?? ""}
             hint={emptyState.hint}
+            icon={emptyState.icon}
             primaryAction={
               emptyState.primaryAction ??
               (emptyState.actionLabel && emptyState.actionOnClick
@@ -115,13 +141,14 @@ export function Table<T>({ columns, data, loading, errorState, emptyState, empty
         ) : (
           <div className="card state">{emptyMessage}</div>
         )}
+        {footerNode}
       </div>
     );
   }
 
   return (
     <div className="table-shell">
-      <TableDensityToggle density={density} onChange={setDensity} />
+      {header}
       <div className={`table-container table-density-${density}`}>
         <div className="table-scroll">
           <table className="table neft-table">
@@ -163,6 +190,7 @@ export function Table<T>({ columns, data, loading, errorState, emptyState, empty
           </table>
         </div>
       </div>
+      {footerNode}
     </div>
   );
 }

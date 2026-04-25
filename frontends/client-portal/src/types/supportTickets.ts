@@ -20,6 +20,11 @@ export interface SupportTicketItem {
   sla_resolution_status: SupportTicketSlaStatus;
   sla_first_response_remaining_minutes: number | null;
   sla_resolution_remaining_minutes: number | null;
+  case_id?: string | null;
+  case_status?: "TRIAGE" | "IN_PROGRESS" | "WAITING" | "RESOLVED" | "CLOSED" | null;
+  case_queue?: "FRAUD_OPS" | "FINANCE_OPS" | "SUPPORT" | "GENERAL" | null;
+  case_priority?: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL" | null;
+  case_updated_at?: string | null;
   created_at: string;
   updated_at: string;
 }

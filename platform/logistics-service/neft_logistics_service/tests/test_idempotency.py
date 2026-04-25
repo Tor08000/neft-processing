@@ -1,13 +1,17 @@
 from __future__ import annotations
 
 import os
+import tempfile
 from pathlib import Path
+from uuid import uuid4
 
 from fastapi.testclient import TestClient
 
 os.environ["APP_ENV"] = "dev"
 os.environ["LOGISTICS_PROVIDER"] = "mock"
-os.environ["LOGISTICS_IDEMPOTENCY_DB_PATH"] = "/tmp/logistics-idempotency-test.sqlite3"
+os.environ["LOGISTICS_IDEMPOTENCY_DB_PATH"] = str(
+    Path(tempfile.gettempdir()) / f"logistics-idempotency-{uuid4().hex}.sqlite3"
+)
 
 from neft_logistics_service.main import app  # noqa: E402
 

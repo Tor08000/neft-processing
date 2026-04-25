@@ -1,7 +1,7 @@
 # Money Health diagnostics
 
 ## Endpoint
-`GET /v1/admin/money/health`
+`GET /api/core/v1/admin/money/health`
 
 ## What it checks
 - Orphan ledger transactions (ledger tx without money flow linkage)
@@ -21,4 +21,3 @@
 - `stuck_pending_settlement`
 - `cross_period_anomalies`
 - `top_offenders`
-

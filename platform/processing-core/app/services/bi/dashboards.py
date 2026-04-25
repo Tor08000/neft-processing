@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from enum import Enum
 from datetime import date, datetime, time, timedelta, timezone
 from time import perf_counter
 from typing import Iterable
@@ -106,6 +107,15 @@ def _to_minor(value: object | None) -> int:
         return int(value)
     except (TypeError, ValueError):
         return int(float(value))
+
+
+def _enum_value(value: object | None) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, Enum):
+        normalized = value.value
+        return str(normalized) if normalized is not None else None
+    return str(value)
 
 
 def _rank_amounts(items: dict[str, int], *, key: str = "name", limit: int = 5) -> list[dict]:
@@ -725,8 +735,8 @@ def client_documents_summary(
     attention: list[dict] = []
 
     for document, edo_state in rows:
-        document_status = str(document.status)
-        edo_status = edo_state.edo_status if edo_state else None
+        document_status = _enum_value(document.status)
+        edo_status = _enum_value(edo_state.edo_status) if edo_state else None
         if document_status not in {DocumentStatus.DRAFT.value, DocumentStatus.CANCELLED.value}:
             issued += 1
         if (

@@ -33,6 +33,10 @@ def is_sqlite(bind: Connection) -> bool:
     return getattr(getattr(bind, "dialect", None), "name", None) == "sqlite"
 
 
+def _ddl_schema(bind: Connection, schema: str | None = DB_SCHEMA) -> str | None:
+    return None if is_sqlite(bind) else (schema or DB_SCHEMA)
+
+
 # Existence checks
 
 def _require_bind(bind: Connection, *, caller: str) -> None:
@@ -391,23 +395,9 @@ def drop_pg_enum_if_exists(bind: Connection, enum_name: str, schema: str = DB_SC
         return
 
     schema_name = schema or DB_SCHEMA
-    qualified_enum = f"{schema_name}.{enum_name}"
-    bind.exec_driver_sql(
-        """
-        DO $$
-        BEGIN
-            IF EXISTS (
-                SELECT 1 FROM pg_type t
-                JOIN pg_namespace n ON n.oid = t.typnamespace
-                WHERE n.nspname = :schema_name
-                  AND t.typname = :enum_name
-            ) THEN
-                EXECUTE format('DROP TYPE IF EXISTS %%s', :qualified_enum);
-            END IF;
-        END $$;
-        """,
-        {"schema_name": schema_name, "enum_name": enum_name, "qualified_enum": qualified_enum},
-    )
+    schema_sql = schema_name.replace('"', '""')
+    enum_sql = enum_name.replace('"', '""')
+    bind.exec_driver_sql(f'DROP TYPE IF EXISTS "{schema_sql}"."{enum_sql}" CASCADE')
 
 
 # Safe creation helpers
@@ -424,6 +414,7 @@ def create_table_if_not_exists(
 ) -> None:
     _require_bind(bind, caller="create_table_if_not_exists")
     keyword_columns = columns
+    resolved_schema = _ddl_schema(bind, schema)
 
     if table_columns and keyword_columns is not None:
         raise TypeError("Columns must be provided either positionally or via the `columns` keyword, not both.")
@@ -461,17 +452,18 @@ def create_table_if_not_exists(
         raise TypeError("No columns provided for table creation")
     else:
         drop_orphan_type_or_domain_if_needed(bind, table_name, schema=schema)
-        operations.create_table(table_name, *column_list, schema=schema, **kwargs)
+        operations.create_table(table_name, *column_list, schema=resolved_schema, **kwargs)
 
     for index_name, index_columns in index_definitions:
-        create_index_if_not_exists(bind, index_name, table_name, index_columns, schema=schema)
+        create_index_if_not_exists(bind, index_name, table_name, index_columns, schema=resolved_schema)
 
 
 def drop_table_if_exists(bind: Connection, table_name: str, schema: str = DB_SCHEMA) -> None:
-    if not table_exists(bind, table_name, schema=schema):
+    resolved_schema = _ddl_schema(bind, schema)
+    if not table_exists(bind, table_name, schema=resolved_schema or schema):
         return
 
-    op.drop_table(table_name, schema=schema)
+    op.drop_table(table_name, schema=resolved_schema)
 
 
 def create_index_if_not_exists(
@@ -483,6 +475,7 @@ def create_index_if_not_exists(
     schema: str = DB_SCHEMA,
     **kwargs,
 ) -> None:
+    resolved_schema = _ddl_schema(bind, schema)
     if is_postgres(bind):
         exists = bind.execute(
             sa.text(
@@ -496,36 +489,38 @@ def create_index_if_not_exists(
                 LIMIT 1
                 """
             ),
-            {"schema": schema, "index_name": index_name},
+            {"schema": resolved_schema or schema, "index_name": index_name},
         ).first()
     else:
-        exists = index_exists(bind, index_name, schema=schema)
+        exists = index_exists(bind, index_name, schema=resolved_schema or schema)
 
     if (exists is not None) if is_postgres(bind) else exists:
-        logger.info("Index %s.%s already exists, skipping", schema, index_name)
+        logger.info("Index %s.%s already exists, skipping", resolved_schema or schema, index_name)
         return
 
     operations = getattr(bind, "op_override", op)
     create_fn = getattr(operations, "create_index", None)
     if create_fn is None:
-        sql = f"CREATE INDEX IF NOT EXISTS {index_name} ON {schema}.{table_name} ({', '.join(columns)})"
+        table_ref = f"{resolved_schema}.{table_name}" if resolved_schema else table_name
+        sql = f"CREATE INDEX IF NOT EXISTS {index_name} ON {table_ref} ({', '.join(columns)})"
         bind.exec_driver_sql(sql)
         return
 
     columns_list = list(columns)
     try:
         try:
-            create_fn(index_name, table_name, columns_list, schema=schema, **kwargs)
+            create_fn(index_name, table_name, columns_list, schema=resolved_schema, **kwargs)
         except TypeError:
             create_fn(index_name, table_name, columns_list, **kwargs)
     except NameError as exc:
         if "proxy" not in str(exc):
             raise
-        sql = f"CREATE INDEX IF NOT EXISTS {index_name} ON {schema}.{table_name} ({', '.join(columns_list)})"
+        table_ref = f"{resolved_schema}.{table_name}" if resolved_schema else table_name
+        sql = f"CREATE INDEX IF NOT EXISTS {index_name} ON {table_ref} ({', '.join(columns_list)})"
         bind.exec_driver_sql(sql)
     except Exception as exc:  # pragma: no cover - exercised in tests via helper predicate
         if _is_duplicate_index_creation_error(exc):
-            logger.info("Index %s.%s already exists, ignoring race", schema, index_name)
+            logger.info("Index %s.%s already exists, ignoring race", resolved_schema or schema, index_name)
             return
         raise
 
@@ -567,12 +562,14 @@ def create_unique_index_if_not_exists(
     if isinstance(columns, str):
         raise TypeError("columns must be a list/tuple of column names, not a string")
 
-    if index_exists(bind, index_name, schema=schema):
-        logger.info("Index %s.%s already exists, skipping", schema, index_name)
+    resolved_schema = _ddl_schema(bind, schema)
+
+    if index_exists(bind, index_name, schema=resolved_schema or schema):
+        logger.info("Index %s.%s already exists, skipping", resolved_schema or schema, index_name)
         return
 
-    schema_name = schema or DB_SCHEMA
-    sql = f"CREATE UNIQUE INDEX {index_name} ON {schema_name}.{table_name} ({', '.join(columns)})"
+    table_ref = f"{resolved_schema}.{table_name}" if resolved_schema else table_name
+    sql = f"CREATE UNIQUE INDEX {index_name} ON {table_ref} ({', '.join(columns)})"
     bind.exec_driver_sql(sql)
 
 
@@ -584,20 +581,23 @@ def create_unique_expr_index_if_not_exists(
     *,
     schema: str = DB_SCHEMA,
 ) -> None:
-    if index_exists(bind, index_name, schema=schema):
-        logger.info("Index %s.%s already exists, skipping", schema, index_name)
+    resolved_schema = _ddl_schema(bind, schema)
+
+    if index_exists(bind, index_name, schema=resolved_schema or schema):
+        logger.info("Index %s.%s already exists, skipping", resolved_schema or schema, index_name)
         return
 
-    schema_name = schema or DB_SCHEMA
-    sql = f"CREATE UNIQUE INDEX {index_name} ON {schema_name}.{table_name} {expr_sql}"
+    table_ref = f"{resolved_schema}.{table_name}" if resolved_schema else table_name
+    sql = f"CREATE UNIQUE INDEX {index_name} ON {table_ref} {expr_sql}"
     bind.exec_driver_sql(sql)
 
 
 def drop_index_if_exists(bind: Connection, index_name: str, schema: str = DB_SCHEMA) -> None:
-    if not index_exists(bind, index_name, schema=schema):
+    resolved_schema = _ddl_schema(bind, schema)
+    if not index_exists(bind, index_name, schema=resolved_schema or schema):
         return
 
-    op.drop_index(index_name, schema=schema)
+    op.drop_index(index_name, schema=resolved_schema)
 
 
 def drop_mutable_predicate_or_expression_indexes(

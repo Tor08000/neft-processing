@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from sqlalchemy import func, literal, select, union_all
+from sqlalchemy import String, cast, func, inspect, literal, select, union_all
 from sqlalchemy.orm import Session
 
 from app.models.marketplace_catalog import MarketplaceProductCard, MarketplaceService
@@ -33,6 +33,19 @@ class MarketplaceModerationService:
         like = f"%{query_text}%" if query_text else None
         queries = []
 
+        def _table_exists(model) -> bool:
+            try:
+                bind = self.db.get_bind()
+                inspector = inspect(bind)
+                table = model.__table__
+                if inspector.has_table(table.name, schema=table.schema):
+                    return True
+                if bind.dialect.name != "postgresql":
+                    return inspector.has_table(table.name)
+                return False
+            except Exception:
+                return False
+
         def _base_filters(model, title_field):
             filters = []
             if status:
@@ -43,46 +56,49 @@ class MarketplaceModerationService:
 
         if entity_type in (None, ModerationEntityType.PRODUCT):
             product = MarketplaceProductCard
-            queries.append(
-                select(
-                    literal(MarketplaceModerationEntityType.PRODUCT.value).label("type"),
-                    product.id.label("id"),
-                    product.partner_id.label("partner_id"),
-                    product.title.label("title"),
-                    product.status.label("status"),
-                    func.coalesce(product.updated_at, product.created_at).label("submitted_at"),
-                    product.updated_at.label("updated_at"),
-                ).where(*_base_filters(product, product.title))
-            )
+            if _table_exists(product):
+                queries.append(
+                    select(
+                        literal(MarketplaceModerationEntityType.PRODUCT.value).label("type"),
+                        product.id.label("id"),
+                        product.partner_id.label("partner_id"),
+                        product.title.label("title"),
+                        cast(product.status, String).label("status"),
+                        func.coalesce(product.updated_at, product.created_at).label("submitted_at"),
+                        product.updated_at.label("updated_at"),
+                    ).where(*_base_filters(product, product.title))
+                )
 
         if entity_type in (None, ModerationEntityType.SERVICE):
             service = MarketplaceService
-            queries.append(
-                select(
-                    literal(MarketplaceModerationEntityType.SERVICE.value).label("type"),
-                    service.id.label("id"),
-                    service.partner_id.label("partner_id"),
-                    service.title.label("title"),
-                    service.status.label("status"),
-                    func.coalesce(service.updated_at, service.created_at).label("submitted_at"),
-                    service.updated_at.label("updated_at"),
-                ).where(*_base_filters(service, service.title))
-            )
+            if _table_exists(service):
+                queries.append(
+                    select(
+                        literal(MarketplaceModerationEntityType.SERVICE.value).label("type"),
+                        service.id.label("id"),
+                        service.partner_id.label("partner_id"),
+                        service.title.label("title"),
+                        cast(service.status, String).label("status"),
+                        func.coalesce(service.updated_at, service.created_at).label("submitted_at"),
+                        service.updated_at.label("updated_at"),
+                    ).where(*_base_filters(service, service.title))
+                )
 
         if entity_type in (None, ModerationEntityType.OFFER):
             offer = MarketplaceOffer
-            title_expr = func.coalesce(offer.title_override, literal("Offer"))
-            queries.append(
-                select(
-                    literal(MarketplaceModerationEntityType.OFFER.value).label("type"),
-                    offer.id.label("id"),
-                    offer.partner_id.label("partner_id"),
-                    title_expr.label("title"),
-                    offer.status.label("status"),
-                    func.coalesce(offer.updated_at, offer.created_at).label("submitted_at"),
-                    offer.updated_at.label("updated_at"),
-                ).where(*_base_filters(offer, title_expr))
-            )
+            if _table_exists(offer):
+                title_expr = func.coalesce(offer.title_override, literal("Offer"))
+                queries.append(
+                    select(
+                        literal(MarketplaceModerationEntityType.OFFER.value).label("type"),
+                        offer.id.label("id"),
+                        offer.partner_id.label("partner_id"),
+                        title_expr.label("title"),
+                        cast(offer.status, String).label("status"),
+                        func.coalesce(offer.updated_at, offer.created_at).label("submitted_at"),
+                        offer.updated_at.label("updated_at"),
+                    ).where(*_base_filters(offer, title_expr))
+                )
 
         if not queries:
             return [], 0
@@ -149,6 +165,17 @@ class MarketplaceModerationService:
         entity_type: MarketplaceModerationEntityType,
         entity_id: str,
     ) -> list[MarketplaceModerationAudit]:
+        try:
+            bind = self.db.get_bind()
+            inspector = inspect(bind)
+            table = MarketplaceModerationAudit.__table__
+            has_table = inspector.has_table(table.name, schema=table.schema)
+            if not has_table and bind.dialect.name != "postgresql":
+                has_table = inspector.has_table(table.name)
+            if not has_table:
+                return []
+        except Exception:
+            return []
         return (
             self.db.query(MarketplaceModerationAudit)
             .filter(

@@ -28,6 +28,7 @@ import { ApiError, CORE_API_BASE, UnauthorizedError, ValidationError } from "../
 import { clearTokens, isValidJwt } from "../lib/apiClient";
 
 type Step = "profile" | "plan" | "contract" | "activation";
+const DEBUG_ONBOARDING_FLOW = Boolean(import.meta.env.DEV && import.meta.env.VITE_CLIENT_DEBUG_ONBOARDING === "true");
 
 const STEP_ORDER: Record<Step, number> = {
   profile: 0,
@@ -203,7 +204,7 @@ export function OnboardingPage() {
   const resolveStep = (candidateStep: Step, source: StepDecisionSource): Step => {
     const minAllowedStep = minAllowedStepRef.current;
     const resolvedStep = getStepWithFloor(candidateStep, minAllowedStep);
-    if (import.meta.env.DEV && resolvedStep !== candidateStep) {
+    if (DEBUG_ONBOARDING_FLOW && resolvedStep !== candidateStep) {
       console.info("[onboarding:step:resolve] ignored_regression", {
         source,
         candidate_step: candidateStep,
@@ -211,7 +212,7 @@ export function OnboardingPage() {
         min_allowed_step: minAllowedStep,
       });
     }
-    if (import.meta.env.DEV) {
+    if (DEBUG_ONBOARDING_FLOW) {
       console.info("[onboarding:step:resolve] decision", {
         source,
         candidate_step: candidateStep,
@@ -260,7 +261,7 @@ export function OnboardingPage() {
   }, [client?.org_status]);
 
   useEffect(() => {
-    if (!import.meta.env.DEV) return;
+    if (!DEBUG_ONBOARDING_FLOW) return;
     console.info("[onboarding:lifecycle] mounted", {
       route: location.pathname,
       portal_state: portalState,
@@ -275,7 +276,7 @@ export function OnboardingPage() {
     if (!user || !onboardingEnabled) return;
     if (hasInitializedRef.current) return;
     hasInitializedRef.current = true;
-    if (import.meta.env.DEV) {
+    if (DEBUG_ONBOARDING_FLOW) {
       console.info("[onboarding:init] started", {
         route: location.pathname,
         portal_state: portalState,
@@ -284,7 +285,7 @@ export function OnboardingPage() {
     }
     if (portalState === "READY" && !hasProfile && !hasRefreshedOnMountRef.current) {
       hasRefreshedOnMountRef.current = true;
-      if (import.meta.env.DEV) {
+      if (DEBUG_ONBOARDING_FLOW) {
         console.info("[onboarding:init] refresh_called", {
           route: location.pathname,
           portal_state: portalState,
@@ -292,7 +293,7 @@ export function OnboardingPage() {
       }
       void refresh()
         .then(() => {
-          if (import.meta.env.DEV) {
+          if (DEBUG_ONBOARDING_FLOW) {
             console.info("[onboarding:init] refresh_resolved", {
               route: location.pathname,
               portal_state: portalState,
@@ -300,14 +301,14 @@ export function OnboardingPage() {
           }
         })
         .catch((initRefreshError) => {
-          if (import.meta.env.DEV) {
+          if (DEBUG_ONBOARDING_FLOW) {
             console.info("[onboarding:init] refresh_failed", {
               error_type: initRefreshError instanceof Error ? initRefreshError.name : typeof initRefreshError,
             });
           }
         })
         .finally(() => {
-          if (import.meta.env.DEV) {
+          if (DEBUG_ONBOARDING_FLOW) {
             console.info("[onboarding:init] completed", {
               route: location.pathname,
               portal_state: portalState,
@@ -316,7 +317,7 @@ export function OnboardingPage() {
         });
       return;
     }
-    if (import.meta.env.DEV) {
+    if (DEBUG_ONBOARDING_FLOW) {
       console.info("[onboarding:init] completed", {
         route: location.pathname,
         portal_state: portalState,
@@ -325,7 +326,7 @@ export function OnboardingPage() {
   }, [hasProfile, location.pathname, onboardingEnabled, portalState, refresh, user]);
 
   useEffect(() => {
-    if (!import.meta.env.DEV) return;
+    if (!DEBUG_ONBOARDING_FLOW) return;
     console.info("[onboarding:step:change]", {
       step,
       min_allowed_step: minAllowedStepRef.current,
@@ -400,7 +401,7 @@ export function OnboardingPage() {
   }
 
   if (portalState === "READY" && hasProfile) {
-    if (import.meta.env.DEV) {
+    if (DEBUG_ONBOARDING_FLOW) {
       console.info("[onboarding:redirect] already_has_profile", {
         from: location.pathname,
         to: "/",
@@ -460,7 +461,7 @@ export function OnboardingPage() {
       client.access_state as AccessState,
     )
   ) {
-    if (import.meta.env.DEV) {
+    if (DEBUG_ONBOARDING_FLOW) {
       console.info("[onboarding:redirect] access_state_not_onboarding", {
         from: location.pathname,
         to: "/",
@@ -491,7 +492,7 @@ export function OnboardingPage() {
     setProfileFieldErrors({});
     if (!user) return;
 
-    if (import.meta.env.DEV) {
+    if (DEBUG_ONBOARDING_FLOW) {
       console.info("[onboarding:submit:profile] start", {
         step,
         client_type: clientType,
@@ -510,7 +511,7 @@ export function OnboardingPage() {
     setProfileFieldErrors(validation.fieldErrors);
     setInnWarning(validation.innWarning);
 
-    if (import.meta.env.DEV) {
+    if (DEBUG_ONBOARDING_FLOW) {
       console.info("[onboarding:submit:profile] validation", {
         has_errors: Object.keys(validation.fieldErrors).length > 0,
         invalid_fields: Object.keys(validation.fieldErrors),
@@ -531,7 +532,7 @@ export function OnboardingPage() {
       address: legalAddress.trim(),
     };
 
-    if (import.meta.env.DEV) {
+    if (DEBUG_ONBOARDING_FLOW) {
       const token = user?.token;
       const hasValidAuthorization = typeof token === "string" && isValidJwt(token);
       console.info("[onboarding:submit:profile] request", {
@@ -551,7 +552,7 @@ export function OnboardingPage() {
       setStep((currentStep) => {
         const candidateStep = STEP_ORDER[currentStep] < STEP_ORDER["plan"] ? "plan" : currentStep;
         const nextStep = resolveStep(candidateStep, "profileSubmit");
-        if (import.meta.env.DEV) {
+        if (DEBUG_ONBOARDING_FLOW) {
           console.info("[onboarding:submit:profile] step_transition", {
             step_before_submit: stepBeforeSubmit,
             current_step: currentStep,
@@ -560,7 +561,7 @@ export function OnboardingPage() {
         }
         return nextStep;
       });
-      if (import.meta.env.DEV) {
+      if (DEBUG_ONBOARDING_FLOW) {
         console.info("[onboarding:submit:profile] response", {
           status: response.status,
           body: response.data ?? null,
@@ -572,13 +573,13 @@ export function OnboardingPage() {
       }
       try {
         await refresh();
-        if (import.meta.env.DEV) {
+        if (DEBUG_ONBOARDING_FLOW) {
           console.info("[onboarding:submit:profile] step_after_refresh", {
             min_allowed_step: minAllowedStepRef.current,
           });
         }
       } catch (refreshError) {
-        if (import.meta.env.DEV) {
+        if (DEBUG_ONBOARDING_FLOW) {
           console.info("[onboarding:submit:profile] refresh_after_success_failed", {
             error_type: refreshError instanceof Error ? refreshError.name : typeof refreshError,
           });
@@ -586,9 +587,8 @@ export function OnboardingPage() {
       }
       showToast("success", "Профиль сохранён");
     } catch (err) {
-      console.error("Ошибка сохранения профиля", err);
       if (err instanceof UnauthorizedError) {
-        if (import.meta.env.DEV) {
+        if (DEBUG_ONBOARDING_FLOW) {
           console.info("[onboarding:submit:profile] response", { status: 401, body: { message: err.message } });
         }
         setError("Требуется повторный вход");
@@ -611,7 +611,7 @@ export function OnboardingPage() {
           }
         }
 
-        if (import.meta.env.DEV) {
+        if (DEBUG_ONBOARDING_FLOW) {
           console.info("[onboarding:submit:profile] response", { status: 422, body: err.details });
           console.info("[onboarding:submit:profile] validation_mapping", {
             status: 422,
@@ -622,7 +622,7 @@ export function OnboardingPage() {
 
         if (Object.keys(fieldMap).length > 0) {
           setProfileFieldErrors(fieldMap);
-        } else if (import.meta.env.DEV) {
+        } else if (DEBUG_ONBOARDING_FLOW) {
           console.info("[onboarding:submit:profile] unmapped_validation_details", {
             raw_details: err.details,
           });
@@ -638,7 +638,7 @@ export function OnboardingPage() {
         return;
       }
       if (err instanceof ApiError) {
-        if (import.meta.env.DEV) {
+        if (DEBUG_ONBOARDING_FLOW) {
           console.info("[onboarding:submit:profile] response", { status: err.status, body: err.detail ?? err.message });
           if (!err.detail) {
             console.info("[onboarding:submit:profile] unmapped_backend_message", { message: err.message });
@@ -649,8 +649,11 @@ export function OnboardingPage() {
         showToast("error", message);
         return;
       }
+      if (DEBUG_ONBOARDING_FLOW) {
+        console.error("Ошибка сохранения профиля", err);
+      }
       setError("Сервис временно недоступен, попробуйте позже");
-      if (import.meta.env.DEV) {
+      if (DEBUG_ONBOARDING_FLOW) {
         console.info("[onboarding:submit:profile] response", { status: "unknown", body: "unexpected_error" });
       }
       showToast("error", "Сервис временно недоступен, попробуйте позже");

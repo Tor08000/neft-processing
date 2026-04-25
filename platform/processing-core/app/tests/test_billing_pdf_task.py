@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from types import SimpleNamespace
 
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy import Column, String, Table, create_engine
+from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.pool import StaticPool
 
 from app.db import Base
 from app.models.billing_job_run import BillingJobRun, BillingJobStatus, BillingJobType
@@ -21,7 +22,7 @@ class DummyPdfService:
         invoice.pdf_status = InvoicePdfStatus.READY
         invoice.pdf_url = f"s3://bucket/{invoice.id}/v{invoice.pdf_version or 1}.pdf"
         invoice.pdf_hash = "hash"
-        invoice.pdf_generated_at = datetime.utcnow()
+        invoice.pdf_generated_at = datetime.now(timezone.utc)
         invoice.pdf_version = (invoice.pdf_version or 1) + 1 if force else (invoice.pdf_version or 1)
         self.db.add(invoice)
         return invoice
@@ -35,12 +36,33 @@ class DummyTask:
         raise exc
 
 
+def _ensure_stub_table(name: str) -> Table:
+    existing = Base.metadata.tables.get(name)
+    if existing is not None:
+        return existing
+    return Table(name, Base.metadata, Column("id", String(36), primary_key=True))
+
+
 def _make_session(monkeypatch):
-    engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
-    Base.metadata.create_all(engine)
-    SessionLocal = sessionmaker(bind=engine)
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(
+        bind=engine,
+        tables=[
+            _ensure_stub_table("billing_periods"),
+            _ensure_stub_table("clearing_batch"),
+            _ensure_stub_table("reconciliation_requests"),
+            Invoice.__table__,
+            BillingJobRun.__table__,
+            BillingTaskLink.__table__,
+        ],
+    )
+    SessionLocal = sessionmaker(bind=engine, class_=Session, expire_on_commit=False)
     monkeypatch.setattr("app.tasks.billing_pdf.get_sessionmaker", lambda: SessionLocal)
-    return SessionLocal
+    return SessionLocal, engine
 
 
 def _patch_dependencies(monkeypatch):
@@ -48,7 +70,7 @@ def _patch_dependencies(monkeypatch):
 
 
 def test_generate_invoice_pdf_marks_ready(monkeypatch):
-    SessionLocal = _make_session(monkeypatch)
+    SessionLocal, engine = _make_session(monkeypatch)
     session = SessionLocal()
     try:
         _patch_dependencies(monkeypatch)
@@ -83,10 +105,11 @@ def test_generate_invoice_pdf_marks_ready(monkeypatch):
         assert job.job_type == BillingJobType.PDF_GENERATE
     finally:
         session.close()
+        engine.dispose()
 
 
 def test_generate_invoice_pdf_skip_when_ready(monkeypatch):
-    SessionLocal = _make_session(monkeypatch)
+    SessionLocal, engine = _make_session(monkeypatch)
     session = SessionLocal()
     try:
         _patch_dependencies(monkeypatch)
@@ -116,10 +139,11 @@ def test_generate_invoice_pdf_skip_when_ready(monkeypatch):
         assert job.metrics.get("skipped") is True
     finally:
         session.close()
+        engine.dispose()
 
 
 def test_generate_invoice_pdf_force_regenerates(monkeypatch):
-    SessionLocal = _make_session(monkeypatch)
+    SessionLocal, engine = _make_session(monkeypatch)
     session = SessionLocal()
     try:
         _patch_dependencies(monkeypatch)
@@ -148,3 +172,4 @@ def test_generate_invoice_pdf_force_regenerates(monkeypatch):
         assert refreshed.pdf_hash == "hash"
     finally:
         session.close()
+        engine.dispose()

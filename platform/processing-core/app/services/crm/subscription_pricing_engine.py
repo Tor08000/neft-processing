@@ -54,8 +54,14 @@ def price_subscription(
             )
 
     included = tariff_definition.get("included") if isinstance(tariff_definition, dict) else {}
+    if not isinstance(included, dict):
+        included = {}
     overage_prices = tariff_definition.get("overage") if isinstance(tariff_definition, dict) else {}
+    if not isinstance(overage_prices, dict):
+        overage_prices = {}
     metric_rules = tariff_definition.get("metric_rules") if isinstance(tariff_definition, dict) else {}
+    if not isinstance(metric_rules, dict):
+        metric_rules = {}
     for counter in counters:
         metric_key = _metric_key(counter.metric.value)
         if not metric_key:

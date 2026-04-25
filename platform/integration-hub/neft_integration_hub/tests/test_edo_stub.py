@@ -1,20 +1,16 @@
 from __future__ import annotations
 
 import pytest
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
 
 pytest.importorskip("neft_integration_hub")
 
-from neft_integration_hub.db import Base
 from neft_integration_hub.models import EdoStubStatus
 from neft_integration_hub.services.edo_stub import create_stub_document, get_stub_document, simulate_status
+from neft_integration_hub.tests._db import EDO_TABLES, make_sqlite_session
 
 
 def _make_sqlite_session():
-    engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
-    Base.metadata.create_all(bind=engine)
-    return sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)()
+    return make_sqlite_session(*EDO_TABLES)
 
 
 def test_stub_document_lifecycle_with_simulation():

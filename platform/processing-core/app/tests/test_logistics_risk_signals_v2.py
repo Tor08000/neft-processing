@@ -3,13 +3,10 @@ from datetime import datetime, timedelta, timezone
 from typing import Tuple
 
 import pytest
-from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
-from sqlalchemy.pool import StaticPool
 
 os.environ["DISABLE_CELERY"] = "1"
 
-from app.db import Base
 from app.models import fleet as fleet_models
 from app.models import fuel as fuel_models
 from app.models import logistics as logistics_models
@@ -19,27 +16,27 @@ from app.schemas.logistics import LogisticsStopIn
 from app.services.fuel.risk_context import build_risk_context_for_fuel_tx
 from app.services.logistics import navigator, repository, routes
 from app.services.logistics.orders import create_order
+from app.tests._logistics_route_harness import logistics_fuel_session_context
 
 
 @pytest.fixture()
 def db_session() -> Tuple[Session, sessionmaker]:
-    engine = create_engine(
-        "sqlite://",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
+    with logistics_fuel_session_context() as ctx:
+        yield ctx
+
+
+def test_risk_signals_enriched_in_fuel_context(
+    monkeypatch: pytest.MonkeyPatch,
+    db_session: Tuple[Session, sessionmaker],
+):
+    monkeypatch.setattr(
+        "app.services.fuel.risk_context.fi_repository.latest_scores_for_ids",
+        lambda *args, **kwargs: {"driver": None, "vehicle": None, "station": None},
     )
-    SessionLocal = sessionmaker(autocommit=False, autoflush=False, expire_on_commit=False, bind=engine)
-    Base.metadata.create_all(bind=engine)
-    session = SessionLocal()
-    try:
-        yield session, SessionLocal
-    finally:
-        session.close()
-        Base.metadata.drop_all(bind=engine)
-        engine.dispose()
-
-
-def test_risk_signals_enriched_in_fuel_context(db_session: Tuple[Session, sessionmaker]):
+    monkeypatch.setattr(
+        "app.services.fuel.risk_context.fi_repository.get_latest_trend_snapshot",
+        lambda *args, **kwargs: None,
+    )
     db, _ = db_session
     vehicle = fleet_models.FleetVehicle(
         tenant_id=1,

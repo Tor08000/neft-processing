@@ -6,8 +6,15 @@ import { useClient } from "./ClientContext";
 import { ClientJourneyState, JOURNEY_ROUTE_BY_STATE, JourneyDraft, resolveClientJourneyState } from "./clientJourney";
 
 const STORAGE_KEY = "neft_client_journey_draft";
+const DEBUG_CLIENT_JOURNEY = Boolean(import.meta.env.DEV && import.meta.env.VITE_CLIENT_DEBUG_JOURNEY === "true");
 
-const CONNECT_ROUTES = new Set([
+const CANONICAL_ONBOARDING_ROUTES = new Set([
+  "/onboarding",
+  "/onboarding/plan",
+  "/onboarding/contract",
+]);
+
+const CONNECT_COMPATIBILITY_ROUTES = new Set([
   "/connect",
   "/connect/plan",
   "/connect/type",
@@ -17,7 +24,8 @@ const CONNECT_ROUTES = new Set([
   "/connect/payment",
 ]);
 
-const LIMITED_CABINET_ROUTES = ["/dashboard", "/settings", "/client/support", "/documents", "/legal"];
+const JOURNEY_ALLOWED_ROUTES = new Set([...CANONICAL_ONBOARDING_ROUTES, ...CONNECT_COMPATIBILITY_ROUTES]);
+const LIMITED_CABINET_ROUTES = ["/dashboard", "/settings", "/client/support", "/documents", "/client/documents", "/legal", "/subscription"];
 
 type ClientJourneyContextValue = {
   state: ClientJourneyState;
@@ -66,21 +74,22 @@ export function ClientJourneyProvider({ children }: { children: React.ReactNode 
   const ensureRoute = useCallback(
     (source: string) => {
       if (authStatus !== "authenticated") return;
+      if (!isDemo && portalState !== "READY") return;
 
       const pathname = location.pathname;
       const isLimitedRoute = LIMITED_CABINET_ROUTES.some((prefix) => pathname.startsWith(prefix));
-      const isConnectRoute = CONNECT_ROUTES.has(pathname);
-      const isAllowedWhileConnecting = isLimitedRoute || isConnectRoute;
+      const isJourneyRoute = JOURNEY_ALLOWED_ROUTES.has(pathname);
+      const isAllowedWhileConnecting = isLimitedRoute || isJourneyRoute;
 
       if (state === "DEMO_SHOWCASE" || state === "ACTIVE") {
-        if (CONNECT_ROUTES.has(pathname)) {
+        if (JOURNEY_ALLOWED_ROUTES.has(pathname)) {
           navigate("/dashboard", { replace: true });
         }
         return;
       }
 
       if (!isAllowedWhileConnecting && pathname !== nextRoute) {
-        if (import.meta.env.DEV) {
+        if (DEBUG_CLIENT_JOURNEY) {
           console.info("[journey:redirect]", {
             source,
             currentPath: pathname,

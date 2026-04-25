@@ -54,15 +54,28 @@ def get_client(db: Session, *, tenant_id: int, client_id: str) -> CRMClient | No
     )
 
 
-def list_clients(db: Session, *, tenant_id: int, limit: int = 50, offset: int = 0) -> list[CRMClient]:
-    return (
-        db.query(CRMClient)
-        .filter(CRMClient.tenant_id == tenant_id)
-        .order_by(CRMClient.created_at.desc())
-        .offset(offset)
-        .limit(limit)
-        .all()
-    )
+def get_client_by_id(db: Session, *, client_id: str) -> CRMClient | None:
+    return db.query(CRMClient).filter(CRMClient.id == client_id).one_or_none()
+
+
+def list_clients(
+    db: Session,
+    *,
+    tenant_id: int | None = None,
+    status: CRMClientStatus | None = None,
+    search: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> list[CRMClient]:
+    query = db.query(CRMClient)
+    if tenant_id is not None:
+        query = query.filter(CRMClient.tenant_id == tenant_id)
+    if status:
+        query = query.filter(CRMClient.status == status)
+    if search:
+        term = f"%{search.strip()}%"
+        query = query.filter((CRMClient.id.ilike(term)) | (CRMClient.legal_name.ilike(term)))
+    return query.order_by(CRMClient.created_at.desc()).offset(offset).limit(limit).all()
 
 
 def update_client(db: Session, client: CRMClient) -> CRMClient:
@@ -306,10 +319,10 @@ def get_client_profile(db: Session, *, client_id: str) -> CRMClientProfile | Non
 
 
 def upsert_client_profile(db: Session, profile: CRMClientProfile) -> CRMClientProfile:
-    db.merge(profile)
+    merged = db.merge(profile)
     db.commit()
-    db.refresh(profile)
-    return profile
+    db.refresh(merged)
+    return merged
 
 
 def get_onboarding_state(db: Session, *, client_id: str) -> ClientOnboardingState | None:
@@ -321,10 +334,10 @@ def get_onboarding_state(db: Session, *, client_id: str) -> ClientOnboardingStat
 
 
 def upsert_onboarding_state(db: Session, state: ClientOnboardingState) -> ClientOnboardingState:
-    db.merge(state)
+    merged = db.merge(state)
     db.commit()
-    db.refresh(state)
-    return state
+    db.refresh(merged)
+    return merged
 
 
 def add_onboarding_event(db: Session, event: ClientOnboardingEvent) -> ClientOnboardingEvent:
@@ -376,6 +389,10 @@ def list_subscriptions(
         else:
             query = query.filter(CRMSubscription.status.in_(set(status)))
     return query.order_by(CRMSubscription.started_at.desc()).offset(offset).limit(limit).all()
+
+
+def get_subscription(db: Session, *, subscription_id: str) -> CRMSubscription | None:
+    return db.query(CRMSubscription).filter(CRMSubscription.id == subscription_id).one_or_none()
 
 
 def update_subscription(db: Session, subscription: CRMSubscription) -> CRMSubscription:
@@ -623,10 +640,12 @@ __all__ = [
     "get_active_subscription",
     "get_billing_period",
     "get_client",
+    "get_client_by_id",
     "get_contract",
     "get_feature_flag",
     "get_limit_profile",
     "get_risk_profile",
+    "get_subscription",
     "get_tariff",
     "list_clients",
     "list_contracts",

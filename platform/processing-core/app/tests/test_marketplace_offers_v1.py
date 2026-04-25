@@ -5,11 +5,22 @@ from uuid import UUID, uuid4
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.pool import StaticPool
 
 from app.api.dependencies.admin import require_admin_user
 from app.db import get_db
-from app.models.marketplace_catalog import MarketplaceProductCard, MarketplaceService
+from app.models.marketplace_catalog import (
+    MarketplacePriceModel,
+    MarketplaceProduct,
+    MarketplaceProductCard,
+    MarketplaceProductModerationStatus,
+    MarketplaceProductStatus,
+    MarketplaceProductType,
+    MarketplaceService,
+)
+from app.models.marketplace_moderation import MarketplaceModerationAudit
 from app.models.marketplace_offers import MarketplaceOffer, MarketplaceOfferStatus
 from app.routers.admin.marketplace_moderation import router as moderation_router
 from app.routers.marketplace_catalog import router as catalog_router
@@ -19,6 +30,13 @@ from app.security.rbac.principal import Principal, get_principal
 
 CURRENT_PRINCIPAL: Principal | None = None
 CURRENT_CLIENT_TOKEN: dict = {"client_id": str(uuid4())}
+TEST_TABLES = [
+    MarketplaceProduct.__table__,
+    MarketplaceProductCard.__table__,
+    MarketplaceService.__table__,
+    MarketplaceOffer.__table__,
+    MarketplaceModerationAudit.__table__,
+]
 
 
 def _build_principal(partner_id: str) -> Principal:
@@ -34,14 +52,20 @@ def _build_principal(partner_id: str) -> Principal:
 
 
 @pytest.fixture()
-def api_client(test_db_sessionmaker) -> tuple[TestClient, sessionmaker]:
+def api_client() -> tuple[TestClient, sessionmaker]:
+    engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+    SessionLocal = sessionmaker(autocommit=False, autoflush=False, expire_on_commit=False, bind=engine)
+
+    for table in TEST_TABLES:
+        table.create(bind=engine)
+
     app = FastAPI()
     app.include_router(partner_router, prefix="/api")
     app.include_router(catalog_router, prefix="/api")
     app.include_router(moderation_router, prefix="/api")
 
     def override_get_db():
-        db = test_db_sessionmaker()
+        db = SessionLocal()
         try:
             yield db
         finally:
@@ -55,15 +79,32 @@ def api_client(test_db_sessionmaker) -> tuple[TestClient, sessionmaker]:
     app.dependency_overrides[get_db] = override_get_db
     app.dependency_overrides[get_principal] = override_get_principal
     app.dependency_overrides[require_client_user] = lambda: CURRENT_CLIENT_TOKEN
-    app.dependency_overrides[require_admin_user] = lambda: {"admin": True}
+    app.dependency_overrides[require_admin_user] = lambda: {
+        "admin": True,
+        "user_id": str(uuid4()),
+        "sub": str(uuid4()),
+        "roles": ["ADMIN"],
+    }
 
     with TestClient(app) as client:
-        yield client, test_db_sessionmaker
+        yield client, SessionLocal
+
+
+@pytest.fixture()
+def test_db_session(api_client) -> Session:
+    _, SessionLocal = api_client
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
 
 
 @pytest.fixture(autouse=True)
-def _cleanup_offers(test_db_session):
+def _cleanup_offers(test_db_session: Session):
+    test_db_session.query(MarketplaceModerationAudit).delete()
     test_db_session.query(MarketplaceOffer).delete()
+    test_db_session.query(MarketplaceProduct).delete()
     test_db_session.query(MarketplaceProductCard).delete()
     test_db_session.query(MarketplaceService).delete()
     test_db_session.commit()
@@ -110,6 +151,24 @@ def _offer_payload(subject_id: str) -> dict:
         "geo_scope": "ALL_PARTNER_LOCATIONS",
         "entitlement_scope": "ALL_CLIENTS",
     }
+
+
+def _seed_live_product(db: Session, partner_id: str, *, product_type: MarketplaceProductType = MarketplaceProductType.SERVICE) -> str:
+    product = MarketplaceProduct(
+        id=str(uuid4()),
+        partner_id=partner_id,
+        type=product_type,
+        title="Живой каталог",
+        description="Опубликованная позиция",
+        category="Категория",
+        price_model=MarketplacePriceModel.FIXED,
+        price_config={"amount": 1500, "currency": "RUB"},
+        status=MarketplaceProductStatus.PUBLISHED,
+        moderation_status=MarketplaceProductModerationStatus.APPROVED,
+    )
+    db.add(product)
+    db.commit()
+    return str(product.id)
 
 
 def test_partner_create_offer_draft(api_client: tuple[TestClient, sessionmaker], test_db_session: Session) -> None:
@@ -248,3 +307,19 @@ def test_geo_scope_selected_locations(api_client: tuple[TestClient, sessionmaker
     miss_response = client.get("/api/marketplace/catalog/offers?geo=missing")
     assert miss_response.status_code == 200
     assert miss_response.json()["items"] == []
+
+
+def test_partner_create_offer_accepts_live_marketplace_product_subject(api_client: tuple[TestClient, sessionmaker], test_db_session: Session) -> None:
+    client, _ = api_client
+    partner_id = str(uuid4())
+    global CURRENT_PRINCIPAL
+    CURRENT_PRINCIPAL = _build_principal(partner_id)
+    product_id = _seed_live_product(test_db_session, partner_id, product_type=MarketplaceProductType.SERVICE)
+
+    payload = _offer_payload(product_id)
+    payload["subject_type"] = "SERVICE"
+
+    response = client.post("/api/marketplace/partner/offers", json=payload)
+    assert response.status_code == 201
+    assert response.json()["subject_id"] == product_id
+    assert response.json()["subject_type"] == "SERVICE"

@@ -85,7 +85,7 @@ curl -i http://localhost/api/v1/auth/.well-known/jwks.json
 ```
 curl -s -X POST http://localhost/api/v1/auth/login ^
   -H "Content-Type: application/json" ^
-  -d "{\"email\":\"client@neft.local\",\"password\":\"Neft123!\",\"portal\":\"client\"}"
+  -d "{\"email\":\"client@neft.local\",\"password\":\"Client123!\",\"portal\":\"client\"}"
 
 curl -s -X POST http://localhost/api/v1/auth/login ^
   -H "Content-Type: application/json" ^

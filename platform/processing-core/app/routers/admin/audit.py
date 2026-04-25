@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
+from app.api.dependencies.admin_capability import require_admin_capability
 from app.db import get_db
 from app.models.audit_log import AuditLog
 from app.models.audit_retention import AuditLegalHoldScope
@@ -15,7 +16,11 @@ from app.services.audit_retention_service import create_legal_hold, disable_lega
 from app.services.audit_signing import AuditSigningService
 from app.security.rbac.guard import require_permission
 
-router = APIRouter(prefix="/audit", tags=["admin-audit"], dependencies=[Depends(require_permission("admin:audit:*"))])
+router = APIRouter(
+    prefix="/audit",
+    tags=["admin-audit"],
+    dependencies=[Depends(require_permission("admin:audit:*")), Depends(require_admin_capability("audit"))],
+)
 
 
 def _audit_event_from_log(log: AuditLog) -> AdminAuditEvent:
@@ -36,8 +41,11 @@ def _audit_event_from_log(log: AuditLog) -> AdminAuditEvent:
         action=log.action,
         title=log.event_type,
         actor=actor,
+        actor_type=log.actor_type.value if hasattr(log.actor_type, "value") else log.actor_type,
         reason=log.reason,
         correlation_id=correlation_id,
+        entity_type=log.entity_type,
+        entity_id=log.entity_id,
         meta=log.external_refs,
         payload=payload,
     )
@@ -48,6 +56,8 @@ def list_audit_events(
     type: str | None = Query(default=None),
     correlation_id: str | None = Query(default=None),
     search: str | None = Query(default=None),
+    entity_type: str | None = Query(default=None),
+    entity_id: str | None = Query(default=None),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
@@ -59,7 +69,11 @@ def list_audit_events(
             clauses = [AuditLog.event_type.ilike(f"%{item}%") for item in type_filters]
             query = query.filter(or_(*clauses))
     if correlation_id:
-        query = query.filter(AuditLog.external_refs.contains({"correlation_id": correlation_id}))
+        query = query.filter(AuditLog.external_refs["correlation_id"].as_string() == correlation_id)
+    if entity_type:
+        query = query.filter(AuditLog.entity_type == entity_type)
+    if entity_id:
+        query = query.filter(AuditLog.entity_id == entity_id)
     if search:
         search_value = f"%{search}%"
         query = query.filter(
@@ -89,7 +103,7 @@ def get_audit_chain(
 ) -> AdminAuditCorrelationResponse:
     logs = (
         db.query(AuditLog)
-        .filter(AuditLog.external_refs.contains({"correlation_id": correlation_id}))
+        .filter(AuditLog.external_refs["correlation_id"].as_string() == correlation_id)
         .order_by(AuditLog.ts.asc())
         .all()
     )

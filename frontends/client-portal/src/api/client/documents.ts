@@ -1,6 +1,9 @@
 import { request } from "../http";
 import type { AuthSession } from "../types";
 
+// Canonical general client documents/docflow client. Keep new generic reads/actions here;
+// legacy /documents* remains only the final compatibility tail for closing-doc detail UX.
+
 export type ClientDocumentsDirection = "inbound" | "outbound";
 
 export type ClientDocumentStatus = "DRAFT" | "READY_TO_SEND" | "READY_TO_SIGN" | "SIGNED_CLIENT" | "CLOSED" | string;
@@ -18,16 +21,40 @@ export type ClientDocumentListItem = {
   currency: string | null;
   created_at: string;
   files_count: number;
+  requires_action?: boolean;
+  action_code?: string | null;
+  ack_at?: string | null;
+  edo_status?: string | null;
+  period_from?: string | null;
+  period_to?: string | null;
 };
 
 export type ClientDocumentFile = {
   id: string;
   filename: string;
   mime: string;
+  kind?: string | null;
   size: number;
   sha256: string | null;
   created_at: string;
 };
+
+export type ClientDocumentAckDetails = {
+  ack_by_user_id?: string | null;
+  ack_by_email?: string | null;
+  ack_ip?: string | null;
+  ack_user_agent?: string | null;
+  ack_method?: string | null;
+  ack_at?: string | null;
+};
+
+export type ClientDocumentRiskSummary = {
+  state: string;
+  decided_at?: string | null;
+  decision_id?: string | null;
+};
+
+export type ClientDocumentRiskExplain = Record<string, unknown>;
 
 export type ClientDocumentDetails = {
   id: string;
@@ -41,11 +68,23 @@ export type ClientDocumentDetails = {
   updated_at: string;
   signed_by_client_at?: string | null;
   signed_by_client_user_id?: string | null;
+  requires_action?: boolean;
+  action_code?: string | null;
+  ack_at?: string | null;
+  ack_details?: ClientDocumentAckDetails | null;
+  document_hash_sha256?: string | null;
+  risk?: ClientDocumentRiskSummary | null;
+  risk_explain?: ClientDocumentRiskExplain | null;
   files: ClientDocumentFile[];
 };
 
-
-
+export type ClientDocumentAcknowledgementResponse = {
+  acknowledged: boolean;
+  ack_at: string | null;
+  document_type: string;
+  document_object_key: string | null;
+  document_hash: string | null;
+};
 
 export type ClientDocumentSignPayload = {
   consent_text_version: string;
@@ -148,6 +187,13 @@ export function getClientDocument(documentId: string, user: AuthSession | null):
   return request<ClientDocumentDetails>(`/client/documents/${documentId}`, { method: "GET" }, withToken(user));
 }
 
+export function acknowledgeClientDocument(
+  documentId: string,
+  user: AuthSession | null,
+): Promise<ClientDocumentAcknowledgementResponse> {
+  return request<ClientDocumentAcknowledgementResponse>(`/client/documents/${documentId}/ack`, { method: "POST" }, withToken(user));
+}
+
 export function submitClientDocument(documentId: string, user: AuthSession | null): Promise<ClientDocumentDetails> {
   return request<ClientDocumentDetails>(`/client/documents/${documentId}/submit`, { method: "POST" }, withToken(user));
 }
@@ -182,7 +228,6 @@ export async function downloadClientDocumentFile(fileId: string, user: AuthSessi
   URL.revokeObjectURL(url);
 }
 
-
 export function sendClientDocument(documentId: string, user: AuthSession | null): Promise<ClientDocumentEdoState> {
   return request<ClientDocumentEdoState>(`/client/documents/${documentId}/send`, { method: "POST" }, withToken(user));
 }
@@ -190,7 +235,6 @@ export function sendClientDocument(documentId: string, user: AuthSession | null)
 export function getClientDocumentEdoState(documentId: string, user: AuthSession | null): Promise<ClientDocumentEdoState | null> {
   return request<ClientDocumentEdoState | null>(`/client/documents/${documentId}/edo`, { method: "GET" }, withToken(user));
 }
-
 
 export function signClientDocument(
   documentId: string,

@@ -60,11 +60,34 @@ export interface PortalMeResponse {
     legal_gate_enabled?: boolean;
   } | null;
   partner?: {
+    partner_id?: string | null;
+    partner_type?: string | null;
+    kind?: string | null;
+    partner_role?: string | null;
+    partner_roles?: string[] | null;
+    default_route?: string | null;
+    workspaces?: Array<{
+      code: string;
+      label: string;
+      default_route: string;
+    }> | null;
     status?: string | null;
     profile?: {
       display_name?: string | null;
       contacts_json?: Record<string, unknown> | null;
       meta_json?: Record<string, unknown> | null;
+    } | null;
+    finance_state?: {
+      balance?: number | null;
+      pending?: number | null;
+      blocked?: number | null;
+      currency?: string | null;
+      threshold?: number | null;
+    } | null;
+    legal_state?: {
+      required_enabled?: boolean | null;
+      status?: string | null;
+      block_reason?: string | null;
     } | null;
   } | null;
   access_state: string;
@@ -84,4 +107,7 @@ export type PartnerRole =
   | "PARTNER_OWNER"
   | "PARTNER_ACCOUNTANT"
   | "PARTNER_OPERATOR"
-  | "PARTNER_SERVICE_MANAGER";
+  | "PARTNER_SERVICE_MANAGER"
+  | "PARTNER_MANAGER"
+  | "PARTNER_VIEWER"
+  | "PARTNER_ANALYST";

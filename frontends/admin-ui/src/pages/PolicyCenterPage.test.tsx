@@ -5,6 +5,7 @@ import React from "react";
 import { MemoryRouter } from "react-router-dom";
 import PolicyCenterPage from "./PolicyCenterPage";
 import * as policiesApi from "../api/policies";
+import { ForbiddenError } from "../api/http";
 
 vi.mock("../auth/AuthContext", () => ({
   useAuth: () => ({ accessToken: "token" }),
@@ -40,5 +41,18 @@ describe("PolicyCenterPage", () => {
     await waitFor(() => expect(screen.getByText("Type")).toBeInTheDocument());
     expect(screen.getByText("Status")).toBeInTheDocument();
     expect(screen.getByPlaceholderText("title / id / action")).toBeInTheDocument();
+  });
+
+  it("uses the canonical admin forbidden state for denied policy access", async () => {
+    (policiesApi.listPolicies as unknown as Mock).mockRejectedValue(new ForbiddenError());
+
+    render(
+      <MemoryRouter>
+        <PolicyCenterPage />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("FORBIDDEN_ROLE")).toBeInTheDocument();
+    expect(screen.getByRole("link")).toHaveAttribute("href", "/");
   });
 });

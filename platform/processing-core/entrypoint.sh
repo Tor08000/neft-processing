@@ -164,8 +164,10 @@ run_diag_cmd() {
 }
 
 echo "[entrypoint] checking alembic heads via ($ALEMBIC_CONFIG)"
+set +e
 heads_output=$(cd /app && alembic -c /app/app/alembic.ini heads --verbose 2>&1)
 heads_status=$?
+set -e
 echo "[entrypoint] alembic heads raw output (first 5 lines):"
 printf "%s\n" "$heads_output" | head -n 5 | sed 's/^/[entrypoint]   /'
 echo "[entrypoint] alembic heads raw output line count: $(printf "%s\n" "$heads_output" | wc -l | tr -d ' ')"

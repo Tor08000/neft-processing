@@ -8,19 +8,31 @@ from pydantic import BaseModel
 from app.api.dependencies.admin import require_admin_user
 from app.api.dependencies.admin_rbac import extract_admin_roles
 from app.config import settings
+from app.services.admin_portal_access import build_admin_permissions, primary_admin_level, resolve_admin_levels
 
 
 class AdminPermission(BaseModel):
     read: bool
-    write: bool
+    operate: bool = False
+    approve: bool = False
+    override: bool = False
+    manage: bool = False
+    write: bool = False
 
 
 class AdminPermissions(BaseModel):
+    access: AdminPermission
     ops: AdminPermission
+    runtime: AdminPermission
     finance: AdminPermission
-    sales: AdminPermission
+    revenue: AdminPermission
+    cases: AdminPermission
+    commercial: AdminPermission
+    crm: AdminPermission
+    marketplace: AdminPermission
     legal: AdminPermission
-    superadmin: AdminPermission
+    onboarding: AdminPermission
+    audit: AdminPermission
 
 
 class AdminEnv(BaseModel):
@@ -44,6 +56,8 @@ class AdminUser(BaseModel):
 class AdminMeResponse(BaseModel):
     admin_user: AdminUser
     roles: list[str]
+    primary_role_level: str
+    role_levels: list[str]
     permissions: AdminPermissions
     env: AdminEnv
     environment: AdminEnv
@@ -66,27 +80,8 @@ def _normalize_env_name(raw: str) -> str:
 
 
 def _build_permissions(roles: list[str]) -> AdminPermissions:
-    role_set = {role.upper() for role in roles}
-    ops = AdminPermission(read="NEFT_OPS" in role_set, write=False)
-    finance = AdminPermission(read="NEFT_FINANCE" in role_set, write="NEFT_FINANCE" in role_set)
-    sales = AdminPermission(read="NEFT_SALES" in role_set, write=False)
-    legal = AdminPermission(read="NEFT_LEGAL" in role_set, write=False)
-    superadmin_enabled = bool(role_set.intersection({"NEFT_SUPERADMIN", "NEFT_ADMIN", "ADMIN"}))
-    superadmin = AdminPermission(read=superadmin_enabled, write=superadmin_enabled)
-
-    if superadmin_enabled:
-        ops = AdminPermission(read=True, write=True)
-        finance = AdminPermission(read=True, write=True)
-        sales = AdminPermission(read=True, write=True)
-        legal = AdminPermission(read=True, write=True)
-
-    return AdminPermissions(
-        ops=ops,
-        finance=finance,
-        sales=sales,
-        legal=legal,
-        superadmin=superadmin,
-    )
+    payload = build_admin_permissions(roles)
+    return AdminPermissions.model_validate(payload)
 
 
 @router.get("/me", response_model=AdminMeResponse)
@@ -101,6 +96,7 @@ async def admin_me(token: dict = Depends(require_admin_user)) -> AdminMeResponse
         issuer=token.get("iss"),
     )
     permissions = _build_permissions(roles)
+    role_levels = resolve_admin_levels(roles)
     env = AdminEnv(
         name=_normalize_env_name(os.getenv("NEFT_ENV", "dev")),
         build=os.getenv("GIT_SHA", os.getenv("BUILD_SHA", "unknown")),
@@ -113,6 +109,8 @@ async def admin_me(token: dict = Depends(require_admin_user)) -> AdminMeResponse
     return AdminMeResponse(
         admin_user=admin_user,
         roles=roles,
+        primary_role_level=primary_admin_level(roles),
+        role_levels=role_levels,
         permissions=permissions,
         env=env,
         environment=env,

@@ -5,8 +5,9 @@ import logging
 import math
 import os
 import secrets
+from decimal import Decimal
 from hashlib import sha256
-from typing import Any, Optional
+from typing import Any, Mapping, Optional
 from datetime import date, datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
 from io import StringIO
@@ -22,13 +23,16 @@ from sqlalchemy.orm import Session, Query as SAQuery
 from app.db import get_db
 from app.db.schema import DB_SCHEMA
 from app.models.client import Client
-from app.models.crm import CRMClient
+from app.models.crm import CRMClient, CRMFeatureFlagType
 from app.models.client_onboarding import ClientOnboarding, ClientOnboardingContract
 from app.models.card_access import CardAccess, CardAccessScope
 from app.models.card_limits import CardLimit
 from app.models.client_invitations import ClientInvitation
+from app.models.client_limit_change_requests import ClientLimitChangeRequest
+from app.models.client_limits import ClientLimit
 from app.models.client_operations import ClientOperation
 from app.models.client_user_roles import ClientUserRole
+from app.models.client_users import ClientUser
 from app.models.limit_templates import LimitTemplate
 
 from app.models.export_jobs import ExportJob, ExportJobFormat, ExportJobReportType, ExportJobStatus
@@ -137,6 +141,15 @@ from app.schemas.client_portal_v1 import (
     ClientUserRolesUpdateRequest,
     ClientUserSummary,
     ClientUsersResponse,
+    ClientLimitItem,
+    ClientLimitsResponse,
+    ClientLimitChangeRequestCreate,
+    ClientLimitChangeRequestResponse,
+    ClientServiceItem,
+    ClientServicesResponse,
+    ClientFeatureItem,
+    ClientFeaturesResponse,
+    ClientUserDisableResponse,
     ContractInfo,
     ContractSignRequest,
 )
@@ -191,6 +204,7 @@ from app.schemas.user_notification_preferences import (
     UserNotificationPreferencesResponse,
 )
 from app.services import client_auth
+from app.services.crm import repository as crm_repository
 from app.services.client_fetch import SafeClient, build_safe_client, safe_get_client
 from app.api.dependencies.client import client_portal_user
 from app.services.subscription_service import (
@@ -242,6 +256,7 @@ from app.services.timezones import resolve_user_timezone
 from app.services.support_attachment_storage import SupportAttachmentStorage
 from app.services.payment_intake_attachment_storage import PaymentIntakeAttachmentStorage
 from app.services.billing_payment_intakes import (
+    billing_flow_invoice_amount_due,
     create_payment_intake,
     get_invoice,
     list_invoice_payment_intakes,
@@ -276,6 +291,12 @@ from app.services.helpdesk_service import (
     get_integration_last_error,
     integration_payload_from_config,
     schedule_helpdesk_outbox,
+)
+from app.services.support_cases import (
+    get_support_ticket_case,
+    summarize_support_ticket_case,
+    sync_support_ticket_case,
+    sync_support_ticket_comment,
 )
 from neft_shared.settings import get_settings
 
@@ -426,6 +447,8 @@ def _resolve_client(db: Session, token: dict, *, allow_missing: bool = False) ->
         owner_id = str(token.get("user_id") or token.get("sub") or "").strip()
         if not owner_id:
             return None
+        if not _table_exists(db, "client_onboarding") or not _table_exists(db, "clients"):
+            return None
         onboarding = (
             db.query(ClientOnboarding)
             .filter(ClientOnboarding.owner_user_id == owner_id)
@@ -438,6 +461,13 @@ def _resolve_client(db: Session, token: dict, *, allow_missing: bool = False) ->
         if not payload:
             return None
         return build_safe_client(payload)
+    if not _table_exists(db, "clients"):
+        if allow_missing:
+            return None
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "client_not_found", "reason_code": "CLIENT_NOT_FOUND"},
+        )
     payload = safe_get_client(db, str(client_id))
     if not payload:
         if allow_missing:
@@ -497,6 +527,10 @@ def _ensure_client_membership(db: Session, *, client_id: str, token: dict) -> No
         )
 
 
+def _module_code_value(module_code: object) -> str:
+    return str(getattr(module_code, "value", module_code))
+
+
 def _plan_modules_map(db: Session, *, plan_id: str) -> tuple[dict[str, dict], dict[str, dict]]:
     modules: dict[str, dict] = {}
     limits: dict[str, dict] = {}
@@ -507,14 +541,25 @@ def _plan_modules_map(db: Session, *, plan_id: str) -> tuple[dict[str, dict], di
         .all()
     )
     for item in items:
-        modules[str(item.module_code)] = {
+        module_code = _module_code_value(item.module_code)
+        modules[module_code] = {
             "enabled": bool(item.enabled),
             "tier": item.tier,
             "limits": item.limits or {},
         }
         if item.limits:
-            limits[str(item.module_code)] = item.limits
+            limits[module_code] = item.limits
     return modules, limits
+
+
+def _is_client_visible_subscription_plan(db: Session, plan: SubscriptionPlan) -> bool:
+    code = str(plan.code or "").upper()
+    if code.startswith("PARTNER_"):
+        return False
+    modules, _limits = _plan_modules_map(db, plan_id=plan.id)
+    if not modules:
+        return True
+    return any(bool(module.get("enabled")) for module in modules.values())
 
 
 def _normalize_roles(token: dict) -> list[str]:
@@ -527,15 +572,26 @@ def _normalize_roles(token: dict) -> list[str]:
 
 
 def _table(db: Session, name: str) -> Table:
-    return Table(name, MetaData(), autoload_with=db.get_bind(), schema=DB_SCHEMA)
+    bind = db.get_bind()
+    try:
+        return Table(name, MetaData(), autoload_with=bind, schema=DB_SCHEMA)
+    except Exception:
+        if bind.dialect.name == "postgresql":
+            raise
+        return Table(name, MetaData(), autoload_with=bind)
 
 
 def _table_exists(db: Session, name: str) -> bool:
     try:
         from sqlalchemy import inspect
 
-        inspector = inspect(db.get_bind())
-        return inspector.has_table(name, schema=DB_SCHEMA)
+        bind = db.get_bind()
+        inspector = inspect(bind)
+        if inspector.has_table(name, schema=DB_SCHEMA):
+            return True
+        if bind.dialect.name != "postgresql":
+            return inspector.has_table(name)
+        return False
     except Exception:
         return False
 
@@ -553,6 +609,53 @@ def _resolve_dashboard_role(token: dict) -> str:
     return "OWNER"
 
 
+def _resolve_dashboard_timezone(db: Session, *, token: dict) -> str:
+    try:
+        return resolve_user_timezone(db, token=token)
+    except Exception:
+        return "UTC"
+
+
+def _dashboard_bootstrap_widgets(role: str) -> list[ClientDashboardWidget]:
+    if role == "ACCOUNTANT":
+        return [
+            ClientDashboardWidget(type="list", key="recent_documents", data=[]),
+            ClientDashboardWidget(type="list", key="exports_recent", data=[]),
+            ClientDashboardWidget(type="cta", key="accountant_actions", data=None),
+        ]
+    if role == "FLEET_MANAGER":
+        return [
+            ClientDashboardWidget(type="list", key="alerts", data=[]),
+            ClientDashboardWidget(type="list", key="card_limits", data=[]),
+            ClientDashboardWidget(type="cta", key="fleet_actions", data=None),
+        ]
+    if role == "DRIVER":
+        return [
+            ClientDashboardWidget(type="list", key="recent_transactions", data=[]),
+            ClientDashboardWidget(type="cta", key="driver_actions", data=None),
+        ]
+    return [
+        ClientDashboardWidget(type="list", key="recent_documents", data=[]),
+        ClientDashboardWidget(type="list", key="exports_recent", data=[]),
+        ClientDashboardWidget(type="cta", key="owner_actions", data=None),
+    ]
+
+
+def _dashboard_supporting_tables_ready(db: Session) -> dict[str, bool]:
+    return {
+        "analytics": all(
+            _table_exists(db, name)
+            for name in ("fuel_transactions", "fuel_cards", "support_tickets", "fleet_drivers", "fuel_stations")
+        ),
+        "exports": _table_exists(db, "export_jobs"),
+        "email_outbox": _table_exists(db, "email_outbox"),
+        "documents": _table_exists(db, "documents"),
+        "cards": _table_exists(db, "cards"),
+        "card_limits": _table_exists(db, "card_limits"),
+        "slo": _table_exists(db, "service_slo_breaches"),
+    }
+
+
 def _ensure_invoice_access(token: dict) -> None:
     roles = set(_normalize_roles(token))
     allowed_roles = {"CLIENT_OWNER", "CLIENT_ACCOUNTANT", "OWNER", "ACCOUNTANT"}
@@ -561,13 +664,17 @@ def _ensure_invoice_access(token: dict) -> None:
 
 
 def _resolve_org_id(token: dict) -> int:
-    org_id = token.get("client_id") or token.get("org_id")
-    if not org_id:
+    for key in ("org_id", "client_id", "tenant_id"):
+        value = token.get(key)
+        if value in (None, ""):
+            continue
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            continue
+    if not any(token.get(key) not in (None, "") for key in ("org_id", "client_id", "tenant_id")):
         raise HTTPException(status_code=403, detail="missing_org")
-    try:
-        return int(org_id)
-    except (TypeError, ValueError):
-        raise HTTPException(status_code=403, detail="invalid_org")
+    raise HTTPException(status_code=403, detail="invalid_org")
 
 
 def _notification_preferences_from_db(
@@ -681,8 +788,8 @@ def _enforce_analytics_drill_access(
             block_mode=BillingBlockMode.HARD,
         )
         try:
-            org_id = int(token.get("client_id") or token.get("org_id"))
-        except (TypeError, ValueError):
+            org_id = _resolve_org_id(token)
+        except HTTPException:
             org_id = None
         audit_billing_blocked(
             db,
@@ -698,10 +805,17 @@ def _enforce_analytics_drill_access(
 
 
 def _support_ticket_org_id(token: dict) -> str:
-    org_id = token.get("client_id") or token.get("org_id")
-    if not org_id:
+    candidates = (token.get("client_id"), token.get("org_id"), token.get("tenant_id"))
+    if not any(candidate not in (None, "") for candidate in candidates):
         raise HTTPException(status_code=403, detail="missing_org")
-    return str(org_id)
+    for org_id in candidates:
+        if org_id in (None, ""):
+            continue
+        try:
+            return str(UUID(str(org_id)))
+        except (TypeError, ValueError):
+            continue
+    raise HTTPException(status_code=403, detail="invalid_org")
 
 
 def _support_ticket_user_id(token: dict) -> str:
@@ -939,7 +1053,7 @@ def _ensure_slo_admin(token: dict) -> None:
         raise HTTPException(status_code=403, detail="forbidden")
 
 
-def _serialize_support_ticket(ticket: SupportTicket) -> SupportTicketOut:
+def _serialize_support_ticket(ticket: SupportTicket, *, case_summary=None) -> SupportTicketOut:
     now = datetime.now(timezone.utc)
     first_response_reference = ticket.first_response_at or now
     resolution_reference = ticket.resolved_at or now
@@ -947,6 +1061,11 @@ def _serialize_support_ticket(ticket: SupportTicket) -> SupportTicketOut:
         id=str(ticket.id),
         org_id=str(ticket.org_id),
         created_by_user_id=str(ticket.created_by_user_id),
+        case_id=case_summary.case_id if case_summary else None,
+        case_status=case_summary.status if case_summary else None,
+        case_queue=case_summary.queue if case_summary else None,
+        case_priority=case_summary.priority if case_summary else None,
+        case_updated_at=case_summary.updated_at if case_summary else None,
         subject=ticket.subject,
         message=ticket.message,
         status=ticket.status,
@@ -1174,8 +1293,8 @@ def _allow_helpdesk_outbound(
         return True
     if decision.error_code in {"billing_soft_blocked", "billing_hard_blocked"}:
         try:
-            org_id = int(token.get("client_id") or token.get("org_id"))
-        except (TypeError, ValueError):
+            org_id = _resolve_org_id(token)
+        except HTTPException:
             org_id = None
         audit_billing_blocked(
             db,
@@ -1305,14 +1424,15 @@ def get_client_dashboard(
     token: dict = Depends(client_portal_user),
     db: Session = Depends(get_db),
 ) -> ClientDashboardResponse:
-    client = _resolve_client(db, token)
-    if client is None:
-        raise HTTPException(status_code=404, detail="org_not_found")
-
     role = _resolve_dashboard_role(token)
+    tz_name = _resolve_dashboard_timezone(db, token=token)
+    client = _resolve_client(db, token, allow_missing=True)
+    if client is None:
+        return ClientDashboardResponse(role=role, timezone=tz_name, widgets=_dashboard_bootstrap_widgets(role))
+
     widgets_config = DASHBOARD_WIDGETS_BY_ROLE.get(role, [])
-    tz_name = resolve_user_timezone(db, token=token)
     user_id = str(token.get("user_id") or token.get("sub") or "").strip()
+    readiness = _dashboard_supporting_tables_ready(db)
 
     analytics_keys = {
         "total_spend_30d",
@@ -1325,7 +1445,7 @@ def get_client_dashboard(
         "blocked_cards",
     }
     analytics_summary: ClientAnalyticsSummaryResponse | None = None
-    if role != "DRIVER" and any(widget["key"] in analytics_keys for widget in widgets_config):
+    if role != "DRIVER" and readiness["analytics"] and any(widget["key"] in analytics_keys for widget in widgets_config):
         tzinfo = ZoneInfo(tz_name)
         date_to = datetime.now(tzinfo).date()
         date_from = date_to - timedelta(days=29)
@@ -1394,62 +1514,71 @@ def get_client_dashboard(
                 "sla_breaches_resolution": analytics_summary.summary.sla_breaches_resolution,
             }
         elif key == "health_exports_email":
-            exports_running = (
-                db.query(func.count())
-                .filter(ExportJob.org_id == str(client.id), ExportJob.status == ExportJobStatus.RUNNING)
-                .scalar()
-                or 0
-            )
-            exports_failed = (
-                db.query(func.count())
-                .filter(ExportJob.org_id == str(client.id), ExportJob.status == ExportJobStatus.FAILED)
-                .scalar()
-                or 0
-            )
-            since = datetime.now(timezone.utc) - timedelta(hours=24)
-            email_failures = (
-                db.query(func.count())
-                .filter(
-                    EmailOutbox.org_id == str(client.id),
-                    EmailOutbox.status == EmailOutboxStatus.FAILED,
-                    EmailOutbox.created_at >= since,
+            exports_running = 0
+            exports_failed = 0
+            if readiness["exports"]:
+                exports_running = (
+                    db.query(func.count())
+                    .filter(ExportJob.org_id == str(client.id), ExportJob.status == ExportJobStatus.RUNNING)
+                    .scalar()
+                    or 0
                 )
-                .scalar()
-                or 0
-            )
+                exports_failed = (
+                    db.query(func.count())
+                    .filter(ExportJob.org_id == str(client.id), ExportJob.status == ExportJobStatus.FAILED)
+                    .scalar()
+                    or 0
+                )
+            since = datetime.now(timezone.utc) - timedelta(hours=24)
+            email_failures = 0
+            if readiness["email_outbox"]:
+                email_failures = (
+                    db.query(func.count())
+                    .filter(
+                        EmailOutbox.org_id == str(client.id),
+                        EmailOutbox.status == EmailOutboxStatus.FAILED,
+                        EmailOutbox.created_at >= since,
+                    )
+                    .scalar()
+                    or 0
+                )
             data = {
                 "exports_running": int(exports_running),
                 "exports_failed": int(exports_failed),
                 "email_failures_24h": int(email_failures),
             }
         elif key == "slo_health":
-            data = build_slo_health(db, str(client.id))
+            data = build_slo_health(db, str(client.id)) if readiness["slo"] else {"status": "green", "breaches_7d": 0, "breaches_30d": 0}
         elif key == "invoices_count_30d":
-            tzinfo = ZoneInfo(tz_name)
-            date_to = datetime.now(tzinfo).date()
-            date_from = date_to - timedelta(days=29)
-            doc_types = {DocumentType.INVOICE, DocumentType.SUBSCRIPTION_INVOICE, DocumentType.ACT}
-            invoices_count = (
-                db.query(func.count())
-                .filter(
-                    Document.client_id == str(client.id),
-                    Document.document_type.in_(doc_types),
-                    Document.period_to >= date_from,
-                    Document.period_to <= date_to,
+            invoices_count = 0
+            if readiness["documents"]:
+                tzinfo = ZoneInfo(tz_name)
+                date_to = datetime.now(tzinfo).date()
+                date_from = date_to - timedelta(days=29)
+                doc_types = {DocumentType.INVOICE, DocumentType.SUBSCRIPTION_INVOICE, DocumentType.ACT}
+                invoices_count = (
+                    db.query(func.count())
+                    .filter(
+                        Document.client_id == str(client.id),
+                        Document.document_type.in_(doc_types),
+                        Document.period_to >= date_from,
+                        Document.period_to <= date_to,
+                    )
+                    .scalar()
+                    or 0
                 )
-                .scalar()
-                or 0
-            )
             data = {"value": int(invoices_count)}
         elif key == "recent_documents":
-            doc_types = {DocumentType.INVOICE, DocumentType.SUBSCRIPTION_INVOICE, DocumentType.ACT}
-            documents = (
-                db.query(Document)
-                .filter(Document.client_id == str(client.id), Document.document_type.in_(doc_types))
-                .order_by(Document.period_to.desc())
-                .limit(5)
-                .all()
-            )
+            documents = []
+            if readiness["documents"]:
+                doc_types = {DocumentType.INVOICE, DocumentType.SUBSCRIPTION_INVOICE, DocumentType.ACT}
+                documents = (
+                    db.query(Document)
+                    .filter(Document.client_id == str(client.id), Document.document_type.in_(doc_types))
+                    .order_by(Document.period_to.desc())
+                    .limit(5)
+                    .all()
+                )
             data = [
                 {
                     "id": str(doc.id),
@@ -1460,7 +1589,7 @@ def get_client_dashboard(
                 for doc in documents
             ]
         elif key == "exports_recent":
-            if not user_id:
+            if not user_id or not readiness["exports"]:
                 data = []
             else:
                 query = db.query(ExportJob).filter(ExportJob.org_id == str(client.id))
@@ -1478,10 +1607,10 @@ def get_client_dashboard(
                     for item in (_export_job_to_out(job) for job in jobs)
                 ]
         elif key == "my_cards_count":
-            card_ids = _accessible_card_ids(db, token=token, client_id=str(client.id))
+            card_ids = _accessible_card_ids(db, token=token, client_id=str(client.id)) if readiness["cards"] else []
             data = {"value": len(card_ids)}
         elif key == "recent_transactions":
-            card_ids = _accessible_card_ids(db, token=token, client_id=str(client.id))
+            card_ids = _accessible_card_ids(db, token=token, client_id=str(client.id)) if readiness["cards"] and readiness["analytics"] else []
             if card_ids:
                 rows = (
                     db.query(FuelTransaction, FuelCard.masked_pan, FuelCard.card_alias)
@@ -1508,13 +1637,13 @@ def get_client_dashboard(
             else:
                 data = []
         elif key == "card_limits":
-            card_ids = _accessible_card_ids(db, token=token, client_id=str(client.id))
+            card_ids = _accessible_card_ids(db, token=token, client_id=str(client.id)) if readiness["cards"] else []
             if not card_ids:
                 data = []
             else:
                 cards = db.query(Card).filter(Card.id.in_(card_ids)).all()
                 card_labels = {card.id: card.pan_masked or card.id for card in cards}
-                limits = db.query(CardLimit).filter(CardLimit.card_id.in_(card_ids)).all()
+                limits = db.query(CardLimit).filter(CardLimit.card_id.in_(card_ids)).all() if readiness["card_limits"] else []
                 limits_map: dict[str, list[dict]] = {}
                 for limit in limits:
                     limits_map.setdefault(limit.card_id, []).append(
@@ -2412,6 +2541,15 @@ def _limit_type_for_template(limit_type: str, window: str) -> str:
     return f"{prefix}_{limit_type.upper().strip()}"
 
 
+def _compat_card_limit_type(limit_type: str) -> str:
+    normalized = str(limit_type or "").upper().strip()
+    compat_map = {
+        "DAILY_AMOUNT": "DAILY",
+        "MONTHLY_AMOUNT": "MONTHLY",
+    }
+    return compat_map.get(normalized, normalized)
+
+
 def _audit_bulk_payload(card_ids: list[str]) -> dict:
     if len(card_ids) <= 25:
         return {"count": len(card_ids), "card_ids": card_ids}
@@ -2605,7 +2743,7 @@ def list_audit_events(
     if has_more:
         logs = logs[:limit]
     next_cursor = str(offset + limit) if has_more else None
-    org_id = token.get("client_id") or token.get("org_id") or tenant_id
+    org_id = token.get("org_id") or token.get("client_id") or tenant_id
 
     items = [
         ClientAuditEventSummary(
@@ -2661,7 +2799,7 @@ def export_audit_events(
     logs = query.order_by(AuditLog.ts.desc(), AuditLog.id.desc()).limit(max_rows + 1).all()
     if len(logs) > max_rows:
         raise HTTPException(status_code=400, detail="export_limit_exceeded")
-    org_id = token.get("client_id") or token.get("org_id") or tenant_id
+    org_id = token.get("org_id") or token.get("client_id") or tenant_id
     buffer = StringIO()
     writer = csv.writer(buffer)
     writer.writerow(
@@ -3134,6 +3272,15 @@ def create_support_ticket(
         },
         request_ctx=request_context_from_request(request, token=token),
     )
+    sync_support_ticket_case(
+        db,
+        ticket=ticket,
+        tenant_id=token.get("tenant_id"),
+        client_id=token.get("client_id") or org_id,
+        actor_id=user_id,
+        request_id=request.headers.get("x-request-id"),
+        trace_id=request.headers.get("x-trace-id"),
+    )
     db.refresh(ticket)
     creator_is_admin = _is_support_ticket_admin(token)
     _notify_support_ticket(
@@ -3190,7 +3337,10 @@ def create_support_ticket(
                     "error": outbox.last_error,
                 },
             )
-    return SupportTicketDetail(**_serialize_support_ticket(ticket).model_dump(), comments=[])
+    return SupportTicketDetail(
+        **_serialize_support_ticket(ticket, case_summary=_resolve_support_ticket_case_summary(db, ticket=ticket)).model_dump(),
+        comments=[],
+    )
 
 
 @router.get("/support/tickets", response_model=SupportTicketListResponse)
@@ -3223,10 +3373,23 @@ def list_support_tickets(
         if events:
             _notify_support_sla_breaches(db, ticket=ticket, events=events)
             updated = True
+        if sync_support_ticket_case(
+            db,
+            ticket=ticket,
+            tenant_id=token.get("tenant_id"),
+            client_id=token.get("client_id") or org_id,
+            actor_id=_support_ticket_user_id(token),
+            request_id=request.headers.get("x-request-id"),
+            trace_id=request.headers.get("x-trace-id"),
+        ):
+            updated = True
     if updated:
         db.flush()
     next_cursor = str(offset + limit) if has_more else None
-    items = [_serialize_support_ticket(ticket) for ticket in rows]
+    items = [
+        _serialize_support_ticket(ticket, case_summary=_resolve_support_ticket_case_summary(db, ticket=ticket))
+        for ticket in rows
+    ]
     return SupportTicketListResponse(items=items, next_cursor=next_cursor)
 
 
@@ -3244,6 +3407,15 @@ def get_support_ticket(
     if events:
         _notify_support_sla_breaches(db, ticket=ticket, events=events)
         db.flush()
+    sync_support_ticket_case(
+        db,
+        ticket=ticket,
+        tenant_id=token.get("tenant_id"),
+        client_id=token.get("client_id") or _support_ticket_org_id(token),
+        actor_id=_support_ticket_user_id(token),
+        request_id=request.headers.get("x-request-id"),
+        trace_id=request.headers.get("x-trace-id"),
+    )
     comments = (
         db.query(SupportTicketComment)
         .filter(SupportTicketComment.ticket_id == ticket.id)
@@ -3251,7 +3423,7 @@ def get_support_ticket(
         .all()
     )
     return SupportTicketDetail(
-        **_serialize_support_ticket(ticket).model_dump(),
+        **_serialize_support_ticket(ticket, case_summary=_resolve_support_ticket_case_summary(db, ticket=ticket)).model_dump(),
         comments=[_serialize_support_ticket_comment(comment) for comment in comments],
     )
 
@@ -3280,6 +3452,13 @@ def add_support_ticket_comment(
     db.add(comment)
     db.add(ticket)
     db.flush()
+    sync_support_ticket_comment(
+        db,
+        ticket=ticket,
+        author=user_id,
+        body=payload.message,
+        occurred_at=comment.created_at,
+    )
     audit_service.audit(
         event_type="support_ticket_commented",
         entity_type="support_ticket",
@@ -3366,7 +3545,7 @@ def add_support_ticket_comment(
         .all()
     )
     return SupportTicketDetail(
-        **_serialize_support_ticket(ticket).model_dump(),
+        **_serialize_support_ticket(ticket, case_summary=_resolve_support_ticket_case_summary(db, ticket=ticket)).model_dump(),
         comments=[_serialize_support_ticket_comment(item) for item in comments],
     )
 
@@ -3389,6 +3568,15 @@ def close_support_ticket(
         mark_resolution(ticket, audit=audit_service, request_ctx=request_ctx)
         db.add(ticket)
         db.flush()
+        sync_support_ticket_case(
+            db,
+            ticket=ticket,
+            tenant_id=token.get("tenant_id"),
+            client_id=token.get("client_id") or str(ticket.org_id),
+            actor_id=user_id,
+            request_id=request.headers.get("x-request-id"),
+            trace_id=request.headers.get("x-trace-id"),
+        )
         audit_service.audit(
             event_type="support_ticket_closed",
             entity_type="support_ticket",
@@ -3463,7 +3651,7 @@ def close_support_ticket(
         .all()
     )
     return SupportTicketDetail(
-        **_serialize_support_ticket(ticket).model_dump(),
+        **_serialize_support_ticket(ticket, case_summary=_resolve_support_ticket_case_summary(db, ticket=ticket)).model_dump(),
         comments=[_serialize_support_ticket_comment(item) for item in comments],
     )
 
@@ -3626,17 +3814,22 @@ def create_org(
     )
     client = _resolve_client(db, token, allow_missing=True)
     token_client_id = str(token.get("client_id") or "").strip() or None
-    if token_client_id and not _is_uuid(token_client_id):
-        raise HTTPException(status_code=400, detail="invalid_client_id")
+    token_client_uuid = None
+    if token_client_id:
+        try:
+            token_client_uuid = UUID(token_client_id)
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="invalid_client_id")
     try:
+        current_client_uuid = UUID(str(client.id)) if client is not None else None
         if payload.inn:
             logger.info(
                 "onboarding_profile_lookup_inn",
                 extra={"request_id": request_id, "inn": payload.inn},
             )
             inn_query = db.query(Client.id).filter(Client.inn == payload.inn)
-            if client is not None:
-                inn_query = inn_query.filter(Client.id != str(client.id))
+            if current_client_uuid is not None:
+                inn_query = inn_query.filter(Client.id != current_client_uuid)
             existing_inn_id = inn_query.scalar()
             if existing_inn_id:
                 raise HTTPException(
@@ -3649,20 +3842,20 @@ def create_org(
                 )
 
         if client is None:
-            if not token_client_id:
-                if not _is_dev_env():
-                    raise HTTPException(status_code=404, detail="client_not_found")
-                client_id = str(uuid4())
-            else:
-                client_id = token_client_id
+            client_uuid = token_client_uuid or uuid4()
+            client_id = str(client_uuid)
             logger.info(
                 "onboarding_profile_create_org",
                 extra={"request_id": request_id, "client_id": client_id, "action": "insert"},
             )
             client_record = Client(
-                id=client_id,
+                id=client_uuid,
                 name=payload.name,
+                legal_name=None if str(payload.org_type).upper() == "INDIVIDUAL" else payload.name,
+                full_name=payload.name if str(payload.org_type).upper() == "INDIVIDUAL" else None,
                 inn=payload.inn,
+                ogrn=payload.ogrn,
+                org_type=payload.org_type,
                 status="ONBOARDING",
             )
             db.add(client_record)
@@ -3673,7 +3866,6 @@ def create_org(
                 inn=client_record.inn,
                 status=client_record.status,
             )
-            _ensure_client_membership(db, client_id=client_id, token=token)
         else:
             client_record = db.get(Client, UUID(str(client.id)))
             if client_record is None:
@@ -3683,7 +3875,11 @@ def create_org(
                 extra={"request_id": request_id, "client_id": str(client.id), "action": "update"},
             )
             client_record.name = payload.name
+            client_record.legal_name = None if str(payload.org_type).upper() == "INDIVIDUAL" else payload.name
+            client_record.full_name = payload.name if str(payload.org_type).upper() == "INDIVIDUAL" else None
             client_record.inn = payload.inn
+            client_record.ogrn = payload.ogrn
+            client_record.org_type = payload.org_type
             client_record.status = "ONBOARDING"
             db.flush()
             client = SafeClient(
@@ -3692,7 +3888,6 @@ def create_org(
                 inn=client_record.inn,
                 status=client_record.status,
             )
-            _ensure_client_membership(db, client_id=str(client.id), token=token)
 
         logger.info(
             "onboarding_profile_create_profile",
@@ -3714,6 +3909,16 @@ def create_org(
             extra={"request_id": request_id, "client_id": str(client.id)},
         )
         db.commit()
+        try:
+            _ensure_client_membership(db, client_id=str(client.id), token=token)
+            if db.new or db.dirty:
+                db.commit()
+        except Exception:
+            db.rollback()
+            logger.exception(
+                "onboarding_profile_membership_sync_failed",
+                extra={"request_id": request_id, "client_id": str(client.id)},
+            )
     except HTTPException:
         db.rollback()
         raise
@@ -3791,7 +3996,11 @@ def update_org(
     if client_record is None:
         raise HTTPException(status_code=404, detail="org_not_found")
     client_record.name = payload.name
+    client_record.legal_name = None if str(payload.org_type).upper() == "INDIVIDUAL" else payload.name
+    client_record.full_name = payload.name if str(payload.org_type).upper() == "INDIVIDUAL" else None
     client_record.inn = payload.inn
+    client_record.ogrn = payload.ogrn
+    client_record.org_type = payload.org_type
     db.flush()
     client = SafeClient(
         id=str(client_record.id),
@@ -3823,6 +4032,22 @@ def activate_onboarding(
         raise HTTPException(status_code=404, detail="org_not_found")
 
     onboarding = _get_or_create_onboarding(db, owner_id=_resolve_owner_id(token), client_id=str(client.id))
+    subscription = get_client_subscription(db, tenant_id=_normalize_tenant_id(token), client_id=str(client.id))
+    selected_plan = db.get(SubscriptionPlan, subscription.plan_id) if subscription and subscription.plan_id else None
+    if subscription is None or selected_plan is None:
+        raise HTTPException(status_code=409, detail="subscription_missing")
+    if not onboarding.contract_id:
+        raise HTTPException(status_code=409, detail="contract_not_found")
+    contract = (
+        db.query(ClientOnboardingContract)
+        .filter(ClientOnboardingContract.id == onboarding.contract_id)
+        .one_or_none()
+    )
+    if contract is None:
+        raise HTTPException(status_code=409, detail="contract_not_found")
+    if str(contract.status or "").upper() not in {"SIGNED", "SIGNED_SIMPLE", "SIGNED_PEP"}:
+        raise HTTPException(status_code=409, detail="contract_not_signed")
+
     profile = onboarding.profile_json or {}
     onboarding.step = "ACTIVE"
     onboarding.status = "ACTIVE"
@@ -3830,12 +4055,23 @@ def activate_onboarding(
     client_record = db.get(Client, UUID(str(client.id)))
     if client_record is None:
         raise HTTPException(status_code=404, detail="org_not_found")
+    resolved_org_type = profile.get("org_type") or onboarding.client_type
+    if profile.get("name"):
+        client_record.name = profile.get("name")
+        client_record.legal_name = None if str(resolved_org_type).upper() == "INDIVIDUAL" else profile.get("name")
+        client_record.full_name = profile.get("name") if str(resolved_org_type).upper() == "INDIVIDUAL" else None
+    if profile.get("inn"):
+        client_record.inn = profile.get("inn")
+    if profile.get("ogrn"):
+        client_record.ogrn = profile.get("ogrn")
+    if resolved_org_type:
+        client_record.org_type = resolved_org_type
     client_record.status = "ACTIVE"
     db.commit()
 
     return ClientOrgOut(
         id=str(client.id),
-        org_type=profile.get("org_type") or onboarding.client_type,
+        org_type=resolved_org_type,
         name=client.name or profile.get("name") or "",
         inn=client.inn or profile.get("inn"),
         kpp=profile.get("kpp"),
@@ -3844,6 +4080,9 @@ def activate_onboarding(
         status="ACTIVE",
     )
 
+
+def _resolve_support_ticket_case_summary(db: Session, *, ticket: SupportTicket):
+    return summarize_support_ticket_case(get_support_ticket_case(db, ticket_id=str(ticket.id)))
 
 @router.get("/contracts/current", response_model=ContractInfo)
 def get_current_contract(
@@ -4042,6 +4281,7 @@ def sign_contract(
         after={"status": contract.status},
         action="sign_simple",
     )
+    db.commit()
 
     return ContractInfo(
         contract_id=str(contract.id),
@@ -4105,6 +4345,7 @@ def sign_contract_by_id(
         after={"status": contract.status},
         action="sign_simple",
     )
+    db.commit()
 
     return ContractInfo(
         contract_id=str(contract.id),
@@ -4124,6 +4365,10 @@ def list_cards(
         raise HTTPException(status_code=404, detail={"error": "card_not_found", "message": "Client not found"})
     service = CardsService(CardsRepository(db))
     data = service.list_cards(str(client.id))
+    items = data.items
+    if not _is_card_admin(token):
+        allowed_card_ids = set(_accessible_card_ids(db, token=token, client_id=str(client.id)))
+        items = [item for item in items if item.id in allowed_card_ids]
     return CardListResponse(
         items=[
             CardOut(
@@ -4137,7 +4382,7 @@ def list_cards(
                     for limit in item.limits
                 ],
             )
-            for item in data.items
+            for item in items
         ],
         templates=[
             {"id": tpl.id, "name": tpl.name, "is_default": tpl.is_default}
@@ -4205,6 +4450,7 @@ def update_card(
         after={"status": card.status},
         action="update_status",
     )
+    db.commit()
     limits = db.query(CardLimit).filter(CardLimit.card_id == card.id).all()
     limit_out = [CardLimitOut(limit_type=item.limit_type, amount=float(item.amount), currency=item.currency) for item in limits]
     return CardOut(id=card.id, status=card.status, pan_masked=card.pan_masked, limits=limit_out)
@@ -4509,6 +4755,7 @@ def update_card_limits(
         after={"replace_all": True, "limits": payload.model_dump().get("limits", [])},
         action="limit_replace",
     )
+    db.commit()
     return CardOut(
         id=card.id,
         status=card.status,
@@ -4529,7 +4776,15 @@ def update_card_limits_compat(
 ) -> CardOut:
     return update_card_limits(
         card_id=card_id,
-        payload=CardLimitsUpdateRequest(limits=[payload]),
+        payload=CardLimitsUpdateRequest(
+            limits=[
+                CardLimitRequest(
+                    limit_type=_compat_card_limit_type(payload.limit_type),
+                    amount=payload.amount,
+                    currency=payload.currency,
+                )
+            ]
+        ),
         request=request,
         token=token,
         db=db,
@@ -4546,9 +4801,10 @@ def list_card_transactions(
     if client is None:
         raise HTTPException(status_code=404, detail="org_not_found")
     _ensure_card_access(db, token=token, card_id=card_id)
+    client_operation_client_id = UUID(str(client.id))
     operations = (
         db.query(ClientOperation)
-        .filter(ClientOperation.client_id == str(client.id), ClientOperation.card_id == card_id)
+        .filter(ClientOperation.client_id == client_operation_client_id, ClientOperation.card_id == card_id)
         .order_by(ClientOperation.performed_at.desc())
         .all()
     )
@@ -4646,6 +4902,7 @@ def grant_card_access(
         after={"user_id": access.user_id, "scope": str(access.scope)},
         action="grant_access",
     )
+    db.commit()
     return CardAccessOut(
         user_id=access.user_id,
         scope=str(access.scope),
@@ -5955,7 +6212,7 @@ def list_users(
     role_map: dict[str, list[str]] = {}
     if roles_tbl is not None:
         role_rows = db.execute(
-            select(roles_tbl.c.user_id, roles_tbl.c.roles).where(roles_tbl.c.client_id == str(client.id))
+            select(roles_tbl.c.user_id, roles_tbl.c.roles).where(roles_tbl.c.client_id.in_(_client_id_filter_values(str(client.id))))
         ).all()
         for user_id, roles in role_rows:
             if isinstance(roles, list):
@@ -5972,7 +6229,7 @@ def list_users(
             memberships.c.status,
             users_tbl.c.email if users_tbl is not None and "email" in users_tbl.c else None,
             users_tbl.c.full_name if users_tbl is not None and "full_name" in users_tbl.c else None,
-        ).where(memberships.c.client_id == str(client.id))
+        ).where(memberships.c.client_id.in_(_client_id_filter_values(str(client.id))))
         if users_tbl is not None:
             stmt = stmt.select_from(memberships.outerjoin(users_tbl, users_tbl.c.id == memberships.c.user_id))
         rows = db.execute(stmt).all()
@@ -5993,8 +6250,271 @@ def list_users(
     return ClientUsersResponse(items=items)
 
 
+_CLIENT_SERVICE_LABELS: dict[str, str] = {
+    "FUEL_CORE": "???????",
+    "AI_ASSISTANT": "AI Assistant",
+    "EXPLAIN": "Explain",
+    "PENALTIES": "??????",
+    "MARKETPLACE": "???????????",
+    "ANALYTICS": "?????????",
+    "SLA": "SLA",
+    "BONUSES": "??????",
+    "BILLING": "???????",
+    "DOCS": "?????????",
+    "FLEET": "????",
+    "CRM": "CRM",
+}
+
+_CLIENT_FEATURE_DESCRIPTIONS: dict[str, str] = {
+    CRMFeatureFlagType.FUEL_ENABLED.value: "?????? ? ????????? ?????????",
+    CRMFeatureFlagType.LOGISTICS_ENABLED.value: "?????? ? ?????????",
+    CRMFeatureFlagType.DOCUMENTS_ENABLED.value: "?????? ? ??????????",
+    CRMFeatureFlagType.RISK_BLOCKING_ENABLED.value: "????-??????????",
+    CRMFeatureFlagType.ACCOUNTING_EXPORT_ENABLED.value: "????????????? ????????",
+    CRMFeatureFlagType.SUBSCRIPTION_METER_FUEL_ENABLED.value: "????????? subscription meter",
+    CRMFeatureFlagType.CASES_ENABLED.value: "????? ? ?????????",
+}
+
+
+def _stringify_enum(value: Any) -> str:
+    return str(value.value if hasattr(value, "value") else value)
+
+
+def _client_id_filter_values(client_id: str) -> list[str]:
+    values = {str(client_id)}
+    try:
+        values.add(UUID(str(client_id)).hex)
+    except (TypeError, ValueError):
+        pass
+    return sorted(values)
+
+
+def _normalize_tenant_id(token: dict) -> int:
+    try:
+        return int(token.get("tenant_id") or DEFAULT_TENANT_ID)
+    except (TypeError, ValueError):
+        return DEFAULT_TENANT_ID
+
+
+def _coerce_number(value: Any) -> float | None:
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _format_limit_period(period_start: datetime | None, period_end: datetime | None) -> str | None:
+    start_value = period_start.date().isoformat() if period_start else None
+    end_value = period_end.date().isoformat() if period_end else None
+    if start_value and end_value:
+        return f"{start_value}/{end_value}"
+    return start_value or end_value
+
+
+def _compute_limit_status(*, limit_value: float | None, used_value: float | None) -> str | None:
+    if limit_value is None or used_value is None or limit_value <= 0:
+        return None
+    ratio = used_value / limit_value
+    if ratio >= 1:
+        return "EXCEEDED"
+    if ratio >= 0.8:
+        return "NEAR_LIMIT"
+    return "OK"
+
+
+def _classify_limit_group(limit_type: str | None) -> str | None:
+    normalized = str(limit_type or "").upper()
+    if "PARTNER" in normalized:
+        return "partner_limits"
+    if "STATION" in normalized:
+        return "station_limits"
+    if "SERVICE" in normalized:
+        return "service_limits"
+    if any(marker in normalized for marker in ("COUNT", "OPERATION", "TXN", "TRANSACTION")):
+        return "operation_limits"
+    if any(marker in normalized for marker in ("AMOUNT", "SUM")):
+        return "amount_limits"
+    return None
+
+
+@router.get("/limits", response_model=ClientLimitsResponse)
+def get_client_limits(
+    token: dict = Depends(client_auth.require_onboarding_user),
+    db: Session = Depends(get_db),
+) -> ClientLimitsResponse:
+    client = _resolve_client(db, token)
+    if client is None:
+        raise HTTPException(status_code=404, detail="org_not_found")
+
+    response = ClientLimitsResponse()
+    if not _table_exists(db, "client_limits"):
+        return response
+
+    rows = (
+        db.query(ClientLimit)
+        .filter(cast(ClientLimit.client_id, String).in_(_client_id_filter_values(str(client.id))))
+        .order_by(ClientLimit.id.asc())
+        .all()
+    )
+
+    all_items: list[ClientLimitItem] = []
+    for row in rows:
+        limit_type = str(row.limit_type) if row.limit_type is not None else None
+        limit_value = _coerce_number(row.amount)
+        used_value = _coerce_number(row.used_amount)
+        item = ClientLimitItem(
+            id=str(row.id),
+            label=limit_type,
+            type=limit_type,
+            period=_format_limit_period(row.period_start, row.period_end),
+            limit=limit_value,
+            used=used_value,
+            status=_compute_limit_status(limit_value=limit_value, used_value=used_value),
+        )
+        all_items.append(item)
+        group_name = _classify_limit_group(limit_type)
+        if group_name is not None:
+            getattr(response, group_name).append(item)
+
+    response.items = all_items
+    statuses = {item.status for item in all_items if item.status}
+    if "EXCEEDED" in statuses:
+        response.status = "EXCEEDED"
+    elif "NEAR_LIMIT" in statuses:
+        response.status = "NEAR_LIMIT"
+    elif statuses:
+        response.status = "OK"
+    return response
+
+
+@router.post("/limits/requests", response_model=ClientLimitChangeRequestResponse, status_code=201)
+def create_client_limit_change_request(
+    payload: ClientLimitChangeRequestCreate,
+    request: Request,
+    token: dict = Depends(client_auth.require_onboarding_user),
+    db: Session = Depends(get_db),
+) -> ClientLimitChangeRequestResponse:
+    client = _resolve_client(db, token)
+    if client is None:
+        raise HTTPException(status_code=404, detail="org_not_found")
+    if not _is_user_admin(token):
+        raise HTTPException(status_code=403, detail="forbidden")
+
+    _enforce_portal_write_access(db=db, request=request, token=token)
+
+    actor_id = str(token.get("user_id") or token.get("sub") or "system")
+    item = ClientLimitChangeRequest(
+        client_id=str(client.id),
+        limit_type=payload.limit_type,
+        new_value=payload.new_value,
+        comment=payload.comment,
+        status="PENDING",
+        created_by=actor_id,
+    )
+    db.add(item)
+    db.flush()
+    _audit_event(
+        db,
+        request=request,
+        token=token,
+        event_type="limit_change_request",
+        entity_type="client_limit_request",
+        entity_id=str(item.id),
+        before=None,
+        after={
+            "client_id": str(client.id),
+            "limit_type": payload.limit_type,
+            "new_value": payload.new_value,
+            "comment": payload.comment,
+            "status": item.status,
+            "created_by": item.created_by,
+        },
+        action="create_limit_request",
+    )
+    db.commit()
+    return ClientLimitChangeRequestResponse(status=str(item.status), request_id=str(item.id), message=None)
+
+
+@router.get("/services", response_model=ClientServicesResponse)
+def get_client_services(
+    token: dict = Depends(client_auth.require_onboarding_user),
+    db: Session = Depends(get_db),
+) -> ClientServicesResponse:
+    client = _resolve_client(db, token)
+    if client is None:
+        raise HTTPException(status_code=404, detail="org_not_found")
+
+    if not _table_exists(db, "client_subscriptions") or not _table_exists(db, "subscription_plan_modules"):
+        return ClientServicesResponse(items=[])
+
+    subscription = get_client_subscription(db, tenant_id=_normalize_tenant_id(token), client_id=str(client.id))
+    if subscription is None:
+        return ClientServicesResponse(items=[])
+
+    modules = (
+        db.query(SubscriptionPlanModule)
+        .filter(SubscriptionPlanModule.plan_id == subscription.plan_id)
+        .order_by(SubscriptionPlanModule.module_code.asc())
+        .all()
+    )
+
+    items = []
+    for module in modules:
+        module_code = _stringify_enum(module.module_code)
+        restrictions_parts: list[str] = []
+        if module.tier:
+            restrictions_parts.append(f"tier={module.tier}")
+        if module.limits:
+            restrictions_parts.append(f"limits={module.limits}")
+        items.append(
+            ClientServiceItem(
+                id=module_code,
+                partner=None,
+                service=_CLIENT_SERVICE_LABELS.get(module_code, module_code.replace("_", " ").title()),
+                status="ENABLED" if bool(module.enabled) else "DISABLED",
+                restrictions="; ".join(restrictions_parts) or None,
+            )
+        )
+    return ClientServicesResponse(items=items)
+
+
+@router.get("/features", response_model=ClientFeaturesResponse)
+def get_client_features(
+    token: dict = Depends(client_auth.require_onboarding_user),
+    db: Session = Depends(get_db),
+) -> ClientFeaturesResponse:
+    client = _resolve_client(db, token)
+    if client is None:
+        raise HTTPException(status_code=404, detail="org_not_found")
+
+    if not _table_exists(db, "crm_feature_flags"):
+        return ClientFeaturesResponse(items=[])
+
+    rows = crm_repository.list_feature_flags(db, tenant_id=_normalize_tenant_id(token), client_id=str(client.id))
+    items = [
+        ClientFeatureItem(
+            key=_stringify_enum(item.feature),
+            description=_CLIENT_FEATURE_DESCRIPTIONS.get(_stringify_enum(item.feature)),
+            status="ON" if bool(item.enabled) else "OFF",
+            scope="client",
+        )
+        for item in rows
+    ]
+    return ClientFeaturesResponse(items=items)
+
+
 def _build_invitation_token() -> tuple[str, str]:
     return generate_invitation_token()
+
+
+def _coerce_utc_datetime(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
 
 
 def _email_notifications_enabled() -> bool:
@@ -6014,11 +6534,14 @@ def _enqueue_invitation_event(
     invitation: ClientInvitation,
     event_type: str,
     token_raw: str | None = None,
+    event_sequence: int | None = None,
+    template_code: str = "client_invitation",
 ) -> None:
     base_url = _invite_base_url()
+    resolved_sequence = int(invitation.resent_count or 0) if event_sequence is None else int(event_sequence)
     payload: dict[str, Any] = {
         "channel": "email",
-        "template": "client_invitation",
+        "template": template_code,
         "to": invitation.email,
         "variables": {
             "roles": invitation.roles or [],
@@ -6026,6 +6549,7 @@ def _enqueue_invitation_event(
         },
         "invitation_id": str(invitation.id),
         "client_id": str(invitation.client_id),
+        "event_sequence": resolved_sequence,
     }
     enqueue_client_invitation_notification(
         db,
@@ -6033,6 +6557,8 @@ def _enqueue_invitation_event(
         invitation_id=str(invitation.id),
         client_id=str(invitation.client_id),
         payload=payload,
+        template_code=template_code,
+        dedupe_key=f"client_invitation:{invitation.id}:{event_type}:{resolved_sequence}",
     )
 
 
@@ -6055,6 +6581,8 @@ def _deliver_invitation_email(db: Session, *, invitation: ClientInvitation, toke
         "<p>Если вы не запрашивали приглашение, проигнорируйте это письмо.</p></body></html>"
     )
 
+    delivery_attempt = int(invitation.resent_count or 0) + 1
+
     if not _email_notifications_enabled():
         ConsoleEmailSender().send(to=invitation.email, subject=subject, html=html, text=text, headers={"template": "client_invite_v1"})
         delivery = InvitationEmailDelivery(
@@ -6065,10 +6593,16 @@ def _deliver_invitation_email(db: Session, *, invitation: ClientInvitation, toke
             template="client_invite_v1",
             subject=subject,
             status="QUEUED",
-            attempt=1,
+            attempt=delivery_attempt,
         )
         db.add(delivery)
-        _enqueue_invitation_event(db, invitation=invitation, event_type="INVITATION_EMAIL_SENT")
+        _enqueue_invitation_event(
+            db,
+            invitation=invitation,
+            event_type="INVITATION_EMAIL_SENT",
+            event_sequence=delivery_attempt,
+            template_code="client_invite_v1",
+        )
         return
 
     status = "SENT"
@@ -6103,7 +6637,7 @@ def _deliver_invitation_email(db: Session, *, invitation: ClientInvitation, toke
         status=status,
         error_code=error_code,
         error_message=error_message,
-        attempt=int(invitation.resent_count or 0) + 1,
+        attempt=delivery_attempt,
     )
     db.add(delivery)
     result_event_type = "INVITATION_EMAIL_SENT" if status == "SENT" else "INVITATION_EMAIL_FAILED"
@@ -6113,6 +6647,8 @@ def _deliver_invitation_email(db: Session, *, invitation: ClientInvitation, toke
         db,
         invitation=invitation,
         event_type=result_event_type,
+        event_sequence=delivery_attempt,
+        template_code="client_invite_v1",
     )
 
 
@@ -6176,6 +6712,7 @@ def invite_user(
         status="PENDING",
     )
     db.add(invitation)
+    db.flush()
     _enqueue_invitation_event(db, invitation=invitation, event_type="INVITATION_CREATED", token_raw=token_raw)
     _deliver_invitation_email(db, invitation=invitation, token_raw=token_raw, event_type="INVITATION_CREATED")
     db.commit()
@@ -6235,7 +6772,8 @@ def list_user_invitations(
     rows = query.offset(offset).limit(limit).all()
 
     def _computed_status(item: ClientInvitation) -> str:
-        if item.status == "PENDING" and item.expires_at and item.expires_at < now:
+        expires_at = _coerce_utc_datetime(item.expires_at)
+        if item.status == "PENDING" and expires_at and expires_at < now:
             return "EXPIRED"
         return str(item.status)
 
@@ -6247,10 +6785,10 @@ def list_user_invitations(
                 role=(item.roles or [None])[0],
                 roles=item.roles or [],
                 status=_computed_status(item),
-                expires_at=item.expires_at,
+                expires_at=_coerce_utc_datetime(item.expires_at),
                 resent_count=int(item.resent_count or 0),
-                last_sent_at=item.last_sent_at,
-                created_at=item.created_at,
+                last_sent_at=_coerce_utc_datetime(item.last_sent_at),
+                created_at=_coerce_utc_datetime(item.created_at),
             )
             for item in rows
         ],
@@ -6323,11 +6861,13 @@ def resend_user_invitation(
         raise HTTPException(status_code=409, detail="invite_not_pending")
 
     now = datetime.now(timezone.utc)
-    if invitation.expires_at and invitation.expires_at < now:
+    expires_at = _coerce_utc_datetime(invitation.expires_at)
+    if expires_at and expires_at < now:
         raise HTTPException(status_code=409, detail="invite_expired")
 
-    throttle_minutes = max(int(os.getenv("CLIENT_INVITE_RESEND_THROTTLE_MINUTES", "3")), 1)
-    if invitation.last_sent_at and (now - invitation.last_sent_at) < timedelta(minutes=throttle_minutes):
+    throttle_minutes = max(int(os.getenv("CLIENT_INVITE_RESEND_THROTTLE_MINUTES", "0")), 0)
+    last_sent_at = _coerce_utc_datetime(invitation.last_sent_at)
+    if throttle_minutes > 0 and last_sent_at and (now - last_sent_at) < timedelta(minutes=throttle_minutes):
         raise HTTPException(status_code=429, detail="invite_resend_throttled")
 
     token_raw, token_hash = _build_invitation_token()
@@ -6413,7 +6953,225 @@ def update_user_roles(
         after={"roles": roles},
         action="update_roles",
     )
+    db.commit()
     return {"status": "ok", "user_id": user_id, "roles": roles}
+
+
+@router.delete("/users/{user_id}", response_model=ClientUserDisableResponse)
+def disable_user(
+    user_id: str,
+    request: Request,
+    token: dict = Depends(client_auth.require_onboarding_user),
+    db: Session = Depends(get_db),
+) -> ClientUserDisableResponse:
+    client = _resolve_client(db, token)
+    if client is None:
+        raise HTTPException(status_code=404, detail="org_not_found")
+    if not _is_user_admin(token):
+        raise HTTPException(status_code=403, detail="forbidden")
+
+    _enforce_portal_write_access(db=db, request=request, token=token)
+
+    actor_id = str(token.get("user_id") or token.get("sub") or "")
+    if user_id == actor_id:
+        raise HTTPException(status_code=400, detail="cannot_disable_self")
+
+    record = (
+        db.query(ClientUser)
+        .filter(ClientUser.client_id == str(client.id), ClientUser.user_id == user_id)
+        .one_or_none()
+    )
+    if record is None:
+        raise HTTPException(status_code=404, detail="user_not_found")
+
+    before_status = str(record.status or "ACTIVE").upper()
+    if before_status != "DISABLED":
+        memberships = db.query(ClientUser).filter(ClientUser.client_id == str(client.id)).all()
+        membership_status_map = {
+            str(item.user_id): str(item.status or "ACTIVE").upper()
+            for item in memberships
+        }
+        role_records = db.query(ClientUserRole).filter(ClientUserRole.client_id == str(client.id)).all()
+
+        owner_user_ids: set[str] = set()
+        target_before_owner = False
+        for rec in role_records:
+            rec_roles = rec.roles if isinstance(rec.roles, list) else str(rec.roles).split(",")
+            normalized_roles = {str(item).upper() for item in rec_roles if item}
+            if "CLIENT_OWNER" in normalized_roles:
+                if membership_status_map.get(str(rec.user_id), "ACTIVE") != "DISABLED":
+                    owner_user_ids.add(str(rec.user_id))
+                if str(rec.user_id) == user_id:
+                    target_before_owner = True
+
+        if target_before_owner and len(owner_user_ids) <= 1:
+            raise HTTPException(status_code=409, detail="cannot_disable_last_owner")
+
+        record.status = "DISABLED"
+
+    _audit_event(
+        db,
+        request=request,
+        token=token,
+        event_type="user_disable",
+        entity_type="membership",
+        entity_id=user_id,
+        before={"status": before_status},
+        after={"status": "DISABLED"},
+        action="disable_user",
+        reason="already_disabled" if before_status == "DISABLED" else None,
+    )
+    db.commit()
+    return ClientUserDisableResponse(status="ok", user_id=user_id, disabled=True)
+
+
+def _resolve_subscription_invoice_org_id(db: Session, invoice: Mapping[str, Any] | dict[str, Any] | None) -> int | None:
+    if not invoice:
+        return None
+    org_id = invoice.get("org_id")
+    if org_id not in (None, ""):
+        try:
+            return int(org_id)
+        except (TypeError, ValueError):
+            pass
+    subscription_id = invoice.get("subscription_id")
+    if not _table_exists(db, "client_subscriptions"):
+        return None
+    client_subscriptions = _table(db, "client_subscriptions")
+    tenant_column = client_subscriptions.c.get("tenant_id")
+    if tenant_column is None:
+        return None
+    resolved = None
+    if subscription_id not in (None, "") and client_subscriptions.c.get("id") is not None:
+        subscription_key = str(subscription_id)
+        resolved = (
+            db.execute(
+                select(tenant_column).where(cast(client_subscriptions.c.id, String) == subscription_key)
+            )
+            .scalar()
+        )
+    if resolved is None and invoice.get("client_id") not in (None, "") and client_subscriptions.c.get("client_id") is not None:
+        client_id_key = str(invoice["client_id"])
+        query = select(tenant_column).where(cast(client_subscriptions.c.client_id, String) == client_id_key)
+        order_by = []
+        if client_subscriptions.c.get("created_at") is not None:
+            order_by.append(desc(client_subscriptions.c.created_at))
+        elif client_subscriptions.c.get("start_at") is not None:
+            order_by.append(desc(client_subscriptions.c.start_at))
+        if order_by:
+            query = query.order_by(*order_by)
+        resolved = db.execute(query.limit(1)).scalar()
+    if resolved is None:
+        return None
+    try:
+        return int(resolved)
+    except (TypeError, ValueError):
+        return None
+
+
+def _list_subscription_invoice_rows_for_org(
+    db: Session,
+    *,
+    org_id: int,
+    billing_invoices,
+) -> list[dict[str, Any]]:
+    order_by = [desc(billing_invoices.c.issued_at).nullslast(), desc(billing_invoices.c.created_at)]
+    if "org_id" in billing_invoices.c:
+        query = select(billing_invoices).where(billing_invoices.c.org_id == org_id).order_by(*order_by)
+        return [dict(row) for row in db.execute(query).mappings().all()]
+    if not _table_exists(db, "client_subscriptions"):
+        return []
+
+    client_subscriptions = _table(db, "client_subscriptions")
+    if client_subscriptions.c.get("tenant_id") is None:
+        return []
+    if "subscription_id" in billing_invoices.c and client_subscriptions.c.get("id") is not None:
+        query = (
+            select(
+                billing_invoices,
+                client_subscriptions.c.tenant_id.label("_resolved_org_id"),
+                client_subscriptions.c.id.label("_resolved_subscription_id"),
+            )
+            .select_from(
+                billing_invoices.join(
+                    client_subscriptions,
+                    cast(billing_invoices.c.subscription_id, String) == cast(client_subscriptions.c.id, String),
+                )
+            )
+            .where(client_subscriptions.c.tenant_id == org_id)
+            .order_by(*order_by)
+        )
+        rows = [dict(row) for row in db.execute(query).mappings().all()]
+        for row in rows:
+            if row.get("org_id") in (None, "") and row.get("_resolved_org_id") not in (None, ""):
+                row["org_id"] = row["_resolved_org_id"]
+            if row.get("subscription_id") in (None, "") and row.get("_resolved_subscription_id") not in (None, ""):
+                row["subscription_id"] = row["_resolved_subscription_id"]
+        if rows:
+            return rows
+
+    if "client_id" not in billing_invoices.c or client_subscriptions.c.get("client_id") is None:
+        return []
+
+    subscription_query = select(client_subscriptions).where(client_subscriptions.c.tenant_id == org_id)
+    if client_subscriptions.c.get("created_at") is not None:
+        subscription_query = subscription_query.order_by(desc(client_subscriptions.c.created_at))
+    elif client_subscriptions.c.get("start_at") is not None:
+        subscription_query = subscription_query.order_by(desc(client_subscriptions.c.start_at))
+    subscription_rows = db.execute(subscription_query).mappings().all()
+    client_ids = [str(row["client_id"]) for row in subscription_rows if row.get("client_id") not in (None, "")]
+    if not client_ids:
+        return []
+    subscription_by_client: dict[str, dict[str, Any]] = {}
+    for row in subscription_rows:
+        client_id = row.get("client_id")
+        if client_id in (None, ""):
+            continue
+        subscription_by_client.setdefault(str(client_id), dict(row))
+    rows = [
+        dict(row)
+        for row in db.execute(
+            select(billing_invoices)
+            .where(billing_invoices.c.client_id.in_(client_ids))
+            .order_by(*order_by)
+        ).mappings().all()
+    ]
+    for row in rows:
+        row["org_id"] = org_id
+        subscription = subscription_by_client.get(str(row.get("client_id")))
+        if row.get("subscription_id") in (None, "") and subscription is not None:
+            row["subscription_id"] = subscription.get("id")
+    return rows
+
+
+def _subscription_invoice_status_value(value: Any) -> str:
+    if hasattr(value, "value"):
+        return str(value.value)
+    return str(value)
+
+
+def _subscription_invoice_identifier(value: Any) -> str | int | None:
+    if value is None:
+        return None
+    if isinstance(value, (str, int)):
+        return value
+    return str(value)
+
+
+def _subscription_invoice_total_amount(row: Mapping[str, Any] | dict[str, Any]) -> Decimal | None:
+    total = row.get("total_amount")
+    if total is None:
+        total = row.get("amount_total")
+    if total is None:
+        return None
+    return Decimal(str(total))
+
+
+def _subscription_invoice_amount_paid(row: Mapping[str, Any] | dict[str, Any]) -> Decimal:
+    amount_paid = row.get("amount_paid")
+    if amount_paid is None:
+        return Decimal("0")
+    return Decimal(str(amount_paid))
 
 
 @router.get("/invoices", response_model=SubscriptionInvoiceListResponse)
@@ -6428,7 +7186,7 @@ def list_subscription_invoices(
         return SubscriptionInvoiceListResponse(items=[], total=0)
 
     billing_invoices = _table(db, "billing_invoices")
-    subscription_map: dict[int, dict[str, Any]] = {}
+    subscription_map: dict[Any, dict[str, Any]] = {}
     if _table_exists(db, "org_subscriptions"):
         org_subscriptions = _table(db, "org_subscriptions")
         subscription_rows = (
@@ -6440,14 +7198,23 @@ def list_subscription_invoices(
             .all()
         )
         subscription_map = {row["id"]: row for row in subscription_rows}
+    if _table_exists(db, "client_subscriptions"):
+        client_subscriptions = _table(db, "client_subscriptions")
+        if client_subscriptions.c.get("tenant_id") is not None:
+            legacy_query = select(client_subscriptions).where(client_subscriptions.c.tenant_id == org_id)
+            if client_subscriptions.c.get("created_at") is not None:
+                legacy_query = legacy_query.order_by(desc(client_subscriptions.c.created_at))
+            elif client_subscriptions.c.get("start_at") is not None:
+                legacy_query = legacy_query.order_by(desc(client_subscriptions.c.start_at))
+            legacy_rows = db.execute(legacy_query).mappings().all()
+            for row in legacy_rows:
+                subscription_map.setdefault(row["id"], dict(row))
     rows = (
-        db.execute(
-            select(billing_invoices)
-            .where(billing_invoices.c.org_id == org_id)
-            .order_by(desc(billing_invoices.c.issued_at).nullslast(), desc(billing_invoices.c.created_at))
+        _list_subscription_invoice_rows_for_org(
+            db,
+            org_id=org_id,
+            billing_invoices=billing_invoices,
         )
-        .mappings()
-        .all()
     )
     items: list[SubscriptionInvoiceOut] = []
     for row in rows:
@@ -6455,27 +7222,32 @@ def list_subscription_invoices(
         grace_days = int(subscription.get("grace_period_days") or 0) if subscription else 0
         due_at = row.get("due_at")
         suspend_at = due_at + timedelta(days=grace_days) if due_at and grace_days > 0 else None
-        total_amount = row.get("total_amount")
+        total_amount = _subscription_invoice_total_amount(row)
+        amount_paid = _subscription_invoice_amount_paid(row)
+        amount_due = (total_amount - amount_paid) if total_amount is not None else None
+        resolved_org_id = _resolve_subscription_invoice_org_id(db, row) or org_id
+        invoice_id_value = _subscription_invoice_identifier(row.get("id"))
+        subscription_id_value = _subscription_invoice_identifier(row.get("subscription_id"))
         items.append(
             SubscriptionInvoiceOut(
-                id=row["id"],
-                org_id=row["org_id"],
-                subscription_id=row.get("subscription_id"),
-                period_start=row["period_start"],
-                period_end=row["period_end"],
-                status=row["status"],
+                id=invoice_id_value,
+                org_id=resolved_org_id,
+                subscription_id=subscription_id_value,
+                period_start=row.get("period_start"),
+                period_end=row.get("period_end"),
+                status=_subscription_invoice_status_value(row["status"]),
                 issued_at=row.get("issued_at"),
                 due_at=due_at,
                 suspend_at=suspend_at,
-                subscription_status=subscription.get("status") if subscription else None,
+                subscription_status=_subscription_invoice_status_value(subscription.get("status")) if subscription and subscription.get("status") is not None else None,
                 paid_at=row.get("paid_at"),
                 total_amount=total_amount,
-                amount_paid=0,
+                amount_paid=amount_paid,
                 amount_refunded=0,
-                amount_due=total_amount,
+                amount_due=amount_due,
                 currency=row.get("currency"),
                 pdf_object_key=row.get("pdf_object_key"),
-                download_url=f"/api/core/client/invoices/{row['id']}/download",
+                download_url=f"/api/core/client/invoices/{invoice_id_value}/download",
             )
         )
     return SubscriptionInvoiceListResponse(items=items, total=len(items))
@@ -6483,7 +7255,7 @@ def list_subscription_invoices(
 
 @router.get("/invoices/{invoice_id}", response_model=SubscriptionInvoiceDetailOut)
 def get_subscription_invoice(
-    invoice_id: int,
+    invoice_id: str,
     token: dict = Depends(client_portal_user),
     db: Session = Depends(get_db),
 ) -> SubscriptionInvoiceDetailOut:
@@ -6492,13 +7264,9 @@ def get_subscription_invoice(
     if not _table_exists(db, "billing_invoices"):
         raise HTTPException(status_code=404, detail="invoice_not_found")
 
-    billing_invoices = _table(db, "billing_invoices")
-    invoice = (
-        db.execute(select(billing_invoices).where(billing_invoices.c.id == invoice_id))
-        .mappings()
-        .first()
-    )
-    if not invoice or invoice["org_id"] != org_id:
+    invoice = get_invoice(db, invoice_id=invoice_id)
+    resolved_invoice_org_id = _resolve_subscription_invoice_org_id(db, invoice)
+    if not invoice or resolved_invoice_org_id != org_id:
         raise HTTPException(status_code=404, detail="invoice_not_found")
 
     subscription = None
@@ -6538,27 +7306,31 @@ def get_subscription_invoice(
     grace_days = int(subscription.get("grace_period_days") or 0) if subscription else 0
     due_at = invoice.get("due_at")
     suspend_at = due_at + timedelta(days=grace_days) if due_at and grace_days > 0 else None
-    total_amount = invoice.get("total_amount")
+    total_amount = _subscription_invoice_total_amount(invoice)
+    amount_paid = _subscription_invoice_amount_paid(invoice)
+    amount_due = (total_amount - amount_paid) if total_amount is not None else None
+    invoice_id_value = _subscription_invoice_identifier(invoice.get("id"))
+    subscription_id_value = _subscription_invoice_identifier(invoice.get("subscription_id"))
 
     return SubscriptionInvoiceDetailOut(
-        id=invoice["id"],
-        org_id=invoice["org_id"],
-        subscription_id=invoice.get("subscription_id"),
-        period_start=invoice["period_start"],
-        period_end=invoice["period_end"],
-        status=invoice["status"],
+        id=invoice_id_value,
+        org_id=resolved_invoice_org_id or org_id,
+        subscription_id=subscription_id_value,
+        period_start=invoice.get("period_start"),
+        period_end=invoice.get("period_end"),
+        status=_subscription_invoice_status_value(invoice["status"]),
         issued_at=invoice.get("issued_at"),
         due_at=due_at,
         suspend_at=suspend_at,
-        subscription_status=subscription.get("status") if subscription else None,
+        subscription_status=_subscription_invoice_status_value(subscription.get("status")) if subscription and subscription.get("status") is not None else None,
         paid_at=invoice.get("paid_at"),
         total_amount=total_amount,
-        amount_paid=0,
+        amount_paid=amount_paid,
         amount_refunded=0,
-        amount_due=total_amount,
+        amount_due=amount_due,
         currency=invoice.get("currency"),
         pdf_object_key=invoice.get("pdf_object_key"),
-        download_url=f"/api/core/client/invoices/{invoice['id']}/download",
+        download_url=f"/api/core/client/invoices/{invoice_id_value}/download",
         lines=lines,
         payment_intakes=payment_intakes,
     )
@@ -6566,7 +7338,7 @@ def get_subscription_invoice(
 
 @router.get("/invoices/{invoice_id}/download")
 def download_subscription_invoice(
-    invoice_id: int,
+    invoice_id: str,
     token: dict = Depends(client_portal_user),
     db: Session = Depends(get_db),
 ) -> Response:
@@ -6575,14 +7347,12 @@ def download_subscription_invoice(
     if not _table_exists(db, "billing_invoices"):
         raise HTTPException(status_code=404, detail="invoice_not_found")
 
-    billing_invoices = _table(db, "billing_invoices")
-    invoice = (
-        db.execute(select(billing_invoices).where(billing_invoices.c.id == invoice_id))
-        .mappings()
-        .first()
-    )
-    if not invoice or invoice["org_id"] != org_id:
+    invoice = get_invoice(db, invoice_id=invoice_id)
+    resolved_invoice_org_id = _resolve_subscription_invoice_org_id(db, invoice)
+    if not invoice or resolved_invoice_org_id != org_id:
         raise HTTPException(status_code=404, detail="invoice_not_found")
+    if invoice.get("pdf_url"):
+        return RedirectResponse(url=str(invoice["pdf_url"]))
     if not invoice.get("pdf_object_key"):
         raise HTTPException(status_code=404, detail="pdf_not_found")
 
@@ -6608,7 +7378,7 @@ def _serialize_payment_intake(row: dict) -> PaymentIntakeOut:
     return PaymentIntakeOut(
         id=row["id"],
         org_id=row["org_id"],
-        invoice_id=row["invoice_id"],
+        invoice_id=_subscription_invoice_identifier(row["invoice_id"]),
         status=row["status"],
         amount=row["amount"],
         currency=row["currency"],
@@ -6638,7 +7408,7 @@ def _validate_payment_intake_attachment(payload: PaymentIntakeAttachmentIn) -> N
 
 def _submit_payment_intake_for_invoice(
     *,
-    invoice_id: int,
+    invoice_id: str | int,
     payload: PaymentIntakeCreateRequest,
     request: Request,
     token: dict,
@@ -6647,14 +7417,23 @@ def _submit_payment_intake_for_invoice(
     _ensure_invoice_access(token)
     org_id = _resolve_org_id(token)
     invoice = get_invoice(db, invoice_id=invoice_id)
-    if not invoice or invoice["org_id"] != org_id:
+    resolved_invoice_org_id = _resolve_subscription_invoice_org_id(db, invoice)
+    if not invoice or resolved_invoice_org_id != org_id:
         raise HTTPException(status_code=404, detail="invoice_not_found")
     if invoice.get("currency") and payload.currency != invoice.get("currency"):
         raise HTTPException(status_code=422, detail="currency_mismatch")
     if payload.amount <= 0:
         raise HTTPException(status_code=422, detail="invalid_amount")
-    if invoice.get("total_amount") is not None and payload.amount != invoice.get("total_amount"):
-        raise HTTPException(status_code=422, detail="partial_payment_not_allowed")
+    amount_due = billing_flow_invoice_amount_due(invoice)
+    if amount_due is not None:
+        if amount_due <= 0:
+            raise HTTPException(status_code=409, detail="invoice_already_paid")
+        if payload.amount != amount_due:
+            raise HTTPException(status_code=422, detail="partial_payment_not_allowed")
+    else:
+        total_amount = _subscription_invoice_total_amount(invoice)
+        if total_amount is not None and payload.amount != total_amount:
+            raise HTTPException(status_code=422, detail="partial_payment_not_allowed")
 
     existing_intakes = list_invoice_payment_intakes(db, invoice_id=invoice_id)
     if any(item.get("status") in {"SUBMITTED", "UNDER_REVIEW"} for item in existing_intakes):
@@ -6719,7 +7498,7 @@ def _submit_payment_intake_for_invoice(
 
 @router.post("/invoices/{invoice_id}/payment-intakes/attachments/init", response_model=PaymentIntakeAttachmentInitResponse)
 def init_payment_intake_attachment(
-    invoice_id: int,
+    invoice_id: str,
     payload: PaymentIntakeAttachmentIn,
     token: dict = Depends(client_portal_user),
     db: Session = Depends(get_db),
@@ -6727,7 +7506,8 @@ def init_payment_intake_attachment(
     _ensure_invoice_access(token)
     org_id = _resolve_org_id(token)
     invoice = get_invoice(db, invoice_id=invoice_id)
-    if not invoice or invoice["org_id"] != org_id:
+    resolved_invoice_org_id = _resolve_subscription_invoice_org_id(db, invoice)
+    if not invoice or resolved_invoice_org_id != org_id:
         raise HTTPException(status_code=404, detail="invoice_not_found")
 
     _validate_payment_intake_attachment(payload)
@@ -6751,7 +7531,7 @@ def init_payment_intake_attachment(
 
 @router.post("/invoices/{invoice_id}/payment-intakes", response_model=PaymentIntakeOut, status_code=201)
 def submit_payment_intake(
-    invoice_id: int,
+    invoice_id: str,
     payload: PaymentIntakeCreateRequest,
     request: Request,
     token: dict = Depends(client_portal_user),
@@ -6801,14 +7581,15 @@ def submit_payment_intake_from_portal(
 
 @router.get("/invoices/{invoice_id}/payment-intakes", response_model=PaymentIntakeListResponse)
 def list_payment_intakes_for_invoice(
-    invoice_id: int,
+    invoice_id: str,
     token: dict = Depends(client_portal_user),
     db: Session = Depends(get_db),
 ) -> PaymentIntakeListResponse:
     _ensure_invoice_access(token)
     org_id = _resolve_org_id(token)
     invoice = get_invoice(db, invoice_id=invoice_id)
-    if not invoice or invoice["org_id"] != org_id:
+    resolved_invoice_org_id = _resolve_subscription_invoice_org_id(db, invoice)
+    if not invoice or resolved_invoice_org_id != org_id:
         raise HTTPException(status_code=404, detail="invoice_not_found")
     rows = list_invoice_payment_intakes(db, invoice_id=invoice_id)
     items = [_serialize_payment_intake(row) for row in rows]
@@ -6963,7 +7744,7 @@ def get_subscription(
     if client is None:
         raise HTTPException(status_code=404, detail="org_not_found")
 
-    tenant_id = int(token.get("tenant_id") or DEFAULT_TENANT_ID)
+    tenant_id = _normalize_tenant_id(token)
     subscription = get_client_subscription(db, tenant_id=tenant_id, client_id=str(client.id))
     if subscription is None:
         subscription = ensure_free_subscription(db, tenant_id=tenant_id, client_id=str(client.id))
@@ -6993,9 +7774,9 @@ def select_subscription(
     if client is None:
         raise HTTPException(status_code=404, detail="org_not_found")
 
-    tenant_id = int(token.get("tenant_id") or DEFAULT_TENANT_ID)
+    tenant_id = _normalize_tenant_id(token)
     plan = db.query(SubscriptionPlan).filter(SubscriptionPlan.code == payload.plan_code).one_or_none()
-    if not plan:
+    if not plan or not _is_client_visible_subscription_plan(db, plan):
         raise HTTPException(status_code=404, detail="plan_not_found")
 
     subscription = assign_plan_to_client(
@@ -7041,7 +7822,7 @@ def list_client_plans(
 ) -> list[SubscriptionPlanOut]:
     _ = token
     plans = list_plans(db, active_only=True)
-    return [_build_plan_out(db, plan) for plan in plans]
+    return [_build_plan_out(db, plan) for plan in plans if _is_client_visible_subscription_plan(db, plan)]
 
 
 @router.get("/plans", response_model=list[SubscriptionPlanOut])

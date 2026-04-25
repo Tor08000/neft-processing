@@ -1,11 +1,15 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { request } from "../../api/http";
+import { ApiError, request } from "../../api/http";
 import { useAuth } from "../../auth/AuthContext";
 import { DateRangePicker } from "../../components/common/DateRangePicker";
+import { EmptyState } from "../../components/common/EmptyState";
+import { ErrorState } from "../../components/common/ErrorState";
+import { Loader } from "../../components/Loader/Loader";
 import { Toast } from "../../components/common/Toast";
 import { useToast } from "../../components/Toast/useToast";
 
 const formatDate = (date: Date) => date.toISOString().slice(0, 10);
+const EMPTY_VALUE = "-";
 
 type OpsKpiResponse = {
   by_reason: Record<
@@ -39,14 +43,14 @@ const ReasonTable: React.FC<{ data: OpsKpiResponse["by_reason"] }> = ({ data }) 
               <tr key={key}>
                 <td style={{ padding: "6px" }}>{key}</td>
                 <td style={{ padding: "6px" }}>{value.open}</td>
-                <td style={{ padding: "6px" }}>{value.sla_violations ?? "—"}</td>
-                <td style={{ padding: "6px" }}>{value.avg_resolution_hours ?? "—"}</td>
+                <td style={{ padding: "6px" }}>{value.sla_violations ?? EMPTY_VALUE}</td>
+                <td style={{ padding: "6px" }}>{value.avg_resolution_hours ?? EMPTY_VALUE}</td>
               </tr>
             ))}
           </tbody>
         </table>
       ) : (
-        <div style={{ color: "#94a3b8" }}>Нет данных</div>
+        <div style={{ color: "#94a3b8" }}>No KPI data</div>
       )}
     </div>
   );
@@ -75,7 +79,7 @@ const TeamTable: React.FC<{ data: OpsKpiResponse["by_team"] }> = ({ data }) => {
           </tbody>
         </table>
       ) : (
-        <div style={{ color: "#94a3b8" }}>Нет данных</div>
+        <div style={{ color: "#94a3b8" }}>No KPI data</div>
       )}
     </div>
   );
@@ -92,6 +96,7 @@ export const KpiPage: React.FC = () => {
   });
   const [loading, setLoading] = useState(false);
   const [payload, setPayload] = useState<OpsKpiResponse | null>(null);
+  const [loadError, setLoadError] = useState<Error | null>(null);
 
   const query = useMemo(() => {
     const params = new URLSearchParams();
@@ -103,11 +108,15 @@ export const KpiPage: React.FC = () => {
   const loadKpi = useCallback(async () => {
     if (!accessToken) return;
     setLoading(true);
+    setLoadError(null);
+    setPayload(null);
     try {
       const data = await request<OpsKpiResponse>(`/ops/kpi?${query}`, {}, accessToken);
       setPayload(data);
     } catch (err) {
-      showToast("error", err instanceof Error ? err.message : "Не удалось загрузить KPI");
+      const error = err instanceof Error ? err : new Error("Failed to load KPI");
+      setLoadError(error);
+      showToast("error", error.message);
     } finally {
       setLoading(false);
     }
@@ -117,41 +126,57 @@ export const KpiPage: React.FC = () => {
     loadKpi();
   }, [loadKpi]);
 
+  const isEmptyPayload =
+    payload !== null &&
+    Object.keys(payload.by_reason ?? {}).length === 0 &&
+    Object.keys(payload.by_team ?? {}).length === 0;
+
   return (
     <div style={{ display: "grid", gap: 16 }}>
       <Toast toast={toast} />
       <div>
         <h1 style={{ fontSize: 24, fontWeight: 700 }}>Ops KPI</h1>
-        <p style={{ color: "#475569" }}>Сводка по SLA и причинам за период</p>
+        <p style={{ color: "#475569" }}>SLA and primary-reason summary for the selected period.</p>
       </div>
 
       <div style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap" }}>
-        <DateRangePicker
-          start={range.start}
-          end={range.end}
-          onChange={(next) => setRange(next)}
-        />
+        <DateRangePicker start={range.start} end={range.end} onChange={(next) => setRange(next)} />
         <button
           type="button"
-          onClick={loadKpi}
+          onClick={() => void loadKpi()}
           style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid #cbd5e1" }}
         >
-          Обновить
+          Refresh
         </button>
       </div>
 
-      {loading ? (
-        <div>Loading...</div>
-      ) : payload ? (
-        <>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 16 }}>
-            <ReasonTable data={payload.by_reason} />
-            <TeamTable data={payload.by_team} />
-          </div>
-        </>
-      ) : (
-        <div style={{ color: "#94a3b8" }}>Нет данных</div>
-      )}
+      {loading ? <Loader label="Loading KPI summary" /> : null}
+
+      {!loading && loadError ? (
+        <ErrorState
+          title="Failed to load KPI summary"
+          description={loadError.message}
+          requestId={loadError instanceof ApiError ? loadError.requestId : null}
+          correlationId={loadError instanceof ApiError ? loadError.correlationId : null}
+          actionLabel="Retry"
+          onAction={() => void loadKpi()}
+        />
+      ) : null}
+
+      {!loading && !loadError && isEmptyPayload ? (
+        <EmptyState
+          title="No KPI data for the selected period"
+          description="Adjust the date range or refresh after new operator activity is recorded."
+          primaryAction={{ label: "Refresh", onClick: () => void loadKpi() }}
+        />
+      ) : null}
+
+      {!loading && !loadError && payload && !isEmptyPayload ? (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 16 }}>
+          <ReasonTable data={payload.by_reason} />
+          <TeamTable data={payload.by_team} />
+        </div>
+      ) : null}
     </div>
   );
 };

@@ -6,6 +6,12 @@ export const PARTNER_BASE_URL = process.env.PARTNER_PORTAL_URL ?? "http://localh
 export const ADMIN_BASE_URL = process.env.ADMIN_PORTAL_URL ?? "http://localhost/admin/";
 export const ADMIN_AUTH_URL = process.env.ADMIN_AUTH_URL ?? "http://localhost/api/v1/auth/login";
 
+export function portalUrl(baseUrl: string, pathName = "") {
+  const base = baseUrl.replace(/\/+$/, "");
+  const path = pathName.replace(/^\/+/, "");
+  return path ? `${base}/${path}` : base;
+}
+
 export type LoginState =
   | "LOGIN_READY"
   | "LOGIN_SERVICE_DOWN"
@@ -65,8 +71,10 @@ const requireEnv = (value: string | undefined, name: string) => {
 
 const loginWaitOptions = { timeout: 15_000 };
 const authProbeTimeoutMs = 8_000;
-const authEndpointPattern = /\/api(?:\/api)*\/auth\/v1\/auth\/login(?:\?|$)/;
-const strictAuthEndpointPattern = /\/api\/auth\/v1\/auth\/login(?:\?|$)/;
+const authEndpointPattern =
+  /\/api\/v1\/auth\/login(?:\?|$)|\/api(?:\/api)*\/auth\/v1\/auth\/login(?:\?|$)/;
+const strictAuthEndpointPattern =
+  /\/api\/v1\/auth\/login(?:\?|$)|\/api\/auth\/v1\/auth\/login(?:\?|$)/;
 
 const emailSelector = [
   'input[type="email"]',
@@ -653,7 +661,7 @@ export async function loginClient(page: Page) {
     page,
     baseUrl: CLIENT_BASE_URL,
     emailValue: resolveEnv(process.env.NEFT_BOOTSTRAP_CLIENT_EMAIL, process.env.CLIENT_EMAIL ?? "client@neft.local"),
-    passwordValue: resolveEnv(process.env.NEFT_BOOTSTRAP_CLIENT_PASSWORD, process.env.CLIENT_PASSWORD ?? "client"),
+    passwordValue: resolveEnv(process.env.NEFT_BOOTSTRAP_CLIENT_PASSWORD, process.env.CLIENT_PASSWORD ?? "Client123!"),
     appLabel: "client",
   });
 }
@@ -672,7 +680,7 @@ export async function loginAdmin(page: Page) {
   await performLogin({
     page,
     baseUrl: ADMIN_BASE_URL,
-    emailValue: resolveEnv(process.env.NEFT_BOOTSTRAP_ADMIN_EMAIL, process.env.ADMIN_EMAIL ?? "admin@example.com"),
+    emailValue: resolveEnv(process.env.NEFT_BOOTSTRAP_ADMIN_EMAIL, process.env.ADMIN_EMAIL ?? "admin@neft.local"),
     passwordValue: requireEnv(process.env.NEFT_BOOTSTRAP_ADMIN_PASSWORD, "NEFT_BOOTSTRAP_ADMIN_PASSWORD"),
     appLabel: "admin",
   });

@@ -3,7 +3,15 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Protocol
 
-from neft_logistics_service.schemas import DeviationRequest, DeviationResponse, EtaRequest, EtaResponse, Explain
+from neft_logistics_service.schemas import (
+    DeviationRequest,
+    DeviationResponse,
+    EtaRequest,
+    EtaResponse,
+    Explain,
+    RoutePreviewRequest,
+    RoutePreviewResponse,
+)
 from neft_logistics_service.schemas.fleet import (
     FleetListRequest,
     FleetListResponse,
@@ -32,6 +40,10 @@ class BaseProvider(ABC):
     name: str
 
     @abstractmethod
+    def preview_route(self, request: RoutePreviewRequest) -> RoutePreviewResponse:
+        raise NotImplementedError
+
+    @abstractmethod
     def compute_eta(self, request: EtaRequest) -> EtaResponse:
         raise NotImplementedError
 
@@ -48,4 +60,12 @@ class BaseProvider(ABC):
         raise NotImplementedError
 
 
-__all__ = ["BaseProvider", "LogisticsProvider"]
+class ProviderUnavailableError(RuntimeError):
+    def __init__(self, *, code: str, mode: str, provider: str) -> None:
+        super().__init__(code)
+        self.code = code
+        self.mode = mode
+        self.provider = provider
+
+
+__all__ = ["BaseProvider", "LogisticsProvider", "ProviderUnavailableError"]

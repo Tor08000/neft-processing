@@ -41,6 +41,11 @@ def _iter_routes(router: APIRouter | FastAPI) -> Iterable[APIRoute]:
 _IGNORED_METHODS = {"HEAD", "OPTIONS"}
 
 
+def _env_truthy(name: str) -> bool:
+    value = os.getenv(name, "").strip().lower()
+    return value in {"1", "true", "yes", "on"}
+
+
 def _collect_route_keys(
     router: APIRouter | FastAPI,
     prefix: str = "",
@@ -112,6 +117,8 @@ def safe_include_router(
         mode = os.getenv("ROUTER_DUPLICATES_MODE", "").strip().lower()
         if mode not in {"error", "warn", "ignore"}:
             mode = "error" if os.getenv("APP_ENV", "dev").lower() == "prod" else "warn"
+        if mode != "ignore" and _env_truthy("VERIFY_STRICT_ROUTES"):
+            mode = "error"
 
         if mode == "error":
             raise RuntimeError(message)

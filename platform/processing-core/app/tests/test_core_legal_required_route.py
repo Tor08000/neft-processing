@@ -29,12 +29,13 @@ def test_client_token_can_access_client_legal_required(monkeypatch):
     app.dependency_overrides[get_db] = _fake_db
     monkeypatch.setattr("app.routers.legal.settings.CORE_ONBOARDING_ENABLED", False)
 
-    client = TestClient(app)
-    response = client.get("/api/core/legal/required", headers={"Authorization": "Bearer test"})
+    try:
+        client = TestClient(app)
+        response = client.get("/api/core/legal/required", headers={"Authorization": "Bearer test"})
 
-    assert response.status_code == 200
-    payload = response.json()
-    assert payload["enabled"] is False
-    assert payload["subject"]["type"] == "client"
-
-    app.dependency_overrides.clear()
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["enabled"] is False
+        assert payload["subject"]["type"] == "CLIENT"
+    finally:
+        app.dependency_overrides.clear()

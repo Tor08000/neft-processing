@@ -4,8 +4,7 @@ import { ApiError } from "../api/http";
 import { fetchHelpdeskTicketLink } from "../api/helpdesk";
 import { closeSupportTicket, createSupportTicketComment, fetchSupportTicket } from "../api/supportTickets";
 import { useAuth } from "../auth/AuthContext";
-import { AppEmptyState, AppLoadingState } from "../components/states";
-import { StatusPage } from "../components/StatusPage";
+import { AppEmptyState, AppErrorState, AppLoadingState } from "../components/states";
 import { ForbiddenPage } from "./ForbiddenPage";
 import type { SupportTicketDetail } from "../types/supportTickets";
 import type { HelpdeskTicketLink } from "../types/helpdesk";
@@ -43,8 +42,13 @@ export function SupportTicketDetailsPage() {
   const [comment, setComment] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [errorStatus, setErrorStatus] = useState<number | null>(null);
+  const [loadError, setLoadError] = useState<{
+    message: string;
+    status?: number;
+    correlationId?: string | null;
+  } | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
   const userId = useMemo(() => {
     const payload = decodeJwtPayload(user?.token);
@@ -66,25 +70,29 @@ export function SupportTicketDetailsPage() {
 
   const handleError = useCallback((err: unknown) => {
     if (err instanceof ApiError) {
-      setErrorStatus(err.status);
-      if (err.status >= 500) {
-        setError("Сервис временно недоступен");
-      }
+      setLoadError({
+        message: err.status >= 500 ? "Сервис временно недоступен" : err.message,
+        status: err.status,
+        correlationId: err.correlationId,
+      });
       return;
     }
-    setError(err instanceof Error ? err.message : "Не удалось загрузить обращение");
+    setLoadError({
+      message: err instanceof Error ? err.message : "Не удалось загрузить обращение",
+    });
   }, []);
 
   useEffect(() => {
     if (!id || !user) return;
     setIsLoading(true);
-    setError(null);
-    setErrorStatus(null);
+    setTicket(null);
+    setLoadError(null);
+    setActionError(null);
     fetchSupportTicket(id, user)
       .then(setTicket)
       .catch(handleError)
       .finally(() => setIsLoading(false));
-  }, [id, user, handleError]);
+  }, [id, user, handleError, reloadKey]);
 
   useEffect(() => {
     if (!id || !user) return;
@@ -99,13 +107,13 @@ export function SupportTicketDetailsPage() {
   const handleComment = async () => {
     if (!id || !user || !comment.trim()) return;
     setIsSubmitting(true);
-    setError(null);
+    setActionError(null);
     try {
       const updated = await createSupportTicketComment(id, { message: comment }, user);
       setTicket(updated);
       setComment("");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Не удалось добавить комментарий");
+      setActionError(err instanceof Error ? err.message : "Не удалось добавить комментарий");
     } finally {
       setIsSubmitting(false);
     }
@@ -114,12 +122,12 @@ export function SupportTicketDetailsPage() {
   const handleClose = async () => {
     if (!id || !user) return;
     setIsSubmitting(true);
-    setError(null);
+    setActionError(null);
     try {
       const updated = await closeSupportTicket(id, user);
       setTicket(updated);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Не удалось закрыть обращение");
+      setActionError(err instanceof Error ? err.message : "Не удалось закрыть обращение");
     } finally {
       setIsSubmitting(false);
     }
@@ -133,16 +141,34 @@ export function SupportTicketDetailsPage() {
     return <AppLoadingState label="Загружаем обращение..." />;
   }
 
-  if (errorStatus === 403) {
+  if (loadError?.status === 403) {
     return <ForbiddenPage />;
   }
 
-  if (errorStatus === 404) {
-    return <StatusPage title="Обращение не найдено" description="Проверьте номер обращения и попробуйте снова." />;
+  if (loadError?.status === 404) {
+    return <AppEmptyState title="Обращение не найдено" description="Проверьте номер обращения и попробуйте снова." />;
   }
 
-  if (errorStatus && errorStatus >= 500) {
-    return <StatusPage title="Сервис недоступен" description="Попробуйте обновить страницу позже." />;
+  if (loadError?.status && loadError.status >= 500) {
+    return (
+      <AppErrorState
+        message={loadError.message}
+        status={loadError.status}
+        correlationId={loadError.correlationId}
+        onRetry={() => setReloadKey((value) => value + 1)}
+      />
+    );
+  }
+
+  if (loadError) {
+    return (
+      <AppErrorState
+        message={loadError.message}
+        status={loadError.status}
+        correlationId={loadError.correlationId}
+        onRetry={() => setReloadKey((value) => value + 1)}
+      />
+    );
   }
 
   if (!ticket) {
@@ -183,6 +209,20 @@ export function SupportTicketDetailsPage() {
           <div>
             <div className="label">Обновлено</div>
             <div>{formatDateTime(ticket.updated_at)}</div>
+          </div>
+          <div>
+            <div className="label">Canonical case</div>
+            {ticket.case_id ? (
+              <div className="stack" style={{ gap: 4 }}>
+                <Link to={`/cases/${ticket.case_id}`}>{ticket.case_id}</Link>
+                <div className="muted small">
+                  {ticket.case_status ?? "—"}
+                  {ticket.case_queue ? ` · ${ticket.case_queue}` : ""}
+                </div>
+              </div>
+            ) : (
+              <div>—</div>
+            )}
           </div>
           <div>
             <div className="label">Зеркало в Helpdesk</div>
@@ -286,7 +326,7 @@ export function SupportTicketDetailsPage() {
             Добавить комментарий
             <textarea rows={4} value={comment} onChange={(event) => setComment(event.target.value)} />
           </label>
-          {error ? <div className="notice error">{error}</div> : null}
+          {actionError ? <div className="notice error">{actionError}</div> : null}
           <div className="actions">
             <button
               className="primary"

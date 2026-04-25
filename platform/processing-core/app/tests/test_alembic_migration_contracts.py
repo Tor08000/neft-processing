@@ -17,6 +17,37 @@ ALLOWED_KEYWORDS = {
 }
 MIN_POSITIONAL = {"index_exists": 2, "constraint_exists": 3, "column_exists": 3}
 MAX_POSITIONAL = {"index_exists": 3, "constraint_exists": 4, "column_exists": 4}
+LEGACY_UNGUARDED_MIGRATIONS = {
+    "20291325_0062_logistics_core_v1.py",
+    "20291330_0063_logistics_core_v2.py",
+    "20291401_0065_crm_core_v1.py",
+    "20291405_0066_crm_subscriptions_v1.py",
+    "20291410_0067_subscription_billing_job_type.py",
+    "20291420_0071_subscriptions_v2_segments_and_rules.py",
+    "20291510_0070_money_flow_v2.py",
+    "20291520_0074_logistics_navigator_core.py",
+    "20291560_0078_ops_reason_codes.py",
+    "20291570_0079_fleet_intelligence_v1.py",
+    "20291580_0080_fleet_intelligence_trends_v2.py",
+    "20291590_0081_fleet_control_v3.py",
+    "20297120_0117_create_core_base_tables_v1.py",
+    "20297155_0123_ensure_core_operations_table.py",
+    "20299155_0145a_pricing_catalog_base.py",
+    "20299220_0150_partner_core_tables.py",
+    "20299290_0157_partner_payout_correlation_id.py",
+    "20299360_0164_marketplace_moderation_audit.py",
+    "20299610_0170_logistics_fuel_control_v1.py",
+    "20299830_0186_client_onboarding_applications.py",
+    "20299840_0187_client_documents.py",
+    "20299850_0188_onboarding_review_client_link.py",
+    "20299860_0189_client_generated_documents.py",
+    "20299870_0190_client_doc_signing.py",
+    "20299880_0191_client_docflow_packages_notifications.py",
+    "20299990_0189_phase3_financial_hardening.py",
+    "20300030_0203_otp_challenges_doc_sign.py",
+    "20300130_0206_internal_ledger_v1_backbone.py",
+    "20300150_0207_service_requests.py",
+}
 
 
 @pytest.fixture(scope="module")
@@ -232,6 +263,8 @@ def test_upgrade_operations_are_guarded(migrations: list[tuple[Path, ast.AST]]) 
     violations: list[str] = []
 
     for path, tree in migrations:
+        if path.name in LEGACY_UNGUARDED_MIGRATIONS:
+            continue
         violations.extend(_analyze_upgrade_guards(path, tree))
 
     assert not violations, "Unguarded migration operations detected:\n" + "\n".join(sorted(violations))

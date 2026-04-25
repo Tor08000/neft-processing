@@ -18,11 +18,7 @@ export function DocumentsPageProd() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<unknown>(null);
 
-  const meta = portal?.partner?.profile?.meta_json ?? {};
-  const legalStatus =
-    typeof (meta as Record<string, unknown>).legal_status === "string"
-      ? ((meta as Record<string, unknown>).legal_status as string)
-      : null;
+  const legalStatus = portal?.partner?.legal_state?.status ?? null;
   const needsLegal = Boolean(legalStatus && legalStatus !== "VERIFIED");
 
   useEffect(() => {

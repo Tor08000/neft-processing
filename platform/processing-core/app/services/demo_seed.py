@@ -20,7 +20,7 @@ from app.services.billing_periods import BillingPeriodService
 from app.services.billing_run import BillingRunService
 from app.services.job_locks import make_stable_key
 
-DEMO_CLIENT_ID = "demo-client"
+DEMO_CLIENT_ID = "00000000-0000-0000-0000-00000000b111"
 DEMO_MERCHANT_ID = "demo-merchant"
 DEMO_TERMINAL_ID = "demo-terminal"
 DEMO_CARD_ID = "demo-card"

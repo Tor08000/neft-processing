@@ -1,17 +1,16 @@
 import { apiGet, apiPost } from "./client";
-
-export type CaseStatus = "OPEN" | "IN_PROGRESS" | "CLOSED";
-export type CasePriority = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+import { ApiError } from "./http";
+import type { CasePriority, CaseStatus } from "./cases";
 
 export type CaseItem = {
   id: string;
   status: CaseStatus;
   priority?: CasePriority;
-  title?: string;
-  note?: string;
+  title?: string | null;
+  note?: string | null;
   created_at: string;
-  created_by?: string;
-  updated_at?: string;
+  created_by?: string | null;
+  updated_at?: string | null;
   closed_at?: string | null;
   closed_by?: string | null;
   kind?: string | null;
@@ -95,11 +94,16 @@ export class NotAvailableError extends Error {
   }
 }
 
-const isNotAvailableMessage = (message?: string) => Boolean(message && /HTTP (404|501)\b/.test(message));
+const isNotAvailableStatus = (status?: number | null) => status === 404 || status === 501;
+
+const isNotAvailableMessage = (message?: string) => Boolean(message && /\b(404|501)\b/.test(message));
 
 const ensureAvailability = (error: unknown): never => {
   if (error instanceof NotAvailableError) {
     throw error;
+  }
+  if (error instanceof ApiError && isNotAvailableStatus(error.status)) {
+    throw new NotAvailableError(error.message);
   }
   if (error instanceof Error && isNotAvailableMessage(error.message)) {
     throw new NotAvailableError();
@@ -109,6 +113,9 @@ const ensureAvailability = (error: unknown): never => {
 
 export const isNotAvailableError = (error: unknown): boolean => {
   if (error instanceof NotAvailableError) return true;
+  if (error instanceof ApiError) {
+    return isNotAvailableStatus(error.status);
+  }
   if (error instanceof Error) {
     return isNotAvailableMessage(error.message);
   }
@@ -116,14 +123,15 @@ export const isNotAvailableError = (error: unknown): boolean => {
 };
 
 export const fetchAdminCases = async (params: {
-  status?: CaseStatus | string;
+  status?: CaseStatus | "OPEN" | string;
   priority?: CasePriority | string;
   q?: string;
   limit?: number;
   cursor?: string | null;
 }): Promise<CaseListResponse> => {
   try {
-    return await apiGet("/cases", params);
+    const response = await apiGet("/cases", params);
+    return normalizeCaseListResponse(response);
   } catch (error) {
     return ensureAvailability(error);
   }
@@ -131,7 +139,8 @@ export const fetchAdminCases = async (params: {
 
 export const fetchAdminCaseDetails = async (caseId: string): Promise<CaseDetailsResponse> => {
   try {
-    return await apiGet(`/cases/${caseId}`);
+    const response = await apiGet(`/cases/${caseId}`);
+    return normalizeCaseDetailsResponse(response);
   } catch (error) {
     return ensureAvailability(error);
   }
@@ -139,7 +148,8 @@ export const fetchAdminCaseDetails = async (caseId: string): Promise<CaseDetails
 
 export const closeAdminCase = async (caseId: string, payload: CaseClosePayload): Promise<CaseItem | void> => {
   try {
-    return await apiPost(`/cases/${caseId}/close`, payload);
+    const response = await apiPost(`/cases/${caseId}/close`, payload);
+    return normalizeOptionalCaseItem(response);
   } catch (error) {
     return ensureAvailability(error);
   }
@@ -147,7 +157,8 @@ export const closeAdminCase = async (caseId: string, payload: CaseClosePayload):
 
 export const updateAdminCaseStatus = async (caseId: string, status: CaseStatus): Promise<CaseItem | void> => {
   try {
-    return await apiPost(`/cases/${caseId}/status`, { status });
+    const response = await apiPost(`/cases/${caseId}/status`, { status });
+    return normalizeOptionalCaseItem(response);
   } catch (error) {
     return ensureAvailability(error);
   }
@@ -163,6 +174,43 @@ const EVENT_TYPES: CaseEventType[] = [
 ];
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null;
+
+const normalizeCaseStatus = (value: unknown): CaseStatus => {
+  if (value === "OPEN") return "TRIAGE";
+  if (value === "TRIAGE" || value === "IN_PROGRESS" || value === "RESOLVED" || value === "CLOSED") {
+    return value;
+  }
+  throw new Error(`Unknown case status: ${String(value)}`);
+};
+
+const normalizeCaseItem = (item: unknown): CaseItem => {
+  if (!isRecord(item)) throw new Error("Invalid case payload");
+  return {
+    ...(item as Omit<CaseItem, "status">),
+    status: normalizeCaseStatus(item.status),
+  };
+};
+
+const normalizeCaseListResponse = (response: unknown): CaseListResponse => {
+  if (!isRecord(response)) throw new Error("Invalid cases list response");
+  return {
+    ...(response as Omit<CaseListResponse, "items">),
+    items: Array.isArray(response.items) ? response.items.map((item) => normalizeCaseItem(item)) : [],
+  };
+};
+
+const normalizeCaseDetailsResponse = (response: unknown): CaseDetailsResponse => {
+  if (!isRecord(response) || !isRecord(response.case)) throw new Error("Invalid case details response");
+  return {
+    ...(response as Omit<CaseDetailsResponse, "case">),
+    case: normalizeCaseItem(response.case),
+  };
+};
+
+const normalizeOptionalCaseItem = (response: unknown): CaseItem | void => {
+  if (response == null) return undefined;
+  return normalizeCaseItem(response);
+};
 
 const normalizeString = (value: unknown): string | null => (typeof value === "string" ? value : null);
 

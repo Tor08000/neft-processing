@@ -1,20 +1,24 @@
-import { render } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { EmptyState } from "./EmptyState";
 import { Package } from "./icons";
 
 describe("EmptyState", () => {
-  it("matches snapshot", () => {
-    const { container } = render(
+  it("renders title, description, icon, and actions", () => {
+    render(
       <EmptyState
-        title="Заголовок"
-        description="Описание empty-state."
+        title="Р—Р°РіРѕР»РѕРІРѕРє"
+        description="РћРїРёСЃР°РЅРёРµ empty-state."
         icon={<Package />}
-        primaryAction={{ label: "Основное действие" }}
-        secondaryAction={{ label: "Вторичное действие" }}
+        primaryAction={{ label: "РћСЃРЅРѕРІРЅРѕРµ РґРµР№СЃС‚РІРёРµ" }}
+        secondaryAction={{ label: "Р’С‚РѕСЂРёС‡РЅРѕРµ РґРµР№СЃС‚РІРёРµ" }}
       />,
     );
 
-    expect(container).toMatchSnapshot();
+    expect(screen.getByRole("heading", { name: "Р—Р°РіРѕР»РѕРІРѕРє" })).toBeInTheDocument();
+    expect(screen.getByText("РћРїРёСЃР°РЅРёРµ empty-state.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "РћСЃРЅРѕРІРЅРѕРµ РґРµР№СЃС‚РІРёРµ" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Р’С‚РѕСЂРёС‡РЅРѕРµ РґРµР№СЃС‚РІРёРµ" })).toBeInTheDocument();
+    expect(document.querySelector(".empty-state svg")).not.toBeNull();
   });
 });

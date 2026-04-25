@@ -1,19 +1,18 @@
-export const ADMIN_ROLES = [
-  "NEFT_OPS",
+import type { AdminRole } from "../types/admin";
+import { isAdminRoleSet } from "../admin/access";
+
+export const PAYOUT_ROLES = [
   "NEFT_FINANCE",
-  "NEFT_SALES",
-  "NEFT_LEGAL",
   "NEFT_SUPERADMIN",
   "NEFT_ADMIN",
   "ADMIN",
+  "FINANCE",
   "SUPERADMIN",
   "PLATFORM_ADMIN",
-  "FINANCE",
 ] as const;
-export const PAYOUT_ROLES = ["NEFT_FINANCE", "NEFT_SUPERADMIN", "NEFT_ADMIN", "ADMIN", "FINANCE", "SUPERADMIN"] as const;
 
 export function hasAdminRole(roles: string[]): boolean {
-  return roles.some((role) => ADMIN_ROLES.includes(role as (typeof ADMIN_ROLES)[number]));
+  return isAdminRoleSet(roles as AdminRole[]);
 }
 
 export function hasPayoutAccess(roles: string[]): boolean {

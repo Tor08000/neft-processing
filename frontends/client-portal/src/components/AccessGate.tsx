@@ -11,6 +11,7 @@ import { BillingOverdueState } from "./BillingOverdueState";
 import { isDemoClient } from "@shared/demo/demo";
 import { useClientJourney } from "../auth/ClientJourneyContext";
 import { getPlanByCode } from "@shared/subscriptions/catalog";
+import { translate } from "../i18n";
 
 type AccessGateProps = {
   capability?: string;
@@ -18,16 +19,19 @@ type AccessGateProps = {
   requiredRoles?: string[];
   fallbackMode?: "paywall" | "activation" | "forbidden";
   title?: string;
+  allowDemoBypass?: boolean;
   children: ReactNode;
 };
+
+const DEBUG_ACCESS_GATE = Boolean(import.meta.env.DEV && import.meta.env.VITE_CLIENT_DEBUG_ACCESS_GATE === "true");
 
 const DiagnosticsSummary = ({ error }: { error?: PortalError | null }) => {
   if (!error) return null;
   return (
     <div className="muted small">
-      {error.path ? <div>Endpoint: {error.path}</div> : null}
-      {error.status ? <div>Status: {error.status}</div> : null}
-      {error.requestId ? <div>Request ID: {error.requestId}</div> : null}
+      {error.path ? <div>{translate("accessGate.diagnostics.endpoint")}: {error.path}</div> : null}
+      {error.status ? <div>{translate("accessGate.diagnostics.status")}: {error.status}</div> : null}
+      {error.requestId ? <div>{translate("accessGate.diagnostics.requestId")}: {error.requestId}</div> : null}
     </div>
   );
 };
@@ -42,12 +46,12 @@ const DiagnosticsDetails = ({ error }: { error?: PortalError | null }) => {
     <div className="stack">
       <DiagnosticsSummary error={error} />
       <button type="button" className="ghost neft-btn-secondary" onClick={() => setIsOpen((prev) => !prev)}>
-        {isOpen ? "Скрыть диагностику" : "Показать диагностику"}
+        {isOpen ? translate("accessGate.diagnostics.hide") : translate("accessGate.diagnostics.show")}
       </button>
       {isOpen ? (
         <div className="muted small">
-          {error.message ? <div>Error: {error.message}</div> : null}
-          {error.kind ? <div>Kind: {error.kind}</div> : null}
+          {error.message ? <div>{translate("accessGate.diagnostics.error")}: {error.message}</div> : null}
+          {error.kind ? <div>{translate("accessGate.diagnostics.kind")}: {error.kind}</div> : null}
         </div>
       ) : null}
     </div>
@@ -72,14 +76,14 @@ const PortalStateView = ({
       if (isDemo) return null;
       return (
         <StatusPage
-          title="Доступ ограничен"
+          title={translate("accessGate.portalState.forbidden.title")}
           description={
             <>
-              Недостаточно прав для доступа к порталу.
+              {translate("accessGate.portalState.forbidden.description")}
               <DiagnosticsDetails error={error} />
             </>
           }
-          actionLabel="Вернуться на дашборд"
+          actionLabel={translate("accessGate.portalState.forbidden.action")}
           actionTo="/dashboard"
         />
       );
@@ -89,7 +93,7 @@ const PortalStateView = ({
         <AppErrorState
           message={
             <>
-              Сервис временно недоступен. Попробуйте позже.
+              {translate("accessGate.states.serviceUnavailable")}
               <DiagnosticsDetails error={error} />
             </>
           }
@@ -103,7 +107,7 @@ const PortalStateView = ({
         <AppErrorState
           message={
             <>
-              Нет соединения с сервером. Проверьте подключение к интернету.
+              {translate("accessGate.portalState.networkDown")}
               <DiagnosticsDetails error={error} />
             </>
           }
@@ -117,7 +121,7 @@ const PortalStateView = ({
         <AppErrorState
           message={
             <>
-              Версия API не совпала или маршрут недоступен.
+              {translate("accessGate.portalState.apiMisconfigured")}
               <DiagnosticsDetails error={error} />
             </>
           }
@@ -131,7 +135,7 @@ const PortalStateView = ({
         <AppErrorState
           message={
             <>
-              {error?.message ?? "Ошибка приложения"}
+              {error?.message ?? translate("accessGate.portalState.appError")}
               <DiagnosticsDetails error={error} />
             </>
           }
@@ -151,28 +155,26 @@ const LimitedCabinetProgress = () => {
   const { state, nextRoute, draft } = useClientJourney();
   const plan = getPlanByCode(draft.selectedPlan);
   const remaining = [
-    !draft.selectedPlan ? "choose plan" : null,
-    !draft.customerType ? "choose customer type" : null,
-    !draft.profileCompleted ? "complete profile" : null,
-    !draft.documentsViewed ? "review documents" : null,
-    !draft.signAccepted ? "accept signing" : null,
-    draft.selectedPlan !== "CLIENT_FREE_TRIAL" && draft.subscriptionState !== "ACTIVE" ? "complete payment" : null,
+    !draft.selectedPlan ? translate("accessGate.progress.choosePlan") : null,
+    !draft.customerType ? translate("accessGate.progress.chooseCustomerType") : null,
+    !draft.profileCompleted ? translate("accessGate.progress.completeProfile") : null,
+    !draft.signAccepted ? translate("accessGate.progress.acceptSigning") : null,
   ].filter(Boolean);
 
   return (
     <div className="stack muted small" style={{ marginTop: 8 }}>
-      <div>Current stage: {state}</div>
-      <div>Selected plan: {plan?.title ?? "Not selected"}</div>
-      <div>Customer type: {draft.customerType ?? "Not selected"}</div>
-      <div>Remaining: {remaining.length ? remaining.join(" → ") : "Setup complete"}</div>
-      <div>Next step: {nextRoute}</div>
+      <div>{translate("accessGate.progress.currentStage")}: {state}</div>
+      <div>{translate("accessGate.progress.selectedPlan")}: {plan?.title ?? translate("accessGate.progress.notSelected")}</div>
+      <div>{translate("accessGate.progress.customerType")}: {draft.customerType ?? translate("accessGate.progress.notSelected")}</div>
+      <div>{translate("accessGate.progress.remaining")}: {remaining.length ? remaining.join(" → ") : translate("accessGate.progress.setupComplete")}</div>
+      <div>{translate("accessGate.progress.nextStep")}: {nextRoute}</div>
     </div>
   );
 };
 
 const AccessStateView = ({
   state,
-  title = "Раздел",
+  title,
   reason,
   requestId,
   correlationId,
@@ -190,27 +192,28 @@ const AccessStateView = ({
   isDemo?: boolean;
 }) => {
   const { user } = useAuth();
+  const resolvedTitle = title ?? translate("accessGate.defaultTitle");
   const fallbackHome = homePath ?? (user ? "/" : "/login");
   switch (state) {
     case AccessState.NEEDS_ONBOARDING:
       return (
         <StatusPage
-          title="Подключить компанию"
-          description={<>Завершите подключение компании, чтобы открыть этот раздел.<LimitedCabinetProgress /></>}
-          actionLabel="Перейти к подключению"
-          actionTo="/connect"
+          title={translate("accessGate.states.needsOnboarding.title")}
+          description={<>{translate("accessGate.states.needsOnboarding.description")}<LimitedCabinetProgress /></>}
+          actionLabel={translate("accessGate.states.needsOnboarding.action")}
+          actionTo="/onboarding"
         />
       );
     case AccessState.NEEDS_PLAN:
       return (
         <StatusPage
-          title="Выберите тариф"
-          description={<>Для доступа к разделу нужен активный тариф.<LimitedCabinetProgress /></>}
-          actionLabel="Продолжить подключение"
-          actionTo="/connect/plan"
+          title={translate("accessGate.states.needsPlan.title")}
+          description={<>{translate("accessGate.states.needsPlan.description")}<LimitedCabinetProgress /></>}
+          actionLabel={translate("accessGate.states.needsPlan.action")}
+          actionTo="/onboarding/plan"
           secondaryAction={
             <Link className="ghost neft-btn-secondary" to="/client/support/new?topic=plan">
-              Связаться с менеджером
+              {translate("accessGate.states.needsPlan.secondaryAction")}
             </Link>
           }
         />
@@ -218,83 +221,83 @@ const AccessStateView = ({
     case AccessState.NEEDS_CONTRACT:
       return (
         <StatusPage
-          title="Подпишите договор"
-          description={<>Завершите подписание договора, чтобы открыть этот раздел.<LimitedCabinetProgress /></>}
-          actionLabel="Перейти к подписанию"
-          actionTo="/connect/sign"
+          title={translate("accessGate.states.needsContract.title")}
+          description={<>{translate("accessGate.states.needsContract.description")}<LimitedCabinetProgress /></>}
+          actionLabel={translate("accessGate.states.needsContract.action")}
+          actionTo="/onboarding/contract"
         />
       );
     case AccessState.OVERDUE:
       return (
         <StatusPage
-          title="Оплатите счёт"
-          description="Доступ ограничен из-за просроченных счетов."
-          actionLabel="Открыть счета"
+          title={translate("accessGate.states.overdue.title")}
+          description={translate("accessGate.states.overdue.description")}
+          actionLabel={translate("accessGate.states.overdue.action")}
           actionTo="/invoices"
         />
       );
     case AccessState.SUSPENDED:
       return (
         <StatusPage
-          title="Доступ приостановлен"
-          description="Оплата просрочена, доступ временно приостановлен."
-          actionLabel="Написать в поддержку"
+          title={translate("accessGate.states.suspended.title")}
+          description={translate("accessGate.states.suspended.description")}
+          actionLabel={translate("accessGate.states.suspended.action")}
           actionTo="/client/support/new?topic=billing"
         />
       );
     case AccessState.LEGAL_PENDING:
       return (
         <StatusPage
-          title="Проверка документов"
-          description="Доступ временно ограничен до завершения проверки документов."
-          actionLabel="Перейти к документам"
-          actionTo="/documents"
+          title={translate("accessGate.states.legalPending.title")}
+          description={translate("accessGate.states.legalPending.description")}
+          actionLabel={translate("accessGate.states.legalPending.action")}
+          actionTo="/client/documents"
         />
       );
     case AccessState.PAYOUT_BLOCKED:
       return (
         <StatusPage
-          title="Выплаты заблокированы"
-          description="Выплаты временно заблокированы. Обратитесь в поддержку для уточнения."
-          actionLabel="Связаться с поддержкой"
+          title={translate("accessGate.states.payoutBlocked.title")}
+          description={translate("accessGate.states.payoutBlocked.description")}
+          actionLabel={translate("accessGate.states.payoutBlocked.action")}
           actionTo="/client/support/new?topic=payout"
         />
       );
     case AccessState.SLA_PENALTY:
       return (
         <StatusPage
-          title="Санкции SLA"
-          description="Доступ ограничен из-за санкций SLA. Свяжитесь с поддержкой."
-          actionLabel="Связаться с поддержкой"
+          title={translate("accessGate.states.slaPenalty.title")}
+          description={translate("accessGate.states.slaPenalty.description")}
+          actionLabel={translate("accessGate.states.slaPenalty.action")}
           actionTo="/client/support/new?topic=sla"
         />
       );
     case AccessState.FORBIDDEN_ROLE:
-      return <AppForbiddenState message="Недостаточно прав для просмотра раздела." />;
+      return <AppForbiddenState message={translate("accessGate.states.forbiddenRole")} />;
     case AccessState.MODULE_DISABLED:
       if (isDemo) {
         return (
           <DemoEmptyState
-            title="Раздел в демо недоступен"
-            description={`В рабочем контуре здесь будут доступны возможности "${title}".`}
+            title={translate("accessGate.states.demoUnavailable.title")}
+            description={translate("accessGate.states.demoUnavailable.description", { title: resolvedTitle })}
             action={
               <Link className="ghost neft-btn-secondary" to="/dashboard">
-                Перейти в обзор
+                {translate("accessGate.states.demoUnavailable.action")}
               </Link>
             }
           />
         );
       }
-      return <ModuleUnavailablePage title={title} />;
+      return <ModuleUnavailablePage title={resolvedTitle} />;
     case AccessState.MISSING_CAPABILITY:
       if (isDemo) {
         return (
           <DemoEmptyState
-            title="Раздел в демо недоступен"
-            description={`В рабочем контуре здесь будут доступны возможности "${title}".`}
+            title={translate("accessGate.states.demoUnavailable.title")}
+            description={translate("accessGate.states.demoUnavailable.description", { title: resolvedTitle })}
             action={
               <Link className="ghost neft-btn-secondary" to="/dashboard">
-                Перейти в обзор
+                {translate("accessGate.states.demoUnavailable.action")}
               </Link>
             }
           />
@@ -302,9 +305,9 @@ const AccessStateView = ({
       }
       return (
         <StatusPage
-          title="Недоступно по подписке"
-          description="Для доступа требуется расширенный тариф или подключение модуля."
-          actionLabel="Перейти к подписке"
+          title={translate("accessGate.states.subscriptionLocked.title")}
+          description={translate("accessGate.states.subscriptionLocked.description")}
+          actionLabel={translate("accessGate.states.subscriptionLocked.action")}
           actionTo="/subscription"
         />
       );
@@ -313,10 +316,10 @@ const AccessStateView = ({
         <AppErrorState
           message={
             <>
-              Сервис временно недоступен. Попробуйте позже.
+              {translate("accessGate.states.serviceUnavailable")}
               <DiagnosticsDetails error={error} />
-              {requestId && requestId !== error?.requestId ? <div>Request ID: {requestId}</div> : null}
-              {correlationId ? <div>Correlation ID: {correlationId}</div> : null}
+              {requestId && requestId !== error?.requestId ? <div>{translate("accessGate.diagnostics.requestId")}: {requestId}</div> : null}
+              {correlationId ? <div>{translate("accessGate.diagnostics.correlationId")}: {correlationId}</div> : null}
             </>
           }
           correlationId={correlationId ?? undefined}
@@ -327,7 +330,7 @@ const AccessStateView = ({
         <AppErrorState
           message={
             <>
-              Конфигурация портала недоступна. Попробуйте позже или обратитесь в поддержку.
+              {translate("accessGate.states.misconfig")}
               <DiagnosticsDetails error={error} />
             </>
           }
@@ -340,16 +343,16 @@ const AccessStateView = ({
           <AppErrorState
             message={
               <>
-                Техническая ошибка. Попробуйте снова позже.
+                {translate("accessGate.states.techError")}
                 <DiagnosticsDetails error={error} />
-                {reason ? <div>Error ID: {reason}</div> : null}
+                {reason ? <div>{translate("accessGate.diagnostics.errorId")}: {reason}</div> : null}
               </>
             }
             correlationId={correlationId ?? undefined}
           />
           <div className="actions">
             <Link className="ghost neft-btn-secondary" to={fallbackHome}>
-              На главную
+              {translate("accessGate.states.home")}
             </Link>
           </div>
         </div>
@@ -368,9 +371,11 @@ export const AccessGate = ({
   requiredRoles,
   fallbackMode = "paywall",
   title,
+  allowDemoBypass = true,
   children,
 }: AccessGateProps) => {
   const { user } = useAuth();
+
   const { client, isLoading, error, portalState, refresh } = useClient();
   const location = useLocation();
 
@@ -379,28 +384,33 @@ export const AccessGate = ({
   }
 
   if (portalState === "LOADING" || isLoading) {
-    return <AppLoadingState label="Проверяем доступ..." />;
+    return <AppLoadingState label={translate("accessGate.loading")} />;
   }
 
   const isDemoClientAccount = isDemoClient(user.email ?? client?.user?.email ?? null);
-  const portalView = PortalStateView({ state: portalState, error, onRetry: refresh, isDemo: isDemoClientAccount });
+  const portalView = PortalStateView({
+    state: portalState,
+    error,
+    onRetry: refresh,
+    isDemo: allowDemoBypass && isDemoClientAccount,
+  });
   if (portalView) {
     return portalView;
   }
 
   let decision = resolveAccessState({ client, requiredRoles, capability, module });
-  if (isDemoClientAccount && decision.state !== AccessState.AUTH_REQUIRED) {
+  if (allowDemoBypass && isDemoClientAccount && decision.state !== AccessState.AUTH_REQUIRED) {
     // Demo-only showcase mode: ignore backend onboarding/entitlement gating and always render routes.
     decision = { state: AccessState.ACTIVE };
   }
 
-  if (import.meta.env.DEV) {
+  if (DEBUG_ACCESS_GATE) {
     console.info("[access-gate:decision]", {
       route: location.pathname,
       portal_state: portalState,
       access_state: client?.access_state ?? null,
       resolved_state: decision.state,
-      is_demo: isDemoClientAccount,
+      is_demo: allowDemoBypass && isDemoClientAccount,
     });
   }
 
@@ -413,7 +423,7 @@ export const AccessGate = ({
   }
 
   if (decision.state !== AccessState.ACTIVE) {
-    if (import.meta.env.DEV) {
+    if (DEBUG_ACCESS_GATE) {
       console.info("[access-gate:redirect]", {
         route: location.pathname,
         state: decision.state,
@@ -422,7 +432,14 @@ export const AccessGate = ({
     if (decision.state === AccessState.OVERDUE) {
       return <BillingOverdueState billing={client?.billing} />;
     }
-    return <AccessStateView state={decision.state} title={title} reason={decision.reason} isDemo={isDemoClientAccount} />;
+    return (
+      <AccessStateView
+        state={decision.state}
+        title={title}
+        reason={decision.reason}
+        isDemo={allowDemoBypass && isDemoClientAccount}
+      />
+    );
   }
 
   return <>{children}</>;

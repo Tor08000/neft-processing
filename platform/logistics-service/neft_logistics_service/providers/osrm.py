@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 from dataclasses import dataclass
 from math import asin, cos, radians, sin, sqrt
 from typing import Iterable
@@ -9,8 +10,16 @@ from urllib.parse import urlencode
 from urllib.request import urlopen
 
 from neft_logistics_service.providers.base import BaseProvider
-from neft_logistics_service.providers.mock import MockProvider
-from neft_logistics_service.schemas import DeviationRequest, DeviationResponse, EtaRequest, EtaResponse, Explain
+from neft_logistics_service.schemas import (
+    DeviationRequest,
+    DeviationResponse,
+    EtaRequest,
+    EtaResponse,
+    Explain,
+    RoutePreviewGeometryPoint,
+    RoutePreviewRequest,
+    RoutePreviewResponse,
+)
 from neft_logistics_service.settings import get_settings
 
 settings = get_settings()
@@ -20,15 +29,24 @@ settings = get_settings()
 class OSRMProvider(BaseProvider):
     base_url: str = settings.osrm_base_url
     timeout_seconds: int = settings.osrm_timeout_seconds
-    fallback: BaseProvider = MockProvider()
 
     name = "osrm"
 
+    def preview_route(self, request: RoutePreviewRequest) -> RoutePreviewResponse:
+        preview = self._fetch_route_preview([(point.lat, point.lon) for point in request.points])
+        return RoutePreviewResponse(
+            provider=self.name,
+            geometry=[RoutePreviewGeometryPoint(lat=lat, lon=lon) for lat, lon in preview["geometry"]],
+            distance_km=preview["distance_km"],
+            eta_minutes=max(1, int(round(preview["duration_seconds"] / 60))),
+            confidence=0.82,
+            computed_at=datetime.now(timezone.utc),
+            degraded=False,
+            degradation_reason=None,
+        )
+
     def compute_eta(self, request: EtaRequest) -> EtaResponse:
-        try:
-            duration_seconds = self._fetch_route_duration(request.points)
-        except Exception:  # noqa: BLE001
-            return self.fallback.compute_eta(request)
+        duration_seconds = self._fetch_route_duration(request.points)
         eta_minutes = max(1, int(round(duration_seconds / 60)))
         explain = self.explain_eta(request)
         return EtaResponse(
@@ -39,16 +57,14 @@ class OSRMProvider(BaseProvider):
         )
 
     def compute_deviation(self, request: DeviationRequest) -> DeviationResponse:
-        try:
-            geometry = self._fetch_route_geometry(request.planned_polyline)
-            deviation_m = _distance_to_polyline_m(request.actual_point.lat, request.actual_point.lon, geometry)
-        except Exception:  # noqa: BLE001
-            return self.fallback.compute_deviation(request)
+        geometry = self._fetch_route_geometry(request.planned_polyline)
+        deviation_m = _distance_to_polyline_m(request.actual_point.lat, request.actual_point.lon, geometry)
         is_violation = deviation_m > request.threshold_meters
         return DeviationResponse(
             deviation_meters=int(round(deviation_m)),
             is_violation=is_violation,
             confidence=0.85 if is_violation else 0.78,
+            provider=self.name,
             explain=self.explain_deviation(request),
         )
 
@@ -74,6 +90,18 @@ class OSRMProvider(BaseProvider):
         url = f"{self.base_url}/route/v1/driving/{coordinates}?{query}"
         payload = _get_json(url, timeout=self.timeout_seconds)
         return float(payload["routes"][0]["duration"])
+
+    def _fetch_route_preview(self, points: Iterable[tuple[float, float]]) -> dict[str, float | list[tuple[float, float]]]:
+        coordinates = _encode_latlon(points)
+        query = urlencode({"overview": "full", "geometries": "polyline"})
+        url = f"{self.base_url}/route/v1/driving/{coordinates}?{query}"
+        payload = _get_json(url, timeout=self.timeout_seconds)
+        route = payload["routes"][0]
+        return {
+            "geometry": decode_polyline(route["geometry"]),
+            "distance_km": round(float(route["distance"]) / 1000, 3),
+            "duration_seconds": float(route["duration"]),
+        }
 
     def _fetch_route_geometry(self, polyline: Iterable[tuple[float, float]]) -> list[tuple[float, float]]:
         coordinates = _encode_latlon(polyline)

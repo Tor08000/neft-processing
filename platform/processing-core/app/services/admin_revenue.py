@@ -4,7 +4,7 @@ from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import MetaData, Table, and_, case, desc, func, or_, select, true
+from sqlalchemy import MetaData, String, Table, and_, case, cast, desc, func, literal, or_, select
 from sqlalchemy.orm import Session
 
 from app.db.schema import DB_SCHEMA
@@ -38,6 +38,192 @@ def _as_of_dt(as_of: date) -> datetime:
 
 def _month_start(as_of: date) -> date:
     return as_of.replace(day=1)
+
+
+def _column(table: Table, *names: str):
+    for name in names:
+        if name in table.c:
+            return table.c[name]
+    return None
+
+
+def _invoice_amount_expr(billing_invoices: Table):
+    amount_due = _column(billing_invoices, "amount_due")
+    if amount_due is not None:
+        return func.coalesce(amount_due, 0)
+
+    total_amount = _column(billing_invoices, "total_amount")
+    if total_amount is not None:
+        return func.coalesce(total_amount, 0)
+
+    total_with_tax = _column(billing_invoices, "total_with_tax")
+    amount_paid = _column(billing_invoices, "amount_paid")
+    if total_with_tax is not None:
+        total_expr = func.coalesce(total_with_tax, 0)
+        if amount_paid is not None:
+            return total_expr - func.coalesce(amount_paid, 0)
+        return total_expr
+
+    amount_total = _column(billing_invoices, "amount_total")
+    if amount_total is not None:
+        total_expr = func.coalesce(amount_total, 0)
+        if amount_paid is not None:
+            return total_expr - func.coalesce(amount_paid, 0)
+        return total_expr
+
+    subtotal = _column(billing_invoices, "subtotal")
+    if subtotal is not None:
+        return func.coalesce(subtotal, 0)
+    return literal(0)
+
+
+def _status_value_supported(status_col, value: str) -> bool:
+    enum_values = getattr(getattr(status_col, "type", None), "enums", None)
+    if enum_values is None:
+        return True
+    return value in {str(item) for item in enum_values}
+
+
+def _invoice_status_overdue_condition(
+    billing_invoices: Table,
+    *,
+    amount_expr,
+    as_of_dt: datetime,
+):
+    status_col = _column(billing_invoices, "status")
+    if status_col is None:
+        return literal(False)
+
+    due_at_col = _column(billing_invoices, "due_at")
+    conditions = []
+    if _status_value_supported(status_col, "OVERDUE"):
+        conditions.append(status_col == "OVERDUE")
+
+    open_status_values = tuple(
+        value for value in ("ISSUED", "PARTIALLY_PAID") if _status_value_supported(status_col, value)
+    )
+    if due_at_col is not None and open_status_values:
+        open_status = status_col.in_(open_status_values)
+        due_elapsed = and_(due_at_col.isnot(None), due_at_col <= as_of_dt)
+        conditions.append(and_(open_status, due_elapsed, amount_expr > 0))
+
+    if not conditions:
+        return literal(False)
+    return or_(*conditions)
+
+
+def _invoice_period_column(billing_invoices: Table):
+    return _column(billing_invoices, "period_start", "issued_at", "created_at")
+
+
+def _period_bounds_for_column(period_column, *, period_from: date, period_to: date):
+    if period_column is not None and period_column.name == "period_start":
+        return period_from, period_to
+    return (
+        datetime.combine(period_from, time.min, tzinfo=timezone.utc),
+        datetime.combine(period_to, time.max, tzinfo=timezone.utc),
+    )
+
+
+def _client_subscription_org_expr(db: Session, billing_invoices: Table):
+    client_id_col = _column(billing_invoices, "client_id")
+    if client_id_col is None or not _table_exists(db, "client_subscriptions"):
+        return None
+
+    client_subscriptions = _table(db, "client_subscriptions")
+    tenant_col = _column(client_subscriptions, "tenant_id")
+    subscription_client_col = _column(client_subscriptions, "client_id")
+    if tenant_col is None or subscription_client_col is None:
+        return None
+
+    query = select(tenant_col).where(cast(subscription_client_col, String) == cast(client_id_col, String))
+    status_col = _column(client_subscriptions, "status")
+    if status_col is not None:
+        query = query.order_by(case((status_col == "ACTIVE", 0), else_=1))
+    created_at_col = _column(client_subscriptions, "created_at", "start_at")
+    if created_at_col is not None:
+        query = query.order_by(desc(created_at_col))
+    return query.limit(1).scalar_subquery()
+
+
+def _org_table_client_expr(db: Session, billing_invoices: Table):
+    client_id_col = _column(billing_invoices, "client_id")
+    if client_id_col is None or not _table_exists(db, "orgs"):
+        return None
+
+    orgs = _table(db, "orgs")
+    org_id_col = _column(orgs, "id")
+    org_client_col = _column(orgs, "client_id", "client_uuid")
+    if org_id_col is None or org_client_col is None:
+        return None
+
+    return (
+        select(org_id_col)
+        .where(cast(org_client_col, String) == cast(client_id_col, String))
+        .order_by(desc(org_id_col))
+        .limit(1)
+        .scalar_subquery()
+    )
+
+
+def _invoice_owner_expr(db: Session, billing_invoices: Table):
+    org_id_col = _column(billing_invoices, "org_id")
+    if org_id_col is not None:
+        return org_id_col
+
+    from_orgs = _org_table_client_expr(db, billing_invoices)
+    if from_orgs is not None:
+        return from_orgs
+    return _client_subscription_org_expr(db, billing_invoices)
+
+
+def _invoice_owner_count_expr(db: Session, billing_invoices: Table):
+    owner_expr = _invoice_owner_expr(db, billing_invoices)
+    if owner_expr is not None:
+        return owner_expr
+    return _column(billing_invoices, "client_id", "id")
+
+
+def _client_plan_rows(db: Session) -> list[dict[str, Any]]:
+    if not (_table_exists(db, "client_subscriptions") and _table_exists(db, "subscription_plans")):
+        return []
+
+    client_subscriptions = _table(db, "client_subscriptions")
+    subscription_plans = _table(db, "subscription_plans")
+    required = (
+        _column(client_subscriptions, "id"),
+        _column(client_subscriptions, "tenant_id"),
+        _column(client_subscriptions, "status"),
+        _column(client_subscriptions, "plan_id"),
+        _column(subscription_plans, "id"),
+        _column(subscription_plans, "code"),
+    )
+    if any(column is None for column in required):
+        return []
+
+    price_cents = _column(subscription_plans, "price_cents")
+    price_monthly = (func.coalesce(price_cents, 0) / Decimal("100")) if price_cents is not None else literal(None)
+    currency_col = _column(subscription_plans, "currency")
+    billing_cycle_col = _column(client_subscriptions, "billing_cycle")
+
+    query = (
+        select(
+            client_subscriptions.c.id.label("subscription_id"),
+            client_subscriptions.c.tenant_id.label("org_id"),
+            client_subscriptions.c.status,
+            (billing_cycle_col if billing_cycle_col is not None else literal("MONTHLY")).label("billing_cycle"),
+            client_subscriptions.c.plan_id,
+            price_monthly.label("price_monthly"),
+            literal(None).label("price_yearly"),
+            (currency_col if currency_col is not None else literal("RUB")).label("currency"),
+            subscription_plans.c.code.label("plan_code"),
+        )
+        .select_from(
+            client_subscriptions.join(subscription_plans, subscription_plans.c.id == client_subscriptions.c.plan_id)
+        )
+        .where(client_subscriptions.c.status == "ACTIVE")
+    )
+    return [dict(row) for row in db.execute(query).mappings().all()]
 
 
 def _load_subscription_overrides(db: Session) -> dict[int, dict[str, Decimal]]:
@@ -85,7 +271,11 @@ def _resolve_plan_price(row: dict[str, Any], overrides: dict[int, dict[str, Deci
         price = _decimal(price_monthly) if price_monthly is not None else None
 
     if price is None:
-        override = overrides.get(int(row["subscription_id"]))
+        try:
+            subscription_id = int(row["subscription_id"])
+        except (TypeError, ValueError):
+            subscription_id = None
+        override = overrides.get(subscription_id) if subscription_id is not None else None
         if override:
             if override.get("price_override") is not None:
                 price = override["price_override"]
@@ -100,52 +290,62 @@ def _resolve_plan_price(row: dict[str, Any], overrides: dict[int, dict[str, Deci
 
 def _plan_rows(db: Session, as_of: date) -> list[dict[str, Any]]:
     if not _table_exists(db, "org_subscriptions"):
-        return []
+        return _client_plan_rows(db)
     if not _table_exists(db, "pricing_catalog"):
-        return []
+        return _client_plan_rows(db)
 
     org_subscriptions = _table(db, "org_subscriptions")
     subscription_plans = _table(db, "subscription_plans") if _table_exists(db, "subscription_plans") else None
     pricing_catalog = _table(db, "pricing_catalog")
     as_of_dt = _as_of_dt(as_of)
 
-    pricing_lateral = (
-        select(
-            pricing_catalog.c.price_monthly,
-            pricing_catalog.c.price_yearly,
-            pricing_catalog.c.currency,
-        )
-        .where(
+    plan_code_col = subscription_plans.c.code if subscription_plans is not None else literal("UNKNOWN")
+    from_clause = org_subscriptions
+    if subscription_plans is not None:
+        from_clause = from_clause.outerjoin(subscription_plans, subscription_plans.c.id == org_subscriptions.c.plan_id)
+    from_clause = from_clause.outerjoin(
+        pricing_catalog,
+        and_(
             pricing_catalog.c.item_type == "PLAN",
             pricing_catalog.c.item_id == org_subscriptions.c.plan_id,
             pricing_catalog.c.effective_from <= as_of_dt,
             or_(pricing_catalog.c.effective_to.is_(None), pricing_catalog.c.effective_to > as_of_dt),
+        ),
+    )
+
+    ranked = (
+        select(
+            org_subscriptions.c.id.label("subscription_id"),
+            org_subscriptions.c.org_id,
+            org_subscriptions.c.status,
+            org_subscriptions.c.billing_cycle,
+            org_subscriptions.c.plan_id,
+            pricing_catalog.c.price_monthly,
+            pricing_catalog.c.price_yearly,
+            pricing_catalog.c.currency,
+            plan_code_col.label("plan_code"),
+            func.row_number()
+            .over(partition_by=org_subscriptions.c.id, order_by=desc(pricing_catalog.c.effective_from))
+            .label("_pricing_rank"),
         )
-        .order_by(desc(pricing_catalog.c.effective_from))
-        .limit(1)
-        .lateral("plan_pricing")
+        .select_from(from_clause)
+        .where(org_subscriptions.c.status == "ACTIVE")
+        .subquery("ranked_plan_pricing")
     )
 
     query = select(
-        org_subscriptions.c.id.label("subscription_id"),
-        org_subscriptions.c.org_id,
-        org_subscriptions.c.status,
-        org_subscriptions.c.billing_cycle,
-        org_subscriptions.c.plan_id,
-        pricing_lateral.c.price_monthly,
-        pricing_lateral.c.price_yearly,
-        pricing_lateral.c.currency,
-    )
-    if subscription_plans is not None:
-        query = query.add_columns(subscription_plans.c.code.label("plan_code"))
-        query = query.select_from(
-            org_subscriptions.join(subscription_plans, subscription_plans.c.id == org_subscriptions.c.plan_id, isouter=True)
-            .join(pricing_lateral, true(), isouter=True)
-        )
-    else:
-        query = query.select_from(org_subscriptions.join(pricing_lateral, true(), isouter=True))
-    query = query.where(org_subscriptions.c.status == "ACTIVE")
-    return [dict(row) for row in db.execute(query).mappings().all()]
+        ranked.c.subscription_id,
+        ranked.c.org_id,
+        ranked.c.status,
+        ranked.c.billing_cycle,
+        ranked.c.plan_id,
+        ranked.c.price_monthly,
+        ranked.c.price_yearly,
+        ranked.c.currency,
+        ranked.c.plan_code,
+    ).where(ranked.c._pricing_rank == 1)
+    rows = [dict(row) for row in db.execute(query).mappings().all()]
+    return rows or _client_plan_rows(db)
 
 
 def revenue_summary(db: Session, *, as_of: date) -> dict[str, Any]:
@@ -167,6 +367,14 @@ def revenue_summary(db: Session, *, as_of: date) -> dict[str, Any]:
         overdue_orgs = db.execute(
             select(func.count(func.distinct(org_subscriptions.c.org_id))).where(org_subscriptions.c.status == "OVERDUE")
         ).scalar_one()
+    elif _table_exists(db, "client_subscriptions"):
+        client_subscriptions = _table(db, "client_subscriptions")
+        tenant_col = _column(client_subscriptions, "tenant_id")
+        status_col = _column(client_subscriptions, "status")
+        if tenant_col is not None and status_col is not None:
+            active_orgs = db.execute(
+                select(func.count(func.distinct(tenant_col))).where(status_col == "ACTIVE")
+            ).scalar_one()
 
     plan_rows = _plan_rows(db, as_of)
     overrides = _load_subscription_overrides(db)
@@ -226,37 +434,50 @@ def revenue_summary(db: Session, *, as_of: date) -> dict[str, Any]:
 
     if _table_exists(db, "billing_invoices"):
         billing_invoices = _table(db, "billing_invoices")
+        amount_expr = _invoice_amount_expr(billing_invoices)
+        as_of_dt = _as_of_dt(as_of)
+        overdue_condition = _invoice_status_overdue_condition(
+            billing_invoices,
+            amount_expr=amount_expr,
+            as_of_dt=as_of_dt,
+        )
+        owner_count_expr = _invoice_owner_count_expr(db, billing_invoices)
         overdue_amount = _decimal(
             db.execute(
-                select(func.coalesce(func.sum(billing_invoices.c.total_amount), 0)).where(
-                    billing_invoices.c.status == "OVERDUE"
-                )
+                select(func.coalesce(func.sum(amount_expr), 0)).where(overdue_condition)
             ).scalar_one()
         )
-        as_of_dt = _as_of_dt(as_of)
-        bucket_case = case(
-            (billing_invoices.c.due_at >= as_of_dt - timedelta(days=7), "0_7"),
-            (billing_invoices.c.due_at >= as_of_dt - timedelta(days=30), "8_30"),
-            (billing_invoices.c.due_at >= as_of_dt - timedelta(days=90), "31_90"),
-            else_="90_plus",
-        )
-        bucket_rows = (
-            db.execute(
-                select(
-                    bucket_case.label("bucket"),
-                    func.count(func.distinct(billing_invoices.c.org_id)).label("orgs"),
-                    func.coalesce(func.sum(billing_invoices.c.total_amount), 0).label("amount"),
-                )
-                .where(
-                    billing_invoices.c.status == "OVERDUE",
-                    billing_invoices.c.due_at.isnot(None),
-                    billing_invoices.c.due_at <= as_of_dt,
-                )
-                .group_by(bucket_case)
+        if owner_count_expr is not None:
+            overdue_orgs = int(
+                db.execute(select(func.count(func.distinct(owner_count_expr))).where(overdue_condition)).scalar_one()
+                or 0
             )
-            .mappings()
-            .all()
-        )
+        due_at_col = _column(billing_invoices, "due_at")
+        bucket_rows: list[dict[str, Any]] = []
+        if due_at_col is not None and owner_count_expr is not None:
+            bucket_case = case(
+                (due_at_col >= as_of_dt - timedelta(days=7), "0_7"),
+                (due_at_col >= as_of_dt - timedelta(days=30), "8_30"),
+                (due_at_col >= as_of_dt - timedelta(days=90), "31_90"),
+                else_="90_plus",
+            )
+            bucket_rows = (
+                db.execute(
+                    select(
+                        bucket_case.label("bucket"),
+                        func.count(func.distinct(owner_count_expr)).label("orgs"),
+                        func.coalesce(func.sum(amount_expr), 0).label("amount"),
+                    )
+                    .where(
+                        overdue_condition,
+                        due_at_col.isnot(None),
+                        due_at_col <= as_of_dt,
+                    )
+                    .group_by(bucket_case)
+                )
+                .mappings()
+                .all()
+            )
         bucket_labels = {
             "0_7": "0–7 дней",
             "8_30": "8–30 дней",
@@ -278,17 +499,34 @@ def revenue_summary(db: Session, *, as_of: date) -> dict[str, Any]:
         billing_invoices = _table(db, "billing_invoices")
         billing_invoice_lines = _table(db, "billing_invoice_lines")
         month_start = _month_start(as_of)
-        usage_revenue_mtd = _decimal(
-            db.execute(
-                select(func.coalesce(func.sum(billing_invoice_lines.c.amount), 0))
-                .join(billing_invoices, billing_invoices.c.id == billing_invoice_lines.c.invoice_id)
-                .where(
-                    billing_invoice_lines.c.line_type == "USAGE",
-                    billing_invoices.c.period_start >= month_start,
-                    billing_invoices.c.period_start <= as_of,
-                )
-            ).scalar_one()
-        )
+        period_col = _invoice_period_column(billing_invoices)
+        line_amount_col = _column(billing_invoice_lines, "amount")
+        line_type_col = _column(billing_invoice_lines, "line_type")
+        invoice_id_col = _column(billing_invoice_lines, "invoice_id")
+        billing_invoice_id_col = _column(billing_invoices, "id")
+        if (
+            period_col is not None
+            and line_amount_col is not None
+            and line_type_col is not None
+            and invoice_id_col is not None
+            and billing_invoice_id_col is not None
+        ):
+            lower_bound, upper_bound = _period_bounds_for_column(
+                period_col,
+                period_from=month_start,
+                period_to=as_of,
+            )
+            usage_revenue_mtd = _decimal(
+                db.execute(
+                    select(func.coalesce(func.sum(line_amount_col), 0))
+                    .join(billing_invoices, billing_invoice_id_col == invoice_id_col)
+                    .where(
+                        line_type_col == "USAGE",
+                        period_col >= lower_bound,
+                        period_col <= upper_bound,
+                    )
+                ).scalar_one()
+            )
 
     arr_amount = mrr_amount * Decimal("12")
     return {
@@ -343,46 +581,65 @@ def revenue_overdue_list(
 
     billing_invoices = _table(db, "billing_invoices")
     as_of_dt = _as_of_dt(as_of)
+    amount_expr = _invoice_amount_expr(billing_invoices)
+    overdue_condition = _invoice_status_overdue_condition(
+        billing_invoices,
+        amount_expr=amount_expr,
+        as_of_dt=as_of_dt,
+    )
+    owner_expr = _invoice_owner_expr(db, billing_invoices)
+    if owner_expr is None:
+        return [], 0
+    invoice_id_col = _column(billing_invoices, "id")
+    due_at_col = _column(billing_invoices, "due_at")
+    currency_col = _column(billing_invoices, "currency")
+    subscription_id_col = _column(billing_invoices, "subscription_id")
+    if invoice_id_col is None:
+        return [], 0
+
+    order_col = due_at_col if due_at_col is not None else invoice_id_col
     base = select(
-        billing_invoices.c.id.label("invoice_id"),
-        billing_invoices.c.org_id,
-        billing_invoices.c.subscription_id,
-        billing_invoices.c.due_at,
-        billing_invoices.c.total_amount,
-        billing_invoices.c.currency,
+        invoice_id_col.label("invoice_id"),
+        owner_expr.label("org_id"),
+        (subscription_id_col if subscription_id_col is not None else literal(None)).label("subscription_id"),
+        (due_at_col if due_at_col is not None else literal(None)).label("due_at"),
+        amount_expr.label("amount"),
+        (currency_col if currency_col is not None else literal(None)).label("currency"),
         func.row_number()
-        .over(partition_by=billing_invoices.c.org_id, order_by=desc(billing_invoices.c.due_at))
+        .over(partition_by=owner_expr, order_by=desc(order_col))
         .label("rn"),
-    ).where(billing_invoices.c.status == "OVERDUE")
-    base = _apply_overdue_bucket_filter(base, bucket=bucket, as_of_dt=as_of_dt, due_at_column=billing_invoices.c.due_at)
+    ).where(overdue_condition, owner_expr.isnot(None))
+    if due_at_col is not None:
+        base = _apply_overdue_bucket_filter(base, bucket=bucket, as_of_dt=as_of_dt, due_at_column=due_at_col)
     base_subq = base.subquery("overdue_ranked")
 
-    query = select(base_subq).where(base_subq.c.rn == 1)
+    from_clause = base_subq
+    columns = [base_subq]
 
     orgs = None
     if _table_exists(db, "orgs"):
         orgs = _table(db, "orgs")
         if "id" in orgs.c:
-            query = query.add_columns(orgs.c.name.label("org_name"))
-            query = query.select_from(query.froms[0].outerjoin(orgs, orgs.c.id == base_subq.c.org_id))
+            columns.append(orgs.c.name.label("org_name"))
+            from_clause = from_clause.outerjoin(orgs, orgs.c.id == base_subq.c.org_id)
 
     org_subscriptions = None
     if _table_exists(db, "org_subscriptions"):
         org_subscriptions = _table(db, "org_subscriptions")
-        query = query.add_columns(
-            org_subscriptions.c.status.label("subscription_status"),
-            org_subscriptions.c.plan_id.label("plan_id"),
+        columns.extend(
+            [
+                org_subscriptions.c.status.label("subscription_status"),
+                org_subscriptions.c.plan_id.label("plan_id"),
+            ]
         )
-        query = query.select_from(
-            query.froms[0].outerjoin(org_subscriptions, org_subscriptions.c.id == base_subq.c.subscription_id)
-        )
+        from_clause = from_clause.outerjoin(org_subscriptions, org_subscriptions.c.id == base_subq.c.subscription_id)
 
     if org_subscriptions is not None and _table_exists(db, "subscription_plans"):
         subscription_plans = _table(db, "subscription_plans")
-        query = query.add_columns(subscription_plans.c.code.label("plan_code"))
-        query = query.select_from(
-            query.froms[0].outerjoin(subscription_plans, subscription_plans.c.id == org_subscriptions.c.plan_id)
-        )
+        columns.append(subscription_plans.c.code.label("plan_code"))
+        from_clause = from_clause.outerjoin(subscription_plans, subscription_plans.c.id == org_subscriptions.c.plan_id)
+
+    query = select(*columns).select_from(from_clause).where(base_subq.c.rn == 1)
 
     total = db.execute(select(func.count()).select_from(query.subquery())).scalar_one()
     rows = (
@@ -392,18 +649,22 @@ def revenue_overdue_list(
     )
     items: list[dict[str, Any]] = []
     for row in rows:
+        try:
+            org_id = int(row.get("org_id"))
+        except (TypeError, ValueError):
+            continue
         due_at = row.get("due_at")
         overdue_days = 0
         if due_at:
             overdue_days = (as_of_dt.date() - due_at.date()).days
         items.append(
             {
-                "org_id": row.get("org_id"),
+                "org_id": org_id,
                 "org_name": row.get("org_name"),
                 "invoice_id": str(row.get("invoice_id")),
                 "due_at": due_at,
                 "overdue_days": max(overdue_days, 0),
-                "amount": _decimal(row.get("total_amount")),
+                "amount": _decimal(row.get("amount")),
                 "currency": row.get("currency"),
                 "subscription_plan": row.get("plan_code"),
                 "subscription_status": row.get("subscription_status"),
@@ -418,21 +679,41 @@ def revenue_usage_totals(db: Session, *, period_from: date, period_to: date) -> 
 
     billing_invoices = _table(db, "billing_invoices")
     billing_invoice_lines = _table(db, "billing_invoice_lines")
+    period_col = _invoice_period_column(billing_invoices)
+    invoice_id_col = _column(billing_invoice_lines, "invoice_id")
+    billing_invoice_id_col = _column(billing_invoices, "id")
+    line_type_col = _column(billing_invoice_lines, "line_type")
+    amount_col = _column(billing_invoice_lines, "amount")
+    quantity_col = _column(billing_invoice_lines, "quantity")
+    ref_code_col = _column(billing_invoice_lines, "ref_code")
+    if (
+        period_col is None
+        or invoice_id_col is None
+        or billing_invoice_id_col is None
+        or line_type_col is None
+        or amount_col is None
+    ):
+        return []
+    lower_bound, upper_bound = _period_bounds_for_column(
+        period_col,
+        period_from=period_from,
+        period_to=period_to,
+    )
     rows = (
         db.execute(
             select(
-                billing_invoice_lines.c.ref_code.label("ref_code"),
-                func.coalesce(func.sum(billing_invoice_lines.c.quantity), 0).label("quantity"),
-                func.coalesce(func.sum(billing_invoice_lines.c.amount), 0).label("amount"),
+                (ref_code_col if ref_code_col is not None else literal(None)).label("ref_code"),
+                func.coalesce(func.sum(quantity_col if quantity_col is not None else literal(0)), 0).label("quantity"),
+                func.coalesce(func.sum(amount_col), 0).label("amount"),
             )
-            .join(billing_invoices, billing_invoices.c.id == billing_invoice_lines.c.invoice_id)
+            .join(billing_invoices, billing_invoice_id_col == invoice_id_col)
             .where(
-                billing_invoice_lines.c.line_type == "USAGE",
-                billing_invoices.c.period_start >= period_from,
-                billing_invoices.c.period_start <= period_to,
+                line_type_col == "USAGE",
+                period_col >= lower_bound,
+                period_col <= upper_bound,
             )
-            .group_by(billing_invoice_lines.c.ref_code)
-            .order_by(func.coalesce(func.sum(billing_invoice_lines.c.amount), 0).desc())
+            .group_by(ref_code_col if ref_code_col is not None else literal(None))
+            .order_by(func.coalesce(func.sum(amount_col), 0).desc())
         )
         .mappings()
         .all()

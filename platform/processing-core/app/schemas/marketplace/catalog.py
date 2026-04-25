@@ -126,6 +126,25 @@ class ProductUpdate(BaseModel):
         return self
 
 
+class ProductPartnerOut(BaseModel):
+    id: str
+    company_name: str | None = None
+    verified: bool | None = None
+
+
+class ProductSlaObligationOut(BaseModel):
+    metric: str
+    threshold: float | int
+    comparison: str | None = None
+    window: str | None = None
+    penalty: str | None = None
+
+
+class ProductSlaSummaryOut(BaseModel):
+    obligations: list[ProductSlaObligationOut] = Field(default_factory=list)
+    penalties: str | None = None
+
+
 class ProductOut(BaseModel):
     id: str
     partner_id: str
@@ -135,6 +154,9 @@ class ProductOut(BaseModel):
     category: str
     price_model: PriceModel
     price_config: dict
+    price_summary: str | None = None
+    partner: ProductPartnerOut | None = None
+    sla_summary: ProductSlaSummaryOut | None = None
     status: ProductStatus
     moderation_status: ModerationStatus
     moderation_reason: str | None = None
@@ -152,9 +174,12 @@ class ProductListOut(BaseModel):
     partner_id: str
     type: ProductType
     title: str
+    short_description: str | None = None
     category: str
     price_model: PriceModel
     price_config: dict
+    price_summary: str | None = None
+    partner_name: str | None = None
     status: ProductStatus
     moderation_status: ModerationStatus
     updated_at: datetime | None = None
@@ -170,6 +195,28 @@ class ProductListResponse(BaseModel):
     total: int
     limit: int
     offset: int
+
+
+class ProductOfferOut(BaseModel):
+    id: str
+    subject_type: ProductType
+    subject_id: str
+    title: str | None = None
+    currency: str
+    price_model: PriceModel
+    price_amount: float | None = None
+    price_min: float | None = None
+    price_max: float | None = None
+    geo_scope: str
+    location_ids: list[str] = Field(default_factory=list)
+    terms: dict[str, Any] = Field(default_factory=dict)
+    valid_from: datetime | None = None
+    valid_to: datetime | None = None
+
+
+class ProductOfferListResponse(BaseModel):
+    items: list[ProductOfferOut] = Field(default_factory=list)
+    total: int
 
 
 class ProductStatusUpdateRequest(BaseModel):

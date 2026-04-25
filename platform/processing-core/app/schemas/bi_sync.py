@@ -8,7 +8,7 @@ from app.models.bi import BiSyncRunStatus, BiSyncRunType
 
 
 class BiSyncRunOut(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", from_attributes=True)
 
     id: str
     type: BiSyncRunType
@@ -17,4 +17,3 @@ class BiSyncRunOut(BaseModel):
     started_at: datetime
     finished_at: datetime | None
     error: str | None
-

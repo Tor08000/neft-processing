@@ -16,22 +16,34 @@ logger = get_logger(__name__)
 _ENGINE: Engine | None = None
 
 
+def _resolve_database_url() -> str:
+    runtime_url = os.getenv("DATABASE_URL")
+    if runtime_url:
+        return runtime_url
+    return get_settings().database_url
+
+
+def _build_engine_connect_args(database_url: str) -> dict[str, Any]:
+    if not database_url.startswith("postgresql"):
+        return {}
+
+    connect_args: dict[str, Any] = {"prepare_threshold": 0}
+    schema = os.getenv("NEFT_DB_SCHEMA", "public")
+    connect_args["options"] = f"-c search_path={schema}"
+    return connect_args
+
+
 def _get_engine() -> Engine:
     global _ENGINE
     if _ENGINE is not None:
         return _ENGINE
 
-    settings = get_settings()
-    connect_args: dict[str, Any] = {"prepare_threshold": 0}
-    schema = os.getenv("NEFT_DB_SCHEMA", "public")
-    if settings.database_url.startswith("postgresql"):
-        connect_args["options"] = f"-c search_path={schema}"
-
+    database_url = _resolve_database_url()
     _ENGINE = create_engine(
-        settings.database_url,
+        database_url,
         future=True,
         pool_pre_ping=True,
-        connect_args=connect_args,
+        connect_args=_build_engine_connect_args(database_url),
     )
     return _ENGINE
 

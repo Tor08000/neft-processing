@@ -5,6 +5,7 @@ from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 
+from app.api.dependencies.admin_capability import require_admin_capability
 from app.api.dependencies.admin import require_admin_user
 from app.db import get_db
 from app.models.ops import OpsEscalation, OpsEscalationStatus, OpsEscalationTarget
@@ -22,8 +23,13 @@ from app.services.ops.escalations import ack_escalation, close_escalation, list_
 from app.services.ops.kpi import build_kpi_report
 from app.services.ops.sla_reports import build_sla_report
 from app.services.policy import actor_from_token
+from app.services.token_claims import DEFAULT_TENANT_ID, resolve_token_tenant_id
 
-router = APIRouter(prefix="/ops", tags=["ops-escalations"])
+router = APIRouter(
+    prefix="/ops",
+    tags=["ops-escalations"],
+    dependencies=[Depends(require_admin_capability("ops"))],
+)
 
 _TARGET_ROLE_MAP = {
     OpsEscalationTarget.CRM: {"CRM", "ADMIN_CRM", "SUPERADMIN"},
@@ -48,7 +54,7 @@ def _require_target_access(token: dict, target: OpsEscalationTarget | None) -> N
 
 
 def _tenant_id_from_token(token: dict) -> int:
-    return int(token.get("tenant_id") or 0)
+    return resolve_token_tenant_id(token, default=DEFAULT_TENANT_ID)
 
 
 def _actor_identifier(token: dict) -> str | None:
@@ -94,6 +100,7 @@ def admin_ack_escalation(
     payload: OpsEscalationActionRequest,
     request: Request,
     db: Session = Depends(get_db),
+    _capability_token: dict = Depends(require_admin_capability("ops", "operate")),
     token: dict = Depends(require_admin_user),
 ) -> OpsEscalationOut:
     escalation = db.get(OpsEscalation, escalation_id)
@@ -126,6 +133,7 @@ def admin_close_escalation(
     payload: OpsEscalationActionRequest,
     request: Request,
     db: Session = Depends(get_db),
+    _capability_token: dict = Depends(require_admin_capability("ops", "operate")),
     token: dict = Depends(require_admin_user),
 ) -> OpsEscalationOut:
     escalation = db.get(OpsEscalation, escalation_id)
@@ -160,6 +168,7 @@ def admin_close_escalation(
 def admin_scan_sla_expiry(
     request: Request,
     db: Session = Depends(get_db),
+    _capability_token: dict = Depends(require_admin_capability("ops", "operate")),
     token: dict = Depends(require_admin_user),
 ) -> OpsEscalationScanResponse:
     _require_target_access(token, None)

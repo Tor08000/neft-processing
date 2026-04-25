@@ -1,10 +1,10 @@
 import React from "react";
-import type { AdminPermissions } from "../types/admin";
+import type { AdminPermission, AdminPermissions } from "../types/admin";
 import { useAdmin } from "./AdminContext";
 import { AdminForbiddenPage } from "../pages/admin/AdminStatusPages";
 
 type PermissionKey = keyof AdminPermissions;
-type PermissionAction = "read" | "write";
+type PermissionAction = keyof AdminPermission;
 
 interface AdminRBACGateProps {
   permission: PermissionKey;
@@ -16,7 +16,7 @@ export const AdminRBACGate: React.FC<AdminRBACGateProps> = ({ permission, action
   const { profile } = useAdmin();
   const allowed = profile?.permissions?.[permission]?.[action];
 
-  if (!allowed) {
+  if (!allowed || (action !== "read" && profile?.read_only)) {
     return <AdminForbiddenPage />;
   }
 

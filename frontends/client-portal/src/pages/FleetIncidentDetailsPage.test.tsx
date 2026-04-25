@@ -1,12 +1,14 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { App } from "../App";
 import type { AuthSession } from "../api/types";
+import { AuthProvider } from "../auth/AuthContext";
+import { I18nProvider } from "../i18n";
+import { FleetIncidentDetailsPage } from "./FleetIncidentDetailsPage";
 
 const viewerSession: AuthSession = {
-  token: "token-viewer",
+  token: "test.fleet.viewer",
   email: "viewer@demo.test",
   roles: ["CLIENT_USER"],
   subjectType: "CLIENT",
@@ -15,7 +17,7 @@ const viewerSession: AuthSession = {
 };
 
 const managerSession: AuthSession = {
-  token: "token-manager",
+  token: "test.fleet.manager",
   email: "manager@demo.test",
   roles: ["CLIENT_FLEET_MANAGER"],
   subjectType: "CLIENT",
@@ -24,7 +26,7 @@ const managerSession: AuthSession = {
 };
 
 const adminSession: AuthSession = {
-  token: "token-admin",
+  token: "test.fleet.admin",
   email: "admin@demo.test",
   roles: ["CLIENT_OWNER"],
   subjectType: "CLIENT",
@@ -58,6 +60,8 @@ describe("FleetIncidentDetailsPage", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
+    window.localStorage.clear();
+    window.sessionStorage.clear();
   });
 
   it("renders incident details", async () => {
@@ -72,7 +76,13 @@ describe("FleetIncidentDetailsPage", () => {
 
     render(
       <MemoryRouter initialEntries={["/fleet/incidents/case-1"]}>
-        <App initialSession={viewerSession} />
+        <I18nProvider locale="ru">
+          <AuthProvider initialSession={viewerSession}>
+            <Routes>
+              <Route path="/fleet/incidents/:id" element={<FleetIncidentDetailsPage />} />
+            </Routes>
+          </AuthProvider>
+        </I18nProvider>
       </MemoryRouter>,
     );
 
@@ -92,7 +102,13 @@ describe("FleetIncidentDetailsPage", () => {
 
     render(
       <MemoryRouter initialEntries={["/fleet/incidents/case-1"]}>
-        <App initialSession={viewerSession} />
+        <I18nProvider locale="ru">
+          <AuthProvider initialSession={viewerSession}>
+            <Routes>
+              <Route path="/fleet/incidents/:id" element={<FleetIncidentDetailsPage />} />
+            </Routes>
+          </AuthProvider>
+        </I18nProvider>
       </MemoryRouter>,
     );
 
@@ -112,7 +128,13 @@ describe("FleetIncidentDetailsPage", () => {
 
     render(
       <MemoryRouter initialEntries={["/fleet/incidents/case-1"]}>
-        <App initialSession={managerSession} />
+        <I18nProvider locale="ru">
+          <AuthProvider initialSession={managerSession}>
+            <Routes>
+              <Route path="/fleet/incidents/:id" element={<FleetIncidentDetailsPage />} />
+            </Routes>
+          </AuthProvider>
+        </I18nProvider>
       </MemoryRouter>,
     );
 
@@ -137,7 +159,13 @@ describe("FleetIncidentDetailsPage", () => {
 
     render(
       <MemoryRouter initialEntries={["/fleet/incidents/case-1"]}>
-        <App initialSession={adminSession} />
+        <I18nProvider locale="ru">
+          <AuthProvider initialSession={adminSession}>
+            <Routes>
+              <Route path="/fleet/incidents/:id" element={<FleetIncidentDetailsPage />} />
+            </Routes>
+          </AuthProvider>
+        </I18nProvider>
       </MemoryRouter>,
     );
 

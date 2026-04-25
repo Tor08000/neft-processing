@@ -34,16 +34,16 @@ goto wait_pg
 
 :run_tests
 echo [core-stack] Running legal gate tests...
-docker compose -f %COMPOSE_FILE% run --rm core-api pytest -q platform/processing-core/app/tests/test_legal_gate.py
+docker compose -f %COMPOSE_FILE% run --rm core-api pytest -q app/tests/test_legal_gate.py
 if errorlevel 1 exit /b 1
 
 echo [core-stack] Running pricing entitlements tests...
-docker compose -f %COMPOSE_FILE% run --rm core-api pytest -q platform/processing-core/app/tests/test_entitlements_pricing_versions.py
+docker compose -f %COMPOSE_FILE% run --rm core-api pytest -q app/tests/test_entitlements_pricing_versions.py
 if errorlevel 1 exit /b 1
 
 if /I "%1"=="--full" (
     echo [core-stack] Running full processing-core test suite...
-    docker compose -f %COMPOSE_FILE% run --rm core-api pytest -q platform/processing-core/app/tests
+    docker compose -f %COMPOSE_FILE% run --rm core-api pytest -q app/tests
     if errorlevel 1 exit /b 1
 )
 

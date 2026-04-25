@@ -88,6 +88,14 @@ class PartnerFinanceService:
     def get_payout_policy(self, *, partner_org_id: str, currency: str) -> PartnerPayoutPolicy | None:
         return self._get_payout_policy(partner_org_id=partner_org_id, currency=currency)
 
+    @staticmethod
+    def _coerce_utc(value: datetime | None) -> datetime | None:
+        if value is None:
+            return None
+        if value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc)
+
     def _evaluate_payout_policy(
         self,
         *,
@@ -95,6 +103,7 @@ class PartnerFinanceService:
         amount: Decimal,
         currency: str,
         now: datetime,
+        exclude_payout_id: str | None = None,
     ) -> list[str]:
         reasons: list[str] = []
         if amount < Decimal(policy.min_payout_amount or 0):
@@ -111,7 +120,8 @@ class PartnerFinanceService:
                 .order_by(PartnerLedgerEntry.created_at.desc())
                 .first()
             )
-            if last_earned and (now - last_earned.created_at).days < hold_days:
+            last_earned_at = self._coerce_utc(last_earned.created_at) if last_earned else None
+            if last_earned_at and (self._coerce_utc(now) - last_earned_at).days < hold_days:
                 reasons.append("HOLD_ACTIVE")
         schedule_days = {
             PartnerPayoutSchedule.WEEKLY: 7,
@@ -126,10 +136,12 @@ class PartnerFinanceService:
                     PartnerPayoutRequest.partner_org_id == policy.partner_org_id,
                     PartnerPayoutRequest.currency == currency,
                 )
+                .filter(PartnerPayoutRequest.id != exclude_payout_id if exclude_payout_id is not None else True)
                 .order_by(PartnerPayoutRequest.created_at.desc())
                 .first()
             )
-            if last_payout and (now - last_payout.created_at).days < cadence_days:
+            last_payout_at = self._coerce_utc(last_payout.created_at) if last_payout else None
+            if last_payout_at and (self._coerce_utc(now) - last_payout_at).days < cadence_days:
                 reasons.append("SCHEDULE_LOCK")
         return reasons
 
@@ -160,8 +172,15 @@ class PartnerFinanceService:
         amount: Decimal,
         currency: str,
         now: datetime,
+        exclude_payout_id: str | None = None,
     ) -> list[str]:
-        return self._evaluate_payout_policy(policy=policy, amount=amount, currency=currency, now=now)
+        return self._evaluate_payout_policy(
+            policy=policy,
+            amount=amount,
+            currency=currency,
+            now=now,
+            exclude_payout_id=exclude_payout_id,
+        )
 
     def evaluate_payout_blockers(
         self,
@@ -170,11 +189,18 @@ class PartnerFinanceService:
         amount: Decimal,
         currency: str,
         now: datetime,
+        exclude_payout_id: str | None = None,
     ) -> list[str]:
         reasons: list[str] = []
         policy = self._get_payout_policy(partner_org_id=partner_org_id, currency=currency)
         if policy:
-            policy_reasons = self._evaluate_payout_policy(policy=policy, amount=amount, currency=currency, now=now)
+            policy_reasons = self._evaluate_payout_policy(
+                policy=policy,
+                amount=amount,
+                currency=currency,
+                now=now,
+                exclude_payout_id=exclude_payout_id,
+            )
             reasons.extend(
                 [
                     "MIN_THRESHOLD" if reason == "BELOW_THRESHOLD" else reason

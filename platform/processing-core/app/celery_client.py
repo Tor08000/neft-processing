@@ -1,7 +1,9 @@
 # services/core-api/app/celery_client.py
 from __future__ import annotations
 
+import importlib
 import os
+import sys
 from celery import Celery
 from celery.schedules import crontab
 
@@ -147,9 +149,21 @@ celery_client.conf.update(
     },
 )
 
-# Register billing tasks
+def _import_optional_task_module(module_name: str) -> None:
+    if module_name in sys.modules:
+        return
+    try:  # pragma: no cover - optional celery runtime
+        importlib.import_module(module_name)
+    except Exception:
+        pass
+
+
+# Register task modules when Celery boots.
+_import_optional_task_module("app.tasks")
+
 try:  # pragma: no cover - optional celery runtime
-    import app.tasks  # noqa: F401
-    import app.tasks.billing_pdf  # noqa: F401
+    task_package = importlib.import_module("app.tasks")
+    for module_name in getattr(task_package, "OPTIONAL_TASK_MODULES", ()):
+        _import_optional_task_module(module_name)
 except Exception:
     pass

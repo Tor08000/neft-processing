@@ -7,7 +7,7 @@ from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
 from app.db.types import new_uuid_str
-from app.models.marketplace_catalog import MarketplaceProductCard, MarketplaceService
+from app.models.marketplace_catalog import MarketplaceProduct, MarketplaceProductCard, MarketplaceProductType, MarketplaceService
 from app.models.marketplace_offers import (
     MarketplaceOffer,
     MarketplaceOfferEntitlementScope,
@@ -58,10 +58,30 @@ class MarketplaceOffersService:
     def _validate_subject(self, *, partner_id: str, subject_type: MarketplaceOfferSubjectType, subject_id: str) -> None:
         subject_value = subject_type.value if hasattr(subject_type, "value") else subject_type
         if subject_value == MarketplaceOfferSubjectType.PRODUCT.value:
+            product = self.db.query(MarketplaceProduct).filter(MarketplaceProduct.id == subject_id).one_or_none()
+            if (
+                product
+                and str(product.partner_id) == partner_id
+                and (
+                    product.type == MarketplaceProductType.PRODUCT
+                    or getattr(product.type, "value", product.type) == MarketplaceProductType.PRODUCT.value
+                )
+            ):
+                return
             product = self.db.query(MarketplaceProductCard).filter(MarketplaceProductCard.id == subject_id).one_or_none()
             if not product or str(product.partner_id) != partner_id:
                 raise ValueError("product_not_found")
         if subject_value == MarketplaceOfferSubjectType.SERVICE.value:
+            product = self.db.query(MarketplaceProduct).filter(MarketplaceProduct.id == subject_id).one_or_none()
+            if (
+                product
+                and str(product.partner_id) == partner_id
+                and (
+                    product.type == MarketplaceProductType.SERVICE
+                    or getattr(product.type, "value", product.type) == MarketplaceProductType.SERVICE.value
+                )
+            ):
+                return
             service = self.db.query(MarketplaceService).filter(MarketplaceService.id == subject_id).one_or_none()
             if not service or str(service.partner_id) != partner_id:
                 raise ValueError("service_not_found")
@@ -163,6 +183,7 @@ class MarketplaceOffersService:
         self,
         *,
         subject_type: MarketplaceOfferSubjectType | None = None,
+        subject_id: str | None = None,
         query_text: str | None = None,
         geo: str | None = None,
         client_id: str | None = None,
@@ -181,6 +202,8 @@ class MarketplaceOffersService:
         if subject_type:
             subject_value = subject_type.value if hasattr(subject_type, "value") else subject_type
             query = query.filter(MarketplaceOffer.subject_type == subject_value)
+        if subject_id:
+            query = query.filter(MarketplaceOffer.subject_id == subject_id)
         if query_text:
             query = query.filter(MarketplaceOffer.title_override.ilike(f"%{query_text}%"))
         items = query.order_by(MarketplaceOffer.updated_at.desc().nullslast(), MarketplaceOffer.id.desc()).all()
@@ -230,6 +253,14 @@ class MarketplaceOffersService:
             return offer.region_code == geo
         return False
 
+    @staticmethod
+    def _normalize_offer_datetime(value: datetime | None) -> datetime | None:
+        if value is None:
+            return None
+        if value.tzinfo is None or value.tzinfo.utcoffset(value) is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc)
+
     def is_public_offer(
         self,
         offer: MarketplaceOffer,
@@ -242,9 +273,11 @@ class MarketplaceOffersService:
         if status_value != MarketplaceOfferStatus.ACTIVE.value:
             return False
         now = datetime.now(timezone.utc)
-        if offer.valid_from and offer.valid_from > now:
+        valid_from = self._normalize_offer_datetime(offer.valid_from)
+        valid_to = self._normalize_offer_datetime(offer.valid_to)
+        if valid_from and valid_from > now:
             return False
-        if offer.valid_to and offer.valid_to < now:
+        if valid_to and valid_to < now:
             return False
         return self._matches_entitlements(offer, client_id=client_id, subscription_codes=subscription_codes) and self._matches_geo(
             offer, geo=geo

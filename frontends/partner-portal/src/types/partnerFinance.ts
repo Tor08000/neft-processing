@@ -111,33 +111,72 @@ export interface PartnerExportJobListResponse {
   items: PartnerExportJob[];
 }
 
-export interface PayoutTraceOrder {
+export interface PartnerContract {
+  id: string;
+  contract_number: string;
+  contract_type: string;
+  party_role: string;
+  counterparty_type: string;
+  counterparty_id: string;
+  currency: string;
+  status: string;
+  effective_from: string;
+  effective_to?: string | null;
+  created_at: string;
+}
+
+export interface PartnerContractListResponse {
+  items: PartnerContract[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface PartnerSettlementItem {
+  id: string;
+  source_type: string;
+  source_id: string;
+  amount: number;
+  direction: string;
+  created_at: string;
+}
+
+export interface PartnerSettlementSnapshot {
+  id: string;
   order_id: string;
   gross_amount: number;
   platform_fee: number;
   penalties: number;
   partner_net: number;
   currency: string;
-  settlement_snapshot_id?: string | null;
   finalized_at?: string | null;
   hash?: string | null;
-  settlement_breakdown_url?: string | null;
 }
 
-export interface PayoutTraceSummary {
-  gross_total: number;
-  fee_total: number;
-  penalties_total: number;
-  net_total: number;
-}
-
-export interface PartnerPayoutTrace {
-  payout_id: string;
-  payout_state: string;
-  date_from: string;
-  date_to: string;
+export interface PartnerSettlement {
+  id: string;
+  partner_id: string;
+  currency: string;
+  period_start: string;
+  period_end: string;
+  status: string;
+  total_gross: number;
+  total_fees: number;
+  total_refunds: number;
+  net_amount: number;
+  period_hash?: string | null;
+  snapshot_payload?: Record<string, unknown> | null;
   created_at: string;
-  total_amount: number;
-  summary: PayoutTraceSummary;
-  orders: PayoutTraceOrder[];
+  approved_at?: string | null;
+  paid_at?: string | null;
+  marketplace_snapshots_count: number;
+  items?: PartnerSettlementItem[] | null;
+  marketplace_snapshots?: PartnerSettlementSnapshot[] | null;
+}
+
+export interface PartnerSettlementListResponse {
+  items: PartnerSettlement[];
+  total: number;
+  limit: number;
+  offset: number;
 }

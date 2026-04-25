@@ -64,19 +64,22 @@ def _lock_case(db: Session, case_id: str) -> None:
 
 
 def _next_case_event_seq(db: Session, *, case_id: str) -> int:
-    if db.bind and db.bind.dialect.name == "sqlite":
-        next_seq = db.execute(
-            sa.text("SELECT COALESCE(MAX(seq), 0) + 1 AS next_seq FROM case_events WHERE case_id = :case_id"),
-            {"case_id": case_id},
-        ).scalar_one()
-        return int(next_seq)
-    next_seq = db.execute(
-        sa.text(
-            "SELECT COALESCE(MAX(seq), 0) + 1 AS next_seq FROM case_events WHERE case_id = :case_id FOR UPDATE"
-        ),
+    max_seq = db.execute(
+        sa.text("SELECT COALESCE(MAX(seq), 0) AS max_seq FROM case_events WHERE case_id = :case_id"),
         {"case_id": case_id},
     ).scalar_one()
-    return int(next_seq)
+    # Multiple events can be appended for the same case before the transaction flushes.
+    pending_max_seq = max(
+        (
+            int(event.seq)
+            for event in db.new
+            if isinstance(event, CaseEvent)
+            and str(event.case_id) == case_id
+            and event.seq is not None
+        ),
+        default=0,
+    )
+    return max(int(max_seq), pending_max_seq) + 1
 
 
 def _redact_changes(changes: list[CaseEventChange] | None) -> list[dict[str, Any]] | None:
@@ -168,6 +171,18 @@ def emit_case_event(
             .filter(CaseEvent.case_id == case_id, CaseEvent.seq == next_seq - 1)
             .scalar()
         )
+        if prev_hash is None:
+            prev_hash = next(
+                (
+                    event.hash
+                    for event in db.new
+                    if isinstance(event, CaseEvent)
+                    and str(event.case_id) == case_id
+                    and event.seq == next_seq - 1
+                    and event.hash is not None
+                ),
+                None,
+            )
         if prev_hash is None:
             raise ValueError("Missing previous hash for case event chain")
     payload_redacted = _build_payload(

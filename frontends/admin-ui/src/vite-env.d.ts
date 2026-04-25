@@ -4,6 +4,7 @@ interface ImportMetaEnv {
   readonly VITE_API_BASE?: string;
   readonly VITE_API_BASE_URL?: string;
   readonly VITE_ONBOARDING_ENABLED?: string;
+  readonly NEFT_DEMO_LOGIN_ENABLED?: string;
   readonly NEFT_DEMO_ADMIN_EMAIL?: string;
   readonly NEFT_DEMO_ADMIN_PASSWORD?: string;
   readonly BASE_URL?: string;
@@ -13,6 +14,10 @@ interface ImportMetaEnv {
   readonly VITE_AUTH_API_BASE?: string;
   readonly VITE_AI_API_BASE?: string;
   readonly VITE_ADMIN_API_BASE?: string;
+  readonly VITE_ADMIN_DEBUG_AUTH?: string;
+  readonly VITE_ADMIN_DEBUG_COMMERCIAL?: string;
+  readonly VITE_ADMIN_DEBUG_HTTP?: string;
+  readonly VITE_ADMIN_DEBUG_WRITES?: string;
 }
 
 interface ImportMeta {

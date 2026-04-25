@@ -16,5 +16,3 @@ export const extractRequestId = (error: unknown): string | null => {
   const match = message.match(/request_id\"\\s*:\\s*\"([^\"]+)/);
   return match?.[1] ?? null;
 };
-
-export const buildPlaceholderLink = (title: string) => `/ops/drilldown?title=${encodeURIComponent(title)}`;

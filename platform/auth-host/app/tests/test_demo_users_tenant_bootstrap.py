@@ -6,6 +6,7 @@ from uuid import uuid4
 
 import pytest
 
+from app.seeds import demo_users
 from app.seeds.demo_users import DemoUser, ensure_user
 
 
@@ -77,12 +78,12 @@ async def test_ensure_user_resolves_and_uses_default_tenant(monkeypatch: pytest.
     tenant_id = uuid4()
     cursor = _FakeCursor(tenant_id)
 
-    monkeypatch.setattr("app.seeds.demo_users.get_conn", lambda: _FakeContext(cursor))
+    monkeypatch.setattr(demo_users, "get_conn", lambda: _FakeContext(cursor))
 
     user = DemoUser(
-        email="admin@example.com",
+        email="admin@neft.local",
         username="admin",
-        password="change-me",
+        password="Neft123!",
         full_name="Platform Admin",
         roles=["ADMIN"],
     )

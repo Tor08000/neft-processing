@@ -1,5 +1,6 @@
-import { useEffect } from "react";
-import { Navigate, Route, Routes, useLocation } from "react-router-dom";
+import { Suspense, lazy, useEffect } from "react";
+import type { ReactNode } from "react";
+import { Navigate, Route, Routes, useLocation, useSearchParams } from "react-router-dom";
 import { AuthProvider } from "./auth/AuthContext";
 import { ClientProvider } from "./auth/ClientContext";
 import { LegalGateProvider } from "./auth/LegalGateContext";
@@ -11,98 +12,377 @@ import { ModuleGate } from "./components/ModuleGate";
 import { AccessGate } from "./components/AccessGate";
 import { LoginPage } from "./pages/LoginPage";
 import { SignupPage } from "./pages/SignupPage";
-import {
-  ConnectDocumentsPage,
-  ConnectHomePage,
-  ConnectPaymentPage,
-  ConnectPlanPage,
-  ConnectProfilePage,
-  ConnectSignPage,
-  ConnectTypePage,
-} from "./pages/ConnectFlowPage";
+import { OnboardingPage } from "./pages/OnboardingPage";
 import { OnboardingSelfRegistrationPage } from "./pages/OnboardingSelfRegistrationPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
 import { UnauthorizedPage } from "./pages/UnauthorizedPage";
-import { OverviewPage } from "./pages/OverviewPage";
+import { DashboardPage } from "./pages/DashboardPage";
 import { OperationsPage } from "./pages/OperationsPage";
-import { OperationDetailsPage } from "./pages/OperationDetailsPage";
+
 import { ClientCardsPage } from "./pages/ClientCardsPage";
 import { ClientCardDetailsPage } from "./pages/ClientCardDetailsPage";
 import { LimitTemplatesPage } from "./pages/LimitTemplatesPage";
 import { BalancesPage } from "./pages/BalancesPage";
 import { ProfilePage } from "./pages/ProfilePage";
-import { ClientInvoicesPage } from "./pages/ClientInvoicesPage";
-import { ClientInvoiceDetailsPage } from "./pages/ClientInvoiceDetailsPage";
-import { ClientContractsPage } from "./pages/ClientContractsPage";
-import { ClientContractDetailsPage } from "./pages/ClientContractDetailsPage";
-import { FinanceExportsPage } from "./pages/FinanceExportsPage";
-import { FinanceExportDetailsPage } from "./pages/FinanceExportDetailsPage";
+
+
+
+
+
+
 import { ReconciliationRequestsPage } from "./pages/ReconciliationRequestsPage";
-import { ClientDocumentsPage } from "./pages/ClientDocumentsPage";
-import { DocumentsPage } from "./pages/DocumentsPage";
-import { ClientDocumentDetailsPage } from "./pages/ClientDocumentDetailsPage";
-import { ClientDocsListPage } from "./pages/ClientDocsListPage";
-import { ExplainPage } from "./pages/ExplainPage";
+
+
+
+
+
 import { ExplainInsightsPage } from "./pages/ExplainInsightsPage";
 import { ActionsPage } from "./pages/ActionsPage";
 import { useAuth } from "./auth/AuthContext";
 import { useClient } from "./auth/ClientContext";
 import { AppLoadingState } from "./components/states";
-import { SettingsPage } from "./pages/SettingsPage";
-import { ClientControlsPage } from "./pages/ClientControlsPage";
-import { MarketplaceCatalogPage } from "./pages/MarketplaceCatalogPage";
-import { MarketplaceProductDetailsPage } from "./pages/MarketplaceProductDetailsPage";
-import { MarketplaceOrdersPage } from "./pages/MarketplaceOrdersPage";
-import { MarketplaceOrderDetailsPage } from "./pages/MarketplaceOrderDetailsPage";
-import { SupportTicketsPage } from "./pages/SupportTicketsPage";
-import { SupportTicketDetailsPage } from "./pages/SupportTicketDetailsPage";
-import { SupportTicketNewPage } from "./pages/SupportTicketNewPage";
-import { CasesPage } from "./pages/CasesPage";
-import { CaseDetailsPage } from "./pages/CaseDetailsPage";
+import { AppForbiddenState } from "./components/states";
+
+
+
+
+
+
+
+
+
+
+
 import { NotificationsPage } from "./pages/NotificationsPage";
-import { ClientAnalyticsPage } from "./pages/ClientAnalyticsPage";
-import { AnalyticsDayPage } from "./pages/AnalyticsDayPage";
-import { AnalyticsCardPage } from "./pages/AnalyticsCardPage";
-import { AnalyticsDriverPage } from "./pages/AnalyticsDriverPage";
-import { AnalyticsSupportPage } from "./pages/AnalyticsSupportPage";
-import { AnalyticsDashboardPage } from "./pages/AnalyticsDashboardPage";
-import { AnalyticsSpendPage } from "./pages/AnalyticsSpendPage";
-import { AnalyticsDeclinesPage } from "./pages/AnalyticsDeclinesPage";
-import { AnalyticsMarketplacePage } from "./pages/AnalyticsMarketplacePage";
-import { AnalyticsDocumentsPage } from "./pages/AnalyticsDocumentsPage";
-import { AnalyticsExportsPage } from "./pages/AnalyticsExportsPage";
-import { SubscriptionPage } from "./pages/SubscriptionPage";
-import { FleetCardsPage } from "./pages/FleetCardsPage";
-import { FleetCardDetailsPage } from "./pages/FleetCardDetailsPage";
-import { FleetGroupsPage } from "./pages/FleetGroupsPage";
-import { FleetGroupDetailsPage } from "./pages/FleetGroupDetailsPage";
-import { FleetEmployeesPage } from "./pages/FleetEmployeesPage";
-import { FleetSpendPage } from "./pages/FleetSpendPage";
-import { FleetNotificationsPage } from "./pages/FleetNotificationsPage";
-import { FleetNotificationPoliciesPage } from "./pages/FleetNotificationPoliciesPage";
-import { FleetNotificationChannelsPage } from "./pages/FleetNotificationChannelsPage";
-import { FleetPoliciesPage } from "./pages/FleetPoliciesPage";
-import { FleetPolicyExecutionsPage } from "./pages/FleetPolicyExecutionsPage";
-import { FleetPolicyCenterOverviewPage } from "./pages/FleetPolicyCenterOverviewPage";
-import { FleetIncidentsPage } from "./pages/FleetIncidentsPage";
-import { FleetIncidentDetailsPage } from "./pages/FleetIncidentDetailsPage";
-import { FleetPage } from "./pages/logistics/FleetPage";
-import { TripDetailsPage } from "./pages/logistics/TripDetailsPage";
-import { TripsPage } from "./pages/logistics/TripsPage";
-import { FuelControlPage } from "./pages/logistics/FuelControlPage";
-import { StationsMapPage } from "./pages/stations/StationsMapPage";
-import { AuditPage } from "./pages/AuditPage";
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 import { isPwaMode } from "./pwa/mode";
 import { LegalPage } from "./pages/LegalPage";
-import { ReportsPage } from "./pages/ReportsPage";
-import { ExportsPage } from "./pages/ExportsPage";
+
+
 import { ServiceSloPage } from "./pages/ServiceSloPage";
 import { BillingOverduePage } from "./pages/BillingOverduePage";
 import { ServiceUnavailablePage } from "./pages/ServiceUnavailablePage";
 import { TechErrorPage } from "./pages/TechErrorPage";
 import { API_BASE_URL } from "./api/base";
 import { ONBOARDING_CONTRACT_ROUTE, ONBOARDING_PLAN_ROUTE, ONBOARDING_ROUTE } from "./lib/onboardingRoute";
+import { resolveClientWorkspace } from "./access/clientWorkspace";
 
+const LazyOperationDetailsPage = lazy(() =>
+  import("./pages/OperationDetailsPage").then((module) => ({
+    default: module.OperationDetailsPage,
+  })),
+);
+const LazyClientContractDetailsPage = lazy(() =>
+  import("./pages/ClientContractDetailsPage").then((module) => ({
+    default: module.ClientContractDetailsPage,
+  })),
+);
+const LazyDocumentsPage = lazy(() =>
+  import("./pages/DocumentsPage").then((module) => ({
+    default: module.DocumentsPage,
+  })),
+);
+const LazyClientDocsListPage = lazy(() =>
+  import("./pages/ClientDocsListPage").then((module) => ({
+    default: module.ClientDocsListPage,
+  })),
+);
+const LazySettingsPage = lazy(() =>
+  import("./pages/SettingsPage").then((module) => ({
+    default: module.SettingsPage,
+  })),
+);
+const LazyClientControlsPage = lazy(() =>
+  import("./pages/ClientControlsPage").then((module) => ({
+    default: module.ClientControlsPage,
+  })),
+);
+const LazySupportTicketDetailsPage = lazy(() =>
+  import("./pages/SupportTicketDetailsPage").then((module) => ({
+    default: module.SupportTicketDetailsPage,
+  })),
+);
+const LazySupportTicketNewPage = lazy(() =>
+  import("./pages/SupportTicketNewPage").then((module) => ({
+    default: module.SupportTicketNewPage,
+  })),
+);
+const LazyCaseDetailsPage = lazy(() =>
+  import("./pages/CaseDetailsPage").then((module) => ({
+    default: module.CaseDetailsPage,
+  })),
+);
+const LazyClientInvoicesPage = lazy(() =>
+  import("./pages/ClientInvoicesPage").then((module) => ({
+    default: module.ClientInvoicesPage,
+  })),
+);
+const LazyClientInvoiceDetailsPage = lazy(() =>
+  import("./pages/ClientInvoiceDetailsPage").then((module) => ({
+    default: module.ClientInvoiceDetailsPage,
+  })),
+);
+const LazyClientContractsPage = lazy(() =>
+  import("./pages/ClientContractsPage").then((module) => ({
+    default: module.ClientContractsPage,
+  })),
+);
+const LazyFinanceExportsPage = lazy(() =>
+  import("./pages/FinanceExportsPage").then((module) => ({
+    default: module.FinanceExportsPage,
+  })),
+);
+const LazyFinanceExportDetailsPage = lazy(() =>
+  import("./pages/FinanceExportDetailsPage").then((module) => ({
+    default: module.FinanceExportDetailsPage,
+  })),
+);
+const LazyClientDocumentsPage = lazy(() =>
+  import("./pages/ClientDocumentsPage").then((module) => ({
+    default: module.ClientDocumentsPage,
+  })),
+);
+const LazyClientDocumentDetailsPage = lazy(() =>
+  import("./pages/ClientDocumentDetailsPage").then((module) => ({
+    default: module.ClientDocumentDetailsPage,
+  })),
+);
+const LazyExplainPage = lazy(() =>
+  import("./pages/ExplainPage").then((module) => ({
+    default: module.ExplainPage,
+  })),
+);
+const LazyMarketplaceCatalogPage = lazy(() =>
+  import("./pages/MarketplaceCatalogPage").then((module) => ({
+    default: module.MarketplaceCatalogPage,
+  })),
+);
+const LazySupportTicketsPage = lazy(() =>
+  import("./pages/SupportTicketsPage").then((module) => ({
+    default: module.SupportTicketsPage,
+  })),
+);
+const LazyCasesPage = lazy(() =>
+  import("./pages/CasesPage").then((module) => ({
+    default: module.CasesPage,
+  })),
+);
+const LazySubscriptionPage = lazy(() =>
+  import("./pages/SubscriptionPage").then((module) => ({
+    default: module.SubscriptionPage,
+  })),
+);
+const LazyMarketplaceProductDetailsPage = lazy(() =>
+  import("./pages/MarketplaceProductDetailsPage").then((module) => ({
+    default: module.MarketplaceProductDetailsPage,
+  })),
+);
+const LazyMarketplaceOrdersPage = lazy(() =>
+  import("./pages/MarketplaceOrdersPage").then((module) => ({
+    default: module.MarketplaceOrdersPage,
+  })),
+);
+const LazyMarketplaceOrderDetailsPage = lazy(() =>
+  import("./pages/MarketplaceOrderDetailsPage").then((module) => ({
+    default: module.MarketplaceOrderDetailsPage,
+  })),
+);
+const LazyClientAnalyticsPage = lazy(() =>
+  import("./pages/ClientAnalyticsPage").then((module) => ({
+    default: module.ClientAnalyticsPage,
+  })),
+);
+const LazyAnalyticsDayPage = lazy(() =>
+  import("./pages/AnalyticsDayPage").then((module) => ({
+    default: module.AnalyticsDayPage,
+  })),
+);
+const LazyAnalyticsCardPage = lazy(() =>
+  import("./pages/AnalyticsCardPage").then((module) => ({
+    default: module.AnalyticsCardPage,
+  })),
+);
+const LazyAnalyticsDriverPage = lazy(() =>
+  import("./pages/AnalyticsDriverPage").then((module) => ({
+    default: module.AnalyticsDriverPage,
+  })),
+);
+const LazyAnalyticsSupportPage = lazy(() =>
+  import("./pages/AnalyticsSupportPage").then((module) => ({
+    default: module.AnalyticsSupportPage,
+  })),
+);
+const LazyAnalyticsDashboardPage = lazy(() =>
+  import("./pages/AnalyticsDashboardPage").then((module) => ({
+    default: module.AnalyticsDashboardPage,
+  })),
+);
+const LazyAnalyticsSpendPage = lazy(() =>
+  import("./pages/AnalyticsSpendPage").then((module) => ({
+    default: module.AnalyticsSpendPage,
+  })),
+);
+const LazyAnalyticsDeclinesPage = lazy(() =>
+  import("./pages/AnalyticsDeclinesPage").then((module) => ({
+    default: module.AnalyticsDeclinesPage,
+  })),
+);
+const LazyAnalyticsMarketplacePage = lazy(() =>
+  import("./pages/AnalyticsMarketplacePage").then((module) => ({
+    default: module.AnalyticsMarketplacePage,
+  })),
+);
+const LazyAnalyticsDocumentsPage = lazy(() =>
+  import("./pages/AnalyticsDocumentsPage").then((module) => ({
+    default: module.AnalyticsDocumentsPage,
+  })),
+);
+const LazyAnalyticsExportsPage = lazy(() =>
+  import("./pages/AnalyticsExportsPage").then((module) => ({
+    default: module.AnalyticsExportsPage,
+  })),
+);
+const LazyFleetCardsPage = lazy(() =>
+  import("./pages/FleetCardsPage").then((module) => ({
+    default: module.FleetCardsPage,
+  })),
+);
+const LazyFleetCardDetailsPage = lazy(() =>
+  import("./pages/FleetCardDetailsPage").then((module) => ({
+    default: module.FleetCardDetailsPage,
+  })),
+);
+const LazyFleetGroupsPage = lazy(() =>
+  import("./pages/FleetGroupsPage").then((module) => ({
+    default: module.FleetGroupsPage,
+  })),
+);
+const LazyFleetGroupDetailsPage = lazy(() =>
+  import("./pages/FleetGroupDetailsPage").then((module) => ({
+    default: module.FleetGroupDetailsPage,
+  })),
+);
+const LazyFleetEmployeesPage = lazy(() =>
+  import("./pages/FleetEmployeesPage").then((module) => ({
+    default: module.FleetEmployeesPage,
+  })),
+);
+const LazyFleetSpendPage = lazy(() =>
+  import("./pages/FleetSpendPage").then((module) => ({
+    default: module.FleetSpendPage,
+  })),
+);
+const LazyFleetNotificationsPage = lazy(() =>
+  import("./pages/FleetNotificationsPage").then((module) => ({
+    default: module.FleetNotificationsPage,
+  })),
+);
+const LazyFleetNotificationPoliciesPage = lazy(() =>
+  import("./pages/FleetNotificationPoliciesPage").then((module) => ({
+    default: module.FleetNotificationPoliciesPage,
+  })),
+);
+const LazyFleetNotificationChannelsPage = lazy(() =>
+  import("./pages/FleetNotificationChannelsPage").then((module) => ({
+    default: module.FleetNotificationChannelsPage,
+  })),
+);
+const LazyFleetPoliciesPage = lazy(() =>
+  import("./pages/FleetPoliciesPage").then((module) => ({
+    default: module.FleetPoliciesPage,
+  })),
+);
+const LazyFleetPolicyExecutionsPage = lazy(() =>
+  import("./pages/FleetPolicyExecutionsPage").then((module) => ({
+    default: module.FleetPolicyExecutionsPage,
+  })),
+);
+const LazyFleetPolicyCenterOverviewPage = lazy(() =>
+  import("./pages/FleetPolicyCenterOverviewPage").then((module) => ({
+    default: module.FleetPolicyCenterOverviewPage,
+  })),
+);
+const LazyFleetIncidentsPage = lazy(() =>
+  import("./pages/FleetIncidentsPage").then((module) => ({
+    default: module.FleetIncidentsPage,
+  })),
+);
+const LazyFleetIncidentDetailsPage = lazy(() =>
+  import("./pages/FleetIncidentDetailsPage").then((module) => ({
+    default: module.FleetIncidentDetailsPage,
+  })),
+);
+const LazyFleetPage = lazy(() =>
+  import("./pages/logistics/FleetPage").then((module) => ({
+    default: module.FleetPage,
+  })),
+);
+const LazyTripDetailsPage = lazy(() =>
+  import("./pages/logistics/TripDetailsPage").then((module) => ({
+    default: module.TripDetailsPage,
+  })),
+);
+const LazyTripsPage = lazy(() =>
+  import("./pages/logistics/TripsPage").then((module) => ({
+    default: module.TripsPage,
+  })),
+);
+const LazyFuelControlPage = lazy(() =>
+  import("./pages/logistics/FuelControlPage").then((module) => ({
+    default: module.FuelControlPage,
+  })),
+);
+const LazyStationsMapPage = lazy(() =>
+  import("./pages/stations/StationsMapPage").then((module) => ({
+    default: module.StationsMapPage,
+  })),
+);
+const LazyAuditPage = lazy(() =>
+  import("./pages/AuditPage").then((module) => ({
+    default: module.AuditPage,
+  })),
+);
+const LazyReportsPage = lazy(() =>
+  import("./pages/ReportsPage").then((module) => ({
+    default: module.ReportsPage,
+  })),
+);
+const LazyExportsPage = lazy(() =>
+  import("./pages/ExportsPage").then((module) => ({
+    default: module.ExportsPage,
+  })),
+);
 interface AppProps {
   initialSession?: AuthSession | null;
 }
@@ -132,6 +412,18 @@ export function resolveLogicalRoute(pathname: string): string {
   return "other";
 }
 
+const AUTH_ENTRY_PATHS = ["/login", "/register", "/client/login", "/client/signup", "/client/register", "/unauthorized"];
+
+export function resolveSafeClientReturnUrl(rawReturnUrl: string | null, fallbackRoute: string): string {
+  if (!rawReturnUrl || !rawReturnUrl.startsWith("/") || rawReturnUrl.startsWith("//")) {
+    return fallbackRoute;
+  }
+  if (AUTH_ENTRY_PATHS.some((path) => rawReturnUrl === path || rawReturnUrl.startsWith(`${path}?`))) {
+    return fallbackRoute;
+  }
+  return rawReturnUrl;
+}
+
 function IndexRedirect() {
   const { user, authStatus } = useAuth();
   const { nextRoute } = useClientJourney();
@@ -145,8 +437,8 @@ function IndexRedirect() {
   }
 
   return (
-    <AccessGate title="Дашборд" capability="CLIENT_DASHBOARD">
-      <OverviewPage />
+    <AccessGate title="Дашборд" capability="CLIENT_DASHBOARD" allowDemoBypass={false}>
+      <DashboardPage />
     </AccessGate>
   );
 }
@@ -155,13 +447,15 @@ function IndexRedirect() {
 function LoginEntryRoute() {
   const { user, authStatus } = useAuth();
   const { nextRoute } = useClientJourney();
+  const [searchParams] = useSearchParams();
+  const returnUrl = resolveSafeClientReturnUrl(searchParams.get("returnUrl"), nextRoute);
 
   if (authStatus === "loading") {
     return <AppLoadingState label="Проверяем сессию..." />;
   }
 
   if (authStatus === "authenticated" && user) {
-    return <Navigate to={nextRoute} replace />;
+    return <Navigate to={returnUrl} replace />;
   }
 
   return <LoginPage />;
@@ -173,6 +467,12 @@ function PwaIndexRedirect() {
     return <Navigate to="/marketplace/orders" replace />;
   }
   return <Navigate to="/login" replace />;
+}
+
+function CompatRedirect({ to }: { to: string }) {
+  const location = useLocation();
+  const target = `${to}${location.search}`;
+  return <Navigate to={target} replace />;
 }
 
 
@@ -191,7 +491,7 @@ function DevRuntimeDiagnostics() {
   const location = useLocation();
 
   useEffect(() => {
-    if (!import.meta.env.DEV) {
+    if (!import.meta.env.DEV || import.meta.env.VITE_CLIENT_DEBUG_DIAGNOSTICS !== "true") {
       return;
     }
     console.log("API_BASE", API_BASE_URL);
@@ -205,6 +505,41 @@ function DevRuntimeDiagnostics() {
   return null;
 }
 
+function RouteSuspense({ children }: { children: ReactNode }) {
+  return <Suspense fallback={<AppLoadingState label="Загружаем страницу..." />}>{children}</Suspense>;
+}
+
+type ClientWorkspaceRouteProps = {
+  children: ReactNode;
+  title: string;
+  workspace: "finance" | "team";
+  capability?: string;
+  module?: string;
+};
+
+function ClientWorkspaceRoute({ children, title, workspace, capability, module }: ClientWorkspaceRouteProps) {
+  const { client, isLoading, portalState } = useClient();
+  const resolvedWorkspace = resolveClientWorkspace({ client });
+
+  if (portalState === "LOADING" || isLoading) {
+    return <AppLoadingState label="Проверяем доступ..." />;
+  }
+
+  const isAllowed =
+    workspace === "finance" ? resolvedWorkspace.hasFinanceWorkspace : resolvedWorkspace.hasTeamWorkspace;
+
+  const message =
+    workspace === "finance"
+      ? "Финансовый контур доступен только бизнес-клиентам."
+      : "Управление командой доступно только бизнес-клиентам с соответствующей ролью.";
+
+  return (
+    <AccessGate title={title} capability={capability} module={module}>
+      {isAllowed ? children : <AppForbiddenState message={message} />}
+    </AccessGate>
+  );
+}
+
 export function App({ initialSession = null }: AppProps) {
   return (
     <AuthProvider initialSession={initialSession}>
@@ -216,9 +551,9 @@ export function App({ initialSession = null }: AppProps) {
           <Routes>
             <Route path="/login" element={<LoginEntryRoute />} />
             <Route path="/register" element={<SignupPage />} />
-            <Route path="/client/login" element={<Navigate to="/login" replace />} />
-            <Route path="/client/signup" element={<Navigate to="/register" replace />} />
-            <Route path="/client/register" element={<Navigate to="/register" replace />} />
+            <Route path="/client/login" element={<CompatRedirect to="/login" />} />
+            <Route path="/client/signup" element={<CompatRedirect to="/register" />} />
+            <Route path="/client/register" element={<CompatRedirect to="/register" />} />
             <Route path="/unauthorized" element={<UnauthorizedPage />} />
             <Route path="/client/onboarding/start" element={<Navigate to="/onboarding/start" replace />} />
             <Route path="/onboarding/start" element={<OnboardingSelfRegistrationPage mode="start" />} />
@@ -226,46 +561,47 @@ export function App({ initialSession = null }: AppProps) {
             <Route path="/onboarding/form" element={<OnboardingSelfRegistrationPage mode="form" />} />
             <Route path="/client/onboarding/status" element={<Navigate to="/onboarding/status" replace />} />
             <Route path="/onboarding/status" element={<OnboardingSelfRegistrationPage mode="status" />} />
-            <Route element={<ProtectedRoute />}>
+              <Route element={<ProtectedRoute />}>
               <Route path="/client/dashboard" element={<Navigate to="/dashboard" replace />} />
-              <Route path="/client/connect" element={<Navigate to="/connect" replace />} />
-              <Route path="/client/onboarding" element={<Navigate to="/connect" replace />} />
-              <Route path="/client/onboarding/plan" element={<Navigate to="/connect/plan" replace />} />
-              <Route path="/client/onboarding/contract" element={<Navigate to="/connect/sign" replace />} />
-              <Route path="/client/client/onboarding" element={<Navigate to="/connect" replace />} />
-              <Route path="/client/client/onboarding/plan" element={<Navigate to="/connect/plan" replace />} />
-              <Route path="/client/client/onboarding/contract" element={<Navigate to="/connect/sign" replace />} />
+              <Route path="/client/connect" element={<Navigate to={ONBOARDING_ROUTE} replace />} />
+              <Route path="/client/onboarding" element={<Navigate to={ONBOARDING_ROUTE} replace />} />
+              <Route path="/client/onboarding/plan" element={<Navigate to={ONBOARDING_PLAN_ROUTE} replace />} />
+              <Route path="/client/onboarding/contract" element={<Navigate to={ONBOARDING_CONTRACT_ROUTE} replace />} />
+              <Route path="/client/client/onboarding" element={<Navigate to={ONBOARDING_ROUTE} replace />} />
+              <Route path="/client/client/onboarding/plan" element={<Navigate to={ONBOARDING_PLAN_ROUTE} replace />} />
+              <Route path="/client/client/onboarding/contract" element={<Navigate to={ONBOARDING_CONTRACT_ROUTE} replace />} />
               <Route path="/client/billing/overdue" element={<Navigate to="/billing/overdue" replace />} />
               <Route path="/client/service-unavailable" element={<ServiceUnavailablePage />} />
               <Route path="/client/tech-error" element={<TechErrorPage />} />
-              <Route path={ONBOARDING_ROUTE} element={<Navigate to="/connect" replace />} />
-              <Route path={ONBOARDING_PLAN_ROUTE} element={<Navigate to="/connect/plan" replace />} />
-              <Route path={ONBOARDING_CONTRACT_ROUTE} element={<Navigate to="/connect/sign" replace />} />
               <Route element={<ClientLayout pwaMode={isPwaMode} />}>
               {isPwaMode ? (
                 <>
                   <Route index element={<PwaIndexRedirect />} />
-                  <Route path="/marketplace/orders" element={<MarketplaceOrdersPage />} />
-                  <Route path="/marketplace/orders/:orderId" element={<MarketplaceOrderDetailsPage />} />
-                  <Route path="/documents" element={<ClientDocumentsPage />} />
-                  <Route path="/documents/:id" element={<ClientDocumentDetailsPage />} />
+                  <Route path="/marketplace/orders" element={<RouteSuspense><LazyMarketplaceOrdersPage /></RouteSuspense>} />
+                  <Route path="/marketplace/orders/:orderId" element={<RouteSuspense><LazyMarketplaceOrderDetailsPage /></RouteSuspense>} />
+                  {/* Legacy closing-docs compatibility routes. /client/documents* is the canonical general docflow; /documents/:id remains the final legacy compatibility tail for closing-doc detail/file/history UX. */}
+                  <Route path="/documents" element={<RouteSuspense><LazyClientDocumentsPage /></RouteSuspense>} />
+                  <Route path="/documents/:id" element={<RouteSuspense><LazyClientDocumentDetailsPage mode="legacy" /></RouteSuspense>} />
                   <Route path="/legal" element={<LegalPage />} />
                 </>
               ) : (
                 <>
                   <Route index element={<IndexRedirect />} />
-                  <Route path="/connect" element={<ConnectHomePage />} />
-                  <Route path="/connect/plan" element={<ConnectPlanPage />} />
-                  <Route path="/connect/type" element={<ConnectTypePage />} />
-                  <Route path="/connect/profile" element={<ConnectProfilePage />} />
-                  <Route path="/connect/documents" element={<ConnectDocumentsPage />} />
-                  <Route path="/connect/sign" element={<ConnectSignPage />} />
-                  <Route path="/connect/payment" element={<ConnectPaymentPage />} />
+                  <Route path={ONBOARDING_ROUTE} element={<OnboardingPage />} />
+                  <Route path={ONBOARDING_PLAN_ROUTE} element={<OnboardingPage />} />
+                  <Route path={ONBOARDING_CONTRACT_ROUTE} element={<OnboardingPage />} />
+                  <Route path="/connect" element={<Navigate to={ONBOARDING_ROUTE} replace />} />
+                  <Route path="/connect/plan" element={<Navigate to={ONBOARDING_PLAN_ROUTE} replace />} />
+                  <Route path="/connect/type" element={<Navigate to={ONBOARDING_ROUTE} replace />} />
+                  <Route path="/connect/profile" element={<Navigate to={ONBOARDING_ROUTE} replace />} />
+                  <Route path="/connect/documents" element={<Navigate to={ONBOARDING_CONTRACT_ROUTE} replace />} />
+                  <Route path="/connect/sign" element={<Navigate to={ONBOARDING_CONTRACT_ROUTE} replace />} />
+                  <Route path="/connect/payment" element={<Navigate to={ONBOARDING_CONTRACT_ROUTE} replace />} />
                   <Route
                     path="/dashboard"
                     element={
-                      <AccessGate title="Дашборд" capability="CLIENT_DASHBOARD">
-                        <OverviewPage />
+                      <AccessGate title="Дашборд" capability="CLIENT_DASHBOARD" allowDemoBypass={false}>
+                        <DashboardPage />
                       </AccessGate>
                     }
                   />
@@ -273,7 +609,7 @@ export function App({ initialSession = null }: AppProps) {
                     path="/vehicles"
                     element={
                       <ModuleGate module="FLEET" capability="CLIENT_CORE" title="Флот">
-                        <FleetGroupsPage />
+                        <RouteSuspense><LazyFleetGroupsPage /></RouteSuspense>
                       </ModuleGate>
                     }
                   />
@@ -281,7 +617,7 @@ export function App({ initialSession = null }: AppProps) {
                     path="/vehicles/:id"
                     element={
                       <ModuleGate module="FLEET" capability="CLIENT_CORE" title="Флот">
-                        <FleetGroupDetailsPage />
+                        <RouteSuspense><LazyFleetGroupDetailsPage /></RouteSuspense>
                       </ModuleGate>
                     }
                   />
@@ -301,7 +637,7 @@ export function App({ initialSession = null }: AppProps) {
                     path="/orders"
                     element={
                       <ModuleGate module="MARKETPLACE" capability="MARKETPLACE" title="Маркетплейс">
-                        <MarketplaceOrdersPage />
+                        <RouteSuspense><LazyMarketplaceOrdersPage /></RouteSuspense>
                       </ModuleGate>
                     }
                   />
@@ -309,32 +645,32 @@ export function App({ initialSession = null }: AppProps) {
                     path="/orders/:orderId"
                     element={
                       <ModuleGate module="MARKETPLACE" capability="MARKETPLACE" title="Маркетплейс">
-                        <MarketplaceOrderDetailsPage />
+                        <RouteSuspense><LazyMarketplaceOrderDetailsPage /></RouteSuspense>
                       </ModuleGate>
                     }
                   />
                 <Route
                   path="/billing"
                   element={
-                    <ModuleGate module="DOCS" capability="CLIENT_BILLING" title="Биллинг">
-                      <ClientInvoicesPage />
-                    </ModuleGate>
+                    <ClientWorkspaceRoute workspace="finance" module="DOCS" capability="CLIENT_BILLING" title="Биллинг">
+                      <RouteSuspense><LazyClientInvoicesPage /></RouteSuspense>
+                    </ClientWorkspaceRoute>
                   }
                 />
                 <Route path="/billing/overdue" element={<BillingOverduePage />} />
                   <Route
                     path="/billing/:id"
                     element={
-                      <ModuleGate module="DOCS" capability="CLIENT_BILLING" title="Биллинг">
-                        <ClientInvoiceDetailsPage />
-                      </ModuleGate>
+                      <ClientWorkspaceRoute workspace="finance" module="DOCS" capability="CLIENT_BILLING" title="Биллинг">
+                        <RouteSuspense><LazyClientInvoiceDetailsPage /></RouteSuspense>
+                      </ClientWorkspaceRoute>
                     }
                   />
                   <Route
                     path="/client/support"
                     element={
                       <AccessGate title="Поддержка">
-                        <SupportTicketsPage />
+                        <RouteSuspense><LazySupportTicketsPage /></RouteSuspense>
                       </AccessGate>
                     }
                   />
@@ -342,7 +678,7 @@ export function App({ initialSession = null }: AppProps) {
                     path="/client/support/new"
                     element={
                       <AccessGate title="Поддержка">
-                        <SupportTicketNewPage />
+                        <RouteSuspense><LazySupportTicketNewPage /></RouteSuspense>
                       </AccessGate>
                     }
                   />
@@ -350,7 +686,7 @@ export function App({ initialSession = null }: AppProps) {
                     path="/client/support/:id"
                     element={
                       <AccessGate title="Поддержка">
-                        <SupportTicketDetailsPage />
+                        <RouteSuspense><LazySupportTicketDetailsPage /></RouteSuspense>
                       </AccessGate>
                     }
                   />
@@ -359,7 +695,7 @@ export function App({ initialSession = null }: AppProps) {
                   path="/client/analytics"
                   element={
                     <ModuleGate module="ANALYTICS" capability="CLIENT_ANALYTICS" title="Аналитика">
-                      <ClientAnalyticsPage />
+                      <RouteSuspense><LazyClientAnalyticsPage /></RouteSuspense>
                     </ModuleGate>
                   }
                 />
@@ -367,7 +703,7 @@ export function App({ initialSession = null }: AppProps) {
                   path="/client/analytics/day"
                   element={
                     <ModuleGate module="ANALYTICS" capability="CLIENT_ANALYTICS" title="Аналитика">
-                      <AnalyticsDayPage />
+                      <RouteSuspense><LazyAnalyticsDayPage /></RouteSuspense>
                     </ModuleGate>
                   }
                 />
@@ -375,7 +711,7 @@ export function App({ initialSession = null }: AppProps) {
                   path="/client/analytics/card/:cardId"
                   element={
                     <ModuleGate module="ANALYTICS" capability="CLIENT_ANALYTICS" title="Аналитика">
-                      <AnalyticsCardPage />
+                      <RouteSuspense><LazyAnalyticsCardPage /></RouteSuspense>
                     </ModuleGate>
                   }
                 />
@@ -383,7 +719,7 @@ export function App({ initialSession = null }: AppProps) {
                   path="/client/analytics/driver/:userId"
                   element={
                     <ModuleGate module="ANALYTICS" capability="CLIENT_ANALYTICS" title="Аналитика">
-                      <AnalyticsDriverPage />
+                      <RouteSuspense><LazyAnalyticsDriverPage /></RouteSuspense>
                     </ModuleGate>
                   }
                 />
@@ -391,17 +727,17 @@ export function App({ initialSession = null }: AppProps) {
                   path="/client/analytics/support"
                   element={
                     <ModuleGate module="ANALYTICS" capability="CLIENT_ANALYTICS" title="Аналитика">
-                      <AnalyticsSupportPage />
+                      <RouteSuspense><LazyAnalyticsSupportPage /></RouteSuspense>
                     </ModuleGate>
                   }
                 />
                 <Route path="/support" element={<Navigate to="/client/support" replace />} />
-                <Route path="/support/:id" element={<SupportTicketDetailsPage />} />
+                <Route path="/support/:id" element={<RouteSuspense><LazySupportTicketDetailsPage /></RouteSuspense>} />
                 <Route
                   path="/analytics"
                   element={
                     <ModuleGate module="ANALYTICS" capability="CLIENT_ANALYTICS" title="Аналитика">
-                      <AnalyticsDashboardPage />
+                      <RouteSuspense><LazyAnalyticsDashboardPage /></RouteSuspense>
                     </ModuleGate>
                   }
                 />
@@ -409,7 +745,7 @@ export function App({ initialSession = null }: AppProps) {
                   path="/analytics/spend"
                   element={
                     <ModuleGate module="ANALYTICS" capability="CLIENT_ANALYTICS" title="Аналитика">
-                      <AnalyticsSpendPage />
+                      <RouteSuspense><LazyAnalyticsSpendPage /></RouteSuspense>
                     </ModuleGate>
                   }
                 />
@@ -417,7 +753,7 @@ export function App({ initialSession = null }: AppProps) {
                   path="/analytics/declines"
                   element={
                     <ModuleGate module="ANALYTICS" capability="CLIENT_ANALYTICS" title="Аналитика">
-                      <AnalyticsDeclinesPage />
+                      <RouteSuspense><LazyAnalyticsDeclinesPage /></RouteSuspense>
                     </ModuleGate>
                   }
                 />
@@ -425,7 +761,7 @@ export function App({ initialSession = null }: AppProps) {
                   path="/analytics/marketplace"
                   element={
                     <ModuleGate module="ANALYTICS" capability="CLIENT_ANALYTICS" title="Аналитика">
-                      <AnalyticsMarketplacePage />
+                      <RouteSuspense><LazyAnalyticsMarketplacePage /></RouteSuspense>
                     </ModuleGate>
                   }
                 />
@@ -433,7 +769,7 @@ export function App({ initialSession = null }: AppProps) {
                   path="/analytics/documents"
                   element={
                     <ModuleGate module="ANALYTICS" capability="CLIENT_ANALYTICS" title="Аналитика">
-                      <AnalyticsDocumentsPage />
+                      <RouteSuspense><LazyAnalyticsDocumentsPage /></RouteSuspense>
                     </ModuleGate>
                   }
                 />
@@ -441,34 +777,85 @@ export function App({ initialSession = null }: AppProps) {
                   path="/analytics/exports"
                   element={
                     <ModuleGate module="ANALYTICS" capability="CLIENT_ANALYTICS" title="Аналитика">
-                      <AnalyticsExportsPage />
+                      <RouteSuspense><LazyAnalyticsExportsPage /></RouteSuspense>
                     </ModuleGate>
                   }
                 />
                 <Route path="/spend/transactions" element={<OperationsPage />} />
-                <Route path="/explain" element={<ExplainPage />} />
+                <Route path="/explain" element={<RouteSuspense><LazyExplainPage /></RouteSuspense>} />
                 <Route path="/explain/insights" element={<ExplainInsightsPage />} />
-                <Route path="/explain/:id" element={<ExplainPage />} />
-                <Route path="/documents" element={<ClientDocumentsPage />} />
-                <Route path="/documents/:id" element={<ClientDocumentDetailsPage />} />
-                <Route path="/exports" element={<FinanceExportsPage />} />
-                <Route path="/exports/:id" element={<FinanceExportDetailsPage />} />
+                <Route path="/explain/:id" element={<RouteSuspense><LazyExplainPage /></RouteSuspense>} />
+                {/* Legacy closing-docs compatibility routes. /client/documents* is the canonical general docflow; /documents/:id remains the final legacy compatibility tail for closing-doc detail/file/history UX. */}
+                <Route path="/documents" element={<RouteSuspense><LazyClientDocumentsPage /></RouteSuspense>} />
+                <Route path="/documents/:id" element={<RouteSuspense><LazyClientDocumentDetailsPage mode="legacy" /></RouteSuspense>} />
+                <Route
+                  path="/exports"
+                  element={
+                    <ClientWorkspaceRoute workspace="finance" title="Экспорты">
+                      <RouteSuspense><LazyFinanceExportsPage /></RouteSuspense>
+                    </ClientWorkspaceRoute>
+                  }
+                />
+                <Route
+                  path="/exports/:id"
+                  element={
+                    <ClientWorkspaceRoute workspace="finance" title="Экспорты">
+                      <RouteSuspense><LazyFinanceExportDetailsPage /></RouteSuspense>
+                    </ClientWorkspaceRoute>
+                  }
+                />
                 <Route path="/actions" element={<ActionsPage />} />
-                <Route path="/invoices" element={<ClientInvoicesPage />} />
-                <Route path="/invoices/:id" element={<ClientInvoiceDetailsPage />} />
-                <Route path="/contracts" element={<ClientContractsPage />} />
-                <Route path="/contracts/:id" element={<ClientContractDetailsPage />} />
-                <Route path="/finance/invoices" element={<ClientInvoicesPage />} />
-                <Route path="/finance/invoices/:id" element={<ClientInvoiceDetailsPage />} />
-                <Route path="/finance/invoices/:id/messages" element={<ClientInvoiceDetailsPage />} />
+                <Route
+                  path="/invoices"
+                  element={
+                    <ClientWorkspaceRoute workspace="finance" module="DOCS" capability="CLIENT_BILLING" title="Финансы">
+                      <RouteSuspense><LazyClientInvoicesPage /></RouteSuspense>
+                    </ClientWorkspaceRoute>
+                  }
+                />
+                <Route
+                  path="/invoices/:id"
+                  element={
+                    <ClientWorkspaceRoute workspace="finance" module="DOCS" capability="CLIENT_BILLING" title="Финансы">
+                      <RouteSuspense><LazyClientInvoiceDetailsPage /></RouteSuspense>
+                    </ClientWorkspaceRoute>
+                  }
+                />
+                <Route path="/contracts" element={<RouteSuspense><LazyClientContractsPage /></RouteSuspense>} />
+                <Route path="/contracts/:id" element={<RouteSuspense><LazyClientContractDetailsPage /></RouteSuspense>} />
+                <Route
+                  path="/finance/invoices"
+                  element={
+                    <ClientWorkspaceRoute workspace="finance" module="DOCS" capability="CLIENT_BILLING" title="Финансы">
+                      <RouteSuspense><LazyClientInvoicesPage /></RouteSuspense>
+                    </ClientWorkspaceRoute>
+                  }
+                />
+                <Route
+                  path="/finance/invoices/:id"
+                  element={
+                    <ClientWorkspaceRoute workspace="finance" module="DOCS" capability="CLIENT_BILLING" title="Финансы">
+                      <RouteSuspense><LazyClientInvoiceDetailsPage /></RouteSuspense>
+                    </ClientWorkspaceRoute>
+                  }
+                />
+                <Route
+                  path="/finance/invoices/:id/messages"
+                  element={
+                    <ClientWorkspaceRoute workspace="finance" module="DOCS" capability="CLIENT_BILLING" title="Финансы">
+                      <RouteSuspense><LazyClientInvoiceDetailsPage /></RouteSuspense>
+                    </ClientWorkspaceRoute>
+                  }
+                />
+                {/* Canonical general client documents/docflow entry points. New generic navigation should land here; /documents/:id stays legacy-only compatibility tail on purpose. */}
                 <Route path="/finance/documents" element={<Navigate to="/client/documents" replace />} />
-                <Route path="/client/documents" element={<DocumentsPage />} />
-                <Route path="/client/documents/:id" element={<ClientDocumentDetailsPage />} />
+                <Route path="/client/documents" element={<RouteSuspense><LazyDocumentsPage /></RouteSuspense>} />
+                <Route path="/client/documents/:id" element={<RouteSuspense><LazyClientDocumentDetailsPage mode="canonical" /></RouteSuspense>} />
                 <Route
                   path="/client/docs/contracts"
                   element={
                     <AccessGate title="Документы">
-                      <ClientDocsListPage title="Договоры" docType="CONTRACT" />
+                      <RouteSuspense><LazyClientDocsListPage title="Договоры" docType="CONTRACT" /></RouteSuspense>
                     </AccessGate>
                   }
                 />
@@ -476,7 +863,7 @@ export function App({ initialSession = null }: AppProps) {
                   path="/client/docs/invoices"
                   element={
                     <AccessGate title="Документы">
-                      <ClientDocsListPage title="Счета" docType="INVOICE" />
+                      <RouteSuspense><LazyClientDocsListPage title="Счета" docType="INVOICE" /></RouteSuspense>
                     </AccessGate>
                   }
                 />
@@ -484,20 +871,41 @@ export function App({ initialSession = null }: AppProps) {
                   path="/client/docs/acts"
                   element={
                     <AccessGate title="Документы">
-                      <ClientDocsListPage title="Акты" docType="ACT" />
+                      <RouteSuspense><LazyClientDocsListPage title="Акты" docType="ACT" /></RouteSuspense>
                     </AccessGate>
                   }
                 />
-                <Route path="/finance/reconciliation" element={<ReconciliationRequestsPage />} />
-                <Route path="/finance/exports" element={<FinanceExportsPage />} />
+                <Route
+                  path="/finance/reconciliation"
+                  element={
+                    <ClientWorkspaceRoute workspace="finance" title="Сверка">
+                      <ReconciliationRequestsPage />
+                    </ClientWorkspaceRoute>
+                  }
+                />
+                <Route
+                  path="/finance/exports"
+                  element={
+                    <ClientWorkspaceRoute workspace="finance" title="Экспорты">
+                      <RouteSuspense><LazyFinanceExportsPage /></RouteSuspense>
+                    </ClientWorkspaceRoute>
+                  }
+                />
                 <Route path="/operations" element={<OperationsPage />} />
-                <Route path="/operations/:id" element={<OperationDetailsPage />} />
-                <Route path="/balances" element={<BalancesPage />} />
+                <Route path="/operations/:id" element={<RouteSuspense><LazyOperationDetailsPage /></RouteSuspense>} />
+                <Route
+                  path="/balances"
+                  element={
+                    <ClientWorkspaceRoute workspace="finance" title="Балансы">
+                      <BalancesPage />
+                    </ClientWorkspaceRoute>
+                  }
+                />
                 <Route
                   path="/marketplace"
                   element={
                     <ModuleGate module="MARKETPLACE" capability="MARKETPLACE" title="Маркетплейс">
-                      <MarketplaceCatalogPage />
+                      <RouteSuspense><LazyMarketplaceCatalogPage /></RouteSuspense>
                     </ModuleGate>
                   }
                 />
@@ -505,7 +913,7 @@ export function App({ initialSession = null }: AppProps) {
                   path="/marketplace/products/:productId"
                   element={
                     <ModuleGate module="MARKETPLACE" capability="MARKETPLACE" title="Маркетплейс">
-                      <MarketplaceProductDetailsPage />
+                      <RouteSuspense><LazyMarketplaceProductDetailsPage /></RouteSuspense>
                     </ModuleGate>
                   }
                 />
@@ -513,7 +921,7 @@ export function App({ initialSession = null }: AppProps) {
                   path="/marketplace/orders"
                   element={
                     <ModuleGate module="MARKETPLACE" capability="MARKETPLACE" title="Маркетплейс">
-                      <MarketplaceOrdersPage />
+                      <RouteSuspense><LazyMarketplaceOrdersPage /></RouteSuspense>
                     </ModuleGate>
                   }
                 />
@@ -521,28 +929,35 @@ export function App({ initialSession = null }: AppProps) {
                   path="/marketplace/orders/:orderId"
                   element={
                     <ModuleGate module="MARKETPLACE" capability="MARKETPLACE" title="Маркетплейс">
-                      <MarketplaceOrderDetailsPage />
+                      <RouteSuspense><LazyMarketplaceOrderDetailsPage /></RouteSuspense>
                     </ModuleGate>
                   }
                 />
                 <Route path="/support/requests" element={<Navigate to="/client/support" replace />} />
-                <Route path="/support/requests/:id" element={<SupportTicketDetailsPage />} />
-                <Route path="/cases" element={<CasesPage />} />
-                <Route path="/cases/:id" element={<CaseDetailsPage />} />
-                <Route path="/subscription" element={<SubscriptionPage />} />
+                <Route path="/support/requests/:id" element={<RouteSuspense><LazySupportTicketDetailsPage /></RouteSuspense>} />
+                <Route path="/cases" element={<RouteSuspense><LazyCasesPage /></RouteSuspense>} />
+                <Route path="/cases/:id" element={<RouteSuspense><LazyCaseDetailsPage /></RouteSuspense>} />
+                <Route path="/subscription" element={<RouteSuspense><LazySubscriptionPage /></RouteSuspense>} />
                 <Route path="/profile" element={<ProfilePage />} />
-                <Route path="/settings" element={<SettingsPage />} />
+                <Route path="/settings" element={<RouteSuspense><LazySettingsPage /></RouteSuspense>} />
                 <Route path="/client/settings" element={<Navigate to="/settings" replace />} />
-                <Route path="/settings/management" element={<ClientControlsPage />} />
+                <Route
+                  path="/settings/management"
+                  element={
+                    <ClientWorkspaceRoute workspace="team" title="Управление">
+                      <RouteSuspense><LazyClientControlsPage /></RouteSuspense>
+                    </ClientWorkspaceRoute>
+                  }
+                />
                 <Route path="/client/limits" element={<Navigate to="/limits/templates" replace />} />
                 <Route path="/client/fleet" element={<Navigate to="/fleet/groups" replace />} />
                 <Route path="/client/analytics/dashboard" element={<Navigate to="/analytics" replace />} />
-                <Route path="/audit" element={<AuditPage />} />
+                <Route path="/audit" element={<RouteSuspense><LazyAuditPage /></RouteSuspense>} />
                 <Route
                   path="/client/reports"
                   element={
                     <AccessGate title="Отчёты">
-                      <ReportsPage />
+                      <RouteSuspense><LazyReportsPage /></RouteSuspense>
                     </AccessGate>
                   }
                 />
@@ -550,7 +965,7 @@ export function App({ initialSession = null }: AppProps) {
                   path="/client/exports"
                   element={
                     <AccessGate title="Экспорты">
-                      <ExportsPage />
+                      <RouteSuspense><LazyExportsPage /></RouteSuspense>
                     </AccessGate>
                   }
                 />
@@ -560,7 +975,7 @@ export function App({ initialSession = null }: AppProps) {
                   path="/fleet/cards"
                   element={
                     <ModuleGate module="FLEET" capability="CLIENT_CORE" title="Флот">
-                      <FleetCardsPage />
+                      <RouteSuspense><LazyFleetCardsPage /></RouteSuspense>
                     </ModuleGate>
                   }
                 />
@@ -568,7 +983,7 @@ export function App({ initialSession = null }: AppProps) {
                   path="/fleet/cards/:id"
                   element={
                     <ModuleGate module="FLEET" capability="CLIENT_CORE" title="Флот">
-                      <FleetCardDetailsPage />
+                      <RouteSuspense><LazyFleetCardDetailsPage /></RouteSuspense>
                     </ModuleGate>
                   }
                 />
@@ -576,7 +991,7 @@ export function App({ initialSession = null }: AppProps) {
                   path="/fleet/groups"
                   element={
                     <ModuleGate module="FLEET" capability="CLIENT_CORE" title="Флот">
-                      <FleetGroupsPage />
+                      <RouteSuspense><LazyFleetGroupsPage /></RouteSuspense>
                     </ModuleGate>
                   }
                 />
@@ -584,7 +999,7 @@ export function App({ initialSession = null }: AppProps) {
                   path="/fleet/groups/:id"
                   element={
                     <ModuleGate module="FLEET" capability="CLIENT_CORE" title="Флот">
-                      <FleetGroupDetailsPage />
+                      <RouteSuspense><LazyFleetGroupDetailsPage /></RouteSuspense>
                     </ModuleGate>
                   }
                 />
@@ -592,7 +1007,7 @@ export function App({ initialSession = null }: AppProps) {
                   path="/fleet/employees"
                   element={
                     <ModuleGate module="FLEET" capability="CLIENT_CORE" title="Флот">
-                      <FleetEmployeesPage />
+                      <RouteSuspense><LazyFleetEmployeesPage /></RouteSuspense>
                     </ModuleGate>
                   }
                 />
@@ -600,7 +1015,7 @@ export function App({ initialSession = null }: AppProps) {
                   path="/fleet/spend"
                   element={
                     <ModuleGate module="FLEET" capability="CLIENT_CORE" title="Флот">
-                      <FleetSpendPage />
+                      <RouteSuspense><LazyFleetSpendPage /></RouteSuspense>
                     </ModuleGate>
                   }
                 />
@@ -608,7 +1023,7 @@ export function App({ initialSession = null }: AppProps) {
                   path="/fleet/notifications"
                   element={
                     <ModuleGate module="FLEET" capability="CLIENT_CORE" title="Флот">
-                      <FleetNotificationsPage />
+                      <RouteSuspense><LazyFleetNotificationsPage /></RouteSuspense>
                     </ModuleGate>
                   }
                 />
@@ -616,7 +1031,7 @@ export function App({ initialSession = null }: AppProps) {
                   path="/fleet/incidents"
                   element={
                     <ModuleGate module="FLEET" capability="CLIENT_CORE" title="Флот">
-                      <FleetIncidentsPage />
+                      <RouteSuspense><LazyFleetIncidentsPage /></RouteSuspense>
                     </ModuleGate>
                   }
                 />
@@ -624,7 +1039,7 @@ export function App({ initialSession = null }: AppProps) {
                   path="/fleet/incidents/:id"
                   element={
                     <ModuleGate module="FLEET" capability="CLIENT_CORE" title="Флот">
-                      <FleetIncidentDetailsPage />
+                      <RouteSuspense><LazyFleetIncidentDetailsPage /></RouteSuspense>
                     </ModuleGate>
                   }
                 />
@@ -632,7 +1047,7 @@ export function App({ initialSession = null }: AppProps) {
                   path="/fleet/policy-center"
                   element={
                     <ModuleGate module="FLEET" capability="CLIENT_CORE" title="Флот">
-                      <FleetPolicyCenterOverviewPage />
+                      <RouteSuspense><LazyFleetPolicyCenterOverviewPage /></RouteSuspense>
                     </ModuleGate>
                   }
                 />
@@ -640,7 +1055,7 @@ export function App({ initialSession = null }: AppProps) {
                   path="/fleet/policy-center/actions"
                   element={
                     <ModuleGate module="FLEET" capability="CLIENT_CORE" title="Флот">
-                      <FleetPoliciesPage />
+                      <RouteSuspense><LazyFleetPoliciesPage /></RouteSuspense>
                     </ModuleGate>
                   }
                 />
@@ -648,7 +1063,7 @@ export function App({ initialSession = null }: AppProps) {
                   path="/fleet/policy-center/notifications"
                   element={
                     <ModuleGate module="FLEET" capability="CLIENT_CORE" title="Флот">
-                      <FleetNotificationPoliciesPage />
+                      <RouteSuspense><LazyFleetNotificationPoliciesPage /></RouteSuspense>
                     </ModuleGate>
                   }
                 />
@@ -656,7 +1071,7 @@ export function App({ initialSession = null }: AppProps) {
                   path="/fleet/policy-center/channels"
                   element={
                     <ModuleGate module="FLEET" capability="CLIENT_CORE" title="Флот">
-                      <FleetNotificationChannelsPage />
+                      <RouteSuspense><LazyFleetNotificationChannelsPage /></RouteSuspense>
                     </ModuleGate>
                   }
                 />
@@ -664,7 +1079,7 @@ export function App({ initialSession = null }: AppProps) {
                   path="/fleet/policy-center/executions"
                   element={
                     <ModuleGate module="FLEET" capability="CLIENT_CORE" title="Флот">
-                      <FleetPolicyExecutionsPage />
+                      <RouteSuspense><LazyFleetPolicyExecutionsPage /></RouteSuspense>
                     </ModuleGate>
                   }
                 />
@@ -672,7 +1087,7 @@ export function App({ initialSession = null }: AppProps) {
                   path="/logistics/fleet"
                   element={
                     <ModuleGate module="LOGISTICS" capability="LOGISTICS" title="Логистика">
-                      <FleetPage />
+                      <RouteSuspense><LazyFleetPage /></RouteSuspense>
                     </ModuleGate>
                   }
                 />
@@ -680,7 +1095,7 @@ export function App({ initialSession = null }: AppProps) {
                   path="/logistics/trips"
                   element={
                     <ModuleGate module="LOGISTICS" capability="LOGISTICS" title="Логистика">
-                      <TripsPage />
+                      <RouteSuspense><LazyTripsPage /></RouteSuspense>
                     </ModuleGate>
                   }
                 />
@@ -688,7 +1103,7 @@ export function App({ initialSession = null }: AppProps) {
                   path="/logistics/trips/:tripId"
                   element={
                     <ModuleGate module="LOGISTICS" capability="LOGISTICS" title="Логистика">
-                      <TripDetailsPage />
+                      <RouteSuspense><LazyTripDetailsPage /></RouteSuspense>
                     </ModuleGate>
                   }
                 />
@@ -696,7 +1111,7 @@ export function App({ initialSession = null }: AppProps) {
                   path="/logistics/fuel-control"
                   element={
                     <ModuleGate module="LOGISTICS" capability="LOGISTICS" title="Логистика">
-                      <FuelControlPage />
+                      <RouteSuspense><LazyFuelControlPage /></RouteSuspense>
                     </ModuleGate>
                   }
                 />
@@ -704,7 +1119,7 @@ export function App({ initialSession = null }: AppProps) {
                   path="/stations-map"
                   element={
                     <AccessGate title="Карта станций">
-                      <StationsMapPage />
+                      <RouteSuspense><LazyStationsMapPage /></RouteSuspense>
                     </AccessGate>
                   }
                 />

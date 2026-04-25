@@ -2,11 +2,13 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { App } from "../App";
 import type { AuthSession } from "../api/types";
+import { AuthProvider } from "../auth/AuthContext";
+import { I18nProvider } from "../i18n";
+import { FleetNotificationPoliciesPage } from "./FleetNotificationPoliciesPage";
 
 const session: AuthSession = {
-  token: "token-1",
+  token: "test.header.payload",
   email: "client@demo.test",
   roles: ["CLIENT_OWNER"],
   subjectType: "CLIENT",
@@ -18,6 +20,8 @@ describe("FleetNotificationPoliciesPage", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
+    window.localStorage.clear();
+    window.sessionStorage.clear();
   });
 
   it("validates create policy modal", async () => {
@@ -41,7 +45,11 @@ describe("FleetNotificationPoliciesPage", () => {
 
     render(
       <MemoryRouter initialEntries={["/fleet/notifications/policies"]}>
-        <App initialSession={session} />
+        <I18nProvider locale="ru">
+          <AuthProvider initialSession={session}>
+            <FleetNotificationPoliciesPage />
+          </AuthProvider>
+        </I18nProvider>
       </MemoryRouter>,
     );
 

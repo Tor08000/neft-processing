@@ -3,6 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 
+from app.api.dependencies.admin_capability import require_admin_capability
 from app.api.dependencies.admin import require_admin_user
 from app.db import get_db
 from app.models.marketplace_catalog import (
@@ -22,7 +23,7 @@ from app.schemas.marketplace.catalog import (
 from app.services.audit_service import _sanitize_token_for_audit, request_context_from_request
 from app.services.marketplace_catalog_service import MarketplaceCatalogService
 
-router = APIRouter(tags=["admin"])
+router = APIRouter(tags=["admin"], dependencies=[Depends(require_admin_capability("marketplace"))])
 
 
 def _profile_out(profile) -> PartnerProfileOut:
@@ -119,7 +120,7 @@ def verify_partner(
     payload: PartnerVerifyRequest,
     request: Request,
     db: Session = Depends(get_db),
-    token: dict = Depends(require_admin_user),
+    token: dict = Depends(require_admin_capability("marketplace", "approve")),
 ) -> PartnerProfileOut:
     service = MarketplaceCatalogService(
         db, request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(token))
@@ -171,7 +172,7 @@ def admin_set_product_status(
     payload: ProductStatusUpdateRequest,
     request: Request,
     db: Session = Depends(get_db),
-    token: dict = Depends(require_admin_user),
+    token: dict = Depends(require_admin_capability("marketplace", "approve")),
 ) -> ProductOut:
     service = MarketplaceCatalogService(
         db, request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(token))

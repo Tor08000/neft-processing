@@ -7,8 +7,8 @@ set "FAILED=0"
 call :check_portal client || set "FAILED=1"
 call :check_portal admin || set "FAILED=1"
 
-call :login_portal client "client@neft.local" "client" || set "FAILED=1"
-call :login_portal admin "admin@example.com" "admin" || set "FAILED=1"
+call :login_portal client "client@neft.local" "Client123!" || set "FAILED=1"
+call :login_portal admin "admin@neft.local" "Neft123!" || set "FAILED=1"
 
 if "%FAILED%"=="1" exit /b 1
 

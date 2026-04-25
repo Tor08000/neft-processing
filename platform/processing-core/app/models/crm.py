@@ -360,7 +360,7 @@ class CRMFeatureFlag(Base):
 class CRMLead(Base):
     __tablename__ = "crm_leads"
 
-    id = Column(GUID(), primary_key=True, default=new_uuid_str)
+    id = Column(String(36), primary_key=True, default=new_uuid_str)
     tenant_id = Column(Integer, nullable=False, index=True)
     source = Column(String(64), nullable=True)
     status = Column(ExistingEnum(CRMLeadStatus, name="crm_lead_status"), nullable=False)
@@ -378,9 +378,9 @@ class CRMLead(Base):
 class CRMDeal(Base):
     __tablename__ = "crm_deals"
 
-    id = Column(GUID(), primary_key=True, default=new_uuid_str)
+    id = Column(String(36), primary_key=True, default=new_uuid_str)
     tenant_id = Column(Integer, nullable=False, index=True)
-    lead_id = Column(GUID(), ForeignKey("crm_leads.id"), nullable=True)
+    lead_id = Column(String(36), ForeignKey("crm_leads.id"), nullable=True)
     client_id = Column(String(64), ForeignKey("crm_clients.id"), nullable=True)
     stage = Column(ExistingEnum(CRMDealStage, name="crm_deal_stage"), nullable=False)
     value_amount = Column(BigInteger, nullable=True)
@@ -396,8 +396,8 @@ class CRMDealEvent(Base):
     __tablename__ = "crm_deal_events"
     __table_args__ = (Index("ix_crm_deal_events_deal_ts", "deal_id", "created_at"),)
 
-    id = Column(GUID(), primary_key=True, default=new_uuid_str)
-    deal_id = Column(GUID(), ForeignKey("crm_deals.id"), nullable=False, index=True)
+    id = Column(String(36), primary_key=True, default=new_uuid_str)
+    deal_id = Column(String(36), ForeignKey("crm_deals.id"), nullable=False, index=True)
     event_type = Column(ExistingEnum(CRMDealEventType, name="crm_deal_event_type"), nullable=False)
     payload = Column(JSON, nullable=True)
     actor_id = Column(String(64), nullable=True)
@@ -408,7 +408,7 @@ class CRMTask(Base):
     __tablename__ = "crm_tasks"
     __table_args__ = (Index("ix_crm_tasks_due", "due_at"),)
 
-    id = Column(GUID(), primary_key=True, default=new_uuid_str)
+    id = Column(String(36), primary_key=True, default=new_uuid_str)
     tenant_id = Column(Integer, nullable=False, index=True)
     subject_type = Column(ExistingEnum(CRMTaskSubjectType, name="crm_task_subject_type"), nullable=False)
     subject_id = Column(String(64), nullable=False)
@@ -427,7 +427,7 @@ class CRMTicketLink(Base):
     __tablename__ = "crm_ticket_links"
     __table_args__ = (UniqueConstraint("client_id", "ticket_id", name="uq_crm_ticket_links_scope"),)
 
-    id = Column(GUID(), primary_key=True, default=new_uuid_str)
+    id = Column(String(36), primary_key=True, default=new_uuid_str)
     client_id = Column(String(64), ForeignKey("crm_clients.id"), nullable=False, index=True)
     ticket_id = Column(String(64), nullable=False, index=True)
     linked_by = Column(String(64), nullable=True)
@@ -478,7 +478,7 @@ class ClientOnboardingEvent(Base):
     __tablename__ = "client_onboarding_events"
     __table_args__ = (Index("ix_onboarding_events_client_ts", "client_id", "created_at"),)
 
-    id = Column(GUID(), primary_key=True, default=new_uuid_str)
+    id = Column(String(36), primary_key=True, default=new_uuid_str)
     client_id = Column(String(64), ForeignKey("crm_clients.id"), nullable=False, index=True)
     event_type = Column(
         ExistingEnum(ClientOnboardingEventType, name="client_onboarding_event_type"),

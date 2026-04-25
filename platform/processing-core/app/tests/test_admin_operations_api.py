@@ -1,32 +1,49 @@
 from datetime import datetime, timedelta
 
 import pytest
+from fastapi import APIRouter, Depends
 from fastapi.testclient import TestClient
+from sqlalchemy.orm import Session
 
-from app.db import Base, SessionLocal, engine
-
-from app.main import app
+from app import services
+from app.api.dependencies.admin import require_admin_user
 from app.models.operation import Operation
+from app.routers.admin.operations import router as admin_operations_router
+from app.tests._scoped_router_harness import router_client_context, scoped_session_context
 
 
-@pytest.fixture(autouse=True)
-def clean_db():
-    Base.metadata.drop_all(bind=engine)
-    Base.metadata.create_all(bind=engine)
-    yield
-    Base.metadata.drop_all(bind=engine)
+ADMIN_OPERATIONS_TEST_TABLES = (Operation.__table__,)
+
+
+def _admin_operations_test_router() -> APIRouter:
+    router = APIRouter(prefix="/api/v1/admin", dependencies=[Depends(require_admin_user)])
+    router.include_router(admin_operations_router)
+    return router
 
 
 @pytest.fixture
-def client():
-    with TestClient(app) as api_client:
+def db_session() -> Session:
+    with scoped_session_context(tables=ADMIN_OPERATIONS_TEST_TABLES) as session:
+        yield session
+
+
+@pytest.fixture
+def client(db_session: Session):
+    with router_client_context(
+        router=_admin_operations_test_router(),
+        db_session=db_session,
+        dependency_overrides={require_admin_user: services.admin_auth.require_admin},
+    ) as api_client:
         yield api_client
 
 
 @pytest.fixture
-def admin_client(admin_auth_headers: dict):
-    with TestClient(app) as api_client:
-        api_client.headers.update(admin_auth_headers)
+def admin_client(db_session: Session):
+    with router_client_context(
+        router=_admin_operations_test_router(),
+        db_session=db_session,
+        dependency_overrides={require_admin_user: lambda: {"roles": ["ADMIN"], "sub": "admin-1"}},
+    ) as api_client:
         yield api_client
 
 
@@ -39,7 +56,7 @@ def test_admin_access_control(client: TestClient, admin_token: str, user_token: 
         "/api/v1/admin/operations", headers={"Authorization": "Bearer garbage"}
     )
     assert invalid.status_code == 401
-    assert invalid.json() == {"detail": "Invalid token"}
+    assert invalid.json()["detail"]["error"]["message"] == "Invalid token"
 
     forbidden = client.get(
         "/api/v1/admin/operations", headers={"Authorization": f"Bearer {user_token}"}
@@ -60,54 +77,50 @@ def test_admin_access_control(client: TestClient, admin_token: str, user_token: 
     assert allowed_tx.json()["items"] == []
 
 
-def test_operations_filters_and_pagination(admin_client: TestClient):
-    session = SessionLocal()
-    try:
-        base_time = datetime.utcnow()
-        operations = [
-            Operation(
-                operation_id="op-auth",
-                operation_type="AUTH",
-                status="AUTHORIZED",
-                merchant_id="m1",
-                terminal_id="t1",
-                client_id="c1",
-                card_id="card-1",
-                amount=100,
-                currency="RUB",
-                created_at=base_time,
-            ),
-            Operation(
-                operation_id="op-cap",
-                operation_type="CAPTURE",
-                status="CAPTURED",
-                merchant_id="m1",
-                terminal_id="t1",
-                client_id="c1",
-                card_id="card-1",
-                amount=200,
-                currency="RUB",
-                parent_operation_id="op-auth",
-                created_at=base_time + timedelta(minutes=1),
-            ),
-            Operation(
-                operation_id="op-ref",
-                operation_type="REFUND",
-                status="REFUNDED",
-                merchant_id="m2",
-                terminal_id="t2",
-                client_id="c2",
-                card_id="card-2",
-                amount=50,
-                currency="RUB",
-                parent_operation_id="op-cap",
-                created_at=base_time + timedelta(minutes=2),
-            ),
-        ]
-        session.add_all(operations)
-        session.commit()
-    finally:
-        session.close()
+def test_operations_filters_and_pagination(admin_client: TestClient, db_session: Session):
+    base_time = datetime.utcnow()
+    operations = [
+        Operation(
+            operation_id="op-auth",
+            operation_type="AUTH",
+            status="AUTHORIZED",
+            merchant_id="m1",
+            terminal_id="t1",
+            client_id="c1",
+            card_id="card-1",
+            amount=100,
+            currency="RUB",
+            created_at=base_time,
+        ),
+        Operation(
+            operation_id="op-cap",
+            operation_type="CAPTURE",
+            status="CAPTURED",
+            merchant_id="m1",
+            terminal_id="t1",
+            client_id="c1",
+            card_id="card-1",
+            amount=200,
+            currency="RUB",
+            parent_operation_id="op-auth",
+            created_at=base_time + timedelta(minutes=1),
+        ),
+        Operation(
+            operation_id="op-ref",
+            operation_type="REFUND",
+            status="REFUNDED",
+            merchant_id="m2",
+            terminal_id="t2",
+            client_id="c2",
+            card_id="card-2",
+            amount=50,
+            currency="RUB",
+            parent_operation_id="op-cap",
+            created_at=base_time + timedelta(minutes=2),
+        ),
+    ]
+    db_session.add_all(operations)
+    db_session.commit()
 
     by_type = admin_client.get(
         "/api/v1/admin/operations", params={"operation_type": "REFUND"}
@@ -157,42 +170,38 @@ def test_operations_filters_and_pagination(admin_client: TestClient):
     assert second_page.json()["items"][0]["operation_id"] != first_page.json()["items"][0]["operation_id"]
 
 
-def test_operations_sorting(admin_client: TestClient):
-    session = SessionLocal()
-    try:
-        earlier = datetime.utcnow()
-        later = earlier + timedelta(minutes=5)
-        session.add_all(
-            [
-                Operation(
-                    operation_id="op-a",
-                    operation_type="AUTH",
-                    status="AUTHORIZED",
-                    merchant_id="m1",
-                    terminal_id="t1",
-                    client_id="c1",
-                    card_id="card-1",
-                    amount=100,
-                    currency="RUB",
-                    created_at=later,
-                ),
-                Operation(
-                    operation_id="op-b",
-                    operation_type="AUTH",
-                    status="AUTHORIZED",
-                    merchant_id="m2",
-                    terminal_id="t2",
-                    client_id="c2",
-                    card_id="card-2",
-                    amount=200,
-                    currency="RUB",
-                    created_at=earlier,
-                ),
-            ]
-        )
-        session.commit()
-    finally:
-        session.close()
+def test_operations_sorting(admin_client: TestClient, db_session: Session):
+    earlier = datetime.utcnow()
+    later = earlier + timedelta(minutes=5)
+    db_session.add_all(
+        [
+            Operation(
+                operation_id="op-a",
+                operation_type="AUTH",
+                status="AUTHORIZED",
+                merchant_id="m1",
+                terminal_id="t1",
+                client_id="c1",
+                card_id="card-1",
+                amount=100,
+                currency="RUB",
+                created_at=later,
+            ),
+            Operation(
+                operation_id="op-b",
+                operation_type="AUTH",
+                status="AUTHORIZED",
+                merchant_id="m2",
+                terminal_id="t2",
+                client_id="c2",
+                card_id="card-2",
+                amount=200,
+                currency="RUB",
+                created_at=earlier,
+            ),
+        ]
+    )
+    db_session.commit()
 
     asc = admin_client.get(
         "/api/v1/admin/operations", params={"order_by": "created_at_asc"}
@@ -216,53 +225,49 @@ def test_operations_sorting(admin_client: TestClient):
     ]
 
 
-def test_operations_range_filter_with_merchant(admin_client: TestClient):
-    session = SessionLocal()
-    try:
-        base_time = datetime.utcnow()
-        session.add_all(
-            [
-                Operation(
-                    operation_id="range-1",
-                    operation_type="AUTH",
-                    status="AUTHORIZED",
-                    merchant_id="merchant-range",
-                    terminal_id="t-1",
-                    client_id="c-1",
-                    card_id="card-1",
-                    amount=100,
-                    currency="RUB",
-                    created_at=base_time - timedelta(minutes=1),
-                ),
-                Operation(
-                    operation_id="range-2",
-                    operation_type="CAPTURE",
-                    status="CAPTURED",
-                    merchant_id="merchant-range",
-                    terminal_id="t-1",
-                    client_id="c-1",
-                    card_id="card-1",
-                    amount=150,
-                    currency="RUB",
-                    created_at=base_time + timedelta(minutes=1),
-                ),
-                Operation(
-                    operation_id="out-of-range",
-                    operation_type="REFUND",
-                    status="REFUNDED",
-                    merchant_id="other-merchant",
-                    terminal_id="t-2",
-                    client_id="c-2",
-                    card_id="card-2",
-                    amount=50,
-                    currency="RUB",
-                    created_at=base_time + timedelta(days=1),
-                ),
-            ]
-        )
-        session.commit()
-    finally:
-        session.close()
+def test_operations_range_filter_with_merchant(admin_client: TestClient, db_session: Session):
+    base_time = datetime.utcnow()
+    db_session.add_all(
+        [
+            Operation(
+                operation_id="range-1",
+                operation_type="AUTH",
+                status="AUTHORIZED",
+                merchant_id="merchant-range",
+                terminal_id="t-1",
+                client_id="c-1",
+                card_id="card-1",
+                amount=100,
+                currency="RUB",
+                created_at=base_time - timedelta(minutes=1),
+            ),
+            Operation(
+                operation_id="range-2",
+                operation_type="CAPTURE",
+                status="CAPTURED",
+                merchant_id="merchant-range",
+                terminal_id="t-1",
+                client_id="c-1",
+                card_id="card-1",
+                amount=150,
+                currency="RUB",
+                created_at=base_time + timedelta(minutes=1),
+            ),
+            Operation(
+                operation_id="out-of-range",
+                operation_type="REFUND",
+                status="REFUNDED",
+                merchant_id="other-merchant",
+                terminal_id="t-2",
+                client_id="c-2",
+                card_id="card-2",
+                amount=50,
+                currency="RUB",
+                created_at=base_time + timedelta(days=1),
+            ),
+        ]
+    )
+    db_session.commit()
 
     params = {
         "merchant_id": "merchant-range",
@@ -278,13 +283,11 @@ def test_operations_range_filter_with_merchant(admin_client: TestClient):
     assert returned_ids == {"range-1", "range-2"}
 
 
-def test_risk_filters_and_fields(admin_client: TestClient):
-    session = SessionLocal()
-    try:
-        base_time = datetime.utcnow()
-        session.add_all(
-            [
-                Operation(
+def test_risk_filters_and_fields(admin_client: TestClient, db_session: Session):
+    base_time = datetime.utcnow()
+    db_session.add_all(
+        [
+            Operation(
                 operation_id="risk-low",
                 operation_type="AUTH",
                 status="AUTHORIZED",
@@ -352,10 +355,8 @@ def test_risk_filters_and_fields(admin_client: TestClient):
                 },
             ),
         ]
-        )
-        session.commit()
-    finally:
-        session.close()
+    )
+    db_session.commit()
 
     ordered = admin_client.get(
         "/api/v1/admin/operations", params={"order_by": "risk_score_desc", "merchant_id": "m-risk"}
@@ -417,77 +418,73 @@ def test_risk_filters_and_fields(admin_client: TestClient):
     }
 
 
-def test_transactions_filters_sort_and_pagination(admin_client: TestClient):
-    session = SessionLocal()
-    try:
-        base_time = datetime.utcnow()
-        auth1 = Operation(
-            operation_id="auth-1",
-            operation_type="AUTH",
-            status="AUTHORIZED",
-            merchant_id="m1",
-            terminal_id="t1",
-            client_id="c1",
-            card_id="card-1",
-            amount=200,
-            currency="RUB",
-            created_at=base_time,
-        )
-        capture1 = Operation(
-            operation_id="cap-1",
-            operation_type="CAPTURE",
-            status="CAPTURED",
-            merchant_id="m1",
-            terminal_id="t1",
-            client_id="c1",
-            card_id="card-1",
-            amount=200,
-            currency="RUB",
-            parent_operation_id="auth-1",
-            created_at=base_time + timedelta(minutes=1),
-        )
-        refund1 = Operation(
-            operation_id="ref-1",
-            operation_type="REFUND",
-            status="REFUNDED",
-            merchant_id="m1",
-            terminal_id="t1",
-            client_id="c1",
-            card_id="card-1",
-            amount=50,
-            currency="RUB",
-            parent_operation_id="cap-1",
-            created_at=base_time + timedelta(minutes=2),
-        )
-        auth2 = Operation(
-            operation_id="auth-2",
-            operation_type="AUTH",
-            status="AUTHORIZED",
-            merchant_id="m2",
-            terminal_id="t2",
-            client_id="c2",
-            card_id="card-2",
-            amount=100,
-            currency="RUB",
-            created_at=base_time + timedelta(minutes=3),
-        )
-        refund2 = Operation(
-            operation_id="ref-2",
-            operation_type="REFUND",
-            status="REFUNDED",
-            merchant_id="m2",
-            terminal_id="t2",
-            client_id="c2",
-            card_id="card-2",
-            amount=100,
-            currency="RUB",
-            parent_operation_id="auth-2",
-            created_at=base_time + timedelta(minutes=4),
-        )
-        session.add_all([auth1, capture1, refund1, auth2, refund2])
-        session.commit()
-    finally:
-        session.close()
+def test_transactions_filters_sort_and_pagination(admin_client: TestClient, db_session: Session):
+    base_time = datetime.utcnow()
+    auth1 = Operation(
+        operation_id="auth-1",
+        operation_type="AUTH",
+        status="AUTHORIZED",
+        merchant_id="m1",
+        terminal_id="t1",
+        client_id="c1",
+        card_id="card-1",
+        amount=200,
+        currency="RUB",
+        created_at=base_time,
+    )
+    capture1 = Operation(
+        operation_id="cap-1",
+        operation_type="CAPTURE",
+        status="CAPTURED",
+        merchant_id="m1",
+        terminal_id="t1",
+        client_id="c1",
+        card_id="card-1",
+        amount=200,
+        currency="RUB",
+        parent_operation_id="auth-1",
+        created_at=base_time + timedelta(minutes=1),
+    )
+    refund1 = Operation(
+        operation_id="ref-1",
+        operation_type="REFUND",
+        status="REFUNDED",
+        merchant_id="m1",
+        terminal_id="t1",
+        client_id="c1",
+        card_id="card-1",
+        amount=50,
+        currency="RUB",
+        parent_operation_id="cap-1",
+        created_at=base_time + timedelta(minutes=2),
+    )
+    auth2 = Operation(
+        operation_id="auth-2",
+        operation_type="AUTH",
+        status="AUTHORIZED",
+        merchant_id="m2",
+        terminal_id="t2",
+        client_id="c2",
+        card_id="card-2",
+        amount=100,
+        currency="RUB",
+        created_at=base_time + timedelta(minutes=3),
+    )
+    refund2 = Operation(
+        operation_id="ref-2",
+        operation_type="REFUND",
+        status="REFUNDED",
+        merchant_id="m2",
+        terminal_id="t2",
+        client_id="c2",
+        card_id="card-2",
+        amount=100,
+        currency="RUB",
+        parent_operation_id="auth-2",
+        created_at=base_time + timedelta(minutes=4),
+    )
+    db_session.add_all([auth1, capture1, refund1, auth2, refund2])
+    db_session.commit()
 
     all_tx = admin_client.get("/api/v1/admin/transactions")
     assert all_tx.status_code == 200

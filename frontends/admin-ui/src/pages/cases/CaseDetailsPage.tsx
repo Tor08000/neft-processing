@@ -1,16 +1,18 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link, useParams } from "react-router-dom";
 import {
-  closeAdminCase,
-  fetchAdminCaseDetails,
-  isNotAvailableError,
-  listCaseEvents,
-  updateAdminCaseStatus,
+  fetchCaseDetails,
   type CaseDetailsResponse,
-  type CaseEvent,
   type CaseItem,
   type CaseSnapshot,
   type CaseStatus,
+} from "../../api/cases";
+import {
+  closeAdminCase,
+  isNotAvailableError,
+  listCaseEvents,
+  updateAdminCaseStatus,
+  type CaseEvent,
   type CaseEventType,
   type CaseFieldChange,
 } from "../../api/adminCases";
@@ -35,6 +37,7 @@ import { JsonViewer } from "../../components/common/JsonViewer";
 import { CloseCaseModal, getSelectedActionsCount } from "../../components/cases/CloseCaseModal";
 import { Toast } from "../../components/common/Toast";
 import { useToast } from "../../components/Toast/useToast";
+import { useAdmin } from "../../admin/AdminContext";
 import { AdminUnauthorizedPage } from "../admin/AdminStatusPages";
 import { loadCaseExports } from "../../utils/caseExportRegistry";
 import { CopyChip } from "../../components/common/CopyChip";
@@ -44,8 +47,8 @@ import { computeChain, verifyChain } from "../../audit_chain/chain";
 import type { ChainLink, ChainVerificationResult } from "../../audit_chain/types";
 
 const statusTone = (status: CaseStatus) => {
+  if (status === "RESOLVED") return "neft-chip neft-chip-ok";
   if (status === "CLOSED") return "neft-chip neft-chip-err";
-  if (status === "IN_PROGRESS") return "neft-chip neft-chip-ok";
   return "neft-chip neft-chip-muted";
 };
 
@@ -209,44 +212,60 @@ const HashCopy = ({ label, value }: { label: string; value: string }) => {
 
 const createChange = (field: string, from: unknown, to: unknown): CaseFieldChange => ({ field, from, to });
 
-const buildSyntheticEvents = (caseItem: CaseItem): CaseEvent[] => {
+const buildSyntheticEvents = (
+  caseItem: CaseItem,
+  timeline: Array<{ status: CaseStatus; occurred_at: string }>,
+): CaseEvent[] => {
   const events: CaseEvent[] = [];
-  events.push({
-    id: `synthetic_created_${caseItem.id}`,
-    at: caseItem.created_at,
-    type: "CASE_CREATED",
-    actor: caseItem.created_by ? { email: caseItem.created_by } : null,
-    source: "synthetic",
-    meta: {
-      changes: [
-        createChange("status", null, "OPEN"),
-        ...(caseItem.priority ? [createChange("priority", null, caseItem.priority)] : []),
-      ],
-      reason: "Derived from case fields",
-    },
-  });
-  if (caseItem.status === "IN_PROGRESS" && caseItem.updated_at) {
+  const statusTimeline = timeline.length
+    ? timeline
+    : [{ status: caseItem.status, occurred_at: caseItem.created_at }];
+
+  statusTimeline.forEach((entry, index) => {
+    if (index === 0) {
+      events.push({
+        id: `synthetic_created_${caseItem.id}`,
+        at: entry.occurred_at,
+        type: "CASE_CREATED",
+        actor: caseItem.created_by ? { email: caseItem.created_by } : null,
+        source: "synthetic",
+        meta: {
+          changes: [
+            createChange("status", null, entry.status),
+            ...(caseItem.priority ? [createChange("priority", null, caseItem.priority)] : []),
+          ],
+          reason: "Derived from case lifecycle",
+        },
+      });
+      return;
+    }
+
+    const previous = statusTimeline[index - 1];
     events.push({
-      id: `synthetic_status_${caseItem.id}`,
-      at: caseItem.updated_at,
-      type: "STATUS_CHANGED",
+      id: `synthetic_status_${caseItem.id}_${index}`,
+      at: entry.occurred_at,
+      type: entry.status === "CLOSED" ? "CASE_CLOSED" : "STATUS_CHANGED",
       actor: null,
       source: "synthetic",
       meta: {
-        changes: [createChange("status", "OPEN", "IN_PROGRESS")],
-        reason: "Derived from case fields",
+        changes: [createChange("status", previous.status, entry.status)],
+        reason: "Derived from case lifecycle",
       },
     });
-  }
-  if (caseItem.closed_at) {
+  });
+
+  if (events.length === 0) {
     events.push({
-      id: `synthetic_closed_${caseItem.id}`,
-      at: caseItem.closed_at,
-      type: "CASE_CLOSED",
-      actor: caseItem.closed_by ? { email: caseItem.closed_by } : null,
+      id: `synthetic_created_${caseItem.id}`,
+      at: caseItem.created_at,
+      type: "CASE_CREATED",
+      actor: caseItem.created_by ? { email: caseItem.created_by } : null,
       source: "synthetic",
       meta: {
-        changes: [createChange("status", "IN_PROGRESS", "CLOSED")],
+        changes: [
+          createChange("status", null, caseItem.status),
+          ...(caseItem.priority ? [createChange("priority", null, caseItem.priority)] : []),
+        ],
         reason: "Derived from case fields",
       },
     });
@@ -294,7 +313,7 @@ const buildMasteryEvents = (caseItem: CaseItem, masteryEvents: MasteryEvent[]): 
           },
         };
       }
-      if (event.type === "case_closed" && !caseItem.closed_at) {
+      if (event.type === "case_closed" && caseItem.status !== "CLOSED") {
         return {
           id: `synthetic_closed_mastery_${caseItem.id}_${index}`,
           at: event.at,
@@ -313,6 +332,7 @@ const buildMasteryEvents = (caseItem: CaseItem, masteryEvents: MasteryEvent[]): 
 
 export function CaseDetailsPage() {
   const { id } = useParams<{ id: string }>();
+  const { profile } = useAdmin();
   const { toast, showToast } = useToast();
   const [payload, setPayload] = useState<CaseDetailsResponse | null>(null);
   const [events, setEvents] = useState<CaseEvent[]>([]);
@@ -327,7 +347,6 @@ export function CaseDetailsPage() {
   const [isDecisionHistoryLoading, setIsDecisionHistoryLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [unauthorized, setUnauthorized] = useState(false);
-  const [notAvailable, setNotAvailable] = useState(false);
   const [actionsAvailable, setActionsAvailable] = useState(true);
   const [eventsAvailable, setEventsAvailable] = useState(true);
   const [closeOpen, setCloseOpen] = useState(false);
@@ -339,45 +358,48 @@ export function CaseDetailsPage() {
   const [timelineTab, setTimelineTab] = useState<"audit" | "decisions">("audit");
   const [chainLinks, setChainLinks] = useState<ChainLink[]>([]);
   const [chainStatus, setChainStatus] = useState<ChainVerificationResult>({ status: "unknown" });
+  const canOperateCases = Boolean(profile?.permissions?.cases?.operate) && !profile?.read_only;
+  const actionDisabledTitle = !canOperateCases
+    ? "Requires cases operate capability"
+    : !actionsAvailable
+      ? "Not available in this environment"
+      : undefined;
 
-  const loadDetails = useCallback(() => {
+  const loadDetails = useCallback(async () => {
     if (!id) return;
     setIsLoading(true);
     setError(null);
     setUnauthorized(false);
-    fetchAdminCaseDetails(id)
-      .then((data) => {
-        setPayload(data);
-        setNotAvailable(false);
-        setActionsAvailable(true);
-      })
-      .catch((err: unknown) => {
-        if (err instanceof UnauthorizedError || isForbidden(err)) {
-          setUnauthorized(true);
-          return;
-        }
-        if (isNotAvailableError(err)) {
-          setNotAvailable(true);
-          return;
-        }
-        setError((err as Error).message);
-      })
-      .finally(() => setIsLoading(false));
+    try {
+      const data = await fetchCaseDetails(id, true);
+      setPayload(data);
+      setActionsAvailable(true);
+    } catch (err: unknown) {
+      if (err instanceof UnauthorizedError || isForbidden(err)) {
+        setUnauthorized(true);
+        throw err;
+      }
+      setError((err as Error).message);
+      throw err;
+    } finally {
+      setIsLoading(false);
+    }
   }, [id]);
 
-  const loadEvents = useCallback(() => {
+  const loadEvents = useCallback(async () => {
     if (!id) return;
     setIsEventsLoading(true);
-    listCaseEvents(id)
-      .then((data) => {
-        setEvents(data.items ?? []);
-        setEventsAvailable(!data.unavailable);
-        setOptimisticEvents([]);
-      })
-      .catch(() => {
-        setEventsAvailable(true);
-      })
-      .finally(() => setIsEventsLoading(false));
+    try {
+      const data = await listCaseEvents(id);
+      setEvents(data.items ?? []);
+      setEventsAvailable(!data.unavailable);
+      setOptimisticEvents([]);
+    } catch (err) {
+      setEventsAvailable(true);
+      throw err;
+    } finally {
+      setIsEventsLoading(false);
+    }
   }, [id]);
 
   const loadExports = useCallback(() => {
@@ -425,10 +447,10 @@ export function CaseDetailsPage() {
   );
 
   useEffect(() => {
-    loadDetails();
-    loadEvents();
-    loadExports();
-    loadDecisionHistory();
+    void loadDetails().catch(() => undefined);
+    void loadEvents().catch(() => undefined);
+    void loadExports();
+    void loadDecisionHistory();
   }, [loadDetails, loadEvents, loadExports, loadDecisionHistory]);
 
   const snapshotsSorted = useMemo(() => sortSnapshots(payload?.snapshots), [payload?.snapshots]);
@@ -455,7 +477,7 @@ export function CaseDetailsPage() {
   );
   const syntheticEvents = useMemo(() => {
     if (!payload) return [];
-    const caseEvents = buildSyntheticEvents(payload.case);
+    const caseEvents = buildSyntheticEvents(payload.case, payload.timeline ?? []);
     const exportEvents = buildExportEvents(payload.case.id);
     const masteryDerived = buildMasteryEvents(payload.case, masteryEvents);
     return [...caseEvents, ...exportEvents, ...masteryDerived].sort(
@@ -577,33 +599,11 @@ export function CaseDetailsPage() {
   );
 
   const handleMarkInProgress = async () => {
-    if (!id || !payload) return;
+    if (!id || !payload || !canOperateCases) return;
     setIsStatusUpdating(true);
     try {
-      const previousStatus = payload.case.status;
-      const response = await updateAdminCaseStatus(id, "IN_PROGRESS");
-      if (response) {
-        setPayload((prev) => (prev ? { ...prev, case: response } : prev));
-      } else {
-        setPayload((prev) => (prev ? { ...prev, case: { ...prev.case, status: "IN_PROGRESS" } } : prev));
-      }
-      setOptimisticEvents((prev) => [
-        ...prev,
-        {
-          id: `synthetic_status_${Date.now()}`,
-          at: new Date().toISOString(),
-          type: "STATUS_CHANGED",
-          actor: null,
-          source: "local",
-          meta: {
-            changes: [createChange("status", previousStatus, "IN_PROGRESS")],
-            reason: "Updated from UI",
-          },
-        },
-      ]);
-      if (eventsAvailable) {
-        loadEvents();
-      }
+      await updateAdminCaseStatus(id, "IN_PROGRESS");
+      await Promise.all([loadDetails(), loadEvents()]);
       showToast("success", "Status updated");
     } catch (err) {
       if (isNotAvailableError(err)) {
@@ -618,40 +618,17 @@ export function CaseDetailsPage() {
   };
 
   const handleClose = async (payloadInput: { resolutionNote: string; actionsApplied: boolean }) => {
-    if (!id || !payload) return;
+    if (!id || !payload || !canOperateCases) return;
     try {
       const scoreSnapshot = toScoreSnapshot(lastSnapshot);
-      const response = await closeAdminCase(id, {
+      await closeAdminCase(id, {
         resolution_note: payloadInput.resolutionNote,
         resolution_code: null,
         score_snapshot: scoreSnapshot ?? null,
         mastery_snapshot: masterySnapshotPayload,
       });
-      const updatedCase =
-        response ?? {
-          ...payload.case,
-          status: "CLOSED" as CaseStatus,
-          closed_at: new Date().toISOString(),
-        };
-      setPayload((prev) => (prev ? { ...prev, case: { ...prev.case, ...updatedCase } } : prev));
+      await Promise.all([loadDetails(), loadEvents()]);
       setCloseOpen(false);
-      setOptimisticEvents((prev) => [
-        ...prev,
-        {
-          id: `synthetic_close_${Date.now()}`,
-          at: new Date().toISOString(),
-          type: "CASE_CLOSED",
-          actor: null,
-          source: "local",
-          meta: {
-            changes: [createChange("status", payload.case.status, "CLOSED")],
-            reason: "Updated from UI",
-          },
-        },
-      ]);
-      if (eventsAvailable) {
-        loadEvents();
-      }
       recordCaseClosed(id, { scoreSnapshot });
       if (payloadInput.actionsApplied) {
         const scoreBefore = toScoreSnapshot(firstSnapshot);
@@ -677,7 +654,6 @@ export function CaseDetailsPage() {
       }
     }
   };
-
   if (!id) {
     return <div className="neft-card">Case not found</div>;
   }
@@ -686,11 +662,7 @@ export function CaseDetailsPage() {
     return <AdminUnauthorizedPage />;
   }
 
-  if (notAvailable) {
-    return <div className="neft-card">Not available in this environment</div>;
-  }
-
-  if (isLoading) {
+    if (isLoading) {
     return <div className="neft-card">Loading case...</div>;
   }
 
@@ -756,11 +728,11 @@ export function CaseDetailsPage() {
           </div>
           <div>
             <div className="label">Closed</div>
-            <div>{formatTimestamp(payload.case.closed_at)}</div>
+            <div>{payload.case.status === "CLOSED" ? formatTimestamp(payload.case.updated_at) : "—"}</div>
           </div>
           <div>
             <div className="label">Closed by</div>
-            <div>{payload.case.closed_by ?? "—"}</div>
+            <div>—</div>
           </div>
         </div>
         <div className="stack-inline" style={{ marginTop: 16 }}>
@@ -768,8 +740,8 @@ export function CaseDetailsPage() {
             type="button"
             className="neft-btn-secondary"
             onClick={handleMarkInProgress}
-            disabled={payload.case.status !== "OPEN" || isStatusUpdating || !actionsAvailable}
-            title={!actionsAvailable ? "Not available in this environment" : undefined}
+            disabled={payload.case.status !== "TRIAGE" || isStatusUpdating || !actionsAvailable || !canOperateCases}
+            title={actionDisabledTitle}
           >
             Mark In Progress
           </button>
@@ -777,8 +749,8 @@ export function CaseDetailsPage() {
             type="button"
             className="neft-btn-primary"
             onClick={() => setCloseOpen(true)}
-            disabled={payload.case.status === "CLOSED" || !actionsAvailable}
-            title={!actionsAvailable ? "Not available in this environment" : undefined}
+            disabled={payload.case.status === "CLOSED" || !actionsAvailable || !canOperateCases}
+            title={actionDisabledTitle}
           >
             Close Case
           </button>
@@ -790,7 +762,11 @@ export function CaseDetailsPage() {
         <div className="stack" style={{ gap: 12 }}>
           <div>
             <div className="label">Note</div>
-            <div>{payload.case.note ?? "—"}</div>
+            <div>{lastSnapshot?.note ?? (payload.comments.length ? payload.comments[payload.comments.length - 1]?.body : null) ?? "—"}</div>
+          </div>
+          <div>
+            <div className="label">Description</div>
+            <div>{payload.case.description ?? "—"}</div>
           </div>
           <div className="meta-grid">
             <div>
@@ -801,8 +777,52 @@ export function CaseDetailsPage() {
               <div className="label">Kind</div>
               <div>{payload.case.kind ?? "—"}</div>
             </div>
+            <div>
+              <div className="label">Queue</div>
+              <div>{payload.case.queue ?? "—"}</div>
+            </div>
+            <div>
+              <div className="label">Entity</div>
+              <div>
+                {payload.case.entity_type ?? "—"}
+                {payload.case.entity_id ? ` · ${payload.case.entity_id}` : ""}
+              </div>
+            </div>
+            <div>
+              <div className="label">Client</div>
+              <div>{payload.case.client_id ?? "—"}</div>
+            </div>
+            <div>
+              <div className="label">Partner</div>
+              <div>{payload.case.partner_id ?? "—"}</div>
+            </div>
+            <div>
+              <div className="label">Source ref</div>
+              <div>
+                {payload.case.case_source_ref_type ?? "—"}
+                {payload.case.case_source_ref_id ? ` · ${payload.case.case_source_ref_id}` : ""}
+              </div>
+            </div>
           </div>
         </div>
+      </section>
+
+      <section className="neft-card">
+        <h3>Lifecycle</h3>
+        {payload.timeline.length === 0 ? (
+          <div className="muted">No lifecycle events recorded</div>
+        ) : (
+          <div className="timeline-list">
+            {payload.timeline.map((event, index) => (
+              <div className="timeline-item" key={`${event.status}-${event.occurred_at}-${index}`}>
+                <div className="timeline-item__meta">
+                  <span className="timeline-item__title">{event.status}</span>
+                  <span className="muted small">{formatTimestamp(event.occurred_at)}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </section>
 
       <section className="neft-card">

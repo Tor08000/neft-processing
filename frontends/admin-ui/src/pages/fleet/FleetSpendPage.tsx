@@ -8,9 +8,10 @@ import ForbiddenPage from "../ForbiddenPage";
 import type { FleetCard, FleetGroup, FleetSpendSummary, FleetTransaction } from "../../types/fleet";
 import { describeError } from "../../utils/apiErrors";
 import { formatDate, formatDateTime, formatRub } from "../../utils/format";
+import { fleetSpendPageCopy } from "./fleetPageCopy";
 
 const formatAmount = (value?: number | string | null) => {
-  if (value === undefined || value === null || value === "") return "—";
+  if (value === undefined || value === null || value === "") return fleetSpendPageCopy.values.fallback;
   const parsed = typeof value === "string" ? Number(value) : value;
   if (Number.isNaN(parsed)) return String(value);
   return formatRub(parsed);
@@ -69,7 +70,11 @@ export const FleetSpendPage = () => {
         setIsForbidden(true);
         return;
       }
-      setError({ title: "Не удалось загрузить справочники", description: summaryError.message, details: summaryError.details });
+      setError({
+        title: fleetSpendPageCopy.errors.referenceLoad,
+        description: summaryError.message,
+        details: summaryError.details,
+      });
     } finally {
       setLoading(false);
     }
@@ -98,7 +103,11 @@ export const FleetSpendPage = () => {
         setIsForbidden(true);
         return;
       }
-      setError({ title: "Не удалось загрузить расходы", description: summaryError.message, details: summaryError.details });
+      setError({
+        title: fleetSpendPageCopy.errors.spendLoad,
+        description: summaryError.message,
+        details: summaryError.details,
+      });
     } finally {
       setLoading(false);
     }
@@ -113,16 +122,17 @@ export const FleetSpendPage = () => {
   }, [loadSpend]);
 
   const transactionsColumns: DataColumn<FleetTransaction>[] = [
-    { key: "occurred_at", title: "Дата", render: (row) => formatDateTime(row.occurred_at ?? row.created_at) },
-    { key: "amount", title: "Сумма", render: (row) => formatAmount(row.amount) },
-    { key: "card_id", title: "Card ID", render: (row) => row.card_id ?? "—" },
-    { key: "merchant_name", title: "Merchant", render: (row) => row.merchant_name ?? "—" },
-    { key: "category", title: "Category", render: (row) => row.category ?? "—" },
-    { key: "station_id", title: "Station", render: (row) => row.station_id ?? "—" },
+    { key: "occurred_at", title: fleetSpendPageCopy.columns.date, render: (row) => formatDateTime(row.occurred_at ?? row.created_at) },
+    { key: "amount", title: fleetSpendPageCopy.columns.amount, render: (row) => formatAmount(row.amount) },
+    { key: "card_id", title: fleetSpendPageCopy.columns.cardId, render: (row) => row.card_id ?? fleetSpendPageCopy.values.fallback },
+    { key: "merchant_name", title: fleetSpendPageCopy.columns.merchant, render: (row) => row.merchant_name ?? fleetSpendPageCopy.values.fallback },
+    { key: "category", title: fleetSpendPageCopy.columns.category, render: (row) => row.category ?? fleetSpendPageCopy.values.fallback },
+    { key: "station_id", title: fleetSpendPageCopy.columns.station, render: (row) => row.station_id ?? fleetSpendPageCopy.values.fallback },
   ];
+  const filtersActive = Boolean(filters.dateFrom || filters.dateTo || filters.groupId || filters.cardId || filters.groupBy !== "day");
 
   if (loading) {
-    return <Loader label="Загружаем расходы" />;
+    return <Loader label={fleetSpendPageCopy.loading} />;
   }
 
   if (isForbidden) {
@@ -130,88 +140,22 @@ export const FleetSpendPage = () => {
   }
 
   if (unavailable) {
-    return <div className="card">Fleet spend endpoint unavailable in this environment.</div>;
+    return <div className="card">{fleetSpendPageCopy.unavailable}</div>;
   }
 
   return (
     <div style={{ display: "grid", gap: 16 }}>
       <div className="page-header">
-        <h1>Fleet · Spend</h1>
+        <h1>{fleetSpendPageCopy.title}</h1>
       </div>
       <div className="card">
-        <div className="filters">
-          <div className="filter">
-            <span className="label">Date from</span>
-            <input
-              type="date"
-              value={filters.dateFrom}
-              onChange={(event) => setFilters((prev) => ({ ...prev, dateFrom: event.target.value }))}
-            />
-          </div>
-          <div className="filter">
-            <span className="label">Date to</span>
-            <input
-              type="date"
-              value={filters.dateTo}
-              onChange={(event) => setFilters((prev) => ({ ...prev, dateTo: event.target.value }))}
-            />
-          </div>
-          <div className="filter">
-            <span className="label">Group</span>
-            <select
-              value={filters.groupId}
-              onChange={(event) => setFilters((prev) => ({ ...prev, groupId: event.target.value }))}
-            >
-              <option value="">Все</option>
-              {groups.map((group) => (
-                <option key={group.id} value={group.id}>
-                  {group.name}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="filter">
-            <span className="label">Card</span>
-            <select
-              value={filters.cardId}
-              onChange={(event) => setFilters((prev) => ({ ...prev, cardId: event.target.value }))}
-            >
-              <option value="">Все</option>
-              {cards.map((card) => (
-                <option key={card.id} value={card.id}>
-                  {card.card_alias ?? card.masked_pan ?? card.id}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="filter">
-            <span className="label">Group by</span>
-            <select
-              value={filters.groupBy}
-              onChange={(event) => setFilters((prev) => ({ ...prev, groupBy: event.target.value }))}
-            >
-              <option value="day">Day</option>
-              <option value="week">Week</option>
-              <option value="month">Month</option>
-            </select>
-          </div>
-        </div>
-        <div className="actions">
-          <button type="button" className="secondary" onClick={() => void loadSpend()}>
-            Обновить
-          </button>
-        </div>
-        {error ? <div className="card" style={{ marginTop: 12 }}>{error.description}</div> : null}
-      </div>
-
-      <div className="card">
-        <h3>Summary</h3>
+        <h3>{fleetSpendPageCopy.summaryTitle}</h3>
         {summary?.rows?.length ? (
           <table className="table neft-table">
             <thead>
               <tr>
-                <th>Period</th>
-                <th>Amount</th>
+                <th>{fleetSpendPageCopy.summary.period}</th>
+                <th>{fleetSpendPageCopy.summary.amount}</th>
               </tr>
             </thead>
             <tbody>
@@ -224,20 +168,118 @@ export const FleetSpendPage = () => {
             </tbody>
           </table>
         ) : (
-          <EmptyState title="Нет данных по расходам" description="Проверьте фильтры или выберите другой период." />
+          <EmptyState
+            title={fleetSpendPageCopy.summary.emptyTitle}
+            description={fleetSpendPageCopy.summary.emptyDescription}
+          />
         )}
       </div>
 
       <div className="card">
-        <h3>Transactions</h3>
+        <h3>{fleetSpendPageCopy.transactionsTitle}</h3>
         <DataTable
           data={transactions}
           columns={transactionsColumns}
           loading={false}
-          errorState={error ? { title: error.title, description: error.description, details: error.details } : undefined}
+          toolbar={
+            <div className="table-toolbar">
+              <div className="filters">
+                <div className="filter">
+                  <span className="label">{fleetSpendPageCopy.filters.dateFrom}</span>
+                  <input
+                    type="date"
+                    value={filters.dateFrom}
+                    onChange={(event) => setFilters((prev) => ({ ...prev, dateFrom: event.target.value }))}
+                  />
+                </div>
+                <div className="filter">
+                  <span className="label">{fleetSpendPageCopy.filters.dateTo}</span>
+                  <input
+                    type="date"
+                    value={filters.dateTo}
+                    onChange={(event) => setFilters((prev) => ({ ...prev, dateTo: event.target.value }))}
+                  />
+                </div>
+                <div className="filter">
+                  <span className="label">{fleetSpendPageCopy.filters.group}</span>
+                  <select
+                    value={filters.groupId}
+                    onChange={(event) => setFilters((prev) => ({ ...prev, groupId: event.target.value }))}
+                  >
+                    <option value="">{fleetSpendPageCopy.filters.all}</option>
+                    {groups.map((group) => (
+                      <option key={group.id} value={group.id}>
+                        {group.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="filter">
+                  <span className="label">{fleetSpendPageCopy.filters.card}</span>
+                  <select
+                    value={filters.cardId}
+                    onChange={(event) => setFilters((prev) => ({ ...prev, cardId: event.target.value }))}
+                  >
+                    <option value="">{fleetSpendPageCopy.filters.all}</option>
+                    {cards.map((card) => (
+                      <option key={card.id} value={card.id}>
+                        {card.card_alias ?? card.masked_pan ?? card.id}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="filter">
+                  <span className="label">{fleetSpendPageCopy.filters.groupBy}</span>
+                  <select
+                    value={filters.groupBy}
+                    onChange={(event) => setFilters((prev) => ({ ...prev, groupBy: event.target.value }))}
+                  >
+                    <option value="day">{fleetSpendPageCopy.filters.day}</option>
+                    <option value="week">{fleetSpendPageCopy.filters.week}</option>
+                    <option value="month">{fleetSpendPageCopy.filters.month}</option>
+                  </select>
+                </div>
+              </div>
+              <div className="toolbar-actions">
+                <button
+                  type="button"
+                  className="button secondary"
+                  onClick={() =>
+                    setFilters({
+                      dateFrom: "",
+                      dateTo: "",
+                      groupId: "",
+                      cardId: "",
+                      groupBy: "day",
+                    })
+                  }
+                  disabled={!filtersActive}
+                >
+                  {fleetSpendPageCopy.actions.reset}
+                </button>
+                <button type="button" className="button secondary" onClick={() => void loadSpend()}>
+                  {fleetSpendPageCopy.actions.refresh}
+                </button>
+              </div>
+            </div>
+          }
+          errorState={
+            error
+              ? {
+                  title: error.title,
+                  description: error.description,
+                  details: error.details,
+                  actionLabel: fleetSpendPageCopy.actions.retry,
+                  actionOnClick: () => void loadSpend(),
+                }
+              : undefined
+          }
+          footer={
+            <div className="table-footer__content muted">{fleetSpendPageCopy.footer.rows(transactions.length)}</div>
+          }
           emptyState={{
-            title: "Транзакции не найдены",
-            description: "В выбранном периоде нет операций по топливным картам.",
+            title: fleetSpendPageCopy.empty.title,
+            description: fleetSpendPageCopy.empty.description,
           }}
         />
       </div>

@@ -1,91 +1,209 @@
+import hashlib
 import os
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from sqlalchemy import Column, String, Table, create_engine
+from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.pool import StaticPool
+
+import app.services.billing_invoice_service as billing_invoice_service
+from app.api.v1.endpoints.billing_invoices import router as billing_router
+from app.db import Base, get_db
+from app.models.audit_log import AuditLog
+from app.models.billing_period import BillingPeriod
+from app.models.clearing_batch import ClearingBatch
+from app.models.invoice import Invoice, InvoicePdfStatus, InvoiceStatus
+from app.models.operation import Operation, OperationStatus, OperationType, ProductType
 
 os.environ.setdefault("DISABLE_CELERY", "1")
-os.environ.setdefault("NEFT_S3_ENDPOINT", "http://minio:9000")
-os.environ.setdefault("NEFT_S3_ACCESS_KEY", "change-me")
-os.environ.setdefault("NEFT_S3_SECRET_KEY", "change-me")
-os.environ.setdefault("NEFT_S3_BUCKET_INVOICES", "neft-invoices")
-os.environ.setdefault("NEFT_S3_REGION", "us-east-1")
-
-from app.db import Base, engine, get_sessionmaker
-from app.main import app
-from app.models.operation import Operation, OperationStatus, OperationType, ProductType
-from app.services.s3_storage import S3Storage
 
 
-@pytest.fixture(autouse=True)
-def clean_db():
-    Base.metadata.drop_all(bind=engine)
-    Base.metadata.create_all(bind=engine)
-    yield
-    Base.metadata.drop_all(bind=engine)
+class _AllowDecisionEngine:
+    def __init__(self, *args, **kwargs) -> None:
+        pass
+
+    def evaluate(self, _ctx):
+        return type("Decision", (), {"outcome": billing_invoice_service.DecisionOutcome.ALLOW})()
 
 
-def _seed_captured_operations(target_date: date, count: int = 6) -> None:
-    session = get_sessionmaker()()
-    base_dt = datetime.combine(target_date, datetime.min.time()).replace(tzinfo=timezone.utc)
-    for idx in range(count):
-        amount = 1000 + idx * 100
-        op = Operation(
-            ext_operation_id=f"seed-op-{idx}",
-            operation_type=OperationType.COMMIT,
-            status=OperationStatus.CAPTURED,
-            created_at=base_dt + timedelta(hours=idx + 1),
-            updated_at=base_dt + timedelta(hours=idx + 1),
-            merchant_id="m-1",
-            terminal_id="t-1",
-            client_id="client-1",
-            card_id="card-1",
-            product_id="FUEL",
-            product_type=ProductType.AI92,
-            amount=amount,
-            amount_settled=amount,
-            currency="RUB",
-            quantity=Decimal("1.0"),
-            unit_price=Decimal(str(amount)),
-            captured_amount=amount,
-            refunded_amount=0,
-            response_code="00",
-            response_message="OK",
-            authorized=True,
+class _NoopGraphBuilder:
+    def __init__(self, *args, **kwargs) -> None:
+        pass
+
+    def ensure_invoice_graph(self, *args, **kwargs) -> None:
+        return None
+
+
+class _MemoryInvoiceStorage:
+    _objects: dict[str, bytes] = {}
+
+    def __init__(self, *args, **kwargs) -> None:
+        pass
+
+    @classmethod
+    def reset(cls) -> None:
+        cls._objects = {}
+
+    def ensure_bucket(self) -> None:
+        return None
+
+    def put_bytes(self, object_key: str, payload: bytes, *, content_type: str) -> str:
+        self._objects[object_key] = payload
+        return self.public_url(object_key)
+
+    def exists(self, object_key: str) -> bool:
+        return object_key in self._objects
+
+    def get_bytes(self, object_key: str) -> bytes | None:
+        return self._objects.get(object_key)
+
+    def public_url(self, object_key: str) -> str:
+        return f"https://test-s3.local/{object_key}"
+
+
+class _MemoryInvoicePdfService:
+    def __init__(self, db: Session):
+        self.db = db
+        self.storage = _MemoryInvoiceStorage()
+
+    def generate(self, invoice: Invoice, *, force: bool = False) -> Invoice:
+        key = invoice.pdf_object_key or f"invoices/{invoice.id}.pdf"
+        payload = b"%PDF-1.4 test invoice pdf%"
+        invoice.pdf_status = InvoicePdfStatus.READY
+        invoice.pdf_generated_at = datetime.now(timezone.utc)
+        invoice.pdf_hash = hashlib.sha256(payload).hexdigest()
+        invoice.pdf_object_key = key
+        invoice.pdf_url = self.storage.put_bytes(key, payload, content_type="application/pdf")
+        self.db.add(invoice)
+        return invoice
+
+
+@pytest.fixture()
+def billing_invoice_context(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(billing_invoice_service, "DecisionEngine", _AllowDecisionEngine)
+    monkeypatch.setattr(billing_invoice_service, "LegalGraphBuilder", _NoopGraphBuilder)
+    monkeypatch.setattr(billing_invoice_service, "InvoicePdfService", _MemoryInvoicePdfService)
+
+    engine = create_engine(
+        "sqlite+pysqlite:///:memory:",
+        future=True,
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    if "fuel_stations" not in Base.metadata.tables:
+        Table("fuel_stations", Base.metadata, Column("id", String(36), primary_key=True), extend_existing=True)
+    if "reconciliation_requests" not in Base.metadata.tables:
+        Table(
+            "reconciliation_requests",
+            Base.metadata,
+            Column("id", String(36), primary_key=True),
+            extend_existing=True,
         )
-        session.add(op)
-    session.commit()
-    session.close()
+
+    Base.metadata.create_all(
+        bind=engine,
+        tables=[
+            BillingPeriod.__table__,
+            ClearingBatch.__table__,
+            Operation.__table__,
+            Invoice.__table__,
+            AuditLog.__table__,
+        ],
+    )
+
+    session_factory = sessionmaker(
+        bind=engine,
+        class_=Session,
+        autocommit=False,
+        autoflush=False,
+        expire_on_commit=False,
+    )
+
+    def override_get_db():
+        db = session_factory()
+        try:
+            yield db
+        finally:
+            db.close()
+
+    local_app = FastAPI()
+    local_app.include_router(billing_router)
+    local_app.dependency_overrides[get_db] = override_get_db
+
+    _MemoryInvoiceStorage.reset()
+    try:
+        with TestClient(local_app) as api_client:
+            yield session_factory, api_client
+    finally:
+        local_app.dependency_overrides.clear()
+        _MemoryInvoiceStorage.reset()
+        engine.dispose()
 
 
-def test_billing_to_pdf_e2e():
+def _seed_captured_operations(session_factory: sessionmaker[Session], *, target_date: date, count: int = 6) -> None:
+    session = session_factory()
+    try:
+        base_dt = datetime.combine(target_date, datetime.min.time()).replace(tzinfo=timezone.utc)
+        for idx in range(count):
+            amount = 1000 + idx * 100
+            op = Operation(
+                ext_operation_id=f"seed-op-{idx}",
+                operation_type=OperationType.COMMIT,
+                status=OperationStatus.CAPTURED,
+                created_at=base_dt + timedelta(hours=idx + 1),
+                updated_at=base_dt + timedelta(hours=idx + 1),
+                merchant_id="m-1",
+                terminal_id="t-1",
+                client_id="client-1",
+                card_id="card-1",
+                product_id="FUEL",
+                product_type=ProductType.AI92,
+                amount=amount,
+                amount_settled=amount,
+                currency="RUB",
+                quantity=Decimal("1.0"),
+                unit_price=Decimal(str(amount)),
+                captured_amount=amount,
+                refunded_amount=0,
+                response_code="00",
+                response_message="OK",
+                authorized=True,
+            )
+            session.add(op)
+        session.commit()
+    finally:
+        session.close()
+
+
+def test_billing_to_pdf_e2e(billing_invoice_context):
+    session_factory, client = billing_invoice_context
     target_date = date.today()
-    _seed_captured_operations(target_date)
+    _seed_captured_operations(session_factory, target_date=target_date)
 
-    with TestClient(app) as client:
-        close_resp = client.post(
-            "/api/v1/billing/close-period",
-            json={"date_from": target_date.isoformat(), "date_to": target_date.isoformat(), "tenant_id": 1},
-        )
-        assert close_resp.status_code == 200
-        batch_payload = close_resp.json()
-        assert batch_payload["txn_count"] == 6
-        assert batch_payload["total_amount"] > 0
+    close_resp = client.post(
+        "/api/v1/billing/close-period",
+        json={"date_from": target_date.isoformat(), "date_to": target_date.isoformat(), "tenant_id": 1},
+    )
+    assert close_resp.status_code == 200
+    batch_payload = close_resp.json()
+    assert batch_payload["txn_count"] == 6
+    assert batch_payload["total_amount"] > 0
 
-        invoice_resp = client.post(
-            "/api/v1/invoices/generate",
-            params={"batch_id": batch_payload["batch_id"]},
-        )
-        assert invoice_resp.status_code == 200
-        invoice_payload = invoice_resp.json()
-        assert invoice_payload["state"] == "SENT"
+    invoice_resp = client.post(
+        "/api/v1/invoices/generate",
+        params={"batch_id": batch_payload["batch_id"]},
+    )
+    assert invoice_resp.status_code == 200
+    invoice_payload = invoice_resp.json()
+    assert invoice_payload["state"] == InvoiceStatus.SENT.value
 
-        invoice_get = client.get(f"/api/v1/invoices/{invoice_payload['invoice_id']}")
-        assert invoice_get.status_code == 200
-        invoice_data = invoice_get.json()
-        assert invoice_data["pdf_url"]
-
-        storage = S3Storage()
-        assert invoice_data["pdf_object_key"]
-        assert storage.exists(invoice_data["pdf_object_key"])
+    invoice_get = client.get(f"/api/v1/invoices/{invoice_payload['invoice_id']}")
+    assert invoice_get.status_code == 200
+    invoice_data = invoice_get.json()
+    assert invoice_data["pdf_url"]
+    assert invoice_data["pdf_object_key"]
+    assert _MemoryInvoiceStorage().exists(invoice_data["pdf_object_key"])

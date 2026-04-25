@@ -2,6 +2,7 @@ from app.models.card_access import CardAccess, CardAccessScope
 from app.models.card_limits import CardLimit
 from app.models.client_cards import ClientCard
 from app.models.client_invitations import ClientInvitation
+from app.models.client_limit_change_requests import ClientLimitChangeRequest
 from app.models.client_limits import ClientLimit
 from app.models.client_operations import ClientOperation
 from app.models.client_user_roles import ClientUserRole
@@ -16,6 +17,7 @@ __all__ = [
     "CardLimit",
     "ClientCard",
     "ClientInvitation",
+    "ClientLimitChangeRequest",
     "ClientLimit",
     "ClientOperation",
     "ClientUser",

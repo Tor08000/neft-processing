@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from sqlalchemy import func
+from sqlalchemy import inspect, text
 from sqlalchemy.orm import Session
 
-from app.models.event_outbox import EventOutbox
+from app.db.schema import DB_SCHEMA, qualified_table_name
 
 
 @dataclass
@@ -17,18 +17,39 @@ class EventOutboxMetricsSnapshot:
     lag_seconds: float = 0.0
 
 
-def load_event_outbox_metrics(db: Session) -> EventOutboxMetricsSnapshot:
-    pending_total = db.query(func.count(EventOutbox.id)).filter(EventOutbox.status == "pending").scalar() or 0
-    failed_total = db.query(func.count(EventOutbox.id)).filter(EventOutbox.status == "failed").scalar() or 0
-    published_total = db.query(func.count(EventOutbox.id)).filter(EventOutbox.status == "published").scalar() or 0
-    retry_total = db.query(func.coalesce(func.sum(EventOutbox.retries), 0)).scalar() or 0
+def _event_outbox_table_name(db: Session) -> str:
+    bind = db.get_bind()
+    if bind.dialect.name == "sqlite":
+        inspector = inspect(bind)
+        if DB_SCHEMA and inspector.has_table("event_outbox", schema=DB_SCHEMA):
+            return qualified_table_name("event_outbox", DB_SCHEMA)
+        return qualified_table_name("event_outbox")
+    return qualified_table_name("event_outbox", DB_SCHEMA)
 
-    lag_row = (
-        db.query(func.coalesce(func.max(func.extract("epoch", func.now() - EventOutbox.created_at)), 0.0))
-        .filter(EventOutbox.status == "pending")
-        .one()
+
+def _lag_seconds_sql(db: Session, table_name: str) -> str:
+    if db.get_bind().dialect.name == "sqlite":
+        return (
+            "SELECT coalesce(max(strftime('%s', 'now') - strftime('%s', created_at)), 0) "
+            f"FROM {table_name} WHERE status = :status"
+        )
+    return (
+        "SELECT coalesce(max(extract(epoch from now() - created_at)), 0.0) "
+        f"FROM {table_name} WHERE status = :status"
     )
-    lag_seconds = float(lag_row[0] or 0.0)
+
+
+def load_event_outbox_metrics(db: Session) -> EventOutboxMetricsSnapshot:
+    table_name = _event_outbox_table_name(db)
+    count_sql = text(f"SELECT count(*) FROM {table_name} WHERE status = :status")
+    pending_total = db.execute(count_sql, {"status": "pending"}).scalar() or 0
+    failed_total = db.execute(count_sql, {"status": "failed"}).scalar() or 0
+    published_total = db.execute(count_sql, {"status": "published"}).scalar() or 0
+    retry_total = db.execute(text(f"SELECT coalesce(sum(retries), 0) FROM {table_name}")).scalar() or 0
+
+    lag_seconds = float(
+        db.execute(text(_lag_seconds_sql(db, table_name)), {"status": "pending"}).scalar() or 0.0
+    )
 
     return EventOutboxMetricsSnapshot(
         pending_total=int(pending_total),

@@ -1,157 +1,133 @@
-import { render, screen } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
-import { MemoryRouter } from "react-router-dom";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { App } from "../App";
-import type { AuthSession } from "../api/types";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const adminSession: AuthSession = {
-  token: "token-1",
-  email: "client@demo.test",
-  roles: ["CLIENT_ADMIN"],
-  subjectType: "CLIENT",
-  clientId: "client-1",
-  expiresAt: Date.now() + 1000 * 60 * 60,
-};
+import { ClientControlsPage } from "./ClientControlsPage";
 
-const readOnlySession: AuthSession = {
-  token: "token-2",
-  email: "client.readonly@demo.test",
-  roles: ["CLIENT_USER"],
-  subjectType: "CLIENT",
-  clientId: "client-1",
-  expiresAt: Date.now() + 1000 * 60 * 60,
-};
+const useAuthMock = vi.fn();
+const useClientMock = vi.fn();
+const useClientJourneyMock = vi.fn();
 
-const buildFetchMock = () =>
-  vi.fn((input: RequestInfo) => {
-    const url = input.toString();
-    if (url.includes("/client/limits")) {
-      return Promise.resolve(
-        new Response(
-          JSON.stringify({
-            amount_limits: [],
-            operation_limits: [],
-            service_limits: [],
-            partner_limits: [],
-            station_limits: [],
-          }),
-          { status: 200 },
-        ),
-      );
-    }
-    if (url.includes("/client/users")) {
-      return Promise.resolve(new Response(JSON.stringify({ items: [] }), { status: 200 }));
-    }
-    if (url.includes("/client/services")) {
-      return Promise.resolve(
-        new Response(
-          JSON.stringify({
-            items: [
-              {
-                id: "service-1",
-                partner: "Demo partner",
-                service: "Fuel",
-                status: "ENABLED",
-                restrictions: "—",
-              },
-            ],
-          }),
-          { status: 200 },
-        ),
-      );
-    }
-    if (url.includes("/client/features")) {
-      return Promise.resolve(
-        new Response(
-          JSON.stringify({
-            items: [
-              {
-                key: "feature-1",
-                description: "Feature",
-                status: "ON",
-                scope: "client",
-              },
-            ],
-          }),
-          { status: 200 },
-        ),
-      );
-    }
-    return Promise.resolve(new Response(JSON.stringify({ items: [] }), { status: 200 }));
+vi.mock("../auth/AuthContext", () => ({
+  useAuth: () => useAuthMock(),
+}));
+
+vi.mock("../auth/ClientContext", () => ({
+  useClient: () => useClientMock(),
+}));
+
+vi.mock("../auth/ClientJourneyContext", () => ({
+  useClientJourney: () => useClientJourneyMock(),
+}));
+
+vi.mock("./ClientLimitsPage", () => ({
+  ClientLimitsPage: () => <div>limits-content</div>,
+}));
+
+vi.mock("./ClientUsersPage", () => ({
+  ClientUsersPage: () => <div>users-content</div>,
+}));
+
+vi.mock("./ClientServicesPage", () => ({
+  ClientServicesPage: () => <div>services-content</div>,
+}));
+
+vi.mock("./ClientFeaturesPage", () => ({
+  ClientFeaturesPage: () => <div>features-content</div>,
+}));
+
+describe("ClientControlsPage", () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    useClientMock.mockReturnValue({
+      client: {
+        org: { id: "org-1", org_type: "LEGAL" },
+        subscription: { plan_code: "CLIENT_BUSINESS" },
+        org_roles: ["CLIENT_OWNER"],
+        user_roles: ["CLIENT_OWNER"],
+        capabilities: ["CLIENT_BILLING"],
+        nav_sections: [],
+      },
+    });
+    useClientJourneyMock.mockReturnValue({
+      draft: { customerType: "LEGAL_ENTITY" },
+    });
   });
 
-afterEach(() => {
-  vi.unstubAllGlobals();
-  vi.restoreAllMocks();
-});
+  it("shows the users tab for all client management roles", () => {
+    useAuthMock.mockReturnValue({
+      user: {
+        token: "test.header.payload",
+        roles: ["CLIENT_OWNER"],
+      },
+    });
 
-beforeEach(() => {
-  (import.meta.env as Record<string, string>).VITE_API_BASE = "http://gateway";
-});
+    const { rerender } = render(<ClientControlsPage />);
 
-describe("Client controls", () => {
-  it("renders each management tab", async () => {
-    const fetchMock = buildFetchMock();
-    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+    expect(screen.getByRole("button", { name: "Пользователи" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Лимиты" })).toHaveAttribute("aria-pressed", "true");
 
-    render(
-      <MemoryRouter initialEntries={["/settings/management"]}>
-        <App initialSession={adminSession} />
-      </MemoryRouter>,
-    );
+    useAuthMock.mockReturnValue({
+      user: {
+        token: "test.header.payload",
+        roles: ["CLIENT_MANAGER"],
+      },
+    });
 
-    expect(await screen.findByRole("heading", { name: "Лимиты" })).toBeInTheDocument();
+    rerender(<ClientControlsPage />);
 
-    const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "Пользователи" }));
-    expect(await screen.findByRole("heading", { name: "Пользователи" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Пригласить сотрудника" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Пользователи" })).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Услуги и партнёры" }));
-    expect(await screen.findByRole("heading", { name: "Услуги и партнёры" })).toBeInTheDocument();
+    useAuthMock.mockReturnValue({
+      user: {
+        token: "test.header.payload",
+        roles: ["CLIENT_USER"],
+      },
+    });
 
-    await user.click(screen.getByRole("button", { name: "Возможности" }));
-    expect(await screen.findByRole("heading", { name: "Возможности" })).toBeInTheDocument();
-  });
-
-  it("disables actions for read-only users", async () => {
-    const fetchMock = buildFetchMock();
-    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
-
-    render(
-      <MemoryRouter initialEntries={["/settings/management"]}>
-        <App initialSession={readOnlySession} />
-      </MemoryRouter>,
-    );
-
-    const user = userEvent.setup();
+    rerender(<ClientControlsPage />);
 
     expect(screen.queryByRole("button", { name: "Пользователи" })).not.toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: "Услуги и партнёры" }));
-    expect(await screen.findByRole("button", { name: "Отключить" })).toBeDisabled();
-
-    await user.click(screen.getByRole("button", { name: "Возможности" }));
-    expect(await screen.findByRole("button", { name: "Отключить" })).toBeDisabled();
   });
 
-  it("renders error state for failed loads", async () => {
-    const fetchMock = vi.fn((input: RequestInfo) => {
-      const url = input.toString();
-      if (url.includes("/client/limits")) {
-        return Promise.resolve(new Response("Boom", { status: 500 }));
-      }
-      return Promise.resolve(new Response(JSON.stringify({ items: [] }), { status: 200 }));
+  it("switches shared control tabs without a card-shell wrapper", () => {
+    useAuthMock.mockReturnValue({
+      user: {
+        token: "test.header.payload",
+        roles: ["CLIENT_ADMIN"],
+      },
     });
-    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
 
-    render(
-      <MemoryRouter initialEntries={["/settings/management"]}>
-        <App initialSession={adminSession} />
-      </MemoryRouter>,
-    );
+    render(<ClientControlsPage />);
 
-    expect(await screen.findByText("Не удалось выполнить запрос")).toBeInTheDocument();
+    expect(screen.getByText("limits-content")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Возможности" }));
+
+    expect(screen.getByRole("button", { name: "Возможности" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByText("features-content")).toBeInTheDocument();
+  });
+
+  it("blocks management shell for non-business client contours", () => {
+    useClientMock.mockReturnValue({
+      client: {
+        org: { id: "org-1", org_type: "INDIVIDUAL" },
+        subscription: { plan_code: "CLIENT_START" },
+        org_roles: ["CLIENT_OWNER"],
+        user_roles: ["CLIENT_OWNER"],
+        capabilities: [],
+        nav_sections: [],
+      },
+    });
+    useAuthMock.mockReturnValue({
+      user: {
+        token: "test.header.payload",
+        roles: ["CLIENT_OWNER"],
+      },
+    });
+
+    render(<ClientControlsPage />);
+
+    expect(screen.getByText("Управление командой доступно только бизнес-клиентам с соответствующей ролью.")).toBeInTheDocument();
+    expect(screen.queryByText("limits-content")).not.toBeInTheDocument();
   });
 });

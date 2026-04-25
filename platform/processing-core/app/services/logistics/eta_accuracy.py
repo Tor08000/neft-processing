@@ -38,8 +38,10 @@ def record_snapshot(
         confidence=confidence,
     )
     db.add(accuracy)
+    db.flush()
+    accuracy_id = str(accuracy.id)
     db.commit()
-    db.refresh(accuracy)
+    accuracy = repository.refresh_by_id(db, accuracy, LogisticsETAAccuracy, accuracy_id)
 
     events.audit_event(
         db,
@@ -86,8 +88,10 @@ def record_completion(
         confidence=latest.eta_confidence,
     )
     db.add(accuracy)
+    db.flush()
+    accuracy_id = str(accuracy.id)
     db.commit()
-    db.refresh(accuracy)
+    accuracy = repository.refresh_by_id(db, accuracy, LogisticsETAAccuracy, accuracy_id)
 
     events.audit_event(
         db,
@@ -130,8 +134,10 @@ def record_completion(
             },
         )
         db.add(signal)
+        db.flush()
+        signal_id = str(signal.id)
         db.commit()
-        db.refresh(signal)
+        signal = repository.refresh_by_id(db, signal, LogisticsRiskSignal, signal_id)
 
         events.audit_event(
             db,

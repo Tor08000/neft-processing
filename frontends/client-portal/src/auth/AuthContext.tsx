@@ -26,8 +26,9 @@ interface AuthProviderProps {
 
 const STORAGE_KEY = "neft_client_access_token";
 const CLIENT_TOKEN_ISSUER = import.meta.env.VITE_CLIENT_TOKEN_ISSUER ?? "neft-auth";
+const DEBUG_AUTH_FLOW = Boolean(import.meta.env.DEV && import.meta.env.VITE_CLIENT_DEBUG_AUTH === "true");
 
-const isCanonicalConnectRoute = (path: string) => path === "/connect" || path.startsWith("/connect/");
+const isCanonicalOnboardingRoute = (path: string) => path === "/onboarding" || path.startsWith("/onboarding/");
 
 function decodeJwtPayload(token: string): Record<string, unknown> | null {
   const parts = token.split(".");
@@ -65,6 +66,31 @@ function isClientRolePresent(roles: string[]): boolean {
   return roles.some((role) => role.startsWith("CLIENT_"));
 }
 
+function readStoredSession(): AuthSession | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) {
+      return null;
+    }
+    const parsed = JSON.parse(raw) as Partial<AuthSession>;
+    if (!isValidJwt(parsed.token)) {
+      return null;
+    }
+    return {
+      token: parsed.token,
+      refreshToken: parsed.refreshToken ?? undefined,
+      email: parsed.email ?? "",
+      roles: Array.isArray(parsed.roles) ? parsed.roles : [],
+      subjectType: parsed.subjectType ?? "CLIENT",
+      clientId: parsed.clientId ?? undefined,
+      expiresAt: typeof parsed.expiresAt === "number" ? parsed.expiresAt : Date.now(),
+      timezone: parsed.timezone ?? undefined,
+    };
+  } catch {
+    return null;
+  }
+}
+
 type SessionTokens = {
   accessToken: string;
   refreshToken?: string;
@@ -80,7 +106,8 @@ type EstablishSessionOptions = {
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialSession = null }) => {
   const navigate = useNavigate();
   const location = useLocation();
-  const [user, setUser] = useState<AuthSession | null>(initialSession);
+  const persistedSession = initialSession ?? readStoredSession();
+  const [user, setUser] = useState<AuthSession | null>(persistedSession);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [authStatus, setAuthStatus] = useState<"loading" | "authenticated" | "unauthenticated">("loading");
@@ -107,7 +134,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialSes
 
   const forceReauth = useCallback(() => {
     if (reauthInProgressRef.current || reauthRedirectedRef.current || authInProgressRef.current) {
-      if (import.meta.env.DEV && authInProgressRef.current) {
+      if (DEBUG_AUTH_FLOW && authInProgressRef.current) {
         console.info("[AUTH] reauth event suppressed: auth flow in progress");
       }
       return;
@@ -119,13 +146,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialSes
     persist(null);
     setUser(null);
     setAuthError("reauth_required");
-    setError("Требуется повторный вход");
+    setError(null);
     setAuthStatus("unauthenticated");
     const target = "/login?reauth=1";
     const current = `${location.pathname}${location.search}`;
     const skipped = current === target;
 
-    if (import.meta.env.DEV) {
+    if (DEBUG_AUTH_FLOW) {
       console.info("[routing:attempt]", {
         source: "AuthContext.forceReauth",
         currentPath: current,
@@ -146,16 +173,16 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialSes
       const requestedTargetPath = path;
       const alreadyTarget = current === requestedTargetPath;
       const skippedCanonicalOnboarding =
-        isCanonicalConnectRoute(location.pathname) && isCanonicalConnectRoute(path);
+        isCanonicalOnboardingRoute(location.pathname) && isCanonicalOnboardingRoute(path) && location.pathname === path;
       const skipped = alreadyTarget || skippedCanonicalOnboarding;
 
-      if (import.meta.env.DEV) {
+      if (DEBUG_AUTH_FLOW) {
         console.info("[routing:attempt]", {
           source,
           currentPath: current,
           requestedTargetPath,
           skipped,
-          skipReason: alreadyTarget ? "already_target" : skippedCanonicalOnboarding ? "already_canonical_connect" : null,
+          skipReason: alreadyTarget ? "already_target" : skippedCanonicalOnboarding ? "already_canonical_onboarding" : null,
         });
       }
 
@@ -172,7 +199,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialSes
       const source = options?.source ?? "login";
       const onUnauthorized = options?.onUnauthorized ?? "handle";
       saveAuthTokens(tokens.accessToken, tokens.refreshToken, tokens.expiresInSec);
-      if (import.meta.env.DEV) {
+      if (DEBUG_AUTH_FLOW) {
         console.info("[AUTH] session tokens persisted", {
           source,
           hasAccessToken: Boolean(tokens.accessToken),
@@ -186,7 +213,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialSes
           logout();
           return;
         }
-        if (import.meta.env.DEV) {
+        if (DEBUG_AUTH_FLOW) {
           console.info("[AUTH] calling /me", { source, hasAuthorizationHeader: true });
         }
         const profile = await fetchMe(tokens.accessToken);
@@ -209,20 +236,24 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialSes
         setAuthError(null);
         setAuthStatus("authenticated");
         reauthInProgressRef.current = false;
+        reauthRedirectedRef.current = false;
         if (shouldRoute) {
-          const postAuthRoute = source === "signup" ? "/connect/plan" : "/";
+          const postAuthRoute = source === "signup" ? "/onboarding" : "/";
           navigateTo(postAuthRoute, `AuthContext.establishSession.${source}`);
         }
       } catch (err) {
         if (err instanceof UnauthorizedError) {
-          if (import.meta.env.DEV) {
+          if (DEBUG_AUTH_FLOW) {
             console.log("[AUTH] auth_me_401 -> invalid token");
           }
           logout();
-          setError("Нет доступа: токен недействителен");
           if (onUnauthorized === "throw") {
+            setAuthError(null);
+            setError(null);
             throw err;
           }
+          setAuthError("reauth_required");
+          setError(null);
           return;
         }
         throw err;
@@ -245,7 +276,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialSes
     }
     bootstrappedRef.current = true;
 
-    if (initialSession) {
+    if (persistedSession) {
       setAuthStatus("authenticated");
       setIsLoading(false);
       return;
@@ -253,10 +284,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialSes
 
     const bootstrap = async () => {
       try {
-        let accessToken = getAccessToken();
-        const refreshToken = getRefreshToken();
+        const storedSession = readStoredSession();
+        let accessToken = getAccessToken() ?? storedSession?.token ?? null;
+        const refreshToken = getRefreshToken() ?? storedSession?.refreshToken ?? null;
+        const expiresAt = getExpiresAt() ?? storedSession?.expiresAt ?? null;
 
-        if (import.meta.env.DEV) {
+        if (DEBUG_AUTH_FLOW) {
           const tokenLen = typeof accessToken === "string" ? accessToken.length : 0;
           const tokenPrefix = typeof accessToken === "string" ? accessToken.slice(0, 10) : "";
           console.log(`[AUTH] stored_token=${tokenLen} prefix=${tokenPrefix}`);
@@ -267,7 +300,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialSes
           return;
         }
 
-        let expiresInSec = Math.max(1, Math.floor(((getExpiresAt() ?? Date.now()) - Date.now()) / 1000));
+        let expiresInSec = Math.max(1, Math.floor(((expiresAt ?? Date.now()) - Date.now()) / 1000));
         if (isAccessTokenExpired()) {
           if (!refreshToken) {
             logout();
@@ -292,7 +325,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialSes
     };
 
     void bootstrap();
-  }, [establishSession, initialSession, logout]);
+  }, [establishSession, logout, persistedSession]);
 
   const setTimezone = useCallback(
     (timezone: string | null) => {
@@ -308,16 +341,18 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialSes
 
   const handleLogin = useCallback(
     async (credentials: { email: string; password: string }, options?: { source?: "login" | "signup" }) => {
-      if (authInProgressRef.current || reauthRedirectedRef.current) {
+      if (authInProgressRef.current) {
         return;
       }
       const source = options?.source ?? "login";
+      reauthInProgressRef.current = false;
+      reauthRedirectedRef.current = false;
       authInProgressRef.current = true;
       setError(null);
       setAuthError(null);
       try {
         const session = await loginApi({ email: credentials.email, password: credentials.password });
-        if (import.meta.env.DEV) {
+        if (DEBUG_AUTH_FLOW) {
           const tokenLen = session.token.length;
           const tokenPrefix = session.token.slice(0, 10);
           console.log(`[AUTH] login_token=${tokenLen} prefix=${tokenPrefix}`);

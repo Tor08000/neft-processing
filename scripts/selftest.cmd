@@ -3,7 +3,7 @@ setlocal EnableExtensions EnableDelayedExpansion
 
 if "%BASE_URL%"=="" set "BASE_URL=http://localhost"
 set "CLIENT_EMAIL=client@neft.local"
-set "CLIENT_PASSWORD=Neft123!"
+set "CLIENT_PASSWORD=Client123!"
 set "PARTNER_EMAIL=partner@neft.local"
 set "PARTNER_PASSWORD=Partner123!"
 set "CREATED_ID="

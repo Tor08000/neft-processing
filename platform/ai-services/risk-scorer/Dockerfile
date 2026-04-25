@@ -12,10 +12,9 @@ RUN pip install --upgrade pip && \
     rm /tmp/requirements.txt
 
 COPY shared/python /opt/python
-RUN pip install -e /opt/python
-ENV PYTHONPATH="/app"
+ENV PYTHONPATH="/app:/opt/python"
 
-# подключаем sitecustomize.py, чтобы он подхватывался автоматически
+# sitecustomize is copied into /app so Python imports it automatically.
 COPY sitecustomize.py /app/sitecustomize.py
 
 COPY platform/ai-services/risk-scorer /app

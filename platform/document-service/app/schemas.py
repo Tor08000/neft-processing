@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Any
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class RenderRequest(BaseModel):
@@ -57,7 +57,9 @@ class TemplateListItem(BaseModel):
 
 
 class TemplateDetail(TemplateListItem):
-    schema: dict[str, Any]
+    model_config = ConfigDict(populate_by_name=True)
+
+    schema_: dict[str, Any] = Field(alias="schema")
 
 
 class PresignRequest(BaseModel):

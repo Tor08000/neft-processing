@@ -1,16 +1,20 @@
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
+from typing import Any
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import MetaData, Table, func, select
 from sqlalchemy.orm import Session
 
+from app.api.dependencies.admin_capability import require_admin_capability
 from app.api.dependencies.admin import require_admin_user
 from app.api.dependencies.admin_rbac import require_any_admin_roles
 from app.db import get_db
 from app.models.audit_log import AuditLog, AuditVisibility
 from app.models.finance import CreditNoteStatus, PaymentStatus
 from app.models.partner_finance import (
+    PartnerLedgerEntry,
     PartnerLedgerDirection,
     PartnerLedgerEntryType,
     PartnerPayoutPolicy,
@@ -18,7 +22,7 @@ from app.models.partner_finance import (
     PartnerPayoutRequestStatus,
     PartnerPayoutSchedule,
 )
-from app.models.partner_legal import PartnerLegalProfile
+from app.models.partner_legal import PartnerLegalDetails, PartnerLegalProfile
 from app.models.settlement_v1 import SettlementPeriod
 from app.models.reconciliation import ReconciliationDiscrepancy, ReconciliationDiscrepancyStatus
 from app.schemas.admin.finance import (
@@ -26,9 +30,11 @@ from app.schemas.admin.finance import (
     AdminInvoiceDetail,
     AdminInvoiceListResponse,
     AdminInvoiceSummary,
+    AdminInvoiceStateExplain,
     AdminPaymentIntakeActionResponse,
     AdminPaymentIntakeDetail,
     AdminPaymentIntakeListResponse,
+    AdminTimelineEvent,
     CreditNoteRequest,
     CreditNoteResponse,
     FinanceOverviewBlockedReason,
@@ -48,7 +54,14 @@ from app.schemas.admin.finance import (
 )
 from app.schemas.billing_payment_intakes import BillingPaymentIntakeStatus
 from app.services.audit_service import AuditService, _sanitize_token_for_audit, request_context_from_request
-from app.services.billing_payment_intakes import get_invoice, get_payment_intake, list_payment_intakes, review_payment_intake
+from app.services.billing_payment_intakes import (
+    approve_invoice_payment_intake,
+    get_invoice as get_billing_invoice,
+    get_payment_intake,
+    list_invoice_payment_intakes,
+    list_payment_intakes,
+    review_payment_intake,
+)
 from app.services.client_notifications import ClientNotificationSeverity, create_notification, resolve_client_email
 from app.services.entitlements_v2_service import get_org_entitlements_snapshot
 from app.services.finance import (
@@ -66,7 +79,14 @@ from app.services.invoice_state_machine import InvalidTransitionError, InvoiceIn
 from app.services.job_locks import make_stable_key
 from app.db.schema import DB_SCHEMA
 
-router = APIRouter(prefix="/finance", tags=["admin"])
+# Operator/admin finance owner for reflected invoice-intake-payout queues and partner finance actions.
+# This router is not the canonical owner for billing_summary projection reads or invoice generation,
+# which stay under admin/billing and admin/billing_flows.
+router = APIRouter(
+    prefix="/finance",
+    tags=["admin"],
+    dependencies=[Depends(require_admin_capability("finance"))],
+)
 
 WRITE_ROLES = ["NEFT_FINANCE", "NEFT_SUPERADMIN", "NEFT_ADMIN", "ADMIN"]
 
@@ -107,8 +127,35 @@ def _write_error(request: Request, status_code: int, error: str) -> HTTPExceptio
     return HTTPException(status_code=status_code, detail={"error": error, "request_id": _correlation_id(request)})
 
 
+def _invoice_identifier(value: Any) -> str | int | None:
+    if value is None:
+        return None
+    if isinstance(value, (str, int)):
+        return value
+    return str(value)
+
+
+def _entitlements_org_id(*, invoice: dict | None, intake: dict) -> int:
+    invoice_org_id = invoice.get("org_id") if invoice else None
+    if isinstance(invoice_org_id, int):
+        return invoice_org_id
+    if isinstance(invoice_org_id, str) and invoice_org_id.isdigit():
+        return int(invoice_org_id)
+    return int(intake["org_id"])
+
+
 class SettlementSnapshotMissing(Exception):
     pass
+
+
+def _is_uuid(value: str | None) -> bool:
+    if not value:
+        return False
+    try:
+        UUID(str(value))
+    except (TypeError, ValueError):
+        return False
+    return True
 
 
 def _serialize_invoice(row: dict) -> AdminInvoiceSummary:
@@ -130,12 +177,106 @@ def _serialize_invoice(row: dict) -> AdminInvoiceSummary:
     )
 
 
-def _serialize_invoice_detail(row: dict, pdf_url: str | None) -> AdminInvoiceDetail:
+def _coerce_utc(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+def _audit_correlation_id(item: AuditLog) -> str | None:
+    correlation_id = None
+    if isinstance(item.external_refs, dict):
+        correlation_id = item.external_refs.get("correlation_id")
+    return correlation_id or item.trace_id or item.request_id
+
+
+def _serialize_timeline_event(item: AuditLog) -> AdminTimelineEvent:
+    return AdminTimelineEvent(
+        ts=item.ts,
+        event_type=item.event_type,
+        entity_type=item.entity_type,
+        entity_id=item.entity_id,
+        action=item.action,
+        reason=item.reason,
+        actor_id=item.actor_id,
+        actor_email=item.actor_email,
+        correlation_id=_audit_correlation_id(item),
+        before=item.before if isinstance(item.before, dict) else None,
+        after=item.after if isinstance(item.after, dict) else None,
+    )
+
+
+def _audit_events_for_entity(
+    db: Session,
+    *,
+    entity_type: str,
+    entity_id: str,
+    limit: int = 20,
+) -> list[AdminTimelineEvent]:
+    rows = (
+        db.query(AuditLog)
+        .filter(
+            AuditLog.entity_type == entity_type,
+            AuditLog.entity_id == entity_id,
+        )
+        .order_by(AuditLog.ts.desc(), AuditLog.id.desc())
+        .limit(limit)
+        .all()
+    )
+    return [_serialize_timeline_event(item) for item in rows]
+
+
+def _build_invoice_state_explain(row: dict, payment_intakes: list[dict]) -> AdminInvoiceStateExplain:
+    due_at = _coerce_utc(row.get("due_at"))
+    paid_at = _coerce_utc(row.get("paid_at"))
+    now = datetime.now(timezone.utc)
+    status = str(row.get("status") or "UNKNOWN")
+    has_pdf = bool(row.get("pdf_url") or row.get("pdf_object_key") or row.get("pdf_status") == "READY")
+    pending_count = sum(
+        1
+        for item in payment_intakes
+        if str(item.get("status")) in {BillingPaymentIntakeStatus.SUBMITTED.value, BillingPaymentIntakeStatus.UNDER_REVIEW.value}
+    )
+    latest_status = payment_intakes[0].get("status") if payment_intakes else None
+    is_overdue = status == "OVERDUE" or (due_at is not None and paid_at is None and due_at < now)
+    return AdminInvoiceStateExplain(
+        current_status=status,
+        pdf_status=row.get("pdf_status"),
+        has_pdf=has_pdf,
+        is_overdue=is_overdue,
+        payment_intakes_total=len(payment_intakes),
+        payment_intakes_pending=pending_count,
+        latest_payment_intake_status=str(latest_status) if latest_status is not None else None,
+        reconciliation_request_id=str(row.get("reconciliation_request_id")) if row.get("reconciliation_request_id") else None,
+    )
+
+
+def _serialize_invoice_detail(
+    row: dict,
+    pdf_url: str | None,
+    *,
+    state_explain: AdminInvoiceStateExplain | None = None,
+    timeline: list[AdminTimelineEvent] | None = None,
+) -> AdminInvoiceDetail:
     base = _serialize_invoice(row)
-    return AdminInvoiceDetail(**base.model_dump(), pdf_url=pdf_url)
+    return AdminInvoiceDetail(
+        **base.model_dump(),
+        pdf_url=pdf_url,
+        state_explain=state_explain,
+        timeline=timeline or [],
+    )
 
 
-def _serialize_payment_intake(row: dict, *, proof_url: str | None = None) -> AdminPaymentIntakeDetail:
+def _serialize_payment_intake(
+    row: dict,
+    *,
+    proof_url: str | None = None,
+    invoice_status: str | None = None,
+    timeline: list[AdminTimelineEvent] | None = None,
+) -> AdminPaymentIntakeDetail:
+    invoice_id = _invoice_identifier(row.get("invoice_id"))
     proof = None
     if row.get("proof_object_key"):
         proof = {
@@ -147,7 +288,7 @@ def _serialize_payment_intake(row: dict, *, proof_url: str | None = None) -> Adm
     return AdminPaymentIntakeDetail(
         id=row["id"],
         org_id=row["org_id"],
-        invoice_id=row["invoice_id"],
+        invoice_id=invoice_id,
         status=row["status"],
         amount=row["amount"],
         currency=row["currency"],
@@ -163,7 +304,9 @@ def _serialize_payment_intake(row: dict, *, proof_url: str | None = None) -> Adm
         reviewed_at=row.get("reviewed_at"),
         review_note=row.get("review_note"),
         created_at=row.get("created_at"),
-        invoice_link=f"/finance/invoices/{row['invoice_id']}" if row.get("invoice_id") else None,
+        invoice_status=invoice_status,
+        invoice_link=f"/finance/invoices/{invoice_id}" if invoice_id else None,
+        timeline=timeline or [],
     )
 
 
@@ -173,6 +316,8 @@ def _payout_blockers(service: PartnerFinanceService, payout: PartnerPayoutReques
             partner_org_id=payout.partner_org_id,
             amount=Decimal(payout.amount),
             currency=payout.currency,
+            now=datetime.now(timezone.utc),
+            exclude_payout_id=str(payout.id),
         )
     except Exception:
         return []
@@ -195,6 +340,9 @@ def _legal_status_by_partner(db: Session, partner_ids: list[str]) -> dict[str, s
 
 
 def _settlement_state_for_partner(db: Session, *, partner_id: str, currency: str) -> str | None:
+    partner_id = _resolve_settlement_partner_id(db, partner_id=partner_id, currency=currency)
+    if not _is_uuid(partner_id):
+        return None
     period = (
         db.query(SettlementPeriod)
         .filter(
@@ -235,7 +383,52 @@ def _correlation_chain_by_payout(db: Session, payout_ids: list[str]) -> dict[str
     return chains
 
 
+def _resolve_settlement_partner_id(db: Session, *, partner_id: str, currency: str | None = None) -> str:
+    normalized_partner_id = str(partner_id)
+    if _is_uuid(normalized_partner_id):
+        return normalized_partner_id
+
+    alias_details = (
+        db.query(PartnerLegalDetails)
+        .filter(PartnerLegalDetails.partner_id == normalized_partner_id)
+        .one_or_none()
+    )
+    if alias_details is None:
+        return normalized_partner_id
+
+    candidate_filters = [PartnerLegalDetails.partner_id != normalized_partner_id]
+    if alias_details.inn:
+        candidate_filters.append(PartnerLegalDetails.inn == alias_details.inn)
+    elif alias_details.legal_name:
+        candidate_filters.append(PartnerLegalDetails.legal_name == alias_details.legal_name)
+    else:
+        return normalized_partner_id
+
+    candidates = [str(candidate_partner_id) for candidate_partner_id, in db.query(PartnerLegalDetails.partner_id).filter(*candidate_filters).all()]
+    uuid_candidates = [candidate_partner_id for candidate_partner_id in candidates if _is_uuid(candidate_partner_id)]
+    if currency:
+        for candidate_partner_id in uuid_candidates:
+            has_snapshot = (
+                db.query(SettlementPeriod.id)
+                .filter(
+                    SettlementPeriod.partner_id == candidate_partner_id,
+                    SettlementPeriod.currency == currency,
+                )
+                .order_by(SettlementPeriod.period_end.desc())
+                .first()
+                is not None
+            )
+            if has_snapshot:
+                return candidate_partner_id
+    for candidate_partner_id in uuid_candidates:
+        return candidate_partner_id
+    return normalized_partner_id
+
+
 def _ensure_settlement_snapshot(db: Session, *, partner_id: str, currency: str) -> None:
+    partner_id = _resolve_settlement_partner_id(db, partner_id=partner_id, currency=currency)
+    if not _is_uuid(partner_id):
+        raise SettlementSnapshotMissing("settlement_snapshot_missing")
     has_snapshot = (
         db.query(SettlementPeriod.id)
         .filter(
@@ -250,6 +443,94 @@ def _ensure_settlement_snapshot(db: Session, *, partner_id: str, currency: str) 
         raise SettlementSnapshotMissing("settlement_snapshot_missing")
 
 
+def _settlement_snapshot_for_partner(db: Session, *, partner_id: str, currency: str) -> dict[str, object] | None:
+    partner_id = _resolve_settlement_partner_id(db, partner_id=partner_id, currency=currency)
+    if not _is_uuid(partner_id):
+        return None
+    period = (
+        db.query(SettlementPeriod)
+        .filter(
+            SettlementPeriod.partner_id == partner_id,
+            SettlementPeriod.currency == currency,
+        )
+        .order_by(SettlementPeriod.period_end.desc())
+        .first()
+    )
+    if not period:
+        return None
+    return {
+        "settlement_id": str(period.id),
+        "partner_org_id": str(period.partner_id),
+        "currency": period.currency,
+        "status": period.status.value if hasattr(period.status, "value") else str(period.status),
+        "period_start": period.period_start.isoformat() if period.period_start else None,
+        "period_end": period.period_end.isoformat() if period.period_end else None,
+        "breakdown": {
+            "gross": str(Decimal(period.total_gross or 0)),
+            "fee": str(Decimal(period.total_fees or 0)),
+            "penalty": str(Decimal(period.total_refunds or 0)),
+            "net": str(Decimal(period.net_amount or 0)),
+        },
+        "snapshot_payload": period.snapshot_payload if isinstance(period.snapshot_payload, dict) else None,
+    }
+
+
+def _payout_trace(db: Session, *, payout: PartnerPayoutRequest) -> list[PayoutTraceItem]:
+    rows = (
+        db.query(PartnerLedgerEntry)
+        .filter(PartnerLedgerEntry.partner_org_id == payout.partner_org_id)
+        .order_by(PartnerLedgerEntry.created_at.desc())
+        .limit(200)
+        .all()
+    )
+    trace: list[PayoutTraceItem] = []
+    for item in rows:
+        meta = item.meta_json if isinstance(item.meta_json, dict) else {}
+        source_id = meta.get("source_id")
+        correlation_id = meta.get("correlation_id")
+        if str(source_id) != str(payout.id) and correlation_id != payout.correlation_id:
+            continue
+        entry_type = item.entry_type.value if hasattr(item.entry_type, "value") else str(item.entry_type)
+        trace.append(
+            PayoutTraceItem(
+                entity_type=f"partner_ledger_entry:{entry_type}",
+                entity_id=str(item.id),
+                amount=Decimal(item.amount) if item.amount is not None else None,
+                currency=item.currency,
+                created_at=item.created_at,
+            )
+        )
+    return trace
+
+
+def _build_payout_block_reason_tree(
+    *,
+    payout: PartnerPayoutRequest,
+    blockers: list[str],
+    policy: PartnerPayoutPolicy | None,
+    legal_status: str | None,
+    settlement_state: str | None,
+) -> dict[str, object] | None:
+    if not blockers:
+        return None
+    policy_payload = None
+    if policy is not None:
+        policy_payload = {
+            "min_payout_amount": str(Decimal(policy.min_payout_amount or 0)),
+            "payout_hold_days": int(policy.payout_hold_days or 0),
+            "payout_schedule": policy.payout_schedule.value if hasattr(policy.payout_schedule, "value") else str(policy.payout_schedule),
+        }
+    return {
+        "partner_org_id": str(payout.partner_org_id),
+        "requested_amount": str(Decimal(payout.amount)),
+        "currency": payout.currency,
+        "blockers": blockers,
+        "legal_status": legal_status,
+        "settlement_state": settlement_state,
+        "policy": policy_payload,
+    }
+
+
 def _serialize_payout(
     payout: PartnerPayoutRequest,
     blockers: list[str],
@@ -258,6 +539,9 @@ def _serialize_payout(
     legal_status: str | None = None,
     settlement_state: str | None = None,
     correlation_chain: list[str] | None = None,
+    settlement_snapshot: dict[str, object] | None = None,
+    block_reason_tree: dict[str, object] | None = None,
+    audit_events: list[AdminTimelineEvent] | None = None,
 ) -> PayoutDetail:
     totals = {
         "gross": Decimal(payout.amount),
@@ -289,6 +573,92 @@ def _serialize_payout(
         policy=policy_info,
         trace=trace or [],
         totals=totals,
+        settlement_snapshot=settlement_snapshot,
+        block_reason_tree=block_reason_tree,
+        audit_events=audit_events or [],
+    )
+
+
+def _load_invoice_detail(
+    db: Session,
+    *,
+    invoice_id: str,
+    row: dict | None = None,
+) -> AdminInvoiceDetail:
+    if row is None:
+        if not _tables_ready(db, ["billing_invoices"]):
+            raise HTTPException(status_code=404, detail="invoice_not_found")
+        invoices = _table(db, "billing_invoices")
+        stored = db.execute(select(invoices).where(invoices.c.id == invoice_id)).mappings().first()
+        if not stored:
+            raise HTTPException(status_code=404, detail="invoice_not_found")
+        row = dict(stored)
+    else:
+        row = dict(row)
+
+    pdf_url = row.get("pdf_url")
+    object_key = row.get("pdf_object_key")
+    if object_key:
+        pdf_url = S3Storage().presign_download(object_key=object_key, expires=3600)
+
+    payment_intakes = list_invoice_payment_intakes(db, invoice_id=invoice_id)
+    state_explain = _build_invoice_state_explain(row, payment_intakes)
+    timeline = _audit_events_for_entity(db, entity_type="billing_invoice", entity_id=str(invoice_id))
+    return _serialize_invoice_detail(row, pdf_url, state_explain=state_explain, timeline=timeline)
+
+
+def _load_payment_intake_detail(
+    db: Session,
+    *,
+    intake_row: dict,
+) -> AdminPaymentIntakeDetail:
+    proof_url = None
+    if intake_row.get("proof_object_key"):
+        proof_url = S3Storage().presign_download(object_key=intake_row["proof_object_key"], expires=3600)
+    invoice = get_billing_invoice(db, invoice_id=intake_row["invoice_id"])
+    timeline = _audit_events_for_entity(db, entity_type="billing_payment_intake", entity_id=str(intake_row["id"]))
+    return _serialize_payment_intake(
+        intake_row,
+        proof_url=proof_url,
+        invoice_status=str(invoice.get("status")) if invoice else None,
+        timeline=timeline,
+    )
+
+
+def _build_payout_detail(db: Session, *, payout: PartnerPayoutRequest, service: PartnerFinanceService) -> PayoutDetail:
+    blockers = _payout_blockers(service, payout)
+    policy = service.get_payout_policy(partner_org_id=payout.partner_org_id, currency=payout.currency)
+    settlement_state = _settlement_state_for_partner(
+        db,
+        partner_id=str(payout.partner_org_id),
+        currency=payout.currency,
+    )
+    legal_status = _legal_status_by_partner(db, [str(payout.partner_org_id)]).get(str(payout.partner_org_id))
+    correlation_chain = _correlation_chain_by_payout(db, [str(payout.id)]).get(str(payout.id), [])
+    if payout.correlation_id and payout.correlation_id not in correlation_chain:
+        correlation_chain = [*correlation_chain, payout.correlation_id]
+    settlement_snapshot = _settlement_snapshot_for_partner(
+        db,
+        partner_id=str(payout.partner_org_id),
+        currency=payout.currency,
+    )
+    return _serialize_payout(
+        payout,
+        blockers,
+        policy=policy,
+        trace=_payout_trace(db, payout=payout),
+        legal_status=legal_status,
+        settlement_state=settlement_state,
+        correlation_chain=correlation_chain,
+        settlement_snapshot=settlement_snapshot,
+        block_reason_tree=_build_payout_block_reason_tree(
+            payout=payout,
+            blockers=blockers,
+            policy=policy,
+            legal_status=legal_status,
+            settlement_state=settlement_state,
+        ),
+        audit_events=_audit_events_for_entity(db, entity_type="partner_payout_request", entity_id=str(payout.id)),
     )
 
 
@@ -460,22 +830,11 @@ def list_invoices(
 
 
 @router.get("/invoices/{invoice_id}", response_model=AdminInvoiceDetail)
-def get_invoice(
+def get_finance_invoice(
     invoice_id: str,
     db: Session = Depends(get_db),
 ) -> AdminInvoiceDetail:
-    if not _tables_ready(db, ["billing_invoices"]):
-        raise HTTPException(status_code=404, detail="invoice_not_found")
-    invoices = _table(db, "billing_invoices")
-    row = db.execute(select(invoices).where(invoices.c.id == invoice_id)).mappings().first()
-    if not row:
-        raise HTTPException(status_code=404, detail="invoice_not_found")
-
-    pdf_url = row.get("pdf_url")
-    object_key = row.get("pdf_object_key")
-    if object_key:
-        pdf_url = S3Storage().presign_download(object_key=object_key, expires=3600)
-    return _serialize_invoice_detail(dict(row), pdf_url)
+    return _load_invoice_detail(db, invoice_id=invoice_id)
 
 
 @router.post("/invoices/{invoice_id}/mark-paid", response_model=AdminInvoiceActionResponse)
@@ -501,7 +860,7 @@ def mark_invoice_paid(
         request_ctx=request_ctx,
     )
     db.commit()
-    detail = _serialize_invoice_detail(invoice, invoice.get("download_url") or invoice.get("pdf_url"))
+    detail = _load_invoice_detail(db, invoice_id=str(invoice_id), row=invoice)
     return AdminInvoiceActionResponse(invoice=detail, correlation_id=_correlation_id(request))
 
 
@@ -528,7 +887,7 @@ def void_invoice(
         request_ctx=request_ctx,
     )
     db.commit()
-    detail = _serialize_invoice_detail(invoice, invoice.get("download_url") or invoice.get("pdf_url"))
+    detail = _load_invoice_detail(db, invoice_id=str(invoice_id), row=invoice)
     return AdminInvoiceActionResponse(invoice=detail, correlation_id=_correlation_id(request))
 
 
@@ -555,7 +914,7 @@ def mark_invoice_overdue(
         request_ctx=request_ctx,
     )
     db.commit()
-    detail = _serialize_invoice_detail(invoice, invoice.get("download_url") or invoice.get("pdf_url"))
+    detail = _load_invoice_detail(db, invoice_id=str(invoice_id), row=invoice)
     return AdminInvoiceActionResponse(invoice=detail, correlation_id=_correlation_id(request))
 
 
@@ -585,11 +944,7 @@ def get_finance_payment_intake(
     intake = get_payment_intake(db, intake_id=intake_id)
     if not intake:
         raise HTTPException(status_code=404, detail="payment_intake_not_found")
-    storage = S3Storage()
-    proof_url = None
-    if intake.get("proof_object_key"):
-        proof_url = storage.presign_download(object_key=intake["proof_object_key"], expires=3600)
-    return _serialize_payment_intake(intake, proof_url=proof_url)
+    return _load_payment_intake_detail(db, intake_row=intake)
 
 
 @router.post("/payment-intakes/{intake_id}/approve", response_model=AdminPaymentIntakeActionResponse)
@@ -617,13 +972,22 @@ def approve_finance_payment_intake(
     if not updated:
         raise _write_error(request, 404, "payment_intake_not_found")
 
-    invoice = get_invoice(db, invoice_id=intake["invoice_id"])
+    request_ctx = request_context_from_request(request, token=_sanitize_token_for_audit(token))
+    try:
+        invoice = approve_invoice_payment_intake(db, intake=intake, request_ctx=request_ctx)
+    except ValueError as exc:
+        detail = str(exc)
+        if detail in {"invoice_already_paid", "payment_amount_exceeds_due"}:
+            raise _write_error(request, 409, detail) from exc
+        raise
     if not invoice:
         raise _write_error(request, 404, "invoice_not_found")
 
-    request_ctx = request_context_from_request(request, token=_sanitize_token_for_audit(token))
-    update_invoice_status(db, invoice_id=intake["invoice_id"], status="PAID", request_ctx=request_ctx)
-    get_org_entitlements_snapshot(db, org_id=invoice["org_id"])
+    get_org_entitlements_snapshot(
+        db,
+        org_id=_entitlements_org_id(invoice=invoice, intake=intake),
+        force_new_version=True,
+    )
 
     AuditService(db).audit(
         event_type="PAYMENT_INTAKE_APPROVED",
@@ -657,7 +1021,7 @@ def approve_finance_payment_intake(
     )
     db.commit()
     return AdminPaymentIntakeActionResponse(
-        intake=_serialize_payment_intake(updated),
+        intake=_load_payment_intake_detail(db, intake_row=updated),
         correlation_id=_correlation_id(request),
     )
 
@@ -735,7 +1099,7 @@ def reject_finance_payment_intake(
     )
     db.commit()
     return AdminPaymentIntakeActionResponse(
-        intake=_serialize_payment_intake(updated),
+        intake=_load_payment_intake_detail(db, intake_row=updated),
         correlation_id=_correlation_id(request),
     )
 
@@ -874,27 +1238,7 @@ def get_payout_detail(
     if not payout:
         raise HTTPException(status_code=404, detail="payout_not_found")
     service = PartnerFinanceService(db, request_ctx=request_context_from_request(None))
-    blockers = _payout_blockers(service, payout)
-    policy = service.get_payout_policy(partner_org_id=payout.partner_org_id, currency=payout.currency)
-    trace: list[PayoutTraceItem] = []
-    settlement_state = _settlement_state_for_partner(
-        db,
-        partner_id=str(payout.partner_org_id),
-        currency=payout.currency,
-    )
-    legal_status = _legal_status_by_partner(db, [str(payout.partner_org_id)]).get(str(payout.partner_org_id))
-    correlation_chain = _correlation_chain_by_payout(db, [str(payout.id)]).get(str(payout.id), [])
-    if payout.correlation_id and payout.correlation_id not in correlation_chain:
-        correlation_chain = [*correlation_chain, payout.correlation_id]
-    return _serialize_payout(
-        payout,
-        blockers,
-        policy=policy,
-        trace=trace,
-        legal_status=legal_status,
-        settlement_state=settlement_state,
-        correlation_chain=correlation_chain,
-    )
+    return _build_payout_detail(db, payout=payout, service=service)
 
 
 @router.post("/payouts/{payout_id}/approve", response_model=PayoutActionResponse)
@@ -940,22 +1284,7 @@ def approve_payout(
         external_refs={"correlation_id": correlation_id} if correlation_id else None,
         request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(token)),
     )
-    settlement_state = _settlement_state_for_partner(
-        db,
-        partner_id=str(payout.partner_org_id),
-        currency=payout.currency,
-    )
-    legal_status = _legal_status_by_partner(db, [str(payout.partner_org_id)]).get(str(payout.partner_org_id))
-    correlation_chain = _correlation_chain_by_payout(db, [str(payout.id)]).get(str(payout.id), [])
-    if correlation_id and correlation_id not in correlation_chain:
-        correlation_chain = [*correlation_chain, correlation_id]
-    detail = _serialize_payout(
-        payout,
-        _payout_blockers(service, payout),
-        legal_status=legal_status,
-        settlement_state=settlement_state,
-        correlation_chain=correlation_chain,
-    )
+    detail = _build_payout_detail(db, payout=payout, service=service)
     return PayoutActionResponse(payout=detail, correlation_id=correlation_id)
 
 
@@ -995,22 +1324,7 @@ def reject_payout(
         external_refs={"correlation_id": correlation_id} if correlation_id else None,
         request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(token)),
     )
-    settlement_state = _settlement_state_for_partner(
-        db,
-        partner_id=str(payout.partner_org_id),
-        currency=payout.currency,
-    )
-    legal_status = _legal_status_by_partner(db, [str(payout.partner_org_id)]).get(str(payout.partner_org_id))
-    correlation_chain = _correlation_chain_by_payout(db, [str(payout.id)]).get(str(payout.id), [])
-    if correlation_id and correlation_id not in correlation_chain:
-        correlation_chain = [*correlation_chain, correlation_id]
-    detail = _serialize_payout(
-        payout,
-        _payout_blockers(service, payout),
-        legal_status=legal_status,
-        settlement_state=settlement_state,
-        correlation_chain=correlation_chain,
-    )
+    detail = _build_payout_detail(db, payout=payout, service=service)
     return PayoutActionResponse(payout=detail, correlation_id=correlation_id)
 
 
@@ -1057,22 +1371,7 @@ def mark_payout_paid(
         external_refs={"correlation_id": correlation_id} if correlation_id else None,
         request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(token)),
     )
-    settlement_state = _settlement_state_for_partner(
-        db,
-        partner_id=str(payout.partner_org_id),
-        currency=payout.currency,
-    )
-    legal_status = _legal_status_by_partner(db, [str(payout.partner_org_id)]).get(str(payout.partner_org_id))
-    correlation_chain = _correlation_chain_by_payout(db, [str(payout.id)]).get(str(payout.id), [])
-    if correlation_id and correlation_id not in correlation_chain:
-        correlation_chain = [*correlation_chain, correlation_id]
-    detail = _serialize_payout(
-        payout,
-        _payout_blockers(service, payout),
-        legal_status=legal_status,
-        settlement_state=settlement_state,
-        correlation_chain=correlation_chain,
-    )
+    detail = _build_payout_detail(db, payout=payout, service=service)
     return PayoutActionResponse(payout=detail, correlation_id=correlation_id)
 
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import os
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import func
@@ -33,10 +33,15 @@ from app.services.bi import exports as bi_exports
 from app.services.bi import service as bi_service
 from app.services.audit_service import AuditService, request_context_from_request
 from app.services.s3_storage import S3Storage
+from app.services.token_claims import DEFAULT_TENANT_ID, resolve_token_tenant_id
 from app.tasks.bi_analytics import generate_export_task
 
 
 router = APIRouter(prefix="/api/v1/bi", tags=["bi"])
+
+
+def _resolve_bi_tenant_id(token: dict, db: Session, *, client_id: str | None = None) -> int:
+    return resolve_token_tenant_id(token, db=db, client_id=client_id, default=DEFAULT_TENANT_ID)
 
 
 def _enforce_scope(
@@ -106,7 +111,7 @@ def list_daily_metrics(
     _scope=Depends(require_scope("bi:sync")),
     db: Session = Depends(get_db),
 ) -> list[BiDailyMetricOut]:
-    tenant_id = int(token.get("tenant_id"))
+    tenant_id = _resolve_bi_tenant_id(token, db, client_id=scope_id if scope_type == BiScopeType.CLIENT else None)
     if scope_type == BiScopeType.CLIENT:
         _enforce_scope(token, client_id=scope_id, partner_id=None, request=request, db=db)
     if scope_type == BiScopeType.PARTNER:
@@ -134,7 +139,7 @@ def list_orders(
     _scope=Depends(require_scope("bi:sync")),
     db: Session = Depends(get_db),
 ) -> list[BiOrderEventOut]:
-    tenant_id = int(token.get("tenant_id"))
+    tenant_id = _resolve_bi_tenant_id(token, db, client_id=client_id)
     _enforce_scope(token, client_id=client_id, partner_id=partner_id, request=request, db=db)
     query = (
         db.query(BiOrderEvent)
@@ -162,7 +167,7 @@ def list_payouts(
     _scope=Depends(require_scope("bi:sync")),
     db: Session = Depends(get_db),
 ) -> list[BiPayoutEventOut]:
-    tenant_id = int(token.get("tenant_id"))
+    tenant_id = _resolve_bi_tenant_id(token, db)
     _enforce_scope(token, client_id=None, partner_id=partner_id, request=request, db=db)
     query = (
         db.query(BiPayoutEvent)
@@ -189,7 +194,7 @@ def list_declines(
     _scope=Depends(require_scope("bi:sync")),
     db: Session = Depends(get_db),
 ) -> list[BiDeclineEventOut]:
-    tenant_id = int(token.get("tenant_id"))
+    tenant_id = _resolve_bi_tenant_id(token, db, client_id=client_id)
     _enforce_scope(token, client_id=client_id, partner_id=partner_id, request=request, db=db)
     query = (
         db.query(BiDeclineEvent)
@@ -220,7 +225,7 @@ def top_reasons(
     _scope=Depends(require_scope("bi:sync")),
     db: Session = Depends(get_db),
 ) -> list[BiTopReasonOut]:
-    tenant_id = int(token.get("tenant_id"))
+    tenant_id = _resolve_bi_tenant_id(token, db, client_id=scope_id if scope_type == BiScopeType.CLIENT else None)
     query = (
         db.query(
             BiDeclineEvent.primary_reason,
@@ -256,7 +261,11 @@ def create_export(
     _scope=Depends(require_scope("bi:sync")),
     db: Session = Depends(get_db),
 ) -> BiExportOut:
-    tenant_id = int(token.get("tenant_id"))
+    tenant_id = _resolve_bi_tenant_id(
+        token,
+        db,
+        client_id=payload.scope_id if payload.scope_type == BiScopeType.CLIENT else None,
+    )
     if payload.scope_type == BiScopeType.CLIENT and payload.scope_id:
         _enforce_scope(token, client_id=payload.scope_id, partner_id=None, request=request, db=db)
     if payload.scope_type == BiScopeType.PARTNER and payload.scope_id:
@@ -319,7 +328,7 @@ def get_export(
     export = bi_exports.load_export(db, export_id)
     if not export:
         raise HTTPException(status_code=404, detail="export_not_found")
-    if export.tenant_id != int(token.get("tenant_id")):
+    if export.tenant_id != _resolve_bi_tenant_id(token, db):
         raise HTTPException(status_code=403, detail="forbidden")
     return BiExportOut.model_validate(export)
 
@@ -333,7 +342,7 @@ def download_export(
     export = bi_exports.load_export(db, export_id)
     if not export:
         raise HTTPException(status_code=404, detail="export_not_found")
-    if export.tenant_id != int(token.get("tenant_id")):
+    if export.tenant_id != _resolve_bi_tenant_id(token, db):
         raise HTTPException(status_code=403, detail="forbidden")
     if not export.object_key or not export.bucket:
         raise HTTPException(status_code=404, detail="export_not_ready")
@@ -353,7 +362,7 @@ def download_manifest(
     export = bi_exports.load_export(db, export_id)
     if not export:
         raise HTTPException(status_code=404, detail="export_not_found")
-    if export.tenant_id != int(token.get("tenant_id")):
+    if export.tenant_id != _resolve_bi_tenant_id(token, db):
         raise HTTPException(status_code=403, detail="forbidden")
     if not export.manifest_key or not export.bucket:
         raise HTTPException(status_code=404, detail="manifest_not_ready")
@@ -376,7 +385,7 @@ def confirm_export(
     export = bi_exports.load_export(db, export_id)
     if not export:
         raise HTTPException(status_code=404, detail="export_not_found")
-    if export.tenant_id != int(token.get("tenant_id")):
+    if export.tenant_id != _resolve_bi_tenant_id(token, db):
         raise HTTPException(status_code=403, detail="forbidden")
     if export.status not in {BiExportStatus.DELIVERED, BiExportStatus.GENERATED}:
         raise HTTPException(status_code=409, detail="invalid_export_state")

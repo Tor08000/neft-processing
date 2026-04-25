@@ -51,7 +51,7 @@ def _json_formatter(record: logging.LogRecord) -> str:
         payload.update(extras)
     if record.exc_info:
         payload["exception"] = Formatter().formatException(record.exc_info)
-    return json.dumps(payload, ensure_ascii=False)
+    return json.dumps(payload, ensure_ascii=False, default=str)
 
 
 class _JsonStreamHandler(StreamHandler):

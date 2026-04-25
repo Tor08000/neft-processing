@@ -1,31 +1,50 @@
 @echo off
-setlocal enabledelayedexpansion
+setlocal EnableExtensions DisableDelayedExpansion
 
-set API_URL=http://localhost
-set LOGIN_PAYLOAD={"email":"client@neft.local","password":"client","portal":"client"}
-set TOKEN=
+if "%API_URL%"=="" set "API_URL=http://localhost"
+if "%CLIENT_EMAIL%"=="" set "CLIENT_EMAIL=client@neft.local"
+if "%CLIENT_PASSWORD%"=="" set "CLIENT_PASSWORD=Client123!"
 
-for /f "usebackq delims=" %%A in (`powershell -NoProfile -Command "$resp = Invoke-RestMethod -Method Post -Uri '%API_URL%/api/v1/auth/login' -ContentType 'application/json' -Body '%LOGIN_PAYLOAD%'; $resp.access_token"`) do set TOKEN=%%A
+set "LOGIN_BODY_FILE=%TEMP%\portal_access_login_body_%RANDOM%.json"
+set "LOGIN_RESP_FILE=%TEMP%\portal_access_login_%RANDOM%.json"
+set "RESPONSE_FILE=%TEMP%\portal_access_me_%RANDOM%.json"
+set "TOKEN="
+set "LOGIN_STATUS="
+set "PORTAL_STATUS="
 
+python -c "import json; from pathlib import Path; Path(r'%LOGIN_BODY_FILE%').write_text(json.dumps({'email': r'%CLIENT_EMAIL%','password': r'%CLIENT_PASSWORD%','portal':'client'}), encoding='utf-8')"
+for /f "usebackq delims=" %%A in (`curl -sS -o "%LOGIN_RESP_FILE%" -w "%%{http_code}" -H "Content-Type: application/json" --data-binary "@%LOGIN_BODY_FILE%" "%API_URL%/api/v1/auth/login" 2^>nul`) do set "LOGIN_STATUS=%%A"
+if not "%LOGIN_STATUS%"=="200" (
+  echo login status: %LOGIN_STATUS%
+  if exist "%LOGIN_RESP_FILE%" type "%LOGIN_RESP_FILE%"
+  goto :fail
+)
+
+for /f "usebackq delims=" %%A in (`python -c "import json; from pathlib import Path; data=json.loads(Path(r'%LOGIN_RESP_FILE%').read_text(encoding='utf-8', errors='ignore') or '{}'); print(data.get('access_token',''))"`) do set "TOKEN=%%A"
 if "%TOKEN%"=="" (
-  echo Failed to получить токен. Проверьте доступность API.
-  exit /b 1
+  echo Failed to get client token.
+  goto :fail
 )
 
-set RESPONSE_FILE=%TEMP%\portal_me.json
-set HTTP_STATUS=
-for /f "delims=" %%A in ('curl -s -w "HTTP_STATUS:%%{http_code}" -o "%RESPONSE_FILE%" -H "Authorization: Bearer %TOKEN%" %API_URL%/api/core/portal/me') do set HTTP_STATUS=%%A
-
-for /f "tokens=2 delims=:" %%A in ("%HTTP_STATUS%") do set STATUS_CODE=%%A
-
-if not "%STATUS_CODE%"=="200" (
-  echo portal/me status: %STATUS_CODE%
-  powershell -NoProfile -Command "try { $payload = Get-Content '%RESPONSE_FILE%' -Raw | ConvertFrom-Json; if ($payload.error_id) { Write-Host ('error_id: ' + $payload.error_id) } } catch { Write-Host 'Failed to parse error response.' }"
-  exit /b 1
+for /f "usebackq delims=" %%A in (`curl -sS -o "%RESPONSE_FILE%" -w "%%{http_code}" -H "Authorization: Bearer %TOKEN%" "%API_URL%/api/core/portal/me" 2^>nul`) do set "PORTAL_STATUS=%%A"
+if not "%PORTAL_STATUS%"=="200" (
+  echo portal/me status: %PORTAL_STATUS%
+  if exist "%RESPONSE_FILE%" type "%RESPONSE_FILE%"
+  goto :fail
 )
 
-powershell -NoProfile -Command "$payload = Get-Content '%RESPONSE_FILE%' -Raw | ConvertFrom-Json; Write-Host ('access_state: ' + $payload.access_state); if ($payload.access_reason) { Write-Host ('access_reason: ' + $payload.access_reason) }"
+python -c "import json; from pathlib import Path; data=json.loads(Path(r'%RESPONSE_FILE%').read_text(encoding='utf-8', errors='ignore') or '{}'); print('access_state: ' + str(data.get('access_state') or '')); reason=data.get('access_reason'); print('access_reason: ' + str(reason)) if reason else None"
+echo PORTAL_ACCESS_STATE: PASS
+goto :cleanup_success
 
-del "%RESPONSE_FILE%" >nul 2>&1
+:fail
+del /q "%LOGIN_BODY_FILE%" 2>nul
+del /q "%LOGIN_RESP_FILE%" 2>nul
+del /q "%RESPONSE_FILE%" 2>nul
+exit /b 1
 
-endlocal
+:cleanup_success
+del /q "%LOGIN_BODY_FILE%" 2>nul
+del /q "%LOGIN_RESP_FILE%" 2>nul
+del /q "%RESPONSE_FILE%" 2>nul
+exit /b 0

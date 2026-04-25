@@ -64,5 +64,11 @@ set SBIS_TEST_CREDENTIALS={"base_url":"https://sbis.test","token":"...","meta":{
 set SBIS_TEST_WEBHOOK_SECRET=supersecret
 set EDO_PROVIDER=SBIS
 set EDO_E2E_ENABLED=1
+set DOC_ID=<document_registry_id_with_pdf_file>
+set SUBJECT_TYPE=CLIENT
+set SUBJECT_ID=<client_id>
+set COUNTERPARTY_ID=<edo_counterparty_id>
+set ACCOUNT_ID=<edo_account_id>
+set DOC_KIND=INVOICE
 scripts\smoke_edo_sbis_send.cmd
 ```

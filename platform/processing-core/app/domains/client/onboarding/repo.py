@@ -51,3 +51,13 @@ class ClientOnboardingRepository:
             .limit(1)
         )
         return self.db.execute(stmt).scalar_one_or_none()
+
+    def find_latest_approved_by_client_id(self, client_id: str) -> ClientOnboardingApplication | None:
+        stmt = (
+            select(ClientOnboardingApplication)
+            .where(ClientOnboardingApplication.client_id == client_id)
+            .where(ClientOnboardingApplication.status == OnboardingApplicationStatus.APPROVED.value)
+            .order_by(ClientOnboardingApplication.approved_at.desc(), ClientOnboardingApplication.updated_at.desc())
+            .limit(1)
+        )
+        return self.db.execute(stmt).scalar_one_or_none()

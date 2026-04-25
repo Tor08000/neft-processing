@@ -12,6 +12,6 @@ export const Loader: React.FC<{ label?: string }> = ({ label }) => (
         animation: "spin 1s linear infinite",
       }}
     />
-    <span>{label ?? "Загрузка..."}</span>
+    <span>{label ?? "Loading..."}</span>
   </div>
 );

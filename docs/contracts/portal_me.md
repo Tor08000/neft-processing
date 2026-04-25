@@ -1,7 +1,15 @@
 # /api/core/portal/me Contract
 
 ## Purpose
-`/api/core/portal/me` is the single source of truth (SSoT) for portal access state. Frontends **must not** re-compute onboarding, subscription, or access logic locally. They should only render based on `access_state` and `access_reason`.
+`/api/core/portal/me` is the single source of truth (SSoT) for portal bootstrap and portal access state. Frontends **must not** re-compute onboarding, subscription, or access logic locally. They should only render based on `access_state` and `access_reason`.
+
+## Canonical vs compatibility surfaces
+
+- Canonical bootstrap SSoT: `GET /api/core/portal/me`.
+- Compatibility-full view: `GET /api/core/client/me` returns the same `PortalMeResponse` shape, but it is a compatibility wrapper over the canonical bootstrap contract, not a second canonical endpoint.
+- Compatibility projection: `GET /api/core/partner/me` is built from the same portal bootstrap source, but returns a reduced `PartnerMeResponse`; it must not be treated as the SSoT for `access_state`, `access_reason`, or UI gating.
+- Legacy non-bootstrap profile endpoint: `GET /api/v1/client/me` returns a legacy client profile shape and is not part of the bootstrap contract.
+- Legacy business portal surfaces: `/api/client/*` and `/api/partner/*` from `portal.py` remain business APIs, not bootstrap/profile SSoT.
 
 ## Response schema (contracted fields)
 
@@ -18,6 +26,7 @@
     "id": "string",
     "name": "string|null",
     "inn": "string|null",
+    "org_type": "LEGAL|IP|INDIVIDUAL|string|null",
     "status": "string|null",
     "timezone": "string|null"
   },
@@ -48,7 +57,28 @@
   "capabilities": ["string"],
   "nav_sections": [{ "code": "string", "label": "string" }] | null,
   "partner": {
+    "partner_id": "string|null",
+    "partner_type": "string|null",
+    "kind": "FINANCE_PARTNER|MARKETPLACE_PARTNER|SERVICE_PARTNER|FUEL_PARTNER|LOGISTICS_PARTNER|GENERAL_PARTNER|null",
+    "partner_role": "string|null",
+    "partner_roles": ["string"] | null,
+    "default_route": "string|null",
+    "workspaces": [
+      {
+        "code": "finance|marketplace|services|support|profile",
+        "label": "string",
+        "default_route": "string"
+      }
+    ] | null,
     "status": "string|null",
+    "finance_state": {
+      "status": "string|null",
+      "reason": "string|null"
+    } | null,
+    "legal_state": {
+      "status": "string|null",
+      "reason": "string|null"
+    } | null,
     "profile": {
       "display_name": "string|null",
       "contacts_json": { "any": "value" } | null,
@@ -91,6 +121,10 @@
 - `org_roles` and `user_roles`
 
 No hidden or time-based logic is allowed.
+
+For partner actors, `partner.kind`, `partner.workspaces`, and `partner.default_route` are the contracted shell-composition inputs. Partner portals may still derive additive UI hints locally, but they must not invent extra workspaces or broaden access beyond this payload.
+
+For client actors, `org.org_type` is the contracted shell-composition input for `INDIVIDUAL` vs `BUSINESS` segmentation. Client portals may derive additive workspace hints locally, but they must not invent a broader client kind than the bootstrap payload supports.
 
 ## Priority order (highest → lowest)
 

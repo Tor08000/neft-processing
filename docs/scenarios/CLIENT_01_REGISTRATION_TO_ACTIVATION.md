@@ -1,76 +1,88 @@
-# CLIENT 01 — Registration → Legal → Contract → Activation
+# CLIENT 01 - Registration -> Legal -> Contract -> Activation
 
 ## Goal
-Register a client owner, accept legal terms, progress through contract/onboarding actions, and activate the client through CRM controls.
+Register a client owner, accept legal terms, progress through onboarding actions, and reach an active client state through the CRM control plane.
 
 ## Actors & Roles
-- Client Owner (primary client user)
+- Client Owner
 - Admin (CRM/Ops)
 
 ## Prerequisites
-- Auth-host available (`platform/auth-host`).
-- Processing-core API available (`platform/processing-core`).
-- Legal documents seeded (`scripts/seed_legal.py` if running locally).
+- `auth-host` available.
+- `processing-core` available.
+- `postgres` available.
+- Legal documents seeded when running locally.
 
 ## UI Flow
 **Client portal**
 1. Sign up / login.
-2. Legal acceptance page (required docs).
-3. Onboarding status page (REQUEST_LEGAL / SIGN_CONTRACT actions).
-4. Activation status → dashboard.
+2. Accept required legal documents.
+3. Review onboarding status.
+4. Reach activated dashboard state.
 
-**Admin (CRM)**
-1. Lead → qualify → client profile.
-2. Assign subscription, apply limits profile, activate client, allow first operation.
+**Admin CRM**
+1. Create lead.
+2. Qualify lead into a client.
+3. Apply onboarding actions until `FIRST_OPERATION_ALLOWED`.
 
 ## API Flow
 1. **Auth**
-   - `POST /v1/auth/register` (auth-host) — register user.
-   - `POST /v1/auth/login` — obtain token.
-   - `GET /v1/auth/me` — confirm identity.
+   - `POST /v1/auth/register`
+   - `POST /v1/auth/login`
+   - `GET /v1/auth/me`
 2. **Legal gate**
-   - `GET /api/legal/required` — list required legal documents.
-   - `POST /api/legal/accept` — accept each required doc.
-3. **Client onboarding (self-service)**
-   - `GET /api/v1/client/onboarding` — onboarding status.
-   - `POST /api/v1/client/onboarding/actions/REQUEST_LEGAL` — request legal (records intent).
-   - `POST /api/v1/client/onboarding/actions/SIGN_CONTRACT` — mark contract signed (no document generation).
-4. **CRM onboarding (admin)**
-   - `POST /api/crm/leads/{lead_id}/qualify` — convert lead to client.
-   - `POST /api/crm/clients/{client_id}/contracts` — create CRM contract (no doc/version workflow).
-   - `POST /api/crm/clients/{client_id}/onboarding/actions/ASSIGN_SUBSCRIPTION`.
-   - `POST /api/crm/clients/{client_id}/onboarding/actions/APPLY_LIMITS_PROFILE`.
-   - `POST /api/crm/clients/{client_id}/onboarding/actions/ACTIVATE_CLIENT`.
-   - `POST /api/crm/clients/{client_id}/onboarding/actions/ALLOW_FIRST_OPERATION`.
-
-**NOT IMPLEMENTED**
-- Contract draft/version/issue/sign endpoints (`/contracts/{id}/versions`, `/contracts/{id}/issue`, `/contracts/{id}/sign`).
+   - `GET /api/legal/required`
+   - `POST /api/legal/accept`
+3. **Client self-service onboarding**
+   - `GET /api/v1/client/onboarding`
+   - `POST /api/v1/client/onboarding/actions/REQUEST_LEGAL`
+   - `POST /api/v1/client/onboarding/actions/SIGN_CONTRACT`
+4. **Admin CRM onboarding**
+   - `POST /api/v1/admin/crm/leads`
+   - `POST /api/v1/admin/crm/leads/{lead_id}/qualify`
+   - `POST /api/v1/admin/crm/clients/{client_id}/contracts`
+   - `POST /api/v1/admin/crm/clients/{client_id}/onboarding/actions/ASSIGN_SUBSCRIPTION`
+   - `POST /api/v1/admin/crm/clients/{client_id}/onboarding/actions/APPLY_LIMITS_PROFILE`
+   - `POST /api/v1/admin/crm/clients/{client_id}/onboarding/actions/ACTIVATE_CLIENT`
+   - `POST /api/v1/admin/crm/clients/{client_id}/onboarding/actions/ALLOW_FIRST_OPERATION`
 
 ## DB Touchpoints
-- `auth-host`: `users`, `user_roles`.
-- Legal: `legal_documents`, `legal_acceptances`.
-- CRM: `crm_leads`, `crm_clients`, `crm_client_profiles`, `crm_contracts`, `crm_subscriptions`.
-- Onboarding: `client_onboarding_state`, `client_onboarding_events`.
+- `users`, `user_roles`
+- `legal_documents`, `legal_acceptances`
+- `crm_leads`, `crm_clients`, `crm_client_profiles`, `crm_contracts`, `crm_subscriptions`
+- `client_onboarding_state`, `client_onboarding_events`
 
 ## Events & Audit
-- `LEGAL_ACCEPTED` — audit event emitted on document acceptance (legal service).
-- `ONBOARDING_ACTION_APPLIED`, `ONBOARDING_STATE_CHANGED`, `ONBOARDING_BLOCKED` — CRM onboarding audit events.
-- `CRM_CONTRACT_ACTIVATED`, `CRM_CONTRACT_VERSION_BUMPED` — CRM contract status changes.
+- `LEGAL_ACCEPTED`
+- `ONBOARDING_ACTION_APPLIED`
+- `ONBOARDING_STATE_CHANGED`
+- `ONBOARDING_BLOCKED`
 
-**NOT IMPLEMENTED (explicit event codes in requirement)**
-- `CONTRACT_ISSUED`, `CONTRACT_SIGNED`, `SUBSCRIPTION_ASSIGNED`, `LIMITS_APPLIED`, `CLIENT_ACTIVATED`, `FIRST_OPERATION_ALLOWED` are not emitted as standalone event codes; current implementation records onboarding audit events instead.
+Standalone event codes such as `CONTRACT_SIGNED`, `SUBSCRIPTION_ASSIGNED`, `LIMITS_APPLIED`, `CLIENT_ACTIVATED`, and `FIRST_OPERATION_ALLOWED` are still represented through onboarding audit/state transitions rather than separate dedicated event rows.
 
 ## Security / Gates
-- Legal gate enforced on protected routes when `LEGAL_GATE_ENABLED=true`.
-- Admin CRM routes require `admin:contracts:*` permission and `X-CRM-Version` header.
+- Legal gate remains enforced on protected routes when enabled.
+- Admin CRM routes require `admin:contracts:*`.
+- Admin CRM routes require `X-CRM-Version`.
 
-## Failure modes
-- Missing legal acceptance → onboarding blocked (`legal_not_accepted`).
-- Missing contract signed → onboarding blocked (`contract_not_signed`).
-- Missing subscription/limits → activation blocked (`activation_prerequisites_missing`).
-- Unauthorized access to CRM routes → `403`.
+## Failure Modes
+- Missing legal acceptance -> `legal_not_accepted`
+- Missing contract signed -> `contract_not_signed`
+- Missing subscription / limits -> `activation_prerequisites_missing`
+- Missing CRM version header -> `crm_control_plane_frozen`
+- Unauthorized CRM access -> `403`
 
-## VERIFIED
-- pytest: `platform/processing-core/app/tests/test_crm_onboarding.py`, `platform/processing-core/app/tests/test_legal_gate.py`.
-- smoke cmd: `scripts/smoke_onboarding_e2e.cmd`.
-- PASS: onboarding reaches `FIRST_OPERATION_ALLOWED` and legal gate is cleared.
+## Verified
+- pytest:
+  - `platform/processing-core/app/tests/test_crm_onboarding.py`
+  - `platform/processing-core/app/tests/test_legal_gate.py`
+  - `platform/processing-core/app/tests/test_crm_admin_routes.py`
+  - `platform/processing-core/app/tests/test_crm_storage_truth.py`
+- smoke:
+  - `scripts/smoke_onboarding_e2e.cmd`
+
+PASS:
+- admin token plus `X-CRM-Version: 1` open the CRM control-plane path
+- lead create / qualify succeed
+- onboarding reaches `FIRST_OPERATION_ALLOWED`
+- legal gate is cleared

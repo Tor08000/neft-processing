@@ -6,10 +6,11 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 from decimal import Decimal
 
-from sqlalchemy import func
+from sqlalchemy import func, inspect
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
+from app.db.schema import DB_SCHEMA
 from app.models.fuel import FuelStation
 from app.models.geo_metrics import (
     GeoStationMetricsDaily,
@@ -21,6 +22,19 @@ WEB_MERCATOR_MAX_LAT = 85.0511
 
 
 GEO_OVERLAY_KINDS = {"RISK_RED", "HEALTH_OFFLINE", "HEALTH_DEGRADED"}
+
+
+def _table_exists(db: Session, name: str) -> bool:
+    try:
+        bind = db.get_bind()
+        inspector = inspect(bind)
+        if inspector.has_table(name, schema=DB_SCHEMA):
+            return True
+        if bind.dialect.name != "postgresql":
+            return inspector.has_table(name)
+        return False
+    except Exception:
+        return False
 
 
 @dataclass(frozen=True)
@@ -102,6 +116,8 @@ def query_station_aggregates(
     health_status: str | None = None,
     partner_id: str | None = None,
 ) -> list[StationAggregate]:
+    if not _table_exists(db, FuelStation.__table__.name) or not _table_exists(db, GeoStationMetricsDaily.__table__.name):
+        return []
     query = (
         db.query(
             GeoStationMetricsDaily.station_id,
@@ -180,6 +196,8 @@ def aggregate_to_tiles(
 
 
 def build_geo_tiles_for_day(db: Session, day: date, zoom: int) -> int:
+    if not _table_exists(db, FuelStation.__table__.name) or not _table_exists(db, GeoStationMetricsDaily.__table__.name):
+        return 0
     rows = (
         db.query(
             GeoStationMetricsDaily.station_id,
@@ -294,6 +312,8 @@ def query_cached_tiles(
     bbox: GeoBBox,
     metric: str,
 ) -> list[dict[str, int | float]]:
+    if not _table_exists(db, GeoTilesDaily.__table__.name):
+        return []
     metric_column = {
         "tx_count": GeoTilesDaily.tx_count,
         "captured_count": GeoTilesDaily.captured_count,
@@ -331,6 +351,8 @@ def query_cached_tiles(
 
 
 def build_geo_overlay_tiles_for_day(db: Session, day: date, zoom: int) -> int:
+    if not _table_exists(db, FuelStation.__table__.name) or not _table_exists(db, GeoStationMetricsDaily.__table__.name):
+        return 0
     risk_rows = (
         db.query(
             FuelStation.lat,
@@ -419,6 +441,8 @@ def query_cached_overlay_tiles(
     bbox: GeoBBox,
     overlay_kind: str,
 ) -> list[dict[str, int]]:
+    if not _table_exists(db, GeoTilesDailyOverlay.__table__.name):
+        return []
     min_x, max_x, min_y, max_y = tile_range_from_bbox(bbox, zoom)
 
     rows = (
@@ -461,6 +485,8 @@ def query_station_overlay_points(
     partner_id: str | None = None,
     min_value: float | None = None,
 ) -> list[StationOverlayAggregate]:
+    if not _table_exists(db, FuelStation.__table__.name) or not _table_exists(db, GeoStationMetricsDaily.__table__.name):
+        return []
     metric_columns = {
         "tx_count": func.sum(GeoStationMetricsDaily.tx_count),
         "amount_sum": func.sum(GeoStationMetricsDaily.amount_sum),

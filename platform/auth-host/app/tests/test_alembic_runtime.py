@@ -34,6 +34,24 @@ def test_should_reset_for_broken_revision_with_auto_repair(monkeypatch) -> None:
     assert should_reset_for_broken_revision(db_revision="20260216_01", revision_known=False)
 
 
+def test_should_reset_for_known_foreign_revision_in_dev_without_explicit_env(monkeypatch) -> None:
+    monkeypatch.delenv("AUTH_DB_RECOVERY", raising=False)
+    monkeypatch.delenv("DEV_DB_RECOVERY", raising=False)
+    monkeypatch.delenv("AUTH_ALEMBIC_AUTO_REPAIR", raising=False)
+    monkeypatch.setenv("APP_ENV", "dev")
+
+    assert should_reset_for_broken_revision(db_revision="20260216_01", revision_known=False)
+
+
+def test_should_not_reset_for_unknown_revision_in_dev_without_explicit_env(monkeypatch) -> None:
+    monkeypatch.delenv("AUTH_DB_RECOVERY", raising=False)
+    monkeypatch.delenv("DEV_DB_RECOVERY", raising=False)
+    monkeypatch.delenv("AUTH_ALEMBIC_AUTO_REPAIR", raising=False)
+    monkeypatch.setenv("APP_ENV", "dev")
+
+    assert not should_reset_for_broken_revision(db_revision="20269999_unknown", revision_known=False)
+
+
 def test_should_not_reset_for_known_revision(monkeypatch) -> None:
     monkeypatch.setenv("AUTH_DB_RECOVERY", "reset")
     assert not should_reset_for_broken_revision(db_revision="20260221_0001_users_schema_guard", revision_known=True)

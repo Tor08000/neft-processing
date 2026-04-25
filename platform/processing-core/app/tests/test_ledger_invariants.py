@@ -15,6 +15,11 @@ from app.services.ledger.posting_engine import PostingEngine, PostingInvariantEr
 engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False, expire_on_commit=False)
 
+ACCOUNT_A_CLIENT_ID = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+ACCOUNT_B_CLIENT_ID = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
+ACCOUNT_RUB_CLIENT_ID = "cccccccc-cccc-cccc-cccc-cccccccccccc"
+ACCOUNT_USD_CLIENT_ID = "dddddddd-dddd-dddd-dddd-dddddddddddd"
+
 _aux = MetaData()
 Table("cards", _aux, Column("id", String(64), primary_key=True))
 Table("fuel_stations", _aux, Column("id", String(36), primary_key=True))
@@ -88,8 +93,8 @@ def _make_operation(db) -> Operation:
 
 
 def test_ledger_double_entry_and_balances(session):
-    acc_a = _make_account(session, owner_id="acc-a")
-    acc_b = _make_account(session, owner_id="acc-b")
+    acc_a = _make_account(session, owner_id=ACCOUNT_A_CLIENT_ID)
+    acc_b = _make_account(session, owner_id=ACCOUNT_B_CLIENT_ID)
     operation = _make_operation(session)
 
     result = PostingEngine(session).apply_posting(
@@ -113,8 +118,8 @@ def test_ledger_double_entry_and_balances(session):
 
 
 def test_ledger_entries_are_append_only(session):
-    acc_a = _make_account(session, owner_id="acc-a")
-    acc_b = _make_account(session, owner_id="acc-b")
+    acc_a = _make_account(session, owner_id=ACCOUNT_A_CLIENT_ID)
+    acc_b = _make_account(session, owner_id=ACCOUNT_B_CLIENT_ID)
     operation = _make_operation(session)
     PostingEngine(session).apply_posting(
         operation_id=operation.id,
@@ -134,8 +139,8 @@ def test_ledger_entries_are_append_only(session):
 
 
 def test_currency_mismatch_rejected(session):
-    acc_rub = _make_account(session, owner_id="acc-rub", currency="RUB")
-    acc_usd = _make_account(session, owner_id="acc-usd", currency="USD")
+    acc_rub = _make_account(session, owner_id=ACCOUNT_RUB_CLIENT_ID, currency="RUB")
+    acc_usd = _make_account(session, owner_id=ACCOUNT_USD_CLIENT_ID, currency="USD")
     operation = _make_operation(session)
 
     with pytest.raises(PostingInvariantError, match="ledger.currency_match"):
@@ -151,8 +156,8 @@ def test_currency_mismatch_rejected(session):
 
 
 def test_rounding_edge_minor_unit_supported(session):
-    acc_a = _make_account(session, owner_id="acc-a")
-    acc_b = _make_account(session, owner_id="acc-b")
+    acc_a = _make_account(session, owner_id=ACCOUNT_A_CLIENT_ID)
+    acc_b = _make_account(session, owner_id=ACCOUNT_B_CLIENT_ID)
     operation = _make_operation(session)
 
     result = PostingEngine(session).apply_posting(

@@ -37,6 +37,7 @@ from app.schemas.vehicle_maintenance import (
     VehicleUsageProfileUpdate,
 )
 from app.security.client_auth import require_client_user
+from app.services.token_claims import DEFAULT_TENANT_ID, resolve_token_tenant_id
 from app.services.vehicle_maintenance import build_vehicle_maintenance_recommendations
 
 router = APIRouter(prefix="/client/api/v1/vehicles", tags=["client-vehicles"])
@@ -50,10 +51,12 @@ def _require_client_id(token: dict) -> str:
 
 
 def _require_tenant_id(token: dict) -> int:
-    tenant_id = token.get("tenant_id")
-    if tenant_id is None:
-        raise HTTPException(status_code=403, detail="forbidden")
-    return int(tenant_id)
+    return resolve_token_tenant_id(
+        token,
+        client_id=str(token.get("client_id") or "") or None,
+        default=DEFAULT_TENANT_ID,
+        error_detail="forbidden",
+    )
 
 
 def _get_vehicle(db: Session, *, vehicle_id: str, client_id: str) -> VehicleProfile:

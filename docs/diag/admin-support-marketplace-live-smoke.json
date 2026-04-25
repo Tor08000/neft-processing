@@ -1,0 +1,329 @@
+{
+  "checked_at": "2026-04-23T15:54:14.616Z",
+  "admin_base_url": "http://localhost/admin",
+  "api_origin": "http://localhost",
+  "results": [
+    {
+      "role": "NEFT_SUPPORT",
+      "path": "/cases?queue=SUPPORT",
+      "url": "http://localhost/admin/cases?queue=SUPPORT",
+      "bodySnippet": "NEFT PLATFORM ADMIN operator surface Home Cases Finance Commercial Marketplace Onboarding Runtime Legal Audit NEFT PLATFORM Cases neft_support@neft.test DEV neft_support@neft.test support_admin Support & Incident Inbox Canonical support, di",
+      "headings": [],
+      "presentLinks": [
+        {
+          "link": "Cases",
+          "visible": true
+        },
+        {
+          "link": "Marketplace",
+          "visible": true
+        },
+        {
+          "link": "Onboarding",
+          "visible": true
+        }
+      ],
+      "absentLinks": [
+        {
+          "link": "Revenue",
+          "visible": false
+        },
+        {
+          "link": "Rules Sandbox",
+          "visible": false
+        },
+        {
+          "link": "Risk Rules",
+          "visible": false
+        },
+        {
+          "link": "Policy Center",
+          "visible": false
+        }
+      ],
+      "absentButtons": [],
+      "expectedApi": [
+        {
+          "contains": "/api/core/v1/admin/me",
+          "status": 200,
+          "actualStatus": 200,
+          "matchedUrl": "http://localhost/api/core/v1/admin/me"
+        },
+        {
+          "contains": "/api/core/cases",
+          "status": 200,
+          "actualStatus": 200,
+          "matchedUrl": "http://localhost/api/core/cases?queue=SUPPORT&limit=20"
+        }
+      ],
+      "forbiddenApiHits": [],
+      "consoleMessages": [],
+      "screenshot": "C:\\neft-processing\\docs\\diag\\screenshots\\admin-cases-support.png"
+    },
+    {
+      "role": "NEFT_FINANCE",
+      "path": "/cases?queue=SUPPORT",
+      "url": "http://localhost/admin/cases?queue=SUPPORT",
+      "bodySnippet": "NEFT PLATFORM ADMIN operator surface Home Cases Finance Revenue Commercial Runtime Audit NEFT PLATFORM Cases neft_finance@neft.test DEV neft_finance@neft.test finance_admin Support & Incident Inbox Canonical support, dispute, incident and o",
+      "headings": [],
+      "presentLinks": [
+        {
+          "link": "Cases",
+          "visible": true
+        },
+        {
+          "link": "Finance",
+          "visible": true
+        },
+        {
+          "link": "Revenue",
+          "visible": true
+        }
+      ],
+      "absentLinks": [
+        {
+          "link": "Marketplace",
+          "visible": false
+        },
+        {
+          "link": "Rules Sandbox",
+          "visible": false
+        },
+        {
+          "link": "Risk Rules",
+          "visible": false
+        },
+        {
+          "link": "Policy Center",
+          "visible": false
+        }
+      ],
+      "absentButtons": [],
+      "expectedApi": [
+        {
+          "contains": "/api/core/v1/admin/me",
+          "status": 200,
+          "actualStatus": 200,
+          "matchedUrl": "http://localhost/api/core/v1/admin/me"
+        },
+        {
+          "contains": "/api/core/cases",
+          "status": 200,
+          "actualStatus": 200,
+          "matchedUrl": "http://localhost/api/core/cases?queue=SUPPORT&limit=20"
+        }
+      ],
+      "forbiddenApiHits": [],
+      "consoleMessages": [],
+      "screenshot": "C:\\neft-processing\\docs\\diag\\screenshots\\admin-cases-finance-readonly.png"
+    },
+    {
+      "role": "NEFT_SUPPORT",
+      "path": "/marketplace/moderation",
+      "url": "http://localhost/admin/marketplace/moderation",
+      "bodySnippet": "NEFT PLATFORM ADMIN operator surface Home Cases Finance Commercial Marketplace Onboarding Runtime Legal Audit NEFT PLATFORM Marketplace neft_support@neft.test DEV neft_support@neft.test support_admin Marketplace · Moderation Review products",
+      "headings": [],
+      "presentLinks": [
+        {
+          "link": "Cases",
+          "visible": true
+        },
+        {
+          "link": "Marketplace",
+          "visible": true
+        }
+      ],
+      "absentLinks": [
+        {
+          "link": "Revenue",
+          "visible": false
+        },
+        {
+          "link": "Rules Sandbox",
+          "visible": false
+        },
+        {
+          "link": "Risk Rules",
+          "visible": false
+        },
+        {
+          "link": "Policy Center",
+          "visible": false
+        }
+      ],
+      "absentButtons": [],
+      "expectedApi": [
+        {
+          "contains": "/api/core/v1/admin/me",
+          "status": 200,
+          "actualStatus": 200,
+          "matchedUrl": "http://localhost/api/core/v1/admin/me"
+        },
+        {
+          "contains": "/api/core/v1/admin/marketplace/moderation/queue",
+          "status": 200,
+          "actualStatus": 200,
+          "matchedUrl": "http://localhost/api/core/v1/admin/marketplace/moderation/queue?status=PENDING_REVIEW&limit=20&offset=0"
+        }
+      ],
+      "forbiddenApiHits": [],
+      "consoleMessages": [],
+      "screenshot": "C:\\neft-processing\\docs\\diag\\screenshots\\admin-marketplace-support-read.png"
+    },
+    {
+      "role": "NEFT_FINANCE",
+      "path": "/marketplace/moderation",
+      "url": "http://localhost/admin/marketplace/moderation",
+      "bodySnippet": "NEFT PLATFORM ADMIN operator surface Home Cases Finance Revenue Commercial Runtime Audit NEFT PLATFORM Admin neft_finance@neft.test DEV neft_finance@neft.test finance_admin FORBIDDEN_ROLE У вас нет прав доступа к этому разделу. Вернуться на",
+      "headings": [
+        {
+          "heading": "FORBIDDEN_ROLE",
+          "visible": true
+        }
+      ],
+      "presentLinks": [
+        {
+          "link": "Finance",
+          "visible": true
+        },
+        {
+          "link": "Revenue",
+          "visible": true
+        }
+      ],
+      "absentLinks": [
+        {
+          "link": "Marketplace",
+          "visible": false
+        }
+      ],
+      "absentButtons": [],
+      "expectedApi": [
+        {
+          "contains": "/api/core/v1/admin/me",
+          "status": 200,
+          "actualStatus": 200,
+          "matchedUrl": "http://localhost/api/core/v1/admin/me"
+        }
+      ],
+      "forbiddenApiHits": [],
+      "consoleMessages": [],
+      "screenshot": "C:\\neft-processing\\docs\\diag\\screenshots\\admin-marketplace-finance-forbidden.png"
+    },
+    {
+      "role": "NEFT_SUPPORT",
+      "path": "/marketplace/moderation/product/00000000-0000-0000-0000-000000000999",
+      "url": "http://localhost/admin/marketplace/moderation/product/00000000-0000-0000-0000-000000000999",
+      "bodySnippet": "NEFT PLATFORM ADMIN operator surface Home Cases Finance Commercial Marketplace Onboarding Runtime Legal Audit NEFT PLATFORM Marketplace neft_support@neft.test DEV neft_support@neft.test support_admin Moderation detail Back READ-ONLY MODERAT",
+      "headings": [],
+      "presentLinks": [],
+      "absentLinks": [],
+      "absentButtons": [
+        {
+          "button": "Approve",
+          "visible": false
+        },
+        {
+          "button": "Reject",
+          "visible": false
+        }
+      ],
+      "expectedApi": [
+        {
+          "contains": "/api/core/v1/admin/me",
+          "status": 200,
+          "actualStatus": 200,
+          "matchedUrl": "http://localhost/api/core/v1/admin/me"
+        },
+        {
+          "contains": "/api/core/v1/admin/marketplace/products/00000000-0000-0000-0000-000000000999",
+          "status": 404,
+          "actualStatus": 404,
+          "matchedUrl": "http://localhost/api/core/v1/admin/marketplace/products/00000000-0000-0000-0000-000000000999"
+        }
+      ],
+      "forbiddenApiHits": [],
+      "consoleMessages": [
+        {
+          "type": "error",
+          "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+        }
+      ],
+      "screenshot": "C:\\neft-processing\\docs\\diag\\screenshots\\admin-marketplace-support-detail-readonly.png"
+    }
+  ],
+  "directApiResults": [
+    {
+      "role": "NEFT_FINANCE",
+      "method": "GET",
+      "path": "/api/core/v1/admin/products",
+      "status": 403,
+      "detail": null,
+      "payload": {
+        "error": "admin_forbidden",
+        "message": "forbidden_admin_role",
+        "request_id": "767d8207e31c0094d4465fc60544020f"
+      }
+    },
+    {
+      "role": "NEFT_FINANCE",
+      "method": "GET",
+      "path": "/api/core/v1/admin/marketplace/orders",
+      "status": 403,
+      "detail": null,
+      "payload": {
+        "error": "admin_forbidden",
+        "message": "forbidden_admin_role",
+        "request_id": "11ef9391705ed0dee218918c22a73434"
+      }
+    },
+    {
+      "role": "NEFT_FINANCE",
+      "method": "GET",
+      "path": "/api/core/v1/admin/marketplace/sponsored/campaigns",
+      "status": 403,
+      "detail": null,
+      "payload": {
+        "error": "admin_forbidden",
+        "message": "forbidden_admin_role",
+        "request_id": "b5751909c9b82fab55f7216ffacfd9ee"
+      }
+    },
+    {
+      "role": "NEFT_SUPPORT",
+      "method": "POST",
+      "path": "/api/core/v1/admin/partners/partner-1/verify",
+      "status": 403,
+      "detail": null,
+      "payload": {
+        "error": "admin_forbidden",
+        "message": "forbidden_admin_role",
+        "request_id": "5b317a3db0da0b60b57c2f924e8dd641"
+      }
+    },
+    {
+      "role": "NEFT_SUPPORT",
+      "method": "POST",
+      "path": "/api/core/v1/admin/marketplace/orders/order-1/settlement-override",
+      "status": 403,
+      "detail": null,
+      "payload": {
+        "error": "admin_forbidden",
+        "message": "forbidden_admin_role",
+        "request_id": "02b4560a83ba5649b31f76ce0e326498"
+      }
+    },
+    {
+      "role": "NEFT_SUPPORT",
+      "method": "PATCH",
+      "path": "/api/core/v1/admin/marketplace/sponsored/campaigns/campaign-1/status",
+      "status": 403,
+      "detail": null,
+      "payload": {
+        "error": "admin_forbidden",
+        "message": "forbidden_admin_role",
+        "request_id": "9777f0b9a0abf3110dd38b7c8fc4a7c3"
+      }
+    }
+  ]
+}

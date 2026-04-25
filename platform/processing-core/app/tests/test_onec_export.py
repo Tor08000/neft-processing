@@ -5,30 +5,32 @@ from uuid import uuid4
 
 import pytest
 
-from app.db import Base, SessionLocal, engine
 from app.integrations.onec.exporter import export_onec_documents
-from app.models.audit_log import ActorType
+from app.models.audit_log import ActorType, AuditLog
 from app.models.client import Client
-from app.models.integrations import IntegrationFile, IntegrationMapping, IntegrationType
+from app.models.documents import Document
+from app.models.integrations import IntegrationExport, IntegrationFile, IntegrationMapping, IntegrationType
 from app.models.invoice import Invoice, InvoiceLine
 from app.services.audit_service import RequestContext
+from app.tests._scoped_router_harness import scoped_session_context
 
 
-@pytest.fixture(autouse=True)
-def clean_db():
-    Base.metadata.drop_all(bind=engine)
-    Base.metadata.create_all(bind=engine)
-    yield
-    Base.metadata.drop_all(bind=engine)
+ONEC_EXPORT_TEST_TABLES = (
+    Client.__table__,
+    AuditLog.__table__,
+    IntegrationMapping.__table__,
+    IntegrationFile.__table__,
+    IntegrationExport.__table__,
+    Document.__table__,
+    Invoice.__table__,
+    InvoiceLine.__table__,
+)
 
 
 @pytest.fixture()
 def db_session():
-    session = SessionLocal()
-    try:
+    with scoped_session_context(tables=ONEC_EXPORT_TEST_TABLES) as session:
         yield session
-    finally:
-        session.close()
 
 
 def test_onec_export_creates_xml(db_session):
@@ -94,6 +96,9 @@ def test_onec_export_creates_xml(db_session):
     assert export.file_id is not None
     file_record = db_session.query(IntegrationFile).filter(IntegrationFile.id == export.file_id).one()
     content = file_record.payload.decode("utf-8")
+    assert "<Counterparty>" in content
+    assert f"<Id>{client.id}</Id>" in content
+    assert "<INN>7700000000</INN>" in content
     assert "<Invoice>" in content
     assert "<Act>" in content
     assert "<IncomeAccount>90.01</IncomeAccount>" in content

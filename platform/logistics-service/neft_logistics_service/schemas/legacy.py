@@ -59,6 +59,7 @@ class DeviationResponse(BaseModel):
     deviation_meters: int
     is_violation: bool
     confidence: float
+    provider: str
     explain: Explain
 
 
@@ -68,5 +69,5 @@ class ExplainRequest(BaseModel):
 
 
 class ExplainResponse(BaseModel):
+    provider: str
     explain: Explain
-

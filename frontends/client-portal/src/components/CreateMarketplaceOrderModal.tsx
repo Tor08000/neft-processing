@@ -7,17 +7,69 @@ import { ApiError } from "../api/http";
 import { formatMoney } from "../utils/format";
 
 interface CreateMarketplaceOrderModalProps {
-  serviceId: string;
-  serviceTitle: string;
+  subjectId: string;
+  subjectTitle: string;
   offers: MarketplaceOffer[];
   onClose: () => void;
 }
 
 type SubmitStatus = "idle" | "submitting" | "success" | "error";
 
+const OFFER_PRICE_FALLBACK = "Цена по запросу";
+
+function formatOfferPrice(offer: MarketplaceOffer): string {
+  const currency = offer.currency ?? "RUB";
+  if (offer.price_model === "FIXED" && offer.price_amount !== null && offer.price_amount !== undefined) {
+    return formatMoney(offer.price_amount, currency);
+  }
+  if (offer.price_model === "PER_UNIT" && offer.price_amount !== null && offer.price_amount !== undefined) {
+    return `${formatMoney(offer.price_amount, currency)} / ед.`;
+  }
+  if (offer.price_model === "TIERED") {
+    if (offer.price_min !== null && offer.price_min !== undefined && offer.price_max !== null && offer.price_max !== undefined) {
+      return `${formatMoney(offer.price_min, currency)} - ${formatMoney(offer.price_max, currency)}`;
+    }
+    if (offer.price_min !== null && offer.price_min !== undefined) {
+      return `от ${formatMoney(offer.price_min, currency)}`;
+    }
+  }
+  if (offer.price !== null && offer.price !== undefined) {
+    return formatMoney(offer.price, currency);
+  }
+  return OFFER_PRICE_FALLBACK;
+}
+
+function formatOfferCoverage(offer: MarketplaceOffer): string {
+  if (offer.location_ids?.length) {
+    return `${offer.location_ids.length} локац.`;
+  }
+  if (offer.geo_scope === "ALL_PARTNER_LOCATIONS") {
+    return "Все локации партнёра";
+  }
+  if (offer.geo_scope) {
+    return offer.geo_scope;
+  }
+  return "—";
+}
+
+function formatOfferTerms(offer: MarketplaceOffer): string {
+  const minQty = typeof offer.terms?.min_qty === "number" ? offer.terms.min_qty : null;
+  const maxQty = typeof offer.terms?.max_qty === "number" ? offer.terms.max_qty : null;
+  if (minQty !== null && maxQty !== null) {
+    return `Мин. ${minQty} · Макс. ${maxQty}`;
+  }
+  if (minQty !== null) {
+    return `Мин. ${minQty}`;
+  }
+  if (maxQty !== null) {
+    return `Макс. ${maxQty}`;
+  }
+  return "—";
+}
+
 export function CreateMarketplaceOrderModal({
-  serviceId,
-  serviceTitle,
+  subjectId,
+  subjectTitle,
   offers,
   onClose,
 }: CreateMarketplaceOrderModalProps) {
@@ -56,7 +108,7 @@ export function CreateMarketplaceOrderModal({
       setMessage("Выберите оффер для заказа.");
       return;
     }
-    const confirmed = window.confirm("Оформить заказ на выбранную услугу?");
+    const confirmed = window.confirm("Оформить заказ на выбранную позицию?");
     if (!confirmed) return;
     setStatus("submitting");
     setMessage(null);
@@ -77,9 +129,10 @@ export function CreateMarketplaceOrderModal({
             source: "client_portal",
             page: location.pathname,
             payload: {
-              service_id: serviceId,
+              subject_id: subjectId,
               offer_id: selectedOfferId,
               qty: qtyValue,
+              comment: comment || null,
             },
           },
         ]).catch(() => undefined);
@@ -89,9 +142,7 @@ export function CreateMarketplaceOrderModal({
       setStatus("success");
       setMessage("Заказ создан. Перенаправляем в детали заказа.");
       if (newOrderId) {
-        window.setTimeout(() => {
-          navigate(`/marketplace/orders/${newOrderId}`);
-        }, 1200);
+        navigate(`/marketplace/orders/${newOrderId}`);
       }
     } catch (err) {
       const fallback = "Не удалось оформить заказ. Попробуйте позже.";
@@ -122,18 +173,15 @@ export function CreateMarketplaceOrderModal({
 
         <div className="stack">
           <div>
-            <div className="muted small">Услуга</div>
-            <strong>{serviceTitle}</strong>
+            <div className="muted small">Позиция</div>
+            <strong>{subjectTitle}</strong>
           </div>
           <label className="filter">
             <span>Выбранный оффер</span>
             <select value={selectedOfferId} onChange={(event) => setSelectedOfferId(event.target.value)}>
               {offers.map((offer) => (
                 <option key={offer.id} value={offer.id}>
-                  {offer.location_name ?? "Локация не указана"} ·{" "}
-                  {offer.price !== undefined && offer.price !== null
-                    ? formatMoney(offer.price, offer.currency ?? "RUB")
-                    : "Цена по запросу"}
+                  {offer.title ?? subjectTitle} · {formatOfferPrice(offer)}
                 </option>
               ))}
             </select>
@@ -156,14 +204,9 @@ export function CreateMarketplaceOrderModal({
             <div className="card muted-card">
               <div className="muted small">Детали оффера</div>
               <div className="stack">
-                <div>
-                  Цена:{" "}
-                  {selectedOffer.price !== undefined && selectedOffer.price !== null
-                    ? formatMoney(selectedOffer.price, selectedOffer.currency ?? "RUB")
-                    : "Цена по запросу"}
-                </div>
-                <div>Локация: {selectedOffer.location_name ?? "—"}</div>
-                <div>Условия: {selectedOffer.conditions ?? "—"}</div>
+                <div>Цена: {formatOfferPrice(selectedOffer)}</div>
+                <div>Покрытие: {formatOfferCoverage(selectedOffer)}</div>
+                <div>Условия: {formatOfferTerms(selectedOffer)}</div>
               </div>
             </div>
           ) : null}

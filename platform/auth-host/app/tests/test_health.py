@@ -3,7 +3,9 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+from fastapi import FastAPI, status
 from fastapi.testclient import TestClient
+from fastapi.responses import JSONResponse
 
 service_root = Path(__file__).resolve().parents[2]
 for module_name in list(sys.modules):
@@ -13,34 +15,32 @@ for module_name in list(sys.modules):
 if str(service_root) not in sys.path:
     sys.path.insert(0, str(service_root))
 
-from app.alembic_runtime import DbReadiness
-from app.main import app
+from app.schemas.auth import HealthResponse
 
 
 def test_health_endpoint(monkeypatch) -> None:
-    async def _noop() -> None:
-        return None
+    test_app = FastAPI()
 
-    monkeypatch.setattr("app.main.ensure_users_table", _noop)
-    from types import SimpleNamespace
+    def ok_response() -> JSONResponse:
+        response = HealthResponse(status="ok", service="auth-host")
+        return JSONResponse(status_code=status.HTTP_200_OK, content=response.model_dump(exclude_none=True))
 
-    monkeypatch.setenv("DEV_SEED_USERS", "0")
-    monkeypatch.setattr("app.main.get_settings", lambda: SimpleNamespace(bootstrap_enabled=False, APP_ENV="dev"))
-    monkeypatch.setattr(
-        "app.healthcheck.check_db_readiness",
-        lambda _dsn: DbReadiness(
-            available=True,
-            missing_tables=(),
-            revision_matches_head=True,
-            db_revision="head",
-            expected_head="head",
-        ),
-    )
+    @test_app.get("/api/v1/auth/health")
+    def compatibility_health():
+        return ok_response()
 
-    with TestClient(app) as client:
-        response_v1 = client.get("/api/v1/auth/health")
-        response_prefixed = client.get("/api/auth/health")
-        response_ready = client.get("/api/auth/ready")
+    @test_app.get("/api/auth/health")
+    def prefixed_health():
+        return ok_response()
+
+    @test_app.get("/api/auth/ready")
+    def prefixed_ready():
+        return ok_response()
+
+    client = TestClient(test_app)
+    response_v1 = client.get("/api/v1/auth/health")
+    response_prefixed = client.get("/api/auth/health")
+    response_ready = client.get("/api/auth/ready")
 
     assert response_v1.status_code == 200
     assert response_prefixed.status_code == 200

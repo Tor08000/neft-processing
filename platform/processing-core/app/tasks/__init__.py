@@ -1,139 +1,39 @@
-"""Celery tasks for billing and invoicing."""
+"""Celery task package bootstrap."""
 
 from __future__ import annotations
 
 from app.celery_client import celery_client
 
-try:  # pragma: no cover - optional task modules
-    import app.tasks.accounting_exports  # noqa: F401
-except Exception:
-    pass
+OPTIONAL_TASK_MODULES = [
+    "app.tasks.accounting_exports",
+    "app.tasks.legal_integrations",
+    "app.tasks.fraud",
+    "app.tasks.sla_escalations",
+    "app.tasks.case_escalations",
+    "app.tasks.fleet_intelligence",
+    "app.tasks.fleet_control",
+    "app.tasks.bi_analytics",
+    "app.tasks.bi_clickhouse",
+    "app.tasks.export_jobs",
+    "app.tasks.report_schedules",
+    "app.tasks.subscription_billing",
+    "app.tasks.billing_dunning",
+    "app.tasks.email_outbox",
+    "app.tasks.helpdesk_outbox",
+    "app.tasks.notification_outbox",
+    "app.tasks.service_slo",
+    "app.tasks.geo_metrics",
+    "app.tasks.geo_tiles",
+    "app.tasks.geo_clickhouse",
+    "app.tasks.station_automation",
+    "app.tasks.commercial_margin",
+    "app.tasks.commercial_elasticity",
+    "app.tasks.commercial_price_recommendations",
+    "app.tasks.document_packages",
+    "app.tasks.edo_poll",
+    "app.tasks.billing_pdf",
+]
 
-try:  # pragma: no cover - optional task modules
-    import app.tasks.legal_integrations  # noqa: F401
-except Exception:
-    pass
-
-try:  # pragma: no cover - optional task modules
-    import app.tasks.fraud  # noqa: F401
-except Exception:
-    pass
-
-try:  # pragma: no cover - optional task modules
-    import app.tasks.sla_escalations  # noqa: F401
-except Exception:
-    pass
-
-try:  # pragma: no cover - optional task modules
-    import app.tasks.case_escalations  # noqa: F401
-except Exception:
-    pass
-
-try:  # pragma: no cover - optional task modules
-    import app.tasks.fleet_intelligence  # noqa: F401
-except Exception:
-    pass
-
-try:  # pragma: no cover - optional task modules
-    import app.tasks.fleet_control  # noqa: F401
-except Exception:
-    pass
-
-try:  # pragma: no cover - optional task modules
-    import app.tasks.bi_analytics  # noqa: F401
-except Exception:
-    pass
-
-try:  # pragma: no cover - optional task modules
-    import app.tasks.bi_clickhouse  # noqa: F401
-except Exception:
-    pass
-
-try:  # pragma: no cover - optional task modules
-    import app.tasks.export_jobs  # noqa: F401
-except Exception:
-    pass
-
-try:  # pragma: no cover - optional task modules
-    import app.tasks.report_schedules  # noqa: F401
-except Exception:
-    pass
-
-try:  # pragma: no cover - optional task modules
-    import app.tasks.subscription_billing  # noqa: F401
-except Exception:
-    pass
-
-try:  # pragma: no cover - optional task modules
-    import app.tasks.billing_dunning  # noqa: F401
-except Exception:
-    pass
-
-try:  # pragma: no cover - optional task modules
-    import app.tasks.email_outbox  # noqa: F401
-except Exception:
-    pass
-
-try:  # pragma: no cover - optional task modules
-    import app.tasks.helpdesk_outbox  # noqa: F401
-except Exception:
-    pass
-
-try:  # pragma: no cover - optional task modules
-    import app.tasks.notification_outbox  # noqa: F401
-except Exception:
-    pass
-
-try:  # pragma: no cover - optional task modules
-    import app.tasks.service_slo  # noqa: F401
-except Exception:
-    pass
-
-
-try:  # pragma: no cover - optional task modules
-    import app.tasks.geo_metrics  # noqa: F401
-except Exception:
-    pass
-
-
-try:  # pragma: no cover - optional task modules
-    import app.tasks.geo_tiles  # noqa: F401
-except Exception:
-    pass
-
-
-
-try:  # pragma: no cover - optional task modules
-    import app.tasks.geo_clickhouse  # noqa: F401
-except Exception:
-    pass
-
-
-try:  # pragma: no cover - optional task modules
-    import app.tasks.station_automation  # noqa: F401
-except Exception:
-    pass
-
-try:  # pragma: no cover - optional task modules
-    import app.tasks.commercial_margin  # noqa: F401
-except Exception:
-    pass
-
-try:  # pragma: no cover - optional task modules
-    import app.tasks.commercial_elasticity  # noqa: F401
-except Exception:
-    pass
-
-try:  # pragma: no cover - optional task modules
-    import app.tasks.commercial_price_recommendations  # noqa: F401
-except Exception:
-    pass
-
-
-try:  # pragma: no cover - optional task modules
-    import app.tasks.document_packages  # noqa: F401
-except Exception:
-    pass
 
 @celery_client.task(name="workers.ping")
 def ping(x: int = 1) -> dict:
@@ -142,9 +42,4 @@ def ping(x: int = 1) -> dict:
     return {"pong": x}
 
 
-__all__ = ["ping"]
-
-try:  # pragma: no cover - optional task modules
-    import app.tasks.edo_poll  # noqa: F401
-except Exception:
-    pass
+__all__ = ["OPTIONAL_TASK_MODULES", "ping"]

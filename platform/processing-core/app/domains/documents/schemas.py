@@ -23,6 +23,7 @@ class DocumentFileOut(BaseModel):
     id: str
     filename: str
     mime: str
+    kind: str | None = None
     size: int
     sha256: str | None = None
     created_at: dt.datetime
@@ -44,6 +45,12 @@ class DocumentListItem(BaseModel):
     currency: str | None = None
     created_at: dt.datetime
     files_count: int
+    requires_action: bool = False
+    action_code: str | None = None
+    ack_at: dt.datetime | None = None
+    edo_status: str | None = None
+    period_from: dt.date | None = None
+    period_to: dt.date | None = None
 
 
 class DocumentsListResponse(BaseModel):
@@ -51,6 +58,21 @@ class DocumentsListResponse(BaseModel):
     total: int
     limit: int
     offset: int
+
+
+class DocumentAckDetailsOut(BaseModel):
+    ack_by_user_id: str | None = None
+    ack_by_email: str | None = None
+    ack_ip: str | None = None
+    ack_user_agent: str | None = None
+    ack_method: str | None = None
+    ack_at: dt.datetime | None = None
+
+
+class DocumentRiskSummaryOut(BaseModel):
+    state: str
+    decided_at: dt.datetime | None = None
+    decision_id: str | None = None
 
 
 class DocumentOut(BaseModel):
@@ -74,13 +96,18 @@ class DocumentOut(BaseModel):
     updated_at: dt.datetime
     signed_by_client_at: dt.datetime | None = None
     signed_by_client_user_id: str | None = None
+    requires_action: bool = False
+    action_code: str | None = None
+    ack_at: dt.datetime | None = None
+    ack_details: DocumentAckDetailsOut | None = None
+    document_hash_sha256: str | None = None
+    risk: DocumentRiskSummaryOut | None = None
+    risk_explain: dict | None = None
     files: list[DocumentFileOut]
 
 
 class DocumentDetailsResponse(DocumentOut):
     pass
-
-
 
 
 class DocumentSignIn(BaseModel):
@@ -111,6 +138,7 @@ class DocumentSignResult(BaseModel):
     signed_by_client_at: dt.datetime | None = None
     signature_id: str
     document_hash_sha256: str
+
 
 class EdoStateOut(BaseModel):
     id: str

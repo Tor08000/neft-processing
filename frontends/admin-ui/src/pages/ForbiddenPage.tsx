@@ -1,19 +1,5 @@
-import React from "react";
-import { Link } from "react-router-dom";
-import { EmptyState } from "@shared/brand/components";
+import { AdminForbiddenPage } from "./admin/AdminStatusPages";
 
-export const ForbiddenPage: React.FC = () => {
-  return (
-    <EmptyState
-      title="403 — Доступ запрещён"
-      description="У вас нет прав доступа к этому разделу."
-      action={
-        <Link className="ghost neft-btn-secondary" to="/users">
-          Вернуться на главную
-        </Link>
-      }
-    />
-  );
-};
+export const ForbiddenPage = AdminForbiddenPage;
 
 export default ForbiddenPage;

@@ -73,9 +73,12 @@ By default, snapshots run via the gateway:
 
 To run in direct mode, override per-app base URLs:
 
-- `E2E_ADMIN_URL` (e.g. `http://localhost:4173/`)
+- `E2E_ADMIN_URL` (e.g. `http://localhost:8080/admin/`)
 - `E2E_CLIENT_URL` (e.g. `http://localhost:4174/`)
-- `E2E_PARTNER_URL` (e.g. `http://localhost:4175/`)
+- `E2E_PARTNER_URL` (e.g. `http://localhost:4176/partner/`)
+
+Current compose exposes the portals through gateway only. Direct URLs are for
+local Vite dev servers unless a compose override publishes frontend containers.
 
 ### Credentials
 

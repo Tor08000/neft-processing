@@ -97,6 +97,9 @@ class DecisionEngine:
         threshold_set = None
         hard_decline = False
         threshold_values: dict[str, int] | None = None
+        scoring_source = "not_scored"
+        scoring_assumptions: list[str] = []
+        scoring_evidence: dict | None = None
 
         risk_score = None
         model_version = None
@@ -113,6 +116,8 @@ class DecisionEngine:
             threshold_values = {"block": 0, "review": 0, "allow": 0}
             reason_codes = list(missing_reasons)
             top_reasons = [{"feature": reason, "impact": None} for reason in missing_reasons]
+            scoring_source = "context_validation"
+            scoring_assumptions = list(missing_reasons)
         else:
             for rule in self.rules:
                 if rule.when(ctx):
@@ -129,6 +134,8 @@ class DecisionEngine:
                     matched_rules.extend(scoring_rule_ids)
                     for idx, code in enumerate(reason_codes):
                         rule_explanations[scoring_rule_ids[idx]] = code
+                    scoring_source = "scoring_rules"
+                    scoring_evidence = {"rule_ids": list(scoring_rule_ids)}
                     if risk_level in {RiskLevel.HIGH, RiskLevel.VERY_HIGH}:
                         outcome = DecisionOutcome.DECLINE
                         hard_decline = True
@@ -138,6 +145,9 @@ class DecisionEngine:
                     score = self.scorer.score(ctx)
                     risk_score = score.score
                     model_version = score.model_version
+                    scoring_source = score.source
+                    scoring_assumptions = list(score.assumptions)
+                    scoring_evidence = score.evidence
                     outcome = DecisionOutcome.MANUAL_REVIEW if risk_score > self.threshold else DecisionOutcome.ALLOW
 
         if risk_level:
@@ -199,6 +209,7 @@ class DecisionEngine:
             }
         elif policy_selection is None and subject_type is not None:
             risk_decision = RiskDecisionType.BLOCK
+            outcome = DecisionOutcome.DECLINE
             risk_level = risk_level or RiskLevel.VERY_HIGH
             threshold_set_id = "missing_thresholds"
             threshold_values = {"block": 0, "review": 0, "allow": 0}
@@ -286,6 +297,10 @@ class DecisionEngine:
             policy_label=policy_id,
             factors=factors,
             evaluated_at=evaluated_at,
+            context_hash=context_hash,
+            scoring_source=scoring_source,
+            scoring_assumptions=scoring_assumptions,
+            scoring_evidence=scoring_evidence,
             policy=policy_payload,
             decision_payload=decision_payload,
             top_reasons=top_reasons,
@@ -296,8 +311,9 @@ class DecisionEngine:
 
         decision_id = new_uuid_str()
         if self.db is not None:
+            decision_result_id = new_uuid_str()
             record = DecisionResultRecord(
-                id=new_uuid_str(),
+                id=decision_result_id,
                 decision_id=decision_id,
                 decision_version=self.version,
                 action=ctx.action.value if hasattr(ctx.action, "value") else ctx.action,
@@ -313,13 +329,43 @@ class DecisionEngine:
             self.db.flush()
 
             audit_record = self._audit_decision(
-                ctx, decision_id, outcome, risk_score, matched_rules, model_version
+                ctx,
+                decision_id,
+                outcome,
+                risk_score,
+                matched_rules,
+                model_version,
+                decision_hash=explain["decision_hash"],
+                scoring_trace_hash=explain["scoring"]["trace_hash"],
             )
             subject_type = _subject_from_action(ctx.action)
             subject_id = _subject_id_from_context(ctx)
+            risk_decision_record: RiskDecision | None = None
             if subject_type is not None and audit_record is not None:
+                risk_decision_id = new_uuid_str()
+                graph_linkage: dict = {"status": "not_attempted"}
+                record_refs = {
+                    "decision_result_id": str(decision_result_id),
+                    "risk_decision_id": str(risk_decision_id),
+                }
+                audit_linkage = {
+                    "decision_audit_id": str(audit_record.id),
+                    "decision_audit_hash": audit_record.hash,
+                }
+                features_snapshot = {
+                    **payload,
+                    "decision_id": decision_id,
+                    "context_hash": context_hash,
+                    "decision_hash": explain["decision_hash"],
+                    "scoring_trace_hash": explain["scoring"]["trace_hash"],
+                    "scoring_source": scoring_source,
+                    "scoring_assumptions": scoring_assumptions,
+                    "record_refs": record_refs,
+                    "audit": audit_linkage,
+                    "graph": graph_linkage,
+                }
                 risk_decision_record = RiskDecision(
-                    id=new_uuid_str(),
+                    id=risk_decision_id,
                     decision_id=decision_id,
                     subject_type=subject_type,
                     subject_id=subject_id,
@@ -330,49 +376,75 @@ class DecisionEngine:
                     outcome=risk_decision or _decision_from_outcome(outcome),
                     model_version=model_version,
                     reasons=top_reasons or _top_reasons(reason_codes, matched_rules),
-                    features_snapshot=ctx.to_payload(),
+                    features_snapshot=features_snapshot,
                     decided_at=evaluated_at,
                     decided_by=_decision_actor(ctx.actor_type),
                     audit_id=audit_record.id,
                 )
-            self.db.add(risk_decision_record)
-            self.db.flush()
-            self._audit_risk_decision(
-                ctx,
-                decision_id=decision_id,
-                risk_decision=risk_decision_record,
-            )
-            try:
-                graph_context = GraphContext(
-                    tenant_id=ctx.tenant_id or 0,
-                    request_ctx=RequestContext(actor_type=ActorType.SYSTEM, actor_id=ctx.actor_id),
+
+                try:
+                    graph_context = GraphContext(
+                        tenant_id=ctx.tenant_id or 0,
+                        request_ctx=RequestContext(actor_type=ActorType.SYSTEM, actor_id=ctx.actor_id),
+                    )
+                    graph_result = LegalGraphBuilder(self.db, context=graph_context).ensure_risk_decision_graph(
+                        risk_decision_record
+                    )
+                    graph_linkage = graph_result if isinstance(graph_result, dict) else {"status": "written"}
+                except Exception as exc:  # noqa: BLE001 - graph must not block decisions
+                    graph_linkage = {"status": "failed", "error": str(exc)}
+                    logger.warning(
+                        "legal_graph_risk_decision_failed",
+                        extra={"decision_id": decision_id, "error": str(exc)},
+                    )
+                    audit_graph_write_failure(
+                        self.db,
+                        failure=LegalGraphWriteFailure(
+                            entity_type="risk_decision",
+                            entity_id=str(risk_decision_record.id),
+                            error=str(exc),
+                        ),
+                        request_ctx=RequestContext(actor_type=ActorType.SYSTEM, actor_id=ctx.actor_id),
+                    )
+                features_snapshot["graph"] = graph_linkage
+                risk_decision_record.features_snapshot = features_snapshot
+
+                risk_audit_record = self._audit_risk_decision(
+                    ctx,
+                    decision_id=decision_id,
+                    risk_decision=risk_decision_record,
                 )
-                LegalGraphBuilder(self.db, context=graph_context).ensure_risk_decision_graph(risk_decision_record)
-            except Exception as exc:  # noqa: BLE001 - graph must not block decisions
-                logger.warning(
-                    "legal_graph_risk_decision_failed",
-                    extra={"decision_id": decision_id, "error": str(exc)},
+                if risk_audit_record is not None:
+                    audit_linkage = {
+                        **audit_linkage,
+                        "risk_decision_audit_id": str(risk_audit_record.id),
+                        "risk_decision_audit_hash": risk_audit_record.hash,
+                    }
+                    risk_decision_record.features_snapshot = {
+                        **risk_decision_record.features_snapshot,
+                        "audit": audit_linkage,
+                    }
+
+                self.db.add(risk_decision_record)
+                self.db.flush()
+                record.explain = _attach_persistence_linkage(
+                    explain,
+                    record_refs=record_refs,
+                    audit=audit_linkage,
+                    graph=graph_linkage,
                 )
-                audit_graph_write_failure(
+            if risk_decision_record is not None:
+                capture_training_snapshot(
                     self.db,
-                    failure=LegalGraphWriteFailure(
-                        entity_type="risk_decision",
-                        entity_id=str(risk_decision_record.id),
-                        error=str(exc),
-                    ),
-                    request_ctx=RequestContext(actor_type=ActorType.SYSTEM, actor_id=ctx.actor_id),
+                    ctx,
+                    decision_id=decision_id,
+                    score=int(risk_score),
+                    outcome=risk_outcome or RiskOutcome.ALLOW,
+                    model_version=model_version,
+                    threshold_set=threshold_set if policy_selection else None,
+                    policy=policy_selection.policy if policy_selection else None,
+                    evaluated_at=evaluated_at,
                 )
-            capture_training_snapshot(
-                self.db,
-                ctx,
-                decision_id=decision_id,
-                score=int(risk_score),
-                outcome=risk_outcome or RiskOutcome.ALLOW,
-                model_version=model_version,
-                threshold_set=threshold_set if policy_selection else None,
-                policy=policy_selection.policy if policy_selection else None,
-                evaluated_at=evaluated_at,
-            )
 
         return DecisionResult(
             decision_id=decision_id,
@@ -396,6 +468,9 @@ class DecisionEngine:
         risk_score: int | None,
         rule_hits: list[str],
         model_version: str | None,
+        *,
+        decision_hash: str | None = None,
+        scoring_trace_hash: str | None = None,
     ) -> AuditLog | None:
         event_type = {
             DecisionOutcome.ALLOW: "DECISION_MADE",
@@ -406,7 +481,7 @@ class DecisionEngine:
             actor_type=_map_actor_type(ctx.actor_type),
             actor_id=ctx.metadata.get("actor_id") or ctx.client_id,
             actor_email=ctx.metadata.get("actor_email"),
-            actor_roles=ctx.metadata.get("actor_roles"),
+            actor_roles=_normalize_actor_roles(ctx.metadata.get("actor_roles")),
             tenant_id=ctx.tenant_id,
         )
         return AuditService(self.db).audit(
@@ -422,6 +497,8 @@ class DecisionEngine:
                 "score": risk_score,
                 "rules": rule_hits,
                 "model_version": model_version,
+                "decision_hash": decision_hash,
+                "scoring_trace_hash": scoring_trace_hash,
             },
             request_ctx=request_ctx,
         )
@@ -432,21 +509,22 @@ class DecisionEngine:
         *,
         decision_id: str,
         risk_decision: RiskDecision,
-    ) -> None:
+    ) -> AuditLog | None:
         event_type = "RISK_DECISION_MADE"
         if risk_decision.outcome == RiskDecisionType.BLOCK:
             event_type = "RISK_DECISION_BLOCKED"
         elif risk_decision.outcome == RiskDecisionType.ESCALATE:
             event_type = "RISK_DECISION_ESCALATED"
+        features_snapshot = risk_decision.features_snapshot if isinstance(risk_decision.features_snapshot, dict) else {}
 
         request_ctx = RequestContext(
             actor_type=_map_actor_type(ctx.actor_type),
             actor_id=ctx.metadata.get("actor_id") or ctx.client_id,
             actor_email=ctx.metadata.get("actor_email"),
-            actor_roles=ctx.metadata.get("actor_roles"),
+            actor_roles=_normalize_actor_roles(ctx.metadata.get("actor_roles")),
             tenant_id=ctx.tenant_id,
         )
-        AuditService(self.db).audit(
+        return AuditService(self.db).audit(
             event_type=event_type,
             entity_type="risk_decision",
             entity_id=risk_decision.id,
@@ -462,9 +540,37 @@ class DecisionEngine:
                 "threshold_set_id": risk_decision.threshold_set_id,
                 "policy_id": risk_decision.policy_id,
                 "model_version": risk_decision.model_version,
+                "decision_hash": features_snapshot.get("decision_hash"),
+                "scoring_trace_hash": features_snapshot.get("scoring_trace_hash"),
             },
             request_ctx=request_ctx,
         )
+
+
+def _attach_persistence_linkage(
+    explain: dict,
+    *,
+    record_refs: dict,
+    audit: dict,
+    graph: dict,
+) -> dict:
+    """Attach non-deterministic storage links without changing decision_hash."""
+
+    return {
+        **explain,
+        "record_refs": {
+            **(explain.get("record_refs") or {}),
+            **record_refs,
+        },
+        "audit": {
+            **(explain.get("audit") or {}),
+            **audit,
+        },
+        "graph": {
+            **(explain.get("graph") or {}),
+            **graph,
+        },
+    }
 
 
 def _map_actor_type(actor_type: str) -> ActorType:
@@ -476,6 +582,19 @@ def _map_actor_type(actor_type: str) -> ActorType:
 def _hash_payload(payload: dict) -> str:
     serialized = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
+
+
+def _normalize_actor_roles(value: object) -> list[str] | None:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        stripped = value.strip()
+        return [stripped] if stripped else None
+    try:
+        roles = sorted(str(item) for item in value if str(item).strip())
+    except TypeError:
+        return [str(value)]
+    return roles or None
 
 
 def _evaluate_threshold_override(score: int, override: dict) -> ThresholdEvaluation:

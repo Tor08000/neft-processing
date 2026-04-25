@@ -104,6 +104,21 @@ class CRMContractOut(BaseModel):
     meta: Optional[dict[str, Any]] = None
 
 
+class CRMContractUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    contract_number: Optional[str] = None
+    status: Optional[CRMContractStatus] = None
+    valid_from: Optional[datetime] = None
+    valid_to: Optional[datetime] = None
+    billing_mode: Optional[CRMBillingMode] = None
+    currency: Optional[str] = None
+    risk_profile_id: Optional[str] = None
+    limit_profile_id: Optional[str] = None
+    documents_required: Optional[bool] = None
+    meta: Optional[dict[str, Any]] = None
+
+
 class CRMTariffCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -186,6 +201,18 @@ class CRMSubscriptionChangeTariff(BaseModel):
 
     new_tariff_id: str
     effective_at: datetime
+
+
+class CRMSubscriptionUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    status: Optional[CRMSubscriptionStatus] = None
+    billing_cycle: Optional[CRMBillingCycle] = None
+    billing_day: Optional[int] = Field(None, ge=1, le=28)
+    started_at: Optional[datetime] = None
+    paused_at: Optional[datetime] = None
+    ended_at: Optional[datetime] = None
+    meta: Optional[dict[str, Any]] = None
 
 
 class CRMSubscriptionPreviewSegment(BaseModel):
@@ -522,6 +549,7 @@ __all__ = [
     "CRMClientUpdate",
     "CRMContractCreate",
     "CRMContractOut",
+    "CRMContractUpdate",
     "CRMContractStatus",
     "CRMFeatureFlagOut",
     "CRMFeatureFlagType",
@@ -533,6 +561,7 @@ __all__ = [
     "CRMSubscriptionCreate",
     "CRMSubscriptionChangeTariff",
     "CRMSubscriptionOut",
+    "CRMSubscriptionUpdate",
     "CRMSubscriptionPreviewCharge",
     "CRMSubscriptionPreviewOut",
     "CRMSubscriptionPreviewSegment",

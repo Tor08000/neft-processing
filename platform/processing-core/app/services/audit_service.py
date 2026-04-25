@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import hashlib
+import ipaddress
 import json
 from dataclasses import dataclass
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from enum import Enum
 from typing import Any, Iterable
 from uuid import UUID
@@ -23,6 +24,12 @@ GENESIS_HASH = "GENESIS"
 AUDIT_TOKEN_ALLOWLIST = {"user_id", "sub", "client_id", "email", "roles", "role", "tenant_id"}
 
 
+def _normalize_audit_datetime(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
 @dataclass(frozen=True)
 class RequestContext:
     actor_type: ActorType
@@ -36,17 +43,46 @@ class RequestContext:
     tenant_id: int | None = None
 
 
+def _coerce_audit_tenant_id(value: Any) -> int | None:
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        stripped = value.strip()
+        if not stripped:
+            return None
+        try:
+            return int(stripped)
+        except ValueError:
+            return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _normalize_audit_ip(value: str | None) -> str | None:
+    if not value:
+        return None
+    try:
+        return str(ipaddress.ip_address(value))
+    except ValueError:
+        return None
+
+
 def request_context_from_request(
     request: Request | None,
     *,
     token: dict | None = None,
     actor_type: ActorType | None = None,
+    tenant_id_override: int | None = None,
 ) -> RequestContext:
     resolved_actor_type = actor_type
     actor_id = None
     actor_email = None
     actor_roles: list[str] | None = None
-    tenant_id = None
+    tenant_id = tenant_id_override
 
     if token:
         resolved_actor_type = resolved_actor_type or ActorType.USER
@@ -59,11 +95,12 @@ def request_context_from_request(
         if role and role not in roles:
             roles.append(role)
         actor_roles = [str(item) for item in roles] if roles else None
-        tenant_id = token.get("tenant_id")
+        if tenant_id is None:
+            tenant_id = _coerce_audit_tenant_id(token.get("tenant_id"))
 
     resolved_actor_type = resolved_actor_type or ActorType.SYSTEM
 
-    ip = request.client.host if request and request.client else None
+    ip = _normalize_audit_ip(request.client.host if request and request.client else None)
     user_agent = request.headers.get("user-agent") if request else None
     request_id = request.headers.get("x-request-id") if request else None
     trace_id = request.headers.get("x-trace-id") if request else None
@@ -96,7 +133,7 @@ def _normalize_value(value: Any) -> Any:
         return str(value)
     if isinstance(value, (datetime, date)):
         if isinstance(value, datetime):
-            value = value.astimezone(timezone.utc)
+            value = _normalize_audit_datetime(value)
         return value.isoformat()
     if isinstance(value, dict):
         return {str(key): _normalize_value(value[key]) for key in sorted(value)}
@@ -141,7 +178,8 @@ def _truncate_payload(payload: Any) -> Any:
 
 def _sanitize_payload(payload: Any) -> Any:
     masked = _mask_sensitive(payload)
-    return _truncate_payload(masked)
+    normalized = _normalize_value(masked)
+    return _truncate_payload(normalized)
 
 
 def _compact_dict(data: dict[str, Any]) -> dict[str, Any]:
@@ -163,16 +201,17 @@ class AuditService:
     def __init__(self, db: Session):
         self.db = db
 
-    def _latest_hash(self, tenant_id: int | None) -> str:
+    def _latest_record(self, tenant_id: int | None) -> AuditLog | None:
         query = self.db.query(AuditLog)
         if tenant_id is None:
             query = query.filter(AuditLog.tenant_id.is_(None))
         else:
             query = query.filter(AuditLog.tenant_id == tenant_id)
-        latest = query.order_by(desc(AuditLog.ts), desc(AuditLog.id)).first()
-        if latest:
-            return latest.hash
-        return GENESIS_HASH
+        return query.order_by(desc(AuditLog.ts), desc(AuditLog.id)).first()
+
+    def _latest_hash(self, tenant_id: int | None) -> str:
+        latest = self._latest_record(tenant_id)
+        return latest.hash if latest else GENESIS_HASH
 
     def _hash_payload(self, data: dict[str, Any], prev_hash: str) -> str:
         payload = _canonical_json(data)
@@ -223,14 +262,19 @@ class AuditService:
         request_ctx: RequestContext | None = None,
     ) -> AuditLog:
         ctx = request_ctx or RequestContext(actor_type=ActorType.SYSTEM)
+        latest_record = self._latest_record(ctx.tenant_id)
         ts = datetime.now(timezone.utc)
+        if latest_record is not None:
+            latest_ts = _normalize_audit_datetime(latest_record.ts)
+            if ts <= latest_ts:
+                ts = latest_ts + timedelta(microseconds=1)
 
         sanitized_before = _sanitize_payload(before)
         sanitized_after = _sanitize_payload(after)
         sanitized_diff = _sanitize_payload(diff or _diff_payload(before, after))
         sanitized_external_refs = _sanitize_payload(external_refs)
 
-        prev_hash = self._latest_hash(ctx.tenant_id)
+        prev_hash = latest_record.hash if latest_record is not None else GENESIS_HASH
         record_id = new_uuid_str()
         record_data = _compact_dict(
             {

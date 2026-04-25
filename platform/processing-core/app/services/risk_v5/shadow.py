@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import Any
 
 from sqlalchemy.orm import Session
 
@@ -38,23 +39,37 @@ def enqueue_shadow_decision(
 
     snapshot = build_feature_snapshot(ctx.decision_context)
     selector = model_selector(ctx.subject_type)
+    scorer_payload = _build_scorer_payload(ctx, snapshot_features=snapshot.features, selector=selector)
     response: ScorerResponse | None = None
     error: str | None = None
+    explain_payload: dict | None = None
     try:
-        response = score(
-            payload={
-                "subject_type": ctx.subject_type.value,
-                "subject_id": ctx.subject_id,
-                "tenant_id": payload.get("tenant_id"),
-                "client_id": payload.get("client_id"),
-                "features_snapshot": snapshot.features,
-                "model_selector": selector,
-            }
-        )
+        response = score(payload=scorer_payload)
     except Exception as exc:  # noqa: BLE001 - shadow must never impact v4
         logger.exception("risk_v5_shadow_score_failed", extra={"decision_id": risk_decision.decision_id})
-        error = "ai_unavailable"
+        error = str(exc)
+        explain_payload = {
+            "degraded": True,
+            "error": str(exc),
+            "selector": selector,
+            "features_hash": snapshot.features_hash,
+            "provider_payload": _provider_payload_evidence(scorer_payload),
+            "assumptions": ["shadow_only", "scorer_unavailable"],
+        }
         response = None
+    else:
+        base_explain = dict(response.explain or {})
+        assumptions = list(base_explain.get("assumptions") or [])
+        if "shadow_only" not in assumptions:
+            assumptions.append("shadow_only")
+        explain_payload = {
+            **base_explain,
+            "degraded": bool(base_explain.get("degraded", False)),
+            "selector": selector,
+            "features_hash": snapshot.features_hash,
+            "provider_payload": _provider_payload_evidence(scorer_payload),
+            "assumptions": assumptions,
+        }
 
     created_at = risk_decision.decided_at or datetime.now(timezone.utc)
     record = RiskV5ShadowDecision(
@@ -74,7 +89,7 @@ def enqueue_shadow_decision(
         features_schema_version=snapshot.schema_version,
         features_hash=snapshot.features_hash,
         features_snapshot=snapshot.features,
-        explain=response.explain if response else None,
+        explain=explain_payload,
         error=error,
         created_at=created_at,
     )
@@ -97,7 +112,70 @@ def _predicted_outcome(response: ScorerResponse | None) -> str | None:
     predicted = explain.get("predicted_outcome")
     if predicted:
         return str(predicted)
+    if response.decision:
+        return str(response.decision)
     return None
+
+
+def _build_scorer_payload(
+    ctx: RiskV5Context,
+    *,
+    snapshot_features: dict[str, Any],
+    selector: str,
+) -> dict[str, Any]:
+    decision_context = ctx.decision_context
+    metadata = dict(decision_context.metadata or {})
+    history = dict(decision_context.history or {})
+    amount = decision_context.amount if decision_context.amount is not None else snapshot_features.get("amount")
+    operations_count = history.get("operations_count_30d", history.get("txn_count_24h"))
+    avg_amount = history.get("avg_amount_30d", history.get("avg_amount_7d"))
+    chargebacks = history.get("chargebacks")
+    provider_metadata = {
+        **metadata,
+        "subject_type": ctx.subject_type.value,
+        "subject_id": ctx.subject_id,
+        "model_selector": selector,
+        "features_schema": "risk_v5_shadow_features_v1",
+        "features_keys": sorted(snapshot_features.keys()),
+    }
+    return {
+        "amount": amount,
+        "client_score": metadata.get("client_score"),
+        "document_type": _provider_document_type(ctx),
+        "client_status": metadata.get("client_status"),
+        "history": {
+            "operations_count_30d": operations_count,
+            "chargebacks": chargebacks,
+            "avg_amount_30d": avg_amount,
+        },
+        "metadata": provider_metadata,
+    }
+
+
+def _provider_document_type(ctx: RiskV5Context) -> str:
+    metadata = ctx.decision_context.metadata or {}
+    explicit = str(metadata.get("document_type") or "").strip().lower()
+    allowed = {"invoice", "payout", "credit_note", "payment", "document", "export", "fuel_transaction"}
+    if explicit in allowed:
+        return explicit
+    return {
+        "PAYMENT": "payment",
+        "INVOICE": "invoice",
+        "PAYOUT": "payout",
+        "DOCUMENT": "document",
+        "EXPORT": "export",
+        "FUEL_TRANSACTION": "fuel_transaction",
+    }[ctx.subject_type.value]
+
+
+def _provider_payload_evidence(payload: dict[str, Any]) -> dict[str, Any]:
+    metadata = payload.get("metadata") if isinstance(payload.get("metadata"), dict) else {}
+    return {
+        "schema": "ai_service_risk_score_v1",
+        "amount_present": payload.get("amount") is not None,
+        "document_type": payload.get("document_type"),
+        "metadata_keys": sorted(metadata.keys()),
+    }
 
 
 __all__ = ["enqueue_shadow_decision"]

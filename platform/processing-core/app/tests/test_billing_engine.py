@@ -2,24 +2,62 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 import pytest
+from sqlalchemy import create_engine, event
+from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.pool import StaticPool
 
-from app.db import Base, SessionLocal, engine
 from app.models.contract_limits import TariffPlan, TariffPrice
+from app.models.fuel import FuelNetwork, FuelStation, FuelStationNetwork
 from app.models.operation import Operation, OperationStatus, OperationType, ProductType
 from app.services.billing_service import BillingCalculationResult, calculate_client_charges
 
 
+TEST_TABLES = (
+    TariffPlan.__table__,
+    TariffPrice.__table__,
+    FuelNetwork.__table__,
+    FuelStationNetwork.__table__,
+    FuelStation.__table__,
+    Operation.__table__,
+)
+
+
 @pytest.fixture(autouse=True)
 def _prepare_db():
-    Base.metadata.drop_all(bind=engine)
-    Base.metadata.create_all(bind=engine)
-    yield
-    Base.metadata.drop_all(bind=engine)
+    engine = create_engine(
+        "sqlite+pysqlite:///:memory:",
+        future=True,
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+
+    @event.listens_for(engine, "connect")
+    def _enable_sqlite_fk(dbapi_connection, _connection_record) -> None:
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
+
+    for table in TEST_TABLES:
+        table.create(bind=engine, checkfirst=True)
+
+    session_local = sessionmaker(
+        bind=engine,
+        autocommit=False,
+        autoflush=False,
+        expire_on_commit=False,
+        class_=Session,
+    )
+    try:
+        yield session_local
+    finally:
+        for table in reversed(TEST_TABLES):
+            table.drop(bind=engine, checkfirst=True)
+        engine.dispose()
 
 
 @pytest.fixture
-def session():
-    db = SessionLocal()
+def session(_prepare_db):
+    db = _prepare_db()
     try:
         yield db
     finally:

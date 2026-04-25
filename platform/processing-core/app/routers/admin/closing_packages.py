@@ -32,7 +32,11 @@ def generate_closing_package(
         period_from=payload.date_from,
         period_to=payload.date_to,
         force_new_version=payload.force_new_version,
-        actor=request_context_from_request(request, token=_sanitize_token_for_audit(token)),
+        actor=request_context_from_request(
+            request,
+            token=_sanitize_token_for_audit(token),
+            tenant_id_override=payload.tenant_id,
+        ),
     )
 
     return ClosingPackageGenerateResponse(
@@ -79,7 +83,11 @@ def finalize_closing_package(
                 action="UPDATE",
                 visibility=AuditVisibility.PUBLIC,
                 after={"reason": "closing_package_not_acknowledged", "status": package.status.value},
-                request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(token)),
+                request_ctx=request_context_from_request(
+                    request,
+                    token=_sanitize_token_for_audit(token),
+                    tenant_id_override=package.tenant_id,
+                ),
             )
             raise HTTPException(status_code=409, detail="closing_package_not_acknowledged")
         audit_access_denied(
@@ -95,7 +103,11 @@ def finalize_closing_package(
     try:
         service.finalize_package(
             package,
-            actor=request_context_from_request(request, token=_sanitize_token_for_audit(token)),
+            actor=request_context_from_request(
+                request,
+                token=_sanitize_token_for_audit(token),
+                tenant_id_override=package.tenant_id,
+            ),
         )
     except ValueError as exc:
         AuditService(db).audit(
@@ -105,7 +117,11 @@ def finalize_closing_package(
             action="UPDATE",
             visibility=AuditVisibility.PUBLIC,
             after={"reason": str(exc), "status": package.status.value},
-            request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(token)),
+            request_ctx=request_context_from_request(
+                request,
+                token=_sanitize_token_for_audit(token),
+                tenant_id_override=package.tenant_id,
+            ),
         )
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 

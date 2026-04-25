@@ -68,7 +68,7 @@ def _serialize_document(doc: EdoDocument) -> EdoDocumentOut:
 
 @router.post("/accounts", response_model=EdoAccountOut)
 def upsert_account(payload: EdoAccountIn, db: Session = Depends(get_db)) -> EdoAccountOut:
-    account = db.query(EdoAccount).get(payload.id) if payload.id else None
+    account = db.get(EdoAccount, payload.id) if payload.id else None
     if account is None:
         account = EdoAccount(id=new_uuid_str(), provider=EdoProvider.SBIS, name=payload.name)
         db.add(account)
@@ -114,7 +114,7 @@ def list_accounts(db: Session = Depends(get_db)) -> list[EdoAccountOut]:
 
 @router.post("/counterparties", response_model=EdoCounterpartyOut)
 def upsert_counterparty(payload: EdoCounterpartyIn, db: Session = Depends(get_db)) -> EdoCounterpartyOut:
-    counterparty = db.query(EdoCounterparty).get(payload.id) if payload.id else None
+    counterparty = db.get(EdoCounterparty, payload.id) if payload.id else None
     if counterparty is None:
         counterparty = EdoCounterparty(
             id=new_uuid_str(),
@@ -262,7 +262,7 @@ def send_document(
 
 @router.get("/documents/{document_id}", response_model=EdoDocumentOut)
 def get_document(document_id: str, db: Session = Depends(get_db)) -> EdoDocumentOut:
-    doc = db.query(EdoDocument).get(document_id)
+    doc = db.get(EdoDocument, document_id)
     if not doc:
         raise HTTPException(status_code=404, detail="edo_document_not_found")
     return _serialize_document(doc)
@@ -285,7 +285,7 @@ def list_documents(
 
 @router.post("/documents/{document_id}/refresh-status", response_model=EdoDocumentOut)
 def refresh_status(document_id: str, db: Session = Depends(get_db)) -> EdoDocumentOut:
-    doc = db.query(EdoDocument).get(document_id)
+    doc = db.get(EdoDocument, document_id)
     if not doc or not doc.provider_doc_id:
         raise HTTPException(status_code=404, detail="edo_document_not_found")
     service = EdoService(db)
@@ -295,7 +295,7 @@ def refresh_status(document_id: str, db: Session = Depends(get_db)) -> EdoDocume
 
 @router.post("/documents/{document_id}/revoke", response_model=EdoDocumentOut)
 def revoke_document(document_id: str, reason: str | None = None, db: Session = Depends(get_db)) -> EdoDocumentOut:
-    doc = db.query(EdoDocument).get(document_id)
+    doc = db.get(EdoDocument, document_id)
     if not doc or not doc.provider_doc_id:
         raise HTTPException(status_code=404, detail="edo_document_not_found")
     service = EdoService(db)
@@ -305,7 +305,7 @@ def revoke_document(document_id: str, reason: str | None = None, db: Session = D
 
 @router.post("/documents/{document_id}/replay-send", response_model=EdoDocumentOut)
 def replay_send(document_id: str, db: Session = Depends(get_db)) -> EdoDocumentOut:
-    doc = db.query(EdoDocument).get(document_id)
+    doc = db.get(EdoDocument, document_id)
     if not doc:
         raise HTTPException(status_code=404, detail="edo_document_not_found")
     outbox = EdoOutbox(

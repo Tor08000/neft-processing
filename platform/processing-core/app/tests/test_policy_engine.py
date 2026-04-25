@@ -1,4 +1,4 @@
-from app.services.policy import Action, ActorContext, PolicyEngine, ResourceContext
+from app.services.policy import Action, ActorContext, PolicyEngine, ResourceContext, actor_from_token
 
 
 def test_admin_finance_can_finalize_period():
@@ -188,3 +188,19 @@ def test_closing_package_finalize_denied_without_ack():
     decision = engine.check(actor=actor, action=Action.CLOSING_PACKAGE_FINALIZE, resource=resource)
 
     assert not decision.allowed
+
+
+def test_actor_from_token_tolerates_uuid_tenant_without_escalating_rights():
+    actor = actor_from_token(
+        {
+            "tenant_id": "aaf19bab-c7ac-4cbf-9ad3-1d515fc6fb2c",
+            "client_id": "client-1",
+            "roles": ["CLIENT_OWNER"],
+            "user_id": "client-user",
+        }
+    )
+
+    assert actor.actor_type == "CLIENT"
+    assert actor.client_id == "client-1"
+    assert actor.user_id == "client-user"
+    assert actor.tenant_id == 0

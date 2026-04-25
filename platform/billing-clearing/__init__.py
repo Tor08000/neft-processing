@@ -1,3 +1,13 @@
-# services/workers/__init__.py
-# Оставляем тонкий импорт, чтобы можно было обратиться к приложению из пакета.
-from .app.celery_app import celery_app  # noqa: F401
+"""Package entrypoint for billing-clearing workers."""
+
+import sys
+
+try:
+    from .app.celery_app import celery_app  # noqa: F401
+except ImportError:  # pragma: no cover - pytest may import this file as a top-level module
+    try:
+        from app.celery_app import celery_app  # noqa: F401
+    except ImportError:
+        if "pytest" not in sys.modules:
+            raise
+        celery_app = None

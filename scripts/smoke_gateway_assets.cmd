@@ -23,7 +23,7 @@ if errorlevel 1 (
   exit /b 1
 )
 
-for /f "usebackq delims=" %%A in (`python -c "import re; from pathlib import Path; data=Path(r'%INDEX_FILE%').read_text(encoding='utf-8',errors='ignore'); assets=re.findall(r'/%PORTAL%/assets/[^\"\\']+\\.(?:js|mjs|css)', data); seen=set(); [print(a) for a in assets if not (a in seen or seen.add(a))]"`) do (
+for /f "usebackq delims=" %%A in (`python -c "import re; from pathlib import Path; data=Path(r'%INDEX_FILE%').read_text(encoding='utf-8',errors='ignore'); q=chr(34)+chr(39); assets=re.findall('/%PORTAL%/assets/[^'+q+']+', data); seen=set(); [print(a) for a in assets if a.lower().endswith(('.js','.mjs','.css')) and not (a in seen or seen.add(a))]"`) do (
   call :check_asset "%%A" || exit /b 1
 )
 exit /b 0
@@ -56,7 +56,15 @@ findstr /I "text/html" "%HEADER_FILE%" >nul && (
   exit /b 1
 )
 
-curl -sS "%BASE_URL%%ASSET%" | findstr /I "<html" >nul && (
+set "BODY_FILE=%TEMP%\\asset_body_%RANDOM%.txt"
+curl -sS "%BASE_URL%%ASSET%" -o "%BODY_FILE%"
+if errorlevel 1 (
+  echo Failed to fetch body for %ASSET%
+  exit /b 1
+)
+
+python -c "from pathlib import Path; data=Path(r'%BODY_FILE%').read_text(encoding='utf-8', errors='ignore').lower(); raise SystemExit(1 if '<html' in data else 0)"
+if errorlevel 1 (
   echo HTML body detected for %ASSET%
   exit /b 1
 )

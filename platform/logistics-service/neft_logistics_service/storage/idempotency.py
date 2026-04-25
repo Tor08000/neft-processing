@@ -5,6 +5,7 @@ import json
 import sqlite3
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from pathlib import Path
 
 
 @dataclass
@@ -28,6 +29,9 @@ class IdempotencyStore:
         self._init_db()
 
     def _conn(self) -> sqlite3.Connection:
+        if self.db_path != ":memory:":
+            db_file = Path(self.db_path).expanduser()
+            db_file.parent.mkdir(parents=True, exist_ok=True)
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
         return conn

@@ -1,5 +1,7 @@
 import os
 import sys
+import sysconfig
+import importlib.util
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -9,6 +11,24 @@ os.environ.setdefault("DATABASE_URL", "sqlite+pysqlite:///:memory:")
 os.environ.setdefault("NEFT_AUTO_CREATE_SCHEMA", "true")
 
 import pytest  # noqa: E402
+
+
+def _ensure_stdlib_platform_module() -> None:
+    current = sys.modules.get("platform")
+    if current is not None and hasattr(current, "python_implementation"):
+        return
+    platform_path = Path(sysconfig.get_path("stdlib")) / "platform.py"
+    spec = importlib.util.spec_from_file_location("platform", platform_path)
+    if spec is None or spec.loader is None:
+        pytest.skip("stdlib platform module could not be resolved")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["platform"] = module
+    spec.loader.exec_module(module)
+
+
+_ensure_stdlib_platform_module()
+pytest.importorskip("sqlalchemy", reason="processing-core fuel provider replay requires processing-core deps; run in core-api container or install requirements")
+pytest.importorskip("fastapi", reason="processing-core fuel provider replay requires processing-core deps; run in core-api container or install requirements")
 
 from app.db import get_sessionmaker, init_db, reset_engine  # noqa: E402
 from app.integrations.fuel.providers.adapter_registry import load_default_providers, get_provider  # noqa: E402

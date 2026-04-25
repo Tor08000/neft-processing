@@ -109,6 +109,8 @@ class PartnerTermsOut(BaseModel):
     version: int
     terms: dict[str, Any] = Field(default_factory=dict)
     status: str
+    created_at: datetime
+    updated_at: datetime
 
 
 class PartnerListOut(BaseModel):

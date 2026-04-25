@@ -1,3 +1,5 @@
+import type { AdminTimelineEvent } from "./finance";
+
 export type PayoutState = "DRAFT" | "READY" | "SENT" | "SETTLED" | "FAILED";
 
 export interface PayoutBatchSummary {
@@ -94,18 +96,18 @@ export interface PayoutExportFormatInfo {
 
 export interface PayoutQueueItem {
   payout_id: string;
-  partner_id?: string | null;
   partner_org: string;
   amount: number | string;
   net_amount?: number | string | null;
   currency: string;
   status: string;
   blockers: string[];
-  blocked_reason?: string | null;
+  block_reason?: string | null;
   created_at?: string | null;
   legal_status?: string | null;
-  settlement_status?: string | null;
+  settlement_state?: string | null;
   correlation_id?: string | null;
+  correlation_chain?: string[] | null;
 }
 
 export interface PayoutQueueListResponse {
@@ -134,10 +136,8 @@ export interface PayoutDetail extends PayoutQueueItem {
   policy?: PayoutPolicyInfo | null;
   trace?: PayoutTraceItem[];
   totals?: Record<string, number | string> | null;
-  legal_status?: string | null;
   settlement_snapshot?: Record<string, unknown> | null;
   block_reason_tree?: Record<string, unknown> | string[] | null;
   correlation_chain?: string[] | null;
-  invoices_overdue?: boolean | null;
-  audit_events?: string[] | null;
+  audit_events?: AdminTimelineEvent[] | null;
 }

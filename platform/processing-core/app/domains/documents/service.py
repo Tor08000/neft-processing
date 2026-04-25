@@ -7,8 +7,9 @@ from dataclasses import dataclass
 from uuid import uuid4
 
 from fastapi import HTTPException, UploadFile
+from sqlalchemy.exc import OperationalError
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 from app.domains.documents.models import (
     Document,
@@ -20,11 +21,13 @@ from app.domains.documents.models import (
 from app.domains.documents.repo import DocumentsRepository
 from app.domains.documents.schemas import (
     AdminInboundDocumentCreateIn,
+    DocumentAckDetailsOut,
     DocumentCreateIn,
     DocumentDetailsResponse,
     DocumentFileOut,
     DocumentListItem,
     DocumentOut,
+    DocumentRiskSummaryOut,
     DocumentsListResponse,
     DocumentSignIn,
     DocumentSignResult,
@@ -38,6 +41,11 @@ from app.domains.documents.timeline_service import (
     TimelineRequestContext,
 )
 
+from app.models.client_actions import DocumentAcknowledgement
+from app.models.decision_result import DecisionResult
+from app.models.risk_decision import RiskDecision
+from app.models.risk_types import RiskDecisionType, RiskSubjectType
+
 _ALLOWED_MIME = {
     "application/pdf",
     "image/png",
@@ -48,6 +56,19 @@ _ALLOWED_MIME = {
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 }
 _SANITIZE_RE = re.compile(r"[^a-zA-Z0-9._-]+")
+_LEGACY_DOCUMENT_TYPES = {
+    "INVOICE",
+    "SUBSCRIPTION_INVOICE",
+    "SUBSCRIPTION_ACT",
+    "ACT",
+    "RECONCILIATION_ACT",
+    "CLOSING_PACKAGE",
+    "OFFER",
+}
+_LEGACY_FILE_TYPES_BY_KIND = {
+    "PDF": "PDF",
+    "XLSX": "XLSX",
+}
 
 
 @dataclass(slots=True)
@@ -84,26 +105,41 @@ class DocumentsService:
             date_from=date_from,
             date_to=date_to,
         )
-        items = [
-            DocumentListItem(
-                id=str(doc.id),
-                direction=doc.direction,
-                title=doc.title,
-                category=doc.category,
-                doc_type=doc.doc_type,
-                status=doc.status,
-                sender_type=doc.sender_type,
-                sender_name=doc.sender_name,
-                counterparty_name=doc.counterparty_name,
-                number=doc.number,
-                date=doc.date,
-                amount=doc.amount,
-                currency=doc.currency,
-                created_at=doc.created_at,
-                files_count=int(files_count or 0),
+        document_ids = [str(doc.id) for doc, _files_count in rows]
+        try:
+            edo_status_by_document = self.repo.list_edo_states_for_documents(document_ids=document_ids)
+        except OperationalError:
+            edo_status_by_document = {}
+
+        items: list[DocumentListItem] = []
+        for doc, files_count in rows:
+            action_code = self._action_code_for_document(doc)
+            document_id = str(doc.id)
+            items.append(
+                DocumentListItem(
+                    id=document_id,
+                    direction=doc.direction,
+                    title=doc.title,
+                    category=doc.category,
+                    doc_type=doc.doc_type,
+                    status=doc.status,
+                    sender_type=doc.sender_type,
+                    sender_name=doc.sender_name,
+                    counterparty_name=doc.counterparty_name,
+                    number=doc.number,
+                    date=doc.date,
+                    amount=doc.amount,
+                    currency=doc.currency,
+                    created_at=doc.created_at,
+                    files_count=int(files_count or 0),
+                    requires_action=action_code is not None,
+                    action_code=action_code,
+                    ack_at=self._utc_or_none(getattr(doc, "ack_at", None)),
+                    edo_status=edo_status_by_document.get(document_id),
+                    period_from=getattr(doc, "period_from", None),
+                    period_to=getattr(doc, "period_to", None),
+                )
             )
-            for doc, files_count in rows
-        ]
         return DocumentsListResponse(items=items, total=total, limit=limit, offset=offset)
 
     def create_outbound_draft(
@@ -114,9 +150,15 @@ class DocumentsService:
         actor_user_id: str | None = None,
         request_context: TimelineRequestContext | None = None,
     ) -> DocumentOut:
+        period_from, period_to = self._legacy_period_bounds()
         item = self.repo.create_document(
             id=str(uuid4()),
+            tenant_id=0,
             client_id=client_id,
+            document_type=self._legacy_document_type(data.doc_type),
+            period_from=period_from,
+            period_to=period_to,
+            version=1,
             direction=DocumentDirection.OUTBOUND.value,
             title=data.title,
             doc_type=data.doc_type,
@@ -146,9 +188,15 @@ class DocumentsService:
         if attach_mode not in {"UPLOAD", "RENDER"}:
             raise HTTPException(status_code=400, detail="invalid_attach_mode")
 
+        period_from, period_to = self._legacy_period_bounds()
         item = self.repo.create_document(
             id=str(uuid4()),
+            tenant_id=0,
             client_id=client_id,
+            document_type=self._legacy_document_type(None),
+            period_from=period_from,
+            period_to=period_to,
+            version=1,
             direction=DocumentDirection.INBOUND.value,
             title=data.title,
             category=data.category,
@@ -200,6 +248,10 @@ class DocumentsService:
         if mime not in _ALLOWED_MIME:
             raise HTTPException(status_code=415, detail="unsupported_mime")
 
+        legacy_file_type = self._legacy_file_type_for_upload(filename=upload_file.filename, mime=mime)
+        if legacy_file_type is None:
+            raise HTTPException(status_code=415, detail="unsupported_mime")
+
         file_id = str(uuid4())
         filename = self.sanitize_filename(upload_file.filename)
         storage_key = f"client/{client_id}/documents/{document_id}/{file_id}/{filename}"
@@ -213,10 +265,15 @@ class DocumentsService:
         item = self.repo.create_document_file(
             id=file_id,
             document_id=document_id,
+            file_type=legacy_file_type,
+            bucket=getattr(self.storage, "bucket", "client-documents"),
+            object_key=storage_key,
             storage_key=storage_key,
             filename=filename,
             mime=mime,
             size=len(payload),
+            size_bytes=len(payload),
+            content_type=mime,
             sha256=sha256,
         )
         self.timeline.append_event(
@@ -262,6 +319,10 @@ class DocumentsService:
         if mime not in _ALLOWED_MIME:
             raise HTTPException(status_code=415, detail="unsupported_mime")
 
+        legacy_file_type = self._legacy_file_type_for_upload(filename=upload_file.filename, mime=mime)
+        if legacy_file_type is None:
+            raise HTTPException(status_code=415, detail="unsupported_mime")
+
         file_id = str(uuid4())
         filename = self.sanitize_filename(upload_file.filename)
         storage_key = f"neft/client/{document.client_id}/inbound/{document_id}/{file_id}/{filename}"
@@ -275,10 +336,15 @@ class DocumentsService:
         item = self.repo.create_document_file(
             id=file_id,
             document_id=document_id,
+            file_type=legacy_file_type,
+            bucket=getattr(self.storage, "bucket", "client-documents"),
+            object_key=storage_key,
             storage_key=storage_key,
             filename=filename,
             mime=mime,
             size=len(payload),
+            size_bytes=len(payload),
+            content_type=mime,
             sha256=sha256,
         )
         self.timeline.append_event(
@@ -390,9 +456,12 @@ class DocumentsService:
             id=str(uuid4()),
             document_id=document_id,
             client_id=client_id,
+            provider="client_simple_sign",
             signer_user_id=signer_user_id,
             signer_type="CLIENT_USER",
             signature_method="SIMPLE",
+            signature_type="ESIGN",
+            signature_hash_sha256=digest,
             consent_text_version=payload.consent_text_version,
             document_hash_sha256=digest,
             signed_at=signed_at,
@@ -500,17 +569,171 @@ class DocumentsService:
         return mb * 1024 * 1024
 
     @staticmethod
+    def _legacy_document_type(doc_type: str | None) -> str:
+        normalized = (doc_type or "").strip().upper()
+        if normalized in _LEGACY_DOCUMENT_TYPES:
+            return normalized
+        return "ACT"
+
+    @staticmethod
+    def _legacy_period_bounds() -> tuple[date, date]:
+        today = datetime.now(timezone.utc).date()
+        return today, today
+
+    @staticmethod
+    def _file_kind_from_values(filename: str | None, mime: str | None) -> str:
+        mime = (mime or "").lower()
+        filename = (filename or "").lower()
+        if mime == "application/pdf" or filename.endswith(".pdf"):
+            return "PDF"
+        if mime in {
+            "application/vnd.ms-excel",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        } or filename.endswith(".xls") or filename.endswith(".xlsx"):
+            return "XLSX"
+        if mime in {
+            "application/msword",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        } or filename.endswith(".doc") or filename.endswith(".docx"):
+            return "DOC"
+        if mime.startswith("image/"):
+            return "IMAGE"
+        return "OTHER"
+
+    @classmethod
+    def _legacy_file_type_for_upload(cls, *, filename: str | None, mime: str | None) -> str | None:
+        return _LEGACY_FILE_TYPES_BY_KIND.get(cls._file_kind_from_values(filename, mime))
+
+    @staticmethod
+    def _action_code_for_document(document: Document) -> str | None:
+        if document.direction == DocumentDirection.OUTBOUND.value:
+            if document.status == DocumentStatus.DRAFT.value:
+                return "UPLOAD_OR_SUBMIT"
+            if document.status == DocumentStatus.READY_TO_SEND.value:
+                return "SEND_TO_EDO"
+        if document.direction == DocumentDirection.INBOUND.value and document.status == DocumentStatus.READY_TO_SIGN.value:
+            return "SIGN"
+        return None
+
+    @staticmethod
+    def _file_kind(item: DocumentFile) -> str:
+        return DocumentsService._file_kind_from_values(item.filename, item.mime)
+
+    def _preferred_document_hash(self, document: Document, files: list[DocumentFile]) -> str | None:
+        if document.status in {DocumentStatus.SIGNED_CLIENT.value, DocumentStatus.CLOSED.value, DocumentStatus.SIGNED.value}:
+            try:
+                signatures = list(getattr(document, "signatures", []) or [])
+            except OperationalError:
+                signatures = []
+            if signatures:
+                return signatures[0].document_hash_sha256
+
+        document_hash = getattr(document, "document_hash", None)
+        if document_hash:
+            return document_hash
+
+        ranked_files = sorted(
+            (item for item in files if item.sha256),
+            key=lambda item: {"PDF": 0, "XLSX": 1, "DOC": 2, "IMAGE": 3, "OTHER": 4}.get(self._file_kind(item), 99),
+        )
+        if ranked_files:
+            return ranked_files[0].sha256
+        return None
+
+    @staticmethod
+    def _document_type_value(document: Document) -> str | None:
+        document_type = getattr(document, "document_type", None)
+        return getattr(document_type, "value", document_type)
+
+    @staticmethod
+    def _risk_state(decision: RiskDecisionType | str) -> str:
+        decision_value = getattr(decision, "value", decision)
+        if decision_value == RiskDecisionType.ALLOW.value:
+            return "ALLOW"
+        if decision_value == RiskDecisionType.BLOCK.value:
+            return "BLOCK"
+        return "REQUIRE_OVERRIDE"
+
+    @staticmethod
+    def _utc_or_none(value: datetime | None) -> datetime | None:
+        if value is None:
+            return None
+        if value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value
+
+    def _ack_details_for_document(self, document: Document) -> tuple[datetime | None, DocumentAckDetailsOut | None]:
+        ack_at = self._utc_or_none(getattr(document, "ack_at", None))
+        document_type = self._document_type_value(document)
+        if not document_type:
+            return ack_at, None
+        try:
+            acknowledgement = (
+                self.repo.db.query(DocumentAcknowledgement)
+                .filter(DocumentAcknowledgement.client_id == document.client_id)
+                .filter(DocumentAcknowledgement.document_type == document_type)
+                .filter(DocumentAcknowledgement.document_id == str(document.id))
+                .one_or_none()
+            )
+        except OperationalError:
+            return ack_at, None
+        if acknowledgement is None:
+            return ack_at, None
+        acknowledgement_ack_at = self._utc_or_none(acknowledgement.ack_at)
+        return ack_at or acknowledgement_ack_at, DocumentAckDetailsOut(
+            ack_by_user_id=acknowledgement.ack_by_user_id,
+            ack_by_email=acknowledgement.ack_by_email,
+            ack_ip=acknowledgement.ack_ip,
+            ack_user_agent=acknowledgement.ack_user_agent,
+            ack_method=acknowledgement.ack_method,
+            ack_at=acknowledgement_ack_at,
+        )
+
+    def _risk_details_for_document(self, document: Document) -> tuple[DocumentRiskSummaryOut | None, dict | None]:
+        try:
+            risk_decision = (
+                self.repo.db.query(RiskDecision)
+                .filter(RiskDecision.subject_type == RiskSubjectType.DOCUMENT)
+                .filter(RiskDecision.subject_id == str(document.id))
+                .order_by(RiskDecision.decided_at.desc())
+                .first()
+            )
+        except OperationalError:
+            return None, None
+        if risk_decision is None:
+            return None, None
+
+        risk_summary = DocumentRiskSummaryOut(
+            state=self._risk_state(risk_decision.outcome),
+            decided_at=self._utc_or_none(risk_decision.decided_at),
+            decision_id=risk_decision.decision_id,
+        )
+        try:
+            decision_record = (
+                self.repo.db.query(DecisionResult)
+                .filter(DecisionResult.decision_id == risk_decision.decision_id)
+                .one_or_none()
+            )
+        except OperationalError:
+            return risk_summary, None
+        return risk_summary, decision_record.explain if decision_record else None
+
+    @staticmethod
     def _to_file_out(item: DocumentFile) -> DocumentFileOut:
         return DocumentFileOut(
             id=str(item.id),
             filename=item.filename,
             mime=item.mime,
+            kind=DocumentsService._file_kind(item),
             size=item.size,
             sha256=item.sha256,
             created_at=item.created_at,
         )
 
     def _to_document_out(self, document: Document, files: list[DocumentFile]) -> DocumentOut:
+        action_code = self._action_code_for_document(document)
+        ack_at, ack_details = self._ack_details_for_document(document)
+        risk, risk_explain = self._risk_details_for_document(document)
         return DocumentOut(
             id=str(document.id),
             client_id=document.client_id,
@@ -532,5 +755,12 @@ class DocumentsService:
             updated_at=document.updated_at,
             signed_by_client_at=document.signed_by_client_at,
             signed_by_client_user_id=str(document.signed_by_client_user_id) if document.signed_by_client_user_id else None,
+            requires_action=action_code is not None,
+            action_code=action_code,
+            ack_at=ack_at,
+            ack_details=ack_details,
+            document_hash_sha256=self._preferred_document_hash(document, files),
+            risk=risk,
+            risk_explain=risk_explain,
             files=[self._to_file_out(item) for item in files],
         )

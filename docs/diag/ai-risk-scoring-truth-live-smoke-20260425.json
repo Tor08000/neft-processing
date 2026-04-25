@@ -1,0 +1,67 @@
+{
+  "checked_at": "2026-04-25T13:00:18.2132563Z",
+  "scope": "AI/risk/scoring truth wave",
+  "runtime": {
+    "docker_compose": {
+      "rebuilt_services": ["core-api", "ai-service"],
+      "core_api_status": "healthy",
+      "ai_service_status": "healthy"
+    },
+    "ai_risk_score": {
+      "url": "http://localhost:8003/api/v1/risk-score",
+      "status": 200,
+      "document_type": "payment",
+      "score": 45,
+      "decision": "ALLOW",
+      "model_source": "heuristic_rules",
+      "trace_hash": "b1953ad4da0ae7cd11dcae47838e56fd54ba2157698fdc1617a61ccc7696bcf9",
+      "metadata_keys": ["model_selector", "subject_id", "subject_type"]
+    },
+    "ai_legacy_score": {
+      "url": "http://localhost:8003/api/v1/score/",
+      "status": 200,
+      "score": 0.45,
+      "decision": "allow",
+      "provider": "local_heuristic",
+      "trace_hash": "27289915a6168a0dd8b865eecab1e4aa2ab2e4be11d887af8a5c3498134855e1"
+    },
+    "core_health": {
+      "url": "http://localhost:8001/health",
+      "status": "ok",
+      "email_provider": "ok",
+      "email_provider_failures": 0
+    },
+    "core_metrics": {
+      "url": "http://localhost:8001/metrics",
+      "has_risk_v5_metrics_family": true
+    }
+  },
+  "verification": {
+    "processing_core_targeted": [
+      "app/tests/test_risk_explainability.py",
+      "app/tests/test_risk_adapter_truth.py",
+      "app/tests/test_risk_v5_shadow.py",
+      "app/tests/test_decision_engine.py"
+    ],
+    "processing_core_targeted_result": "19 passed",
+    "processing_core_second_slice": [
+      "app/tests/test_risk_engine_v4.py",
+      "app/tests/test_risk_blocking.py",
+      "app/tests/test_explain_risk_section_truth.py",
+      "app/tests/test_risk_v5_regression.py"
+    ],
+    "processing_core_second_slice_result": "21 passed",
+    "processing_core_extended_ai_risk_explain_result": "110 passed",
+    "processing_core_neighbor_result": "12 passed",
+    "processing_core_adapter_endpoint_result": "16 passed",
+    "ai_service_all_tests_result": "5 passed",
+    "ai_service_score_tests_result": "4 passed",
+    "warning_cleanup": "targeted and extended AI/risk/explain pytest runs completed without warning summary after scoped third-party filters"
+  },
+  "truth_notes": {
+    "decision_hash": "kept deterministic and excludes runtime storage ids",
+    "persisted_explain": "adds record_refs, audit hashes, and legal graph linkage when persistence is available",
+    "risk_v5_shadow": "maps decision context into the ai-service risk-score contract and persists provider payload evidence",
+    "provider_mode": "ai-service remains heuristic_rules/local_heuristic in this repo, not a trained-model owner"
+  }
+}

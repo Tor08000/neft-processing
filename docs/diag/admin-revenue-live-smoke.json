@@ -1,0 +1,63 @@
+{
+  "checked_at": "2026-04-23T15:09:06.055Z",
+  "admin_base_url": "http://localhost/admin",
+  "route": "/finance/revenue",
+  "results": [
+    {
+      "role": "NEFT_FINANCE",
+      "expected": "allowed",
+      "url": "http://localhost/admin/finance/revenue",
+      "bodySnippet": "NEFT PLATFORM ADMIN operator surface Home Cases Finance Revenue Commercial Runtime Audit NEFT PLATFORM Revenue neft_finance@neft.test DEV neft_finance@neft.test finance_admin Revenue As of MRR (known) 0,00 ₽ Priced orgs:",
+      "hasRevenueHeading": true,
+      "hasForbidden": false,
+      "hasRevenueNav": true,
+      "meStatus": 200,
+      "revenueSummaryStatus": 200,
+      "revenueOverdueStatus": 200,
+      "consoleMessages": [],
+      "screenshot": "C:\\neft-processing\\docs\\diag\\screenshots\\admin-revenue-finance.png"
+    },
+    {
+      "role": "NEFT_SALES",
+      "expected": "allowed",
+      "url": "http://localhost/admin/finance/revenue",
+      "bodySnippet": "NEFT PLATFORM ADMIN operator surface Home Cases Revenue Commercial CRM Marketplace Onboarding NEFT PLATFORM Revenue neft_sales@neft.test DEV neft_sales@neft.test commercial_admin Revenue As of MRR (known) 0,00 ₽ Priced o",
+      "hasRevenueHeading": true,
+      "hasForbidden": false,
+      "hasRevenueNav": true,
+      "meStatus": 200,
+      "revenueSummaryStatus": 200,
+      "revenueOverdueStatus": 200,
+      "consoleMessages": [],
+      "screenshot": "C:\\neft-processing\\docs\\diag\\screenshots\\admin-revenue-sales.png"
+    },
+    {
+      "role": "PLATFORM_ADMIN",
+      "expected": "forbidden",
+      "url": "http://localhost/admin/finance/revenue",
+      "bodySnippet": "NEFT PLATFORM ADMIN operator surface Home Admins Cases Finance Commercial CRM Marketplace Onboarding Ops Logistics Runtime Geo Analytics Rules Sandbox Risk Rules Policy Center Legal Audit NEFT PLATFORM Finance platform_a",
+      "hasRevenueHeading": false,
+      "hasForbidden": true,
+      "hasRevenueNav": false,
+      "meStatus": 200,
+      "revenueSummaryStatus": null,
+      "revenueOverdueStatus": null,
+      "consoleMessages": [],
+      "screenshot": "C:\\neft-processing\\docs\\diag\\screenshots\\admin-revenue-platform-forbidden.png"
+    },
+    {
+      "role": "NEFT_SUPPORT",
+      "expected": "forbidden",
+      "url": "http://localhost/admin/finance/revenue",
+      "bodySnippet": "NEFT PLATFORM ADMIN operator surface Home Cases Finance Commercial Marketplace Onboarding Runtime Legal Audit NEFT PLATFORM Finance neft_support@neft.test DEV neft_support@neft.test support_admin FORBIDDEN_ROLE У вас нет",
+      "hasRevenueHeading": false,
+      "hasForbidden": true,
+      "hasRevenueNav": false,
+      "meStatus": 200,
+      "revenueSummaryStatus": null,
+      "revenueOverdueStatus": null,
+      "consoleMessages": [],
+      "screenshot": "C:\\neft-processing\\docs\\diag\\screenshots\\admin-revenue-support-forbidden.png"
+    }
+  ]
+}

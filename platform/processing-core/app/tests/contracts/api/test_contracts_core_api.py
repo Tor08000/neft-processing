@@ -10,17 +10,11 @@ from fastapi.testclient import TestClient
 from app.db import get_db as app_get_db
 from app.deps.db import get_db as deps_get_db
 from app.main import app
-from app.api.v1.endpoints import fuel_transactions as fuel_endpoints
 from app.models.crm import CRMBillingCycle, CRMBillingPeriod, CRMSubscriptionStatus, CRMTariffStatus
 from app.models.fuel import FuelTransactionStatus, FuelType
 from app.models.logistics import LogisticsETAMethod, LogisticsNavigatorExplainType
 from app.models.ops import OpsEscalationPriority, OpsEscalationSource, OpsEscalationStatus, OpsEscalationTarget
 from app.models.unified_explain import PrimaryReason
-from app.routers.admin import crm as admin_crm
-from app.routers.admin import explain as admin_explain
-from app.routers.admin import logistics as admin_logistics
-from app.routers.admin import money_flow as admin_money_flow
-from app.routers.admin import ops as admin_ops
 from app.schemas.admin.unified_explain import UnifiedExplainIds, UnifiedExplainResponse, UnifiedExplainResult, UnifiedExplainSubject
 from app.schemas.fuel import FuelAuthorizeResponse, FuelTransactionOut
 from app.services.explain.actions.base import ActionItem
@@ -37,7 +31,35 @@ NOW = datetime(2025, 1, 1, tzinfo=timezone.utc)
 
 
 class DummyDB:
+    class _Query:
+        def __init__(self, result=None):
+            self._result = result
+
+        def filter(self, *_args, **_kwargs):
+            return self
+
+        def order_by(self, *_args, **_kwargs):
+            return self
+
+        def one_or_none(self):
+            return self._result
+
+        def first(self):
+            return self._result
+
     def get(self, *_args, **_kwargs):
+        model = _args[0] if _args else None
+        identifier = _args[1] if len(_args) > 1 else None
+        if getattr(model, "__name__", "") == "SubscriptionPlan":
+            return SimpleNamespace(id=str(identifier or "plan-contract"), code="PRO")
+        return None
+
+    def query(self, model):
+        if getattr(model, "__name__", "") == "SubscriptionPlan":
+            return self._Query(SimpleNamespace(id="plan-contract"))
+        return self._Query()
+
+    def add(self, _obj):
         return None
 
     def commit(self):
@@ -138,7 +160,6 @@ def test_fuel_authorize_contract(monkeypatch, admin_auth_headers):
         return AuthorizationResult(response=FuelAuthorizeResponse(status="ALLOW", transaction_id="fuel-1"))
 
     monkeypatch.setattr("app.api.v1.endpoints.fuel_transactions.authorize_fuel_tx", _authorize)
-    fuel_endpoints.authorize_fuel_transaction_endpoint.__globals__["authorize_fuel_tx"] = _authorize
 
     payload = {
         "card_token": "card-1",
@@ -165,10 +186,6 @@ def test_fuel_settle_contract(monkeypatch, admin_auth_headers):
 
     monkeypatch.setattr("app.api.v1.endpoints.fuel_transactions.settle_fuel_tx", _settle)
     monkeypatch.setattr("app.api.v1.endpoints.fuel_transactions.get_fuel_transaction", lambda *_args, **_kwargs: _fuel_transaction())
-    fuel_endpoints.settle_fuel_transaction_endpoint.__globals__["settle_fuel_tx"] = _settle
-    fuel_endpoints.settle_fuel_transaction_endpoint.__globals__["get_fuel_transaction"] = (
-        lambda *_args, **_kwargs: _fuel_transaction()
-    )
 
     _call_case(
         "/api/v1/fuel/transactions/{transaction_id}/settle",
@@ -183,7 +200,6 @@ def test_unified_explain_contract(monkeypatch, admin_auth_headers):
         return _unified_explain_response()
 
     monkeypatch.setattr("app.routers.admin.explain.build_unified_explain", _build_unified_explain)
-    admin_explain.get_unified_explain.__globals__["build_unified_explain"] = _build_unified_explain
 
     _call_case(
         "/api/core/v1/admin/explain",
@@ -263,10 +279,6 @@ def test_money_flow_contracts(monkeypatch, admin_auth_headers):
     monkeypatch.setattr("app.routers.admin.money_flow.build_money_health", _money_health)
     monkeypatch.setattr("app.routers.admin.money_flow.build_cfo_explain", _cfo_explain)
     monkeypatch.setattr("app.routers.admin.money_flow.run_money_flow_replay", _replay)
-    admin_money_flow.explain_money_flow.__globals__["build_money_explain"] = _money_explain
-    admin_money_flow.money_health.__globals__["build_money_health"] = _money_health
-    admin_money_flow.cfo_explain.__globals__["build_cfo_explain"] = _cfo_explain
-    admin_money_flow.replay_money_flow.__globals__["run_money_flow_replay"] = _replay
 
     _call_case(
         "/api/core/v1/admin/money/health",
@@ -345,10 +357,7 @@ def test_crm_control_plane_contracts(monkeypatch, admin_auth_headers):
     monkeypatch.setattr("app.routers.admin.crm.repository.get_tariff", _get_tariff)
     monkeypatch.setattr("app.routers.admin.crm.tariffs.update_tariff", _update_tariff)
     monkeypatch.setattr("app.routers.admin.crm.subscriptions.create_subscription", _create_subscription)
-    admin_crm.create_tariff_endpoint.__globals__["tariffs"].create_tariff = _create_tariff
-    admin_crm.update_tariff_endpoint.__globals__["repository"].get_tariff = _get_tariff
-    admin_crm.update_tariff_endpoint.__globals__["tariffs"].update_tariff = _update_tariff
-    admin_crm.create_subscription_endpoint.__globals__["subscriptions"].create_subscription = _create_subscription
+    monkeypatch.setattr("app.routers.admin.crm.events.audit_event", lambda *_args, **_kwargs: None)
 
     headers = {**admin_auth_headers, "X-CRM-Version": "1"}
 
@@ -429,11 +438,96 @@ def test_logistics_contracts(monkeypatch, admin_auth_headers):
             )
         ]
 
+    def _get_order(*_args, **_kwargs):
+        return SimpleNamespace(
+            id="order-1",
+            tenant_id=1,
+            client_id="client-1",
+            order_type="TRIP",
+            status="PLANNED",
+            vehicle_id="vehicle-1",
+            driver_id="driver-1",
+            planned_start_at=NOW,
+            planned_end_at=NOW,
+            actual_start_at=None,
+            actual_end_at=None,
+            origin_text="Origin",
+            destination_text="Destination",
+            meta={},
+            created_at=NOW,
+            updated_at=NOW,
+        )
+
+    def _list_routes_for_order(*_args, **_kwargs):
+        return [
+            SimpleNamespace(
+                id="route-1",
+                order_id="order-1",
+                version=1,
+                status="ACTIVE",
+                distance_km=10.5,
+                planned_duration_minutes=15,
+                created_at=NOW,
+            )
+        ]
+
+    def _get_active_route(*_args, **_kwargs):
+        return _list_routes_for_order()[0]
+
+    def _get_route_stops(*_args, **_kwargs):
+        return [
+            SimpleNamespace(
+                id="stop-1",
+                route_id="route-1",
+                sequence=0,
+                stop_type="START",
+                name="Start",
+                address_text=None,
+                lat=0.0,
+                lon=0.0,
+                planned_arrival_at=None,
+                planned_departure_at=None,
+                actual_arrival_at=None,
+                actual_departure_at=None,
+                status="PENDING",
+                fuel_tx_id=None,
+                meta=None,
+            )
+        ]
+
+    def _get_last_tracking_event(*_args, **_kwargs):
+        return SimpleNamespace(
+            id="tracking-1",
+            order_id="order-1",
+            vehicle_id="vehicle-1",
+            driver_id="driver-1",
+            event_type="LOCATION",
+            ts=NOW,
+            lat=0.0,
+            lon=0.0,
+            speed_kmh=40.0,
+            heading_deg=None,
+            odometer_km=None,
+            stop_id=None,
+            status_from=None,
+            status_to=None,
+            meta=None,
+        )
+
+    def _count_tracking_events(*_args, **_kwargs):
+        return 1
+
     monkeypatch.setattr(
         "app.routers.admin.logistics.eta.compute_eta_snapshot",
         _compute_eta_snapshot,
     )
 
+    monkeypatch.setattr("app.routers.admin.logistics.repository.get_order", _get_order)
+    monkeypatch.setattr("app.routers.admin.logistics.repository.get_active_route", _get_active_route)
+    monkeypatch.setattr("app.routers.admin.logistics.repository.list_routes_for_order", _list_routes_for_order)
+    monkeypatch.setattr("app.routers.admin.logistics.repository.get_route_stops", _get_route_stops)
+    monkeypatch.setattr("app.routers.admin.logistics.repository.get_last_tracking_event", _get_last_tracking_event)
+    monkeypatch.setattr("app.routers.admin.logistics.repository.count_tracking_events", _count_tracking_events)
     monkeypatch.setattr("app.routers.admin.logistics.repository.get_route", _get_route)
     monkeypatch.setattr(
         "app.routers.admin.logistics.repository.get_latest_route_snapshot",
@@ -443,16 +537,17 @@ def test_logistics_contracts(monkeypatch, admin_auth_headers):
         "app.routers.admin.logistics.repository.list_navigator_explains",
         _list_navigator_explains,
     )
-    admin_logistics.recompute_eta_endpoint.__globals__["eta"].compute_eta_snapshot = _compute_eta_snapshot
-    admin_logistics.get_route_navigator_snapshot.__globals__["repository"].get_route = _get_route
-    admin_logistics.get_route_navigator_snapshot.__globals__["repository"].get_latest_route_snapshot = _get_latest_route_snapshot
-    admin_logistics.list_route_navigator_explains.__globals__["repository"].get_route = _get_route
-    admin_logistics.list_route_navigator_explains.__globals__["repository"].get_latest_route_snapshot = _get_latest_route_snapshot
-    admin_logistics.list_route_navigator_explains.__globals__["repository"].list_navigator_explains = _list_navigator_explains
 
     _call_case(
         "/api/core/v1/admin/logistics/orders/{order_id}/eta/recompute",
         "post",
+        path_parameters={"order_id": "order-1"},
+        headers=admin_auth_headers,
+    )
+
+    _call_case(
+        "/api/core/v1/admin/logistics/orders/{order_id}/inspection",
+        "get",
         path_parameters={"order_id": "order-1"},
         headers=admin_auth_headers,
     )
@@ -533,8 +628,6 @@ def test_ops_workflow_contracts(monkeypatch, admin_auth_headers):
         "app.routers.admin.ops.build_sla_report",
         _build_sla_report,
     )
-    admin_ops.admin_list_escalations.__globals__["list_escalations"] = _list_escalations
-    admin_ops.admin_sla_report.__globals__["build_sla_report"] = _build_sla_report
 
     _call_case(
         "/api/core/v1/admin/ops/escalations",

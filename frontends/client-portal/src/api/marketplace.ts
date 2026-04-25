@@ -6,15 +6,13 @@ import type {
   MarketplaceClientEventInput,
   MarketplaceClientEventsIngestResponse,
   MarketplaceOrderDetails,
-  MarketplaceOrderDocumentsResponse,
   MarketplaceOrderEvent,
   MarketplaceOrderConsequencesResponse,
   MarketplaceOrderSlaResponse,
   MarketplaceOrdersResponse,
   MarketplaceProductDetails,
   MarketplaceProductListResponse,
-  MarketplaceProductOrderPayload,
-  MarketplaceOrderInvoice,
+  MarketplaceProductOffersResponse,
   MarketplaceRecommendationWhyResponse,
   MarketplaceRecommendationsResponse,
 } from "../types/marketplace";
@@ -26,21 +24,12 @@ interface MarketplaceProductFilters {
   q?: string;
   category?: string;
   type?: string;
-  priceModel?: string;
-  partnerId?: string;
-  sort?: string;
   limit?: number;
   offset?: number;
 }
 
 interface MarketplaceOrdersFilters {
-  from?: string;
-  to?: string;
   status?: string;
-  partner?: string;
-  service?: string;
-  category?: string;
-  q?: string;
   limit?: number;
   offset?: number;
 }
@@ -53,9 +42,6 @@ export function listMarketplaceProducts(
   if (filters.q) search.set("q", filters.q);
   if (filters.category) search.set("category", filters.category);
   if (filters.type) search.set("type", filters.type);
-  if (filters.priceModel) search.set("price_model", filters.priceModel);
-  if (filters.partnerId) search.set("partner_id", filters.partnerId);
-  if (filters.sort) search.set("sort", filters.sort);
   if (filters.limit) search.set("limit", filters.limit.toString());
   if (filters.offset) search.set("offset", filters.offset.toString());
   const query = search.toString();
@@ -70,13 +56,13 @@ export function getMarketplaceProduct(
   return request<MarketplaceProductDetails>(`/client/marketplace/products/${productId}`, { method: "GET" }, withToken(user));
 }
 
-export function createMarketplaceProductOrder(
+export function fetchMarketplaceProductOffers(
   user: AuthSession | null,
-  payload: MarketplaceProductOrderPayload,
-) {
-  return requestWithMeta<Record<string, never>>(
-    "/client/marketplace/orders",
-    { method: "POST", body: JSON.stringify(payload) },
+  productId: string,
+): Promise<MarketplaceProductOffersResponse> {
+  return request<MarketplaceProductOffersResponse>(
+    `/client/marketplace/products/${productId}/offers`,
+    { method: "GET" },
     withToken(user),
   );
 }
@@ -97,13 +83,7 @@ export function fetchMarketplaceOrders(
   filters: MarketplaceOrdersFilters = {},
 ): Promise<MarketplaceOrdersResponse> {
   const search = new URLSearchParams();
-  if (filters.from) search.set("from", filters.from);
-  if (filters.to) search.set("to", filters.to);
   if (filters.status) search.set("status", filters.status);
-  if (filters.partner) search.set("partner", filters.partner);
-  if (filters.service) search.set("service", filters.service);
-  if (filters.category) search.set("category", filters.category);
-  if (filters.q) search.set("q", filters.q);
   if (filters.limit) search.set("limit", filters.limit.toString());
   if (filters.offset) search.set("offset", filters.offset.toString());
   const query = search.toString();
@@ -129,21 +109,11 @@ export function fetchMarketplaceOrderEvents(
   );
 }
 
-export function fetchMarketplaceOrderDocuments(
-  user: AuthSession | null,
-  orderId: string,
-): Promise<MarketplaceOrderDocumentsResponse> {
-  return request<MarketplaceOrderDocumentsResponse>(
-    `/v1/marketplace/client/orders/${orderId}/documents`,
-    { method: "GET" },
-    withToken(user),
-  );
-}
 
-export function cancelMarketplaceOrder(user: AuthSession | null, orderId: string) {
+export function cancelMarketplaceOrder(user: AuthSession | null, orderId: string, reason: string | null = null) {
   return requestWithMeta<Record<string, never>>(
     `/v1/marketplace/client/orders/${orderId}/cancel`,
-    { method: "POST" },
+    { method: "POST", body: JSON.stringify({ reason }) },
     withToken(user),
   );
 }
@@ -161,7 +131,7 @@ export function fetchMarketplaceOrderSla(
   orderId: string,
 ): Promise<MarketplaceOrderSlaResponse> {
   return request<MarketplaceOrderSlaResponse>(
-    `/v1/marketplace/client/orders/${orderId}/sla`,
+    `/client/marketplace/orders/${orderId}/sla`,
     { method: "GET" },
     withToken(user),
   );
@@ -172,31 +142,21 @@ export function fetchMarketplaceOrderConsequences(
   orderId: string,
 ): Promise<MarketplaceOrderConsequencesResponse> {
   return request<MarketplaceOrderConsequencesResponse>(
-    `/v1/marketplace/client/orders/${orderId}/consequences`,
+    `/client/marketplace/orders/${orderId}/consequences`,
     { method: "GET" },
     withToken(user),
   );
 }
 
-export function fetchMarketplaceOrderInvoices(
-  user: AuthSession | null,
-  orderId: string,
-): Promise<MarketplaceOrderInvoice[]> {
-  return request<MarketplaceOrderInvoice[]>(
-    `/client/billing/invoices?order_id=${encodeURIComponent(orderId)}`,
-    { method: "GET" },
-    { token: user?.token ?? null, base: "core_root" },
-  );
-}
 
 export function fetchMarketplaceOrderIncidents(
   user: AuthSession | null,
   orderId: string,
 ): Promise<CaseListResponse> {
   return request<CaseListResponse>(
-    `/client/cases?order_id=${encodeURIComponent(orderId)}`,
+    `/v1/marketplace/client/orders/${orderId}/incidents`,
     { method: "GET" },
-    { token: user?.token ?? null, base: "core_root" },
+    withToken(user),
   );
 }
 

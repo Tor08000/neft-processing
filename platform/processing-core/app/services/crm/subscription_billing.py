@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta, timezone
+from uuid import uuid4
 
 from sqlalchemy.orm import Session
 
@@ -32,6 +33,14 @@ from app.services.money_flow.events import MoneyFlowEventType
 from app.services.money_flow.graph import MoneyFlowGraphBuilder, ensure_money_flow_links
 from app.services.money_flow.snapshots import record_snapshot
 from app.services.money_flow.states import MoneyFlowState, MoneyFlowType
+
+
+def _as_utc(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
 
 
 def run_subscription_billing(
@@ -68,9 +77,13 @@ def run_subscription_billing(
     for subscription in subscriptions:
         try:
             with db.begin_nested():
-                if subscription.started_at > period.end_at:
+                subscription_started_at = _as_utc(subscription.started_at)
+                subscription_ended_at = _as_utc(subscription.ended_at)
+                period_start = _as_utc(period.start_at)
+                period_end = _as_utc(period.end_at)
+                if subscription_started_at is not None and period_end is not None and subscription_started_at > period_end:
                     continue
-                if subscription.ended_at and subscription.ended_at < period.start_at:
+                if subscription_ended_at is not None and period_start is not None and subscription_ended_at < period_start:
                     continue
                 existing_charges = repository.list_subscription_charges(
                     db,
@@ -98,8 +111,8 @@ def run_subscription_billing(
                     db,
                     subscription=subscription,
                     billing_period_id=str(period.id),
-                    period_start=period.start_at,
-                    period_end=period.end_at,
+                    period_start=period_start or period.start_at,
+                    period_end=period_end or period.end_at,
                     included=included,
                     include_fuel_metrics=include_fuel_metrics,
                 )
@@ -109,8 +122,8 @@ def run_subscription_billing(
                     counters=usage_result.counters,
                     tariff_definition=tariff_definition,
                     segments=segments,
-                    period_start=period.start_at,
-                    period_end=period.end_at,
+                    period_start=period_start or period.start_at,
+                    period_end=period_end or period.end_at,
                 )
                 for counter in usage_result.counters:
                     repository.add_usage_counter(db, counter, auto_commit=False)
@@ -242,9 +255,13 @@ def run_subscription_billing_v2(
         tariff_definition = _resolve_tariff_definition(tariff)
         if tariff_definition.get("version") != 2:
             continue
-        if subscription.started_at > period.end_at:
+        subscription_started_at = _as_utc(subscription.started_at)
+        subscription_ended_at = _as_utc(subscription.ended_at)
+        period_start = _as_utc(period.start_at)
+        period_end = _as_utc(period.end_at)
+        if subscription_started_at is not None and period_end is not None and subscription_started_at > period_end:
             continue
-        if subscription.ended_at and subscription.ended_at < period.start_at:
+        if subscription_ended_at is not None and period_start is not None and subscription_ended_at < period_start:
             continue
         with db.begin_nested():
             segments = ensure_segments_v2(db, subscription=subscription, period=period)
@@ -270,8 +287,8 @@ def run_subscription_billing_v2(
                 segments=segments,
                 counters=counters,
                 tariff_definition=tariff_definition,
-                period_start=period.start_at,
-                period_end=period.end_at,
+                period_start=period_start or period.start_at,
+                period_end=period_end or period.end_at,
             )
             _persist_usage_counters(
                 db,
@@ -507,35 +524,58 @@ def _create_subscription_documents(
     )
     if existing:
         return existing
-    invoice_doc = Document(
-        tenant_id=tenant_id,
-        client_id=invoice.client_id,
-        document_type=DocumentType.SUBSCRIPTION_INVOICE,
-        period_from=period_from,
-        period_to=period_to,
-        version=1,
-        status=DocumentStatus.ISSUED,
-        created_at=datetime.now(timezone.utc),
-        issued_at=datetime.now(timezone.utc),
-        source_entity_type="invoice",
-        source_entity_id=invoice.id,
-        number=invoice.number,
+    generated_at = datetime.now(timezone.utc)
+    invoice_doc_id = str(uuid4())
+    act_doc_id = str(uuid4())
+    db.execute(
+        Document.__table__.insert(),
+        [
+            {
+                "id": invoice_doc_id,
+                "tenant_id": tenant_id,
+                "client_id": invoice.client_id,
+                "direction": "OUTBOUND",
+                "title": "Subscription invoice",
+                "document_type": DocumentType.SUBSCRIPTION_INVOICE.value,
+                "period_from": period_from,
+                "period_to": period_to,
+                "version": 1,
+                "status": DocumentStatus.ISSUED.value,
+                "created_at": generated_at,
+                "generated_at": generated_at,
+                "sender_type": "NEFT",
+                "source_entity_type": "invoice",
+                "source_entity_id": invoice.id,
+                "number": invoice.number,
+            },
+            {
+                "id": act_doc_id,
+                "tenant_id": tenant_id,
+                "client_id": invoice.client_id,
+                "direction": "OUTBOUND",
+                "title": "Subscription act",
+                "document_type": DocumentType.SUBSCRIPTION_ACT.value,
+                "period_from": period_from,
+                "period_to": period_to,
+                "version": 1,
+                "status": DocumentStatus.ISSUED.value,
+                "created_at": generated_at,
+                "generated_at": generated_at,
+                "sender_type": "NEFT",
+                "source_entity_type": "subscription",
+                "source_entity_id": subscription_id,
+                "number": None,
+            },
+        ],
     )
-    act_doc = Document(
-        tenant_id=tenant_id,
-        client_id=invoice.client_id,
-        document_type=DocumentType.SUBSCRIPTION_ACT,
-        period_from=period_from,
-        period_to=period_to,
-        version=1,
-        status=DocumentStatus.ISSUED,
-        created_at=datetime.now(timezone.utc),
-        issued_at=datetime.now(timezone.utc),
-        source_entity_type="subscription",
-        source_entity_id=subscription_id,
+    documents = (
+        db.query(Document)
+        .filter(Document.id.in_([invoice_doc_id, act_doc_id]))
+        .all()
     )
-    db.add_all([invoice_doc, act_doc])
-    db.flush()
+    documents_by_type = {document.document_type: document for document in documents}
+    invoice_doc = documents_by_type[DocumentType.SUBSCRIPTION_INVOICE]
+    act_doc = documents_by_type[DocumentType.SUBSCRIPTION_ACT]
     registry = LegalGraphRegistry(db, request_ctx=request_ctx)
     sub_node = registry.get_or_create_node(
         tenant_id=tenant_id,
@@ -1020,14 +1060,17 @@ def _ensure_subscription_segments(
 
 def _build_subscription_segments(*, subscription, period: BillingPeriod) -> list[CRMSubscriptionPeriodSegment]:
     segments: list[CRMSubscriptionPeriodSegment] = []
-    period_start = period.start_at
-    period_end = period.end_at
-    active_start = max(subscription.started_at, period_start)
+    period_start = _as_utc(period.start_at)
+    period_end = _as_utc(period.end_at)
+    started_at = _as_utc(subscription.started_at)
+    ended_at = _as_utc(subscription.ended_at)
+    paused_at = _as_utc(subscription.paused_at)
+    active_start = max(started_at, period_start)
     active_end = period_end
-    if subscription.ended_at:
-        active_end = min(active_end, subscription.ended_at)
-    if subscription.status == CRMSubscriptionStatus.PAUSED and subscription.paused_at:
-        active_end = min(active_end, subscription.paused_at)
+    if ended_at:
+        active_end = min(active_end, ended_at)
+    if subscription.status == CRMSubscriptionStatus.PAUSED and paused_at:
+        active_end = min(active_end, paused_at)
     if active_start <= active_end:
         segments.append(
             CRMSubscriptionPeriodSegment(
@@ -1040,11 +1083,11 @@ def _build_subscription_segments(*, subscription, period: BillingPeriod) -> list
                 days_count=_count_days(active_start, active_end),
             )
         )
-    if subscription.status == CRMSubscriptionStatus.PAUSED and subscription.paused_at:
-        paused_start = max(subscription.paused_at, period_start)
+    if subscription.status == CRMSubscriptionStatus.PAUSED and paused_at:
+        paused_start = max(paused_at, period_start)
         paused_end = period_end
-        if subscription.ended_at:
-            paused_end = min(paused_end, subscription.ended_at)
+        if ended_at:
+            paused_end = min(paused_end, ended_at)
         if paused_start <= paused_end:
             segments.append(
                 CRMSubscriptionPeriodSegment(

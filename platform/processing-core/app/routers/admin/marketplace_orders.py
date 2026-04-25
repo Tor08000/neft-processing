@@ -5,6 +5,7 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 
+from app.api.dependencies.admin_capability import require_admin_capability
 from app.api.dependencies.admin import require_admin_user
 from app.db import get_db
 from app.models.marketplace_orders import MarketplaceOrderStatus
@@ -22,7 +23,11 @@ from app.services.audit_service import _sanitize_token_for_audit, request_contex
 from app.services.marketplace_orders_service import MarketplaceOrdersService, MarketplaceOrdersServiceError
 from app.services.marketplace_settlement_service import MarketplaceSettlementService
 
-router = APIRouter(prefix="/marketplace/orders", tags=["admin"])
+router = APIRouter(
+    prefix="/marketplace/orders",
+    tags=["admin"],
+    dependencies=[Depends(require_admin_capability("marketplace"))],
+)
 
 
 def _order_out(order) -> OrderOut:
@@ -31,8 +36,8 @@ def _order_out(order) -> OrderOut:
         client_id=str(order.client_id),
         partner_id=str(order.partner_id),
         status=order.status.value if hasattr(order.status, "value") else order.status,
-        payment_status=order.payment_status,
-        payment_method=order.payment_method,
+        payment_status=order.payment_status.value if hasattr(order.payment_status, "value") else order.payment_status,
+        payment_method=order.payment_method.value if hasattr(order.payment_method, "value") else order.payment_method,
         currency=order.currency,
         subtotal_amount=order.subtotal_amount,
         discount_amount=order.discount_amount,
@@ -157,7 +162,7 @@ def get_order(
     except MarketplaceOrdersServiceError as exc:
         _handle_service_error(exc)
     return OrderDetailOut(
-        **_order_out(order).dict(),
+        **_order_out(order).model_dump(),
         lines=[_line_out(line) for line in lines],
         proofs=[_proof_out(proof) for proof in proofs],
         events=[_event_out(event) for event in events],
@@ -205,7 +210,7 @@ def override_order_settlement(
     payload: SettlementOverrideIn,
     request: Request,
     db: Session = Depends(get_db),
-    token: dict = Depends(require_admin_user),
+    token: dict = Depends(require_admin_capability("marketplace", "override")),
 ) -> SettlementSnapshotOut:
     service = MarketplaceSettlementService(
         db, request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(token))

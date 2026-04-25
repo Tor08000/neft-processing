@@ -40,6 +40,7 @@ risk_decision records are immutable artifacts that explain why a financial or do
 ## Explainability
 `top_reasons` are captured from the scoring/rules output and stored in `risk_decisions.reasons`. The full input snapshot is persisted as `features_snapshot` for audit reconstruction.
 The explain payload in `decision_results.explain` always includes decision, score, thresholds, policy label, factors, and model metadata.
+Persisted explain rows may also include `record_refs`, `audit`, and `graph` sections. These are storage/runtime links used for investigation and are intentionally excluded from `decision_hash`, so replayed decisions keep the same hash even when audit ids or graph node ids differ.
 
 ## Usage
 Risk decisions are used by:

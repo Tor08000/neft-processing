@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "../auth/AuthContext";
 import { AppForbiddenState } from "../components/states";
+import { Table, type Column } from "../components/common/Table";
 import { buildExportJobDownloadUrl, listExportJobs, type ExportJob, type ExportJobStatus } from "../api/exports";
 import { ApiError, ValidationError } from "../api/http";
 import { hasAnyRole } from "../utils/roles";
@@ -60,6 +61,7 @@ export function ExportsPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const numberFormatter = useMemo(() => new Intl.NumberFormat("ru-RU"), []);
+  const filtersActive = Boolean(status || reportType || !onlyMy);
 
   const formatEtaSeconds = useCallback((etaSeconds: number): string => {
     if (etaSeconds < 60) {
@@ -193,6 +195,57 @@ export function ExportsPage() {
     return job.row_count ?? "—";
   };
 
+  const columns = useMemo<Column<ExportJob>[]>(
+    () => [
+      {
+        key: "report_type",
+        title: "Отчёт",
+        render: (job) => (
+          <div>
+            <div>{job.report_type}</div>
+            <div className="muted">{job.file_name || "—"}</div>
+          </div>
+        ),
+      },
+      { key: "format", title: "Формат", dataIndex: "format" },
+      {
+        key: "created_at",
+        title: "Создан",
+        render: (job) => formatDateTime(job.created_at, user?.timezone),
+      },
+      {
+        key: "status",
+        title: "Статус",
+        render: (job) => <span className={statusBadgeMap[job.status]}>{statusLabelMap[job.status]}</span>,
+      },
+      {
+        key: "rows",
+        title: "Строки",
+        render: (job) => renderRowsCell(job),
+      },
+      {
+        key: "actions",
+        title: "Действия",
+        render: (job) => (
+          <div className="table-row-actions">
+            {job.status === "DONE" ? (
+              <a className="button primary" href={buildExportJobDownloadUrl(job.id)}>
+                Скачать
+              </a>
+            ) : job.status === "FAILED" ? (
+              <span className="muted small">{resolveJobErrorMessage(job)}</span>
+            ) : job.status === "EXPIRED" ? (
+              <span className="muted small">Срок хранения истёк</span>
+            ) : (
+              <span className="muted small">—</span>
+            )}
+          </div>
+        ),
+      },
+    ],
+    [numberFormatter, renderRowsCell, user?.timezone],
+  );
+
   if (!user) {
     return <AppForbiddenState message="Требуется авторизация" />;
   }
@@ -203,114 +256,104 @@ export function ExportsPage() {
 
   return (
     <div className="stack">
-      <section className="card">
-        <div className="card__header">
-          <div>
-            <h2>Exports</h2>
-            <p className="muted">История задач экспорта с фильтрами, статусом и ссылкой на скачивание.</p>
-          </div>
+      <div className="page-header">
+        <div>
+          <h2>Exports</h2>
+          <p className="muted">История задач экспорта с фильтрами, статусом и ссылкой на скачивание.</p>
         </div>
-        <div className="filters">
-          <div className="filter">
-            <label htmlFor="export-status">Статус</label>
-            <select id="export-status" value={status} onChange={(event) => setStatus(event.target.value)}>
-              <option value="">Все</option>
-              {Object.entries(statusLabelMap).map(([value, label]) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="filter">
-            <label htmlFor="export-type">Тип отчёта</label>
-            <select id="export-type" value={reportType} onChange={(event) => setReportType(event.target.value)}>
-              <option value="">Все</option>
-              <option value="cards">Cards</option>
-              <option value="users">Users</option>
-              <option value="transactions">Transactions</option>
-              <option value="documents">Documents</option>
-              <option value="audit">Audit</option>
-              <option value="support">Support</option>
-            </select>
-          </div>
-          <div className="filter">
-            <label htmlFor="export-only-my">Только мои</label>
-            <select id="export-only-my" value={onlyMy ? "yes" : "no"} onChange={(event) => setOnlyMy(event.target.value === "yes")}>
-              <option value="yes">Да</option>
-              <option value="no">Нет</option>
-            </select>
-          </div>
-          <div className="filter">
-            <label>&nbsp;</label>
-            <button type="button" className="neft-btn" disabled={loading} onClick={() => loadJobs(null, true)}>
-              {loading ? "Обновляем…" : "Обновить"}
-            </button>
-          </div>
-        </div>
-        {error ? <div className="muted">{error}</div> : null}
-      </section>
+      </div>
 
-      <section className="card">
-        <div className="table-wrap">
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Отчёт</th>
-                <th>Формат</th>
-                <th>Создан</th>
-                <th>Статус</th>
-                <th>Строки</th>
-                <th>Действия</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="muted">
-                    {loading ? "Загрузка…" : "Нет экспортов"}
-                  </td>
-                </tr>
-              ) : (
-                items.map((job) => (
-                  <tr key={job.id}>
-                    <td>
-                      <div>{job.report_type}</div>
-                      <div className="muted">{job.file_name || "—"}</div>
-                    </td>
-                    <td>{job.format}</td>
-                    <td>{formatDateTime(job.created_at, user.timezone)}</td>
-                    <td>
-                      <span className={statusBadgeMap[job.status]}>{statusLabelMap[job.status]}</span>
-                    </td>
-                    <td>{renderRowsCell(job)}</td>
-                    <td>
-                      {job.status === "DONE" ? (
-                        <a className="neft-btn neft-btn-primary" href={buildExportJobDownloadUrl(job.id)}>
-                          Скачать
-                        </a>
-                      ) : job.status === "FAILED" ? (
-                        <span className="muted">{resolveJobErrorMessage(job)}</span>
-                      ) : job.status === "EXPIRED" ? (
-                        <span className="muted">Срок хранения истёк</span>
-                      ) : (
-                        <span className="muted">—</span>
-                      )}
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-        {cursor ? (
-          <div className="card__footer">
-            <button type="button" className="neft-btn" disabled={loading} onClick={() => loadJobs(cursor, false)}>
-              {loading ? "Загрузка…" : "Показать ещё"}
-            </button>
+      <Table
+        columns={columns}
+        data={items}
+        loading={loading}
+        rowKey={(job) => job.id}
+        toolbar={
+          <div className="table-toolbar">
+            <div className="filters">
+              <div className="filter">
+                <label htmlFor="export-status">Статус</label>
+                <select id="export-status" value={status} onChange={(event) => setStatus(event.target.value)}>
+                  <option value="">Все</option>
+                  {Object.entries(statusLabelMap).map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="filter">
+                <label htmlFor="export-type">Тип отчёта</label>
+                <select id="export-type" value={reportType} onChange={(event) => setReportType(event.target.value)}>
+                  <option value="">Все</option>
+                  <option value="cards">Cards</option>
+                  <option value="users">Users</option>
+                  <option value="transactions">Transactions</option>
+                  <option value="documents">Documents</option>
+                  <option value="audit">Audit</option>
+                  <option value="support">Support</option>
+                </select>
+              </div>
+              <div className="filter">
+                <label htmlFor="export-only-my">Только мои</label>
+                <select id="export-only-my" value={onlyMy ? "yes" : "no"} onChange={(event) => setOnlyMy(event.target.value === "yes")}>
+                  <option value="yes">Да</option>
+                  <option value="no">Нет</option>
+                </select>
+              </div>
+            </div>
+            <div className="toolbar-actions">
+              <button
+                type="button"
+                className="button secondary"
+                onClick={() => {
+                  setStatus("");
+                  setReportType("");
+                  setOnlyMy(true);
+                }}
+                disabled={!filtersActive}
+              >
+                Сбросить
+              </button>
+              <button type="button" className="button secondary" disabled={loading} onClick={() => loadJobs(null, true)}>
+                {loading ? "Обновляем…" : "Обновить"}
+              </button>
+            </div>
           </div>
-        ) : null}
-      </section>
+        }
+        errorState={
+          error
+            ? {
+                title: "Не удалось загрузить задачи экспорта",
+                description: error,
+                actionLabel: "Повторить",
+                actionOnClick: () => loadJobs(null, true),
+              }
+            : undefined
+        }
+        emptyState={{
+          title: filtersActive ? "Экспорты не найдены" : "Экспорты пока не запускались",
+          description: filtersActive ? "Сбросьте фильтры или расширьте выборку." : "После запуска выгрузок история задач появится здесь.",
+          actionLabel: filtersActive ? "Сбросить фильтры" : undefined,
+          actionOnClick: filtersActive
+            ? () => {
+                setStatus("");
+                setReportType("");
+                setOnlyMy(true);
+              }
+            : undefined,
+        }}
+        footer={
+          <div className="table-footer__content surface-toolbar">
+            <span className="muted small">Загружено задач: {items.length}</span>
+            {cursor ? (
+              <button type="button" className="button secondary" disabled={loading} onClick={() => loadJobs(cursor, false)}>
+                {loading ? "Загрузка…" : "Показать ещё"}
+              </button>
+            ) : null}
+          </div>
+        }
+      />
     </div>
   );
 }

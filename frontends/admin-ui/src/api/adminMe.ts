@@ -1,5 +1,6 @@
 import { ADMIN_API_BASE, normalizeAdminPath } from "./base";
 import type { AdminErrorPayload, AdminMeResponse } from "../types/admin";
+import { buildAdminPermissions, primaryAdminRoleLevel, resolveAdminRoleLevels } from "../admin/access";
 
 type PortalMeResponse = {
   actor_type: string;
@@ -33,37 +34,6 @@ const parseJsonSafely = async <T>(response: Response): Promise<T | null> => {
   }
 };
 
-const buildPermissions = (roles: string[]) => {
-  const roleSet = new Set(roles.map((role) => role.toUpperCase()));
-  const superadminEnabled =
-    roleSet.has("NEFT_SUPERADMIN") ||
-    roleSet.has("NEFT_ADMIN") ||
-    roleSet.has("ADMIN") ||
-    roleSet.has("SUPERADMIN") ||
-    roleSet.has("PLATFORM_ADMIN");
-  const supportEnabled = roleSet.has("NEFT_SUPPORT") || roleSet.has("SUPPORT");
-  const ops = { read: roleSet.has("NEFT_OPS") || supportEnabled, write: false };
-  const finance = { read: roleSet.has("NEFT_FINANCE") || supportEnabled, write: roleSet.has("NEFT_FINANCE") };
-  const sales = { read: roleSet.has("NEFT_SALES"), write: false };
-  const legal = { read: roleSet.has("NEFT_LEGAL") || supportEnabled, write: roleSet.has("NEFT_LEGAL") };
-  if (superadminEnabled) {
-    return {
-      ops: { read: true, write: true },
-      finance: { read: true, write: true },
-      sales: { read: true, write: true },
-      legal: { read: true, write: true },
-      superadmin: { read: true, write: true },
-    };
-  }
-  return {
-    ops,
-    finance,
-    sales,
-    legal,
-    superadmin: { read: superadminEnabled, write: superadminEnabled },
-  };
-};
-
 export async function fetchAdminMe(token: string): Promise<AdminMeResponse> {
   const response = await fetch(buildUrl("/me"), {
     method: "GET",
@@ -89,10 +59,13 @@ export async function fetchAdminMe(token: string): Promise<AdminMeResponse> {
     }
     if ("admin_user" in payload) {
       const env = payload.environment ?? payload.env;
-      const permissions = payload.permissions ?? buildPermissions(payload.roles ?? payload.admin_user.roles ?? []);
+      const roles = payload.roles ?? payload.admin_user.roles ?? [];
+      const permissions = payload.permissions ?? buildAdminPermissions(roles);
       return {
         ...payload,
-        roles: payload.roles ?? payload.admin_user.roles,
+        roles,
+        primary_role_level: payload.primary_role_level ?? primaryAdminRoleLevel(roles),
+        role_levels: payload.role_levels ?? resolveAdminRoleLevels(roles),
         permissions,
         env,
         environment: env,
@@ -109,7 +82,9 @@ export async function fetchAdminMe(token: string): Promise<AdminMeResponse> {
         issuer: null,
       },
       roles,
-      permissions: buildPermissions(roles),
+      primary_role_level: primaryAdminRoleLevel(roles),
+      role_levels: resolveAdminRoleLevels(roles),
+      permissions: buildAdminPermissions(roles),
       env: {
         name: (import.meta.env.MODE ?? "dev") as AdminMeResponse["env"]["name"],
         build: import.meta.env.VITE_BUILD_SHA ?? "unknown",

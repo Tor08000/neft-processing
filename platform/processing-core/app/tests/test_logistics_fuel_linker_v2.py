@@ -3,39 +3,26 @@ from datetime import datetime, timedelta, timezone
 from typing import Tuple
 
 import pytest
-from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
-from sqlalchemy.pool import StaticPool
 
 os.environ["DISABLE_CELERY"] = "1"
 
-from app.db import Base
 from app.models import fleet as fleet_models
 from app.models import fuel as fuel_models
 from app.models import logistics as logistics_models
 from app.models.fuel import FuelCard, FuelCardStatus, FuelNetwork, FuelStation, FuelTransaction, FuelTransactionStatus
+from app.models.logistics import FuelRouteLink, LogisticsRiskSignal
 from app.schemas.logistics import LogisticsStopIn
 from app.services.logistics.defaults import FUEL_LINK_DEFAULTS
-from app.services.logistics import fuel_linker, repository, routes
+from app.services.logistics import fuel_linker, routes
 from app.services.logistics.orders import create_order
+from app.tests._logistics_route_harness import logistics_fuel_session_context
 
 
 @pytest.fixture()
 def db_session() -> Tuple[Session, sessionmaker]:
-    engine = create_engine(
-        "sqlite://",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
-    SessionLocal = sessionmaker(autocommit=False, autoflush=False, expire_on_commit=False, bind=engine)
-    Base.metadata.create_all(bind=engine)
-    session = SessionLocal()
-    try:
-        yield session, SessionLocal
-    finally:
-        session.close()
-        Base.metadata.drop_all(bind=engine)
-        engine.dispose()
+    with logistics_fuel_session_context() as ctx:
+        yield ctx
 
 
 def _seed_fuel(db: Session) -> tuple[FuelCard, FuelStation]:
@@ -69,6 +56,24 @@ def _seed_fuel(db: Session) -> tuple[FuelCard, FuelStation]:
     db.refresh(card)
     db.refresh(station)
     return card, station
+
+
+def _list_fuel_links(db: Session, *, order_id: str) -> list[FuelRouteLink]:
+    return (
+        db.query(FuelRouteLink)
+        .filter(FuelRouteLink.order_id == order_id)
+        .order_by(FuelRouteLink.created_at.desc())
+        .all()
+    )
+
+
+def _list_risk_signals(db: Session, *, order_id: str) -> list[LogisticsRiskSignal]:
+    return (
+        db.query(LogisticsRiskSignal)
+        .filter(LogisticsRiskSignal.order_id == order_id)
+        .order_by(LogisticsRiskSignal.ts.desc(), LogisticsRiskSignal.created_at.desc())
+        .all()
+    )
 
 
 def test_fuel_auto_link_and_off_route_signal(db_session: Tuple[Session, sessionmaker]):
@@ -142,7 +147,7 @@ def test_fuel_auto_link_and_off_route_signal(db_session: Tuple[Session, sessionm
 
     result = fuel_linker.auto_link_fuel_tx(db, transaction=tx)
     assert result.link is not None
-    links = repository.list_fuel_links(db, order_id=str(order.id))
+    links = _list_fuel_links(db, order_id=str(order.id))
     assert links[0].stop_id is not None
 
     far_station = FuelStation(
@@ -183,7 +188,7 @@ def test_fuel_auto_link_and_off_route_signal(db_session: Tuple[Session, sessionm
 
     result_far = fuel_linker.auto_link_fuel_tx(db, transaction=tx_far)
     assert result_far.signal is not None
-    signals = repository.list_risk_signals(db, order_id=str(order.id))
+    signals = _list_risk_signals(db, order_id=str(order.id))
     assert any(signal.signal_type.value == "FUEL_OFF_ROUTE" for signal in signals)
 
 

@@ -5,8 +5,11 @@ export interface AuditEvent {
   action?: string;
   title?: string;
   actor?: string;
+  actor_type?: string;
   reason?: string;
   correlation_id?: string;
+  entity_type?: string;
+  entity_id?: string;
   meta?: Record<string, unknown> | null;
   payload?: Record<string, unknown> | null;
 }

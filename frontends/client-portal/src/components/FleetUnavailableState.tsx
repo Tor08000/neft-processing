@@ -1,15 +1,30 @@
 import { useState } from "react";
 import { AppEmptyState } from "./states";
 import { useAuth } from "../auth/AuthContext";
-import { demoFleetUsers, demoLimits, demoReports } from "../demo/demoData";
+import type { DemoFleetUser, DemoLimit, DemoReport } from "../demo/demoData";
 import { useI18n } from "../i18n";
 import { isDemoClient } from "@shared/demo/demo";
+
+type DemoFleetData = {
+  users: DemoFleetUser[];
+  limits: DemoLimit[];
+  reports: DemoReport[];
+};
 
 export function FleetUnavailableState() {
   const { user } = useAuth();
   const { t } = useI18n();
   const isDemoClientAccount = isDemoClient(user?.email ?? null);
   const [showDemoData, setShowDemoData] = useState(false);
+  const [demoData, setDemoData] = useState<DemoFleetData | null>(null);
+
+  const toggleDemoData = async () => {
+    if (!showDemoData && !demoData) {
+      const { demoFleetUsers, demoLimits, demoReports } = await import("../demo/demoData");
+      setDemoData({ users: demoFleetUsers, limits: demoLimits, reports: demoReports });
+    }
+    setShowDemoData((prev) => !prev);
+  };
 
   if (isDemoClientAccount) {
     return (
@@ -19,17 +34,17 @@ export function FleetUnavailableState() {
           title="Функции автопарка доступны в корпоративном тарифе"
           description="В проде здесь будут пользователи автопарка, лимиты и отчётность."
           action={
-            <button type="button" className="secondary neft-btn-secondary" onClick={() => setShowDemoData((prev) => !prev)}>
+            <button type="button" className="secondary neft-btn-secondary" onClick={toggleDemoData}>
               {showDemoData ? "Скрыть демо-данные" : "Посмотреть демо-данные"}
             </button>
           }
         />
-        {showDemoData ? (
+        {showDemoData && demoData ? (
           <div className="grid three">
             <section className="card">
               <h3>Пользователи автопарка</h3>
               <ul className="list">
-                {demoFleetUsers.map((userItem) => (
+                {demoData.users.map((userItem) => (
                   <li key={userItem.id}>
                     <div>{userItem.email}</div>
                     <div className="muted small">
@@ -42,7 +57,7 @@ export function FleetUnavailableState() {
             <section className="card">
               <h3>Лимиты</h3>
               <ul className="list">
-                {demoLimits.map((limit) => (
+                {demoData.limits.map((limit) => (
                   <li key={limit.id}>
                     <div>{limit.scope}</div>
                     <div className="muted small">
@@ -55,7 +70,7 @@ export function FleetUnavailableState() {
             <section className="card">
               <h3>Отчёты</h3>
               <ul className="list">
-                {demoReports.map((report) => (
+                {demoData.reports.map((report) => (
                   <li key={report.id}>
                     <div>{report.title}</div>
                     <div className="muted small">

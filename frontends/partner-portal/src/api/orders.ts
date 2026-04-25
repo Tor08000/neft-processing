@@ -2,12 +2,11 @@ import { request, requestWithMeta } from "./http";
 import type { PaginatedResponse } from "./partner";
 import type {
   MarketplaceDocumentDetails,
-  MarketplaceEdoEvent,
   MarketplaceOrder,
   MarketplaceOrderActionResult,
   MarketplaceOrderEvent,
+  MarketplaceOrderIncident,
   MarketplaceOrderSlaResponse,
-  MarketplaceSettlementLink,
   MarketplaceOrderSettlementBreakdown,
 } from "../types/marketplace";
 
@@ -105,6 +104,21 @@ const mapOrderEvent = (event: Record<string, unknown>): MarketplaceOrderEvent =>
   comment: (event.comment ?? null) as string | null,
 });
 
+const mapOrderIncident = (incident: Record<string, unknown>): MarketplaceOrderIncident => ({
+  id: String(incident.id ?? ""),
+  title: String(incident.title ?? ""),
+  status: String(incident.status ?? ""),
+  queue: (incident.queue ?? null) as string | null,
+  priority: (incident.priority ?? null) as string | null,
+  updatedAt: String(incident.updated_at ?? incident.updatedAt ?? ""),
+  sourceRefType: (incident.case_source_ref_type ?? incident.source_ref_type ?? null) as string | null,
+  sourceRefId: (incident.case_source_ref_id ?? incident.source_ref_id ?? null) as string | null,
+});
+
+type OrderIncidentsResponse = {
+  items?: Record<string, unknown>[];
+};
+
 export const fetchOrders = (token: string, filters: OrderFilters = {}) =>
   request<OrdersListResponse>(`/v1/marketplace/partner/orders${toQuery(filters)}`, {}, token).then((data) => {
     const limit = Number(data.limit ?? 0) || 0;
@@ -129,39 +143,13 @@ export const fetchOrderEvents = (token: string, id: string) =>
     data.map((event) => mapOrderEvent(event)),
   );
 
+export const fetchOrderIncidents = (token: string, id: string) =>
+  request<OrderIncidentsResponse>(`/v1/marketplace/partner/orders/${id}/incidents`, {}, token).then((data) =>
+    (data.items ?? []).map((incident) => mapOrderIncident(incident)),
+  );
+
 export const fetchOrderDocuments = (token: string, id: string) =>
   request<MarketplaceDocumentDetails[]>(`/v1/marketplace/partner/orders/${id}/documents`, {}, token);
-
-export const fetchDocumentDetails = (token: string, id: string) =>
-  request<MarketplaceDocumentDetails>(`/partner/documents/${id}`, {}, token);
-
-export const requestDocumentSignature = async (token: string, id: string) => {
-  const { data, correlationId } = await requestWithMeta<MarketplaceOrderActionResult>(
-    `/partner/documents/${id}/sign/request`,
-    { method: "POST" },
-    token,
-  );
-  return { ...data, correlationId };
-};
-
-export const dispatchDocumentEdo = async (token: string, id: string) => {
-  const { data, correlationId } = await requestWithMeta<MarketplaceOrderActionResult>(
-    `/partner/documents/${id}/edo/dispatch`,
-    { method: "POST" },
-    token,
-  );
-  return { ...data, correlationId };
-};
-
-export const fetchDocumentEdoEvents = (token: string, id: string) =>
-  request<MarketplaceEdoEvent[]>(`/partner/documents/${id}/edo/events`, {}, token);
-
-export const fetchOrderSettlement = (token: string, orderId: string) =>
-  request<PaginatedResponse<MarketplaceSettlementLink>>(
-    `/partner/settlements?source=MARKETPLACE&order_id=${encodeURIComponent(orderId)}`,
-    {},
-    token,
-  );
 
 export const fetchOrderSettlementBreakdown = (token: string, orderId: string) =>
   request<MarketplaceOrderSettlementBreakdown>(`/v1/marketplace/partner/orders/${orderId}/settlement`, {}, token);

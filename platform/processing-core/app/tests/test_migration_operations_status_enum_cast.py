@@ -55,6 +55,15 @@ class DummyInspector:
             for name, column_type in self.columns.items()
         ]
 
+    def get_indexes(self, table_name: str, schema=None):  # noqa: ARG002
+        return []
+
+    def get_foreign_keys(self, table_name: str, schema=None):  # noqa: ARG002
+        return []
+
+    def get_pk_constraint(self, table_name: str, schema=None):  # noqa: ARG002
+        return {"name": "operations_pkey", "constrained_columns": ["id"]}
+
 
 class DummyBatch:
     def __enter__(self):
@@ -96,8 +105,11 @@ class DummyOp:
     def alter_column(self, table_name, column_name, **kwargs):
         self.altered_columns.append((table_name, column_name, kwargs))
 
-    def create_index(self, name, table_name, columns, unique=False):  # noqa: ARG002
+    def create_index(self, name, table_name, columns, unique=False, **kwargs):  # noqa: ARG002
         self.created_indexes.append(name)
+        self.executed_sql.append(
+            f"CREATE {'UNIQUE ' if unique else ''}INDEX {name} ON {table_name} ({', '.join(columns)})"
+        )
 
 
 @pytest.fixture(autouse=True)
@@ -132,6 +144,17 @@ def _run_upgrade(
 
     monkeypatch.setattr(migration, "op", dummy_op)
     monkeypatch.setattr(migration.sa, "inspect", lambda bind: inspector)
+    monkeypatch.setattr(
+        migration,
+        "table_exists",
+        lambda bind, table_name, schema=None: table_name == "operations",
+    )
+    monkeypatch.setattr(migration, "constraint_exists", lambda *args, **kwargs: True)
+    monkeypatch.setattr(migration, "_add_column_if_missing", lambda *args, **kwargs: None)
+    monkeypatch.setattr(migration, "_get_operation_fks", lambda *args, **kwargs: [])
+    monkeypatch.setattr(migration, "_drop_fk_constraints", lambda *args, **kwargs: None)
+    monkeypatch.setattr(migration, "_recreate_fk_constraints", lambda *args, **kwargs: None)
+    monkeypatch.setattr(migration, "_ensure_operation_type_enum", lambda *args, **kwargs: None)
 
     migration.upgrade()
     return dummy_op

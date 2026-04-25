@@ -13,6 +13,8 @@ from sqlalchemy.orm import Session
 
 from app.models.card import Card
 from app.models.merchant import Merchant
+from app.models.risk_threshold_set import RiskThresholdSet
+from app.models.risk_types import RiskSubjectType, RiskThresholdAction, RiskThresholdScope
 from app.models.terminal import Terminal
 from app.db import DB_SCHEMA, get_sessionmaker
 from app.services.legal_gate import ensure_default_legal_documents
@@ -22,10 +24,22 @@ DEFAULT_TERMINAL_ID = "T-001"
 DEFAULT_CARD_ID = "CARD-001"
 DEFAULT_CLIENT_ID = "CLIENT-123"
 DEFAULT_DEMO_CLIENT_UUID = "00000000-0000-0000-0000-000000000001"
+DEFAULT_DEMO_PLAN_ID = "demo_control_individual_1m"
+DEFAULT_DEMO_PLAN_CODE = "DEMO_CONTROL_INDIVIDUAL_1M"
+DEFAULT_DEMO_PARTNER_CODE = "demo-partner"
+DEFAULT_DEMO_PARTNER_EMAIL = "partner@neft.local"
 DEV_ENVS = {"local", "dev", "development", "test"}
 AUTH_INTERNAL_LOOKUP_URL = os.getenv(
     "AUTH_INTERNAL_LOOKUP_URL",
     "http://auth-host:8000/api/auth/internal/users/lookup",
+)
+
+DEFAULT_RISK_THRESHOLD_SETS = (
+    ("global-payment-v1", RiskSubjectType.PAYMENT, RiskThresholdAction.PAYMENT),
+    ("global-invoice-v1", RiskSubjectType.INVOICE, RiskThresholdAction.INVOICE),
+    ("global-payout-v1", RiskSubjectType.PAYOUT, RiskThresholdAction.PAYOUT),
+    ("global-document-finalize-v1", RiskSubjectType.DOCUMENT, RiskThresholdAction.DOCUMENT_FINALIZE),
+    ("global-export-v1", RiskSubjectType.EXPORT, RiskThresholdAction.EXPORT),
 )
 
 
@@ -143,6 +157,7 @@ def ensure_default_refs(db: Session | None = None) -> None:
             card.status = "ACTIVE"
 
         ensure_default_legal_documents(db)
+        ensure_default_risk_threshold_sets(db)
 
         db.commit()
     except SQLAlchemyError as exc:  # pragma: no cover - safeguard on startup
@@ -154,6 +169,42 @@ def ensure_default_refs(db: Session | None = None) -> None:
     finally:
         if not session_provided:
             db.close()
+
+
+def ensure_default_risk_threshold_sets(db: Session) -> None:
+    """Create conservative global risk thresholds required by fail-closed decisions."""
+
+    now = datetime.now(timezone.utc)
+    for threshold_id, subject_type, action in DEFAULT_RISK_THRESHOLD_SETS:
+        threshold = db.get(RiskThresholdSet, threshold_id)
+        if threshold is None:
+            db.add(
+                RiskThresholdSet(
+                    id=threshold_id,
+                    subject_type=subject_type,
+                    action=action,
+                    scope=RiskThresholdScope.GLOBAL,
+                    version=1,
+                    active=True,
+                    block_threshold=90,
+                    review_threshold=70,
+                    allow_threshold=0,
+                    valid_from=now,
+                    created_by="bootstrap",
+                )
+            )
+            continue
+
+        if threshold.created_by == "bootstrap":
+            threshold.subject_type = subject_type
+            threshold.action = action
+            threshold.scope = RiskThresholdScope.GLOBAL
+            threshold.version = threshold.version or 1
+            threshold.active = True
+            threshold.block_threshold = 90
+            threshold.review_threshold = 70
+            threshold.allow_threshold = 0
+            threshold.valid_from = threshold.valid_from or now
 
 
 def _is_dev_env() -> bool:
@@ -196,6 +247,258 @@ def _is_empty_value(value: object | None) -> bool:
     return False
 
 
+def _normalize_org_roles(value: object | None) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        stripped = value.strip()
+        if not stripped:
+            return []
+        try:
+            value = json.loads(stripped)
+        except (TypeError, ValueError, json.JSONDecodeError):
+            value = [stripped]
+    if isinstance(value, (list, tuple, set)):
+        return sorted({str(item).strip().upper() for item in value if str(item).strip()})
+    return [str(value).strip().upper()]
+
+
+def _merge_org_roles(existing: object | None, required: list[str] | tuple[str, ...] | set[str]) -> str:
+    merged = set(_normalize_org_roles(existing))
+    merged.update(str(role).strip().upper() for role in required if str(role).strip())
+    return json.dumps(sorted(merged))
+
+
+def _ensure_demo_subscription_seed(
+    db: Session,
+    *,
+    conn,
+    table_names: set[str],
+    client_id: str,
+    org_id: int,
+) -> None:
+    required = {"subscription_plans", "subscription_plan_modules", "client_subscriptions"}
+    if not required.issubset(table_names):
+        return
+
+    plan_values = {
+        "id": DEFAULT_DEMO_PLAN_ID,
+        "code": DEFAULT_DEMO_PLAN_CODE,
+        "version": 1,
+        "billing_period_months": 1,
+        "title": "Demo Control Individual 1M",
+        "description": "Demo control plan for local seeded portal access",
+        "currency": "RUB",
+        "is_active": True,
+        "price_cents": 0,
+        "discount_percent": 0,
+    }
+    plan_values = _filter_columns("subscription_plans", db, plan_values)
+    existing_plan = conn.execute(
+        text(
+            f"""
+            SELECT id
+            FROM {DB_SCHEMA}.subscription_plans
+            WHERE code = :code OR id = :id
+            LIMIT 1
+            """
+        ),
+        {"code": DEFAULT_DEMO_PLAN_CODE, "id": DEFAULT_DEMO_PLAN_ID},
+    ).mappings().first()
+    plan_id = existing_plan["id"] if existing_plan else DEFAULT_DEMO_PLAN_ID
+    if existing_plan:
+        assignments = ", ".join(f"{key} = :{key}" for key in plan_values if key != "id")
+        if assignments:
+            plan_values["id"] = plan_id
+            conn.execute(
+                text(f"UPDATE {DB_SCHEMA}.subscription_plans SET {assignments} WHERE id = :id"),
+                plan_values,
+            )
+    else:
+        columns = ", ".join(plan_values.keys())
+        placeholders = ", ".join(f":{key}" for key in plan_values)
+        conn.execute(
+            text(f"INSERT INTO {DB_SCHEMA}.subscription_plans ({columns}) VALUES ({placeholders})"),
+            plan_values,
+        )
+
+    module_seed = {
+        "FUEL_CORE": {"enabled": True, "tier": "control", "limits_json": json.dumps({"cards_max": 5})},
+        "MARKETPLACE": {"enabled": True, "tier": "basic", "limits_json": json.dumps({"marketplace_discount_percent": 2})},
+        "ANALYTICS": {"enabled": True, "tier": "standard", "limits_json": json.dumps({"exports_per_month": 10, "kpi_reports": True})},
+        "SLA": {"enabled": True, "tier": "basic", "limits_json": json.dumps({"sla_first_response_minutes": 240, "sla_resolve_minutes": 2880})},
+        "AI_ASSISTANT": {"enabled": True, "tier": "lite", "limits_json": json.dumps({"ai_tier": "lite"})},
+        "EXPLAIN": {"enabled": True, "tier": "standard", "limits_json": json.dumps({"explain_depth": 2, "explain_diff": False, "what_if": "off"})},
+        "PENALTIES": {"enabled": True, "tier": "monitoring", "limits_json": json.dumps({"penalties_mode": "monitoring"})},
+        "BONUSES": {"enabled": True, "tier": "standard", "limits_json": json.dumps({"bonus_multiplier": 1.0})},
+    }
+    for module_code, payload in module_seed.items():
+        module_values = {
+            "plan_id": plan_id,
+            "module_code": module_code,
+            "enabled": payload["enabled"],
+            "tier": payload["tier"],
+            "limits_json": payload["limits_json"],
+        }
+        module_values = _filter_columns("subscription_plan_modules", db, module_values)
+        existing_module = conn.execute(
+            text(
+                f"""
+                SELECT module_code
+                FROM {DB_SCHEMA}.subscription_plan_modules
+                WHERE plan_id = :plan_id AND module_code = :module_code
+                LIMIT 1
+                """
+            ),
+            {"plan_id": plan_id, "module_code": module_code},
+        ).mappings().first()
+        if existing_module:
+            assignments = ", ".join(f"{key} = :{key}" for key in module_values if key not in {"plan_id", "module_code"})
+            if assignments:
+                update_values = {
+                    **module_values,
+                    "plan_id": plan_id,
+                    "module_code": module_code,
+                }
+                conn.execute(
+                    text(
+                        f"""
+                        UPDATE {DB_SCHEMA}.subscription_plan_modules
+                        SET {assignments}
+                        WHERE plan_id = :plan_id AND module_code = :module_code
+                        """
+                    ),
+                    update_values,
+                )
+            continue
+        columns = ", ".join(module_values.keys())
+        placeholders = ", ".join(f":{key}" for key in module_values)
+        conn.execute(
+            text(f"INSERT INTO {DB_SCHEMA}.subscription_plan_modules ({columns}) VALUES ({placeholders})"),
+            module_values,
+        )
+
+    subscription_values = {
+        "id": f"demo-sub-{org_id}",
+        "tenant_id": org_id,
+        "client_id": client_id,
+        "plan_id": plan_id,
+        "status": "ACTIVE",
+        "created_at": datetime.now(timezone.utc),
+        "start_at": datetime.now(timezone.utc),
+    }
+    subscription_values = _filter_columns("client_subscriptions", db, subscription_values)
+    existing_subscription = conn.execute(
+        text(
+            f"""
+            SELECT id
+            FROM {DB_SCHEMA}.client_subscriptions
+            WHERE tenant_id = :tenant_id
+            ORDER BY created_at DESC NULLS LAST
+            LIMIT 1
+            """
+        ),
+        {"tenant_id": org_id},
+    ).mappings().first()
+    if existing_subscription:
+        assignments = ", ".join(f"{key} = :{key}" for key in subscription_values if key != "id")
+        if assignments:
+            subscription_values["id"] = existing_subscription["id"]
+            conn.execute(
+                text(f"UPDATE {DB_SCHEMA}.client_subscriptions SET {assignments} WHERE id = :id"),
+                subscription_values,
+            )
+        return
+
+    columns = ", ".join(subscription_values.keys())
+    placeholders = ", ".join(f":{key}" for key in subscription_values)
+    conn.execute(
+        text(f"INSERT INTO {DB_SCHEMA}.client_subscriptions ({columns}) VALUES ({placeholders})"),
+        subscription_values,
+    )
+
+
+def ensure_demo_partner_binding(
+    db: Session,
+    *,
+    user_id: str | None,
+    email: str | None,
+    roles: list[str] | tuple[str, ...] | set[str] | None = None,
+) -> bool:
+    logger = logging.getLogger(__name__)
+    if not _is_dev_env():
+        return False
+
+    expected_email = (
+        os.getenv("NEFT_BOOTSTRAP_PARTNER_EMAIL")
+        or os.getenv("NEFT_DEMO_PARTNER_EMAIL")
+        or DEFAULT_DEMO_PARTNER_EMAIL
+    ).strip().lower()
+    normalized_email = str(email or "").strip().lower()
+    if normalized_email != expected_email:
+        return False
+
+    normalized_roles = {str(role).upper() for role in (roles or []) if role}
+    if normalized_roles and not any(role.startswith("PARTNER") for role in normalized_roles):
+        return False
+
+    resolved_user_id = str(user_id or "").strip() or _lookup_auth_user_id(expected_email, logger)
+    if not resolved_user_id:
+        return False
+
+    conn = db.connection()
+    table_names = {
+        row[0]
+        for row in conn.execute(
+            text(
+                """
+                SELECT table_name
+                FROM information_schema.tables
+                WHERE table_schema = :schema
+                """
+            ),
+            {"schema": DB_SCHEMA},
+        ).fetchall()
+    }
+    required = {"partners", "partner_user_roles"}
+    if not required.issubset(table_names):
+        return False
+
+    partner_id = conn.execute(
+        text(f"SELECT id::text FROM {DB_SCHEMA}.partners WHERE code = :code LIMIT 1"),
+        {"code": DEFAULT_DEMO_PARTNER_CODE},
+    ).scalar_one_or_none()
+    if not partner_id:
+        partner_id = conn.execute(
+            text(
+                f"""
+                INSERT INTO {DB_SCHEMA}.partners (id, name, type, allowed_ips, token, code, legal_name, partner_type, status, contacts)
+                VALUES (gen_random_uuid(), 'Demo Partner', 'PARTNER', '[]'::jsonb, :token, :code, 'Demo Partner', 'OTHER', 'ACTIVE', '{{}}'::jsonb)
+                RETURNING id::text
+                """
+            ),
+            {"code": DEFAULT_DEMO_PARTNER_CODE, "token": "demo-partner-token"},
+        ).scalar_one()
+
+    conn.execute(
+        text(
+            f"""
+            INSERT INTO {DB_SCHEMA}.partner_user_roles (id, partner_id, user_id, roles)
+            VALUES (gen_random_uuid(), :partner_id, :user_id, '["PARTNER_OWNER"]'::jsonb)
+            ON CONFLICT (partner_id, user_id)
+            DO UPDATE SET roles = excluded.roles
+            """
+        ),
+        {"partner_id": partner_id, "user_id": resolved_user_id},
+    )
+    db.commit()
+    logger.info(
+        "Repaired demo partner binding",
+        extra={"partner_id": partner_id, "user_id": resolved_user_id, "email": normalized_email},
+    )
+    return True
+
+
 def ensure_demo_client(db: Session | None = None) -> None:
     logger = logging.getLogger(__name__)
     if not _is_dev_env():
@@ -236,6 +539,7 @@ def ensure_demo_client(db: Session | None = None) -> None:
                 {"client_id": client_id},
             ).mappings().first()
             name = os.getenv("NEFT_DEMO_CLIENT_NAME") or os.getenv("NEFT_DEMO_ORG_NAME") or "Demo Client"
+            org_type = (os.getenv("NEFT_DEMO_CLIENT_ORG_TYPE") or "INDIVIDUAL").strip() or "INDIVIDUAL"
             if clients:
                 update_values = {"id": client_id}
                 if _is_empty_value(clients.get("name")):
@@ -246,6 +550,8 @@ def ensure_demo_client(db: Session | None = None) -> None:
                     update_values["status"] = "ACTIVE"
                 if _is_empty_value(clients.get("external_id")):
                     update_values["external_id"] = os.getenv("NEFT_DEMO_ORG_NAME", "demo-client")
+                if _is_empty_value(clients.get("org_type")):
+                    update_values["org_type"] = org_type
                 update_values = _filter_columns("clients", db, update_values)
                 assignments = ", ".join(f"{key} = :{key}" for key in update_values if key != "id")
                 if assignments:
@@ -260,6 +566,7 @@ def ensure_demo_client(db: Session | None = None) -> None:
                     "external_id": os.getenv("NEFT_DEMO_ORG_NAME", "demo-client"),
                     "full_name": name,
                     "status": "ACTIVE",
+                    "org_type": org_type,
                 }
                 values = _filter_columns("clients", db, values)
                 columns = ", ".join(values.keys())
@@ -285,10 +592,11 @@ def ensure_demo_client(db: Session | None = None) -> None:
                     "updated_at": datetime.now(timezone.utc),
                 }
                 org_values = _filter_columns("orgs", db, org_values)
+                select_columns = "id, roles" if "roles" in org_values else "id"
                 existing_org = conn.execute(
                     text(
                         f"""
-                        SELECT id
+                        SELECT {select_columns}
                         FROM {DB_SCHEMA}.orgs
                         WHERE id = :org_id
                         """
@@ -296,12 +604,17 @@ def ensure_demo_client(db: Session | None = None) -> None:
                     {"org_id": org_id},
                 ).mappings().first()
                 if existing_org:
-                    assignments = ", ".join(f"{key} = :{key}" for key in org_values)
-                    org_values["id"] = org_id
-                    conn.execute(
-                        text(f"UPDATE {DB_SCHEMA}.orgs SET {assignments} WHERE id = :id"),
-                        org_values,
-                    )
+                    update_values = dict(org_values)
+                    update_values["id"] = org_id
+                    update_values.pop("created_at", None)
+                    if "roles" in update_values:
+                        update_values["roles"] = _merge_org_roles(existing_org.get("roles"), ("CLIENT",))
+                    assignments = ", ".join(f"{key} = :{key}" for key in update_values if key != "id")
+                    if assignments:
+                        conn.execute(
+                            text(f"UPDATE {DB_SCHEMA}.orgs SET {assignments} WHERE id = :id"),
+                            update_values,
+                        )
                 else:
                     columns = ", ".join(org_values.keys())
                     placeholders = ", ".join(f":{key}" for key in org_values)
@@ -309,6 +622,13 @@ def ensure_demo_client(db: Session | None = None) -> None:
                         text(f"INSERT INTO {DB_SCHEMA}.orgs ({columns}) VALUES ({placeholders})"),
                         org_values,
                     )
+                _ensure_demo_subscription_seed(
+                    db,
+                    conn=conn,
+                    table_names=table_names,
+                    client_id=client_id,
+                    org_id=org_id,
+                )
 
         db.commit()
     except SQLAlchemyError as exc:  # pragma: no cover - safeguard on startup

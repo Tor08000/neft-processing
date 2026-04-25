@@ -48,7 +48,6 @@ from .fleet_control import (
     FleetControlSuggestedActionOut,
 )
 from .decision_memory import DecisionActionStatsOut, DecisionCooldownOut, DecisionOutcomeOut
-from .what_if import WhatIfEvaluateRequest, WhatIfResponse
 
 __all__ = [
     "OperationListResponse",
@@ -105,3 +104,14 @@ __all__ = [
     "WhatIfEvaluateRequest",
     "WhatIfResponse",
 ]
+
+
+def __getattr__(name: str):
+    if name in {"WhatIfEvaluateRequest", "WhatIfResponse"}:
+        from .what_if import WhatIfEvaluateRequest, WhatIfResponse
+
+        return {
+            "WhatIfEvaluateRequest": WhatIfEvaluateRequest,
+            "WhatIfResponse": WhatIfResponse,
+        }[name]
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

@@ -19,6 +19,7 @@ BASE_REQUIRED_TABLES: tuple[str, ...] = (
     "client_user_roles",
     "cards",
     "card_limits",
+    "marketplace_adjustments",
 )
 EMBEDDED_REQUIRED_TABLES: tuple[str, ...] = ("users",)
 

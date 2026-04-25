@@ -10,25 +10,27 @@ from contextlib import asynccontextmanager
 import contextlib
 from typing import Any, AsyncIterator
 
-from fastapi import APIRouter, Body, Depends, FastAPI, HTTPException, Request
+from fastapi import APIRouter, Body, Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.openapi.utils import get_openapi
-from fastapi.responses import JSONResponse, PlainTextResponse, RedirectResponse
+from fastapi.responses import JSONResponse, PlainTextResponse
 from fastapi.routing import APIRoute
 from pydantic import BaseModel, ConfigDict
+from sqlalchemy import inspect, text
 from sqlalchemy.orm import Session
 
 from neft_shared.logging_setup import get_logger, init_logging
 
 from app.api.routes import router as api_router
 from app.db import get_db, get_sessionmaker, init_db
+from app.db.schema import DB_SCHEMA, qualified_table_name
 from app.routers.achievements import router as achievements_router
 from app.routers.admin import router as admin_router
+from app.routers.admin.unified_rules import canonical_router as admin_unified_rules_canonical_router
 from app.routers.admin_core_finance import router as admin_core_finance_router
 from app.routers.admin_legacy_aliases import router as admin_legacy_aliases_router
 from app.routers.admin_runtime import router as admin_runtime_router
-from app.routers.admin_runtime_legacy import router as admin_runtime_legacy_router
 from app.routers.admin_partners import router as admin_partners_router
 from app.routers.client import router as client_router
 from app.routers.client_fleet import router as fleet_router
@@ -36,7 +38,6 @@ from app.routers.client_documents import router as client_documents_router
 from app.routers.client_documents_v1 import router as client_documents_v1_router
 from app.routers.admin_documents_v1 import router as admin_documents_v1_router
 from app.routers.admin_auth_gateway import router as admin_auth_gateway_router, v1_router as admin_auth_gateway_v1_router
-from app.routers.admin_me_legacy import router as admin_me_legacy_router
 from app.routers.admin.me import AdminMeResponse, admin_me
 from app.routers.client_auth_gateway import router as client_auth_gateway_router
 from app.routers.partner_auth_gateway import router as partner_auth_gateway_router
@@ -48,6 +49,7 @@ from app.routers.partner_finance import router as partner_finance_router
 from app.routers.partner_finance_legacy import router as partner_finance_legacy_router
 from app.routers.partner_legal import router as partner_legal_router
 from app.routers.partner_management import router as partner_management_router
+from app.routers.partner_onboarding import router as partner_onboarding_router
 from app.routers.document_templates import router as document_templates_router
 from app.routers.legal_gate import router as legal_gate_router
 from app.routers.client.marketplace_recommendations import router as marketplace_recommendations_router
@@ -77,11 +79,17 @@ from app.routers.notifications import router as notifications_router
 from app.routers.client_vehicles import router as client_vehicles_router
 from app.routers.commercial_layer import router as commercial_layer_router
 from app.routers.internal.fleet import router as internal_fleet_router
+from app.routers.internal.admin_audit import router as internal_admin_audit_router
 from app.routers.internal.fuel_providers import router as internal_fuel_providers_router
 from app.routers.internal.fuel_stations import router as internal_fuel_stations_router
 from app.routers.internal.telegram import router as internal_telegram_router
 from app.routers.helpdesk_webhooks import router as helpdesk_webhooks_router
-from app.routers.portal import client_router as portal_client_router, partner_router as portal_partner_router
+from app.routers.portal import (
+    client_router as portal_client_router,
+    get_client_order_sla,
+    get_client_order_sla_consequences,
+    partner_router as portal_partner_router,
+)
 from app.routers.partner.marketplace_analytics import router as partner_marketplace_analytics_router
 from app.routers.partner.marketplace_catalog import router as partner_marketplace_router
 from app.routers.partner.marketplace_services import router as partner_marketplace_services_router
@@ -118,8 +126,10 @@ from app.services.export_metrics import metrics as export_metrics
 from app.services.partner_trust_metrics import metrics as partner_trust_metrics
 from app.services.email_metrics import metrics as email_metrics
 from app.services.report_schedule_metrics import metrics as report_schedule_metrics
+from app.services.reports_route_metrics import metrics as reports_route_metrics
 from app.services.notification_metrics import metrics as notification_metrics
 from app.services.event_outbox_metrics import load_event_outbox_metrics
+from app.schemas.marketplace.sla import OrderSlaConsequencesResponse, OrderSlaEvaluationsResponse
 from app.services.limits import (
     CheckAndReserveRequest,
     CheckAndReserveTaskResponse,
@@ -143,8 +153,10 @@ from app.services.risk_v5.hook import register_shadow_hook
 from app.services.risk_v5.metrics import metrics as risk_v5_metrics
 from app.services.mor_metrics import metrics as mor_metrics
 from app.models.audit_log import AuditVisibility
-from app.models.email_outbox import EmailOutbox, EmailOutboxStatus
-from app.models.export_jobs import ExportJob, ExportJobStatus
+from app.models.documents import repair_document_table_mappers
+from app.models.email_outbox import EmailOutboxStatus
+from app.models.export_jobs import ExportJobStatus
+from app.models.legal_integrations import repair_legal_integration_mappers
 from app.security.rbac.principal import Principal, get_principal
 
 
@@ -208,6 +220,8 @@ API_PREFIX_CORE = _normalize_api_prefix(API_PREFIX_CORE, DEFAULT_API_PREFIX)
 INCLUDE_CORE_PREFIX_ROUTES = API_PREFIX_CORE != CORE_API_PREFIX
 INCLUDE_API_PREFIX_CORE = API_PREFIX_CORE != LEGACY_API_PREFIX
 INCLUDE_CUSTOM_CORE_PREFIX = INCLUDE_API_PREFIX_CORE and INCLUDE_CORE_PREFIX_ROUTES
+repair_document_table_mappers()
+repair_legal_integration_mappers()
 init_logging(service_name=SERVICE_NAME)
 logger = get_logger(__name__)
 start_mode = settings.APP_ENV.upper()
@@ -534,6 +548,7 @@ if bi_dashboards_router is not None:
 if pricing_intelligence_router is not None:
     safe_include_router(app, pricing_intelligence_router, prefix="")
 if support_requests_router is not None:
+    # Compatibility-only support_requests tail; canonical owner lives under /api/core/cases.
     safe_include_router(app, support_requests_router, prefix="")
 if commercial_margin_router is not None:
     safe_include_router(app, commercial_margin_router, prefix="")
@@ -554,7 +569,31 @@ if billing_invoices_router is not None:
 if payouts_router is not None:
     safe_include_router(app, payouts_router, prefix="")
 
-safe_include_router(app, admin_router, prefix=LEGACY_API_PREFIX)
+# Public `/api/v1/admin/*` is now a narrowed compatibility family.
+# Canonical parity and repo-consumer migration are complete for audit, finance,
+# legal/documents, marketplace, money, and reconciliation, so those public
+# tails are removed here while unrelated compatibility families stay mounted.
+admin_public_compat_router = APIRouter()
+for route in admin_router.routes:
+    route_path = getattr(route, "path", "")
+    if (
+        route_path == "/v1/admin/audit"
+        or route_path.startswith("/v1/admin/audit/")
+        or route_path == "/v1/admin/finance"
+        or route_path.startswith("/v1/admin/finance/")
+        or route_path == "/v1/admin/legal/documents"
+        or route_path.startswith("/v1/admin/legal/documents/")
+        or route_path == "/v1/admin/marketplace"
+        or route_path.startswith("/v1/admin/marketplace/")
+        or route_path == "/v1/admin/money"
+        or route_path.startswith("/v1/admin/money/")
+        or route_path == "/v1/admin/reconciliation"
+        or route_path.startswith("/v1/admin/reconciliation/")
+    ):
+        continue
+    admin_public_compat_router.routes.append(route)
+
+safe_include_router(app, admin_public_compat_router, prefix=LEGACY_API_PREFIX)
 if INCLUDE_CUSTOM_CORE_PREFIX:
     safe_include_router(app, admin_router, prefix=API_PREFIX_CORE)
 safe_include_router(app, legal_router, prefix=LEGACY_API_PREFIX)
@@ -586,8 +625,6 @@ safe_include_router(app, notifications_router)
 if INCLUDE_CORE_PREFIX_ROUTES:
     safe_include_router(app, notifications_router, prefix=API_PREFIX_CORE)
 safe_include_router(app, fleet_router)
-if INCLUDE_CORE_PREFIX_ROUTES:
-    safe_include_router(app, fleet_router, prefix=API_PREFIX_CORE)
 safe_include_router(app, client_portal_router, prefix=LEGACY_API_PREFIX)
 if INCLUDE_CUSTOM_CORE_PREFIX:
     safe_include_router(app, client_portal_router, prefix=API_PREFIX_CORE)
@@ -616,12 +653,14 @@ safe_include_router(app, partner_legal_router, prefix=LEGACY_API_PREFIX)
 if INCLUDE_CUSTOM_CORE_PREFIX:
     safe_include_router(app, partner_finance_router, prefix=API_PREFIX_CORE)
     safe_include_router(app, partner_legal_router, prefix=API_PREFIX_CORE)
+    safe_include_router(app, partner_onboarding_router, prefix=API_PREFIX_CORE)
 if INCLUDE_CUSTOM_CORE_PREFIX:
     safe_include_router(app, partner_marketplace_router, prefix=API_PREFIX_CORE)
 if INCLUDE_CUSTOM_CORE_PREFIX:
     safe_include_router(app, partner_marketplace_services_router, prefix=API_PREFIX_CORE)
 if INCLUDE_CUSTOM_CORE_PREFIX:
     safe_include_router(app, partner_marketplace_offers_router, prefix=API_PREFIX_CORE)
+safe_include_router(app, partner_marketplace_orders_router, prefix=LEGACY_API_PREFIX)
 if INCLUDE_CUSTOM_CORE_PREFIX:
     safe_include_router(app, partner_marketplace_orders_router, prefix=API_PREFIX_CORE)
 safe_include_router(app, partner_marketplace_promotions_router, prefix=LEGACY_API_PREFIX)
@@ -671,6 +710,7 @@ if INCLUDE_CORE_PREFIX_ROUTES:
     safe_include_router(app, document_templates_router, prefix=API_PREFIX_CORE)
 if INCLUDE_CORE_PREFIX_ROUTES:
     safe_include_router(app, legal_gate_router, prefix=f"{API_PREFIX_CORE}/admin")
+safe_include_router(app, internal_admin_audit_router)
 safe_include_router(app, internal_fleet_router)
 safe_include_router(app, internal_fuel_providers_router)
 safe_include_router(app, internal_fuel_stations_router)
@@ -681,65 +721,65 @@ safe_include_router(app, edo_sbis_router)
 # -----------------------------------------------------------------------------
 # GATEWAY PREFIX STRIP ALIASES (for /api/core/* -> /)
 # -----------------------------------------------------------------------------
-safe_include_router(app, admin_router, include_in_schema=False)
-safe_include_router(app, admin_runtime_router, include_in_schema=False)
-safe_include_router(app, admin_auth_gateway_router, include_in_schema=False)
-safe_include_router(app, admin_auth_gateway_v1_router, include_in_schema=False)
-safe_include_router(app, client_auth_gateway_router, include_in_schema=False)
-safe_include_router(app, partner_auth_gateway_router, include_in_schema=False)
-safe_include_router(app, portal_me_router, include_in_schema=False)
+# Stage broad admin alias cleanup by dropping lower-risk shadow slices
+# while keeping the remaining hidden /v1/admin/* compatibility family.
+# Canonical admin owner is /api/core/v1/admin/*; /api/v1/admin/* remains the
+# compatibility/public family and /v1/admin/* stays hidden ballast only.
+admin_root_alias_router = APIRouter()
+for route in admin_router.routes:
+    route_path = getattr(route, "path", "")
+    if (
+        route_path == "/v1/admin/merchants"
+        or route_path.startswith("/v1/admin/merchants/")
+        or route_path == "/v1/admin/terminals"
+        or route_path.startswith("/v1/admin/terminals/")
+        or route_path == "/v1/admin/billing/summary"
+        or route_path == "/v1/admin/finance"
+        or route_path.startswith("/v1/admin/finance/")
+        or route_path == "/v1/admin/commercial"
+        or route_path.startswith("/v1/admin/commercial/")
+        or route_path == "/v1/admin/clients/{client_id}/invitations"
+        or route_path.startswith("/v1/admin/clients/invitations/")
+        or route_path == "/v1/admin/audit"
+        or route_path.startswith("/v1/admin/audit/")
+        or route_path == "/v1/admin/legal/partners"
+        or route_path.startswith("/v1/admin/legal/partners/")
+        or route_path == "/v1/admin/legal/partners-legacy"
+        or route_path.startswith("/v1/admin/legal/partners-legacy/")
+        or route_path == "/v1/admin/legal/documents"
+        or route_path.startswith("/v1/admin/legal/documents/")
+        or route_path == "/v1/admin/me"
+        or route_path == "/v1/admin/marketplace"
+        or route_path.startswith("/v1/admin/marketplace/")
+        or route_path == "/v1/admin/money"
+        or route_path.startswith("/v1/admin/money/")
+        or route_path == "/v1/admin/ops"
+        or route_path.startswith("/v1/admin/ops/")
+        or route_path == "/v1/admin/reconciliation"
+        or route_path.startswith("/v1/admin/reconciliation/")
+    ):
+        continue
+    admin_root_alias_router.routes.append(route)
+safe_include_router(
+    app,
+    admin_root_alias_router,
+    include_in_schema=False,
+    source="app.main.admin_root_alias_router",
+)
 
 # Префиксированный роутер для нового gateway namespace /api/core/*
 core_prefixed_router = APIRouter(prefix="/api/core")
-safe_include_router(core_prefixed_router, api_router, prefix="/api/v1")
-
-if operations_router is not None:
-    safe_include_router(core_prefixed_router, operations_router, prefix="")
-if transactions_router is not None:
-    safe_include_router(core_prefixed_router, transactions_router, prefix="")
-if reports_billing_router is not None:
-    safe_include_router(core_prefixed_router, reports_billing_router, prefix="")
-if fuel_transactions_router is not None:
-    safe_include_router(core_prefixed_router, fuel_transactions_router, prefix="")
-if fuel_stations_router is not None:
-    safe_include_router(core_prefixed_router, fuel_stations_router, prefix="")
-if geo_metrics_router is not None:
-    safe_include_router(core_prefixed_router, geo_metrics_router, prefix="")
-if geo_tiles_router is not None:
-    safe_include_router(core_prefixed_router, geo_tiles_router, prefix="")
-if fuel_station_prices_router is not None:
-    safe_include_router(core_prefixed_router, fuel_station_prices_router, prefix="")
-if logistics_router is not None:
-    safe_include_router(core_prefixed_router, logistics_router, prefix="")
-if edo_events_router is not None:
-    safe_include_router(core_prefixed_router, edo_events_router, prefix="")
-if bi_router is not None:
-    safe_include_router(core_prefixed_router, bi_router, prefix="")
+# Skip routers that already own absolute /api... prefixes: mounting them under
+# /api/core creates nested /api/core/api/* surfaces that are neither canonical
+# nor documented.
 if bi_dashboards_router is not None:
     safe_include_router(core_prefixed_router, bi_dashboards_router, prefix="")
-if pricing_intelligence_router is not None:
-    safe_include_router(core_prefixed_router, pricing_intelligence_router, prefix="")
-if support_requests_router is not None:
-    safe_include_router(core_prefixed_router, support_requests_router, prefix="")
-if commercial_margin_router is not None:
-    safe_include_router(core_prefixed_router, commercial_margin_router, prefix="")
-if commercial_elasticity_router is not None:
-    safe_include_router(core_prefixed_router, commercial_elasticity_router, prefix="")
-if intake_router is not None:
-    safe_include_router(core_prefixed_router, intake_router, prefix="")
-if partners_router is not None:
-    safe_include_router(core_prefixed_router, partners_router, prefix="")
-if billing_invoices_router is not None:
-    safe_include_router(core_prefixed_router, billing_invoices_router, prefix="")
-if payouts_router is not None:
-    safe_include_router(core_prefixed_router, payouts_router, prefix="")
 
 safe_include_router(core_prefixed_router, admin_router)
-safe_include_router(core_prefixed_router, admin_me_legacy_router)
+safe_include_router(core_prefixed_router, admin_unified_rules_canonical_router)
 safe_include_router(core_prefixed_router, admin_legacy_aliases_router)
-safe_include_router(core_prefixed_router, admin_core_finance_router)
+safe_include_router(core_prefixed_router, admin_core_finance_router, include_in_schema=False)
 safe_include_router(core_prefixed_router, admin_runtime_router)
-safe_include_router(core_prefixed_router, admin_runtime_legacy_router)
 safe_include_router(core_prefixed_router, kpi_router)
 safe_include_router(core_prefixed_router, explain_v2_router)
 safe_include_router(core_prefixed_router, cases_router)
@@ -760,7 +800,6 @@ safe_include_router(core_prefixed_router, client_portal_v1_router)
 safe_include_router(core_prefixed_router, client_invitation_auth_router)
 safe_include_router(core_prefixed_router, client_logistics_router)
 safe_include_router(core_prefixed_router, client_notifications_router)
-safe_include_router(core_prefixed_router, fleet_router)
 safe_include_router(core_prefixed_router, client_portal_router)
 safe_include_router(core_prefixed_router, client_onboarding_router)
 safe_include_router(core_prefixed_router, client_onboarding_status_v1_router)
@@ -768,14 +807,12 @@ safe_include_router(core_prefixed_router, client_docflow_router)
 safe_include_router(core_prefixed_router, admin_onboarding_review_v1_router)
 safe_include_router(core_prefixed_router, admin_client_onboarding_router)
 safe_include_router(core_prefixed_router, client_vehicles_router)
-safe_include_router(core_prefixed_router, client_documents_router)
-safe_include_router(core_prefixed_router, client_documents_v1_router)
 safe_include_router(core_prefixed_router, document_templates_router)
 safe_include_router(core_prefixed_router, client_service_completion_proofs_router)
 safe_include_router(core_prefixed_router, partner_core_router)
-safe_include_router(core_prefixed_router, partner_finance_legacy_router)
 safe_include_router(core_prefixed_router, partner_finance_router)
 safe_include_router(core_prefixed_router, partner_legal_router)
+safe_include_router(core_prefixed_router, partner_onboarding_router)
 safe_include_router(core_prefixed_router, partner_management_router)
 safe_include_router(core_prefixed_router, partner_marketplace_router)
 safe_include_router(core_prefixed_router, partner_marketplace_services_router)
@@ -788,13 +825,28 @@ safe_include_router(core_prefixed_router, partner_marketplace_subscriptions_rout
 safe_include_router(core_prefixed_router, partner_service_bookings_router)
 safe_include_router(core_prefixed_router, service_requests_router)
 safe_include_router(core_prefixed_router, marketplace_catalog_router)
-safe_include_router(core_prefixed_router, internal_fleet_router)
 safe_include_router(core_prefixed_router, internal_fuel_providers_router)
-safe_include_router(core_prefixed_router, internal_fuel_stations_router)
-safe_include_router(core_prefixed_router, internal_telegram_router)
 safe_include_router(core_prefixed_router, helpdesk_webhooks_router)
-safe_include_router(core_prefixed_router, commercial_layer_router)
 safe_include_router(core_prefixed_router, partner_edo_router)
+
+client_marketplace_sla_core_router = APIRouter(tags=["client-marketplace-sla"])
+client_marketplace_sla_core_router.add_api_route(
+    "/client/marketplace/orders/{order_id}/sla",
+    get_client_order_sla,
+    response_model=OrderSlaEvaluationsResponse,
+    methods=["GET"],
+)
+client_marketplace_sla_core_router.add_api_route(
+    "/client/marketplace/orders/{order_id}/consequences",
+    get_client_order_sla_consequences,
+    response_model=OrderSlaConsequencesResponse,
+    methods=["GET"],
+)
+safe_include_router(
+    core_prefixed_router,
+    client_marketplace_sla_core_router,
+    source="app.main.client_marketplace_sla_core_router",
+)
 
 
 # -----------------------------------------------------------------------------
@@ -1146,9 +1198,13 @@ def _intake_metrics() -> list[str]:
     ]
 
 
+def _prometheus_label_value(value: object) -> str:
+    return str(value).replace("\\", r"\\").replace("\n", r"\n").replace('"', r"\"")
+
+
 def _audit_metrics() -> list[str]:
     event_lines = [
-        f"core_api_audit_events_total{{event_type='{event_type}'}} {count}"
+        f'core_api_audit_events_total{{event_type="{_prometheus_label_value(event_type)}"}} {count}'
         for event_type, count in audit_metrics.events_total.items()
     ]
     if not event_lines:
@@ -1366,6 +1422,32 @@ def _report_schedule_metrics() -> list[str]:
     return lines
 
 
+def _reports_route_metrics() -> list[str]:
+    request_lines = [
+        f'core_api_reports_compat_requests_total{{route="{route}",method="{method}",outcome="{outcome}"}} {count}'
+        for (route, method, outcome), count in reports_route_metrics.requests_total.items()
+    ]
+    if not request_lines:
+        request_lines.append(
+            'core_api_reports_compat_requests_total{route="unset",method="unset",outcome="unset"} 0'
+        )
+
+    lines = [
+        "# HELP core_api_reports_compat_requests_total Compatibility reports route requests.",
+        "# TYPE core_api_reports_compat_requests_total counter",
+        *request_lines,
+    ]
+    lines.extend(
+        _render_histogram(
+            metric_prefix="core_api_reports_compat_duration_seconds",
+            help_text="Compatibility reports route latency seconds.",
+            items=reports_route_metrics.duration_seconds,
+            label_names=["route", "method"],
+        )
+    )
+    return lines
+
+
 def _notification_metrics() -> list[str]:
     created_lines = [
         f'client_notifications_created_total{{type="{event_type}",severity="{severity}"}} {count}'
@@ -1380,19 +1462,53 @@ def _notification_metrics() -> list[str]:
     ]
 
 
+def _metrics_table_name(session: Session, table_name: str) -> str:
+    bind = session.get_bind()
+    if bind.dialect.name == "sqlite":
+        inspector = inspect(bind)
+        if DB_SCHEMA and inspector.has_table(table_name, schema=DB_SCHEMA):
+            return qualified_table_name(table_name, DB_SCHEMA)
+        return qualified_table_name(table_name)
+    return qualified_table_name(table_name, DB_SCHEMA)
+
+
+def _metrics_table_exists(session: Session, table_name: str) -> bool:
+    bind = session.get_bind()
+    inspector = inspect(bind)
+    if bind.dialect.name == "sqlite":
+        return bool(
+            (DB_SCHEMA and inspector.has_table(table_name, schema=DB_SCHEMA))
+            or inspector.has_table(table_name)
+        )
+    return inspector.has_table(table_name, schema=DB_SCHEMA)
+
+
 def _queue_metrics() -> list[str]:
     session = get_sessionmaker()()
     try:
-        outbox_backlog = (
-            session.query(EmailOutbox).filter(EmailOutbox.status == EmailOutboxStatus.QUEUED).count()
-        )
-        running_started_at = (
-            session.query(ExportJob.started_at)
-            .filter(ExportJob.status == ExportJobStatus.RUNNING)
-            .order_by(ExportJob.started_at.asc())
-            .limit(1)
-            .scalar()
-        )
+        outbox_backlog = 0
+        if _metrics_table_exists(session, "email_outbox"):
+            email_outbox_table = _metrics_table_name(session, "email_outbox")
+            outbox_backlog = int(
+                session.execute(
+                    text(f"SELECT count(*) FROM {email_outbox_table} WHERE status = :status"),
+                    {"status": EmailOutboxStatus.QUEUED.value},
+                ).scalar()
+                or 0
+            )
+        running_started_at = None
+        if _metrics_table_exists(session, "export_jobs"):
+            export_jobs_table = _metrics_table_name(session, "export_jobs")
+            running_started_at = (
+                session.execute(
+                    text(
+                        f"SELECT started_at FROM {export_jobs_table} "
+                        "WHERE status = :status ORDER BY started_at ASC LIMIT 1"
+                    ),
+                    {"status": ExportJobStatus.RUNNING.value},
+                )
+                .scalar()
+            )
         running_age_seconds = 0.0
         if running_started_at:
             running_age_seconds = max(0.0, (datetime.now(timezone.utc) - running_started_at).total_seconds())
@@ -1547,12 +1663,13 @@ def _event_outbox_metrics() -> list[str]:
 
     db = get_sessionmaker()()
     try:
-        snapshot = load_event_outbox_metrics(db)
-        lines[2] = f"event_outbox_pending_total {snapshot.pending_total}"
-        lines[5] = f"event_outbox_failed_total {snapshot.failed_total}"
-        lines[8] = f"event_outbox_published_total {snapshot.published_total}"
-        lines[11] = f"event_outbox_retry_total {snapshot.retry_total}"
-        lines[14] = f"event_outbox_lag_seconds {snapshot.lag_seconds}"
+        if _metrics_table_exists(db, "event_outbox"):
+            snapshot = load_event_outbox_metrics(db)
+            lines[2] = f"event_outbox_pending_total {snapshot.pending_total}"
+            lines[5] = f"event_outbox_failed_total {snapshot.failed_total}"
+            lines[8] = f"event_outbox_published_total {snapshot.published_total}"
+            lines[11] = f"event_outbox_retry_total {snapshot.retry_total}"
+            lines[14] = f"event_outbox_lag_seconds {snapshot.lag_seconds}"
     except Exception:
         logger.exception("metrics.event_outbox_unavailable")
     finally:
@@ -1581,6 +1698,7 @@ def metrics() -> str:  # pragma: no cover - response verified via API test
     lines.extend(_partner_trust_metrics())
     lines.extend(_email_outbox_metrics())
     lines.extend(_report_schedule_metrics())
+    lines.extend(_reports_route_metrics())
     lines.extend(_notification_metrics())
     lines.extend(_queue_metrics())
     lines.extend(_accounting_export_metrics())
@@ -1609,7 +1727,12 @@ def metric_alias() -> str:  # pragma: no cover - compatibility alias
 # -----------------------------------------------------------------------------
 # HEALTH
 # -----------------------------------------------------------------------------
-@app.get("/health", response_model=HealthResponse, response_model_exclude_none=True)
+@app.api_route(
+    "/health",
+    methods=["GET", "HEAD"],
+    response_model=HealthResponse,
+    response_model_exclude_none=True,
+)
 def health() -> HealthResponse:
     degraded = is_email_degraded()
     return HealthResponse(
@@ -1652,7 +1775,7 @@ core_prefixed_router.add_api_route(
     health,
     response_model=HealthResponse,
     response_model_exclude_none=True,
-    methods=["GET"],
+    methods=["GET", "HEAD"],
 )
 core_prefixed_router.add_api_route(
     "/health/db",
@@ -1689,23 +1812,12 @@ def _has_route(app: FastAPI, path: str, method: str) -> bool:
     return False
 
 
-def _admin_me_legacy_redirect(request: Request) -> RedirectResponse:
-    target_url = str(request.url.replace(path="/api/core/v1/admin/me"))
-    return RedirectResponse(url=target_url, status_code=308)
-
-
 def _ensure_admin_me_routes(app: FastAPI) -> None:
     if not _has_route(app, "/api/core/v1/admin/me", "GET"):
         app.add_api_route(
             "/api/core/v1/admin/me",
             admin_me,
             response_model=AdminMeResponse,
-            methods=["GET"],
-        )
-    if not _has_route(app, "/api/core/admin/me", "GET"):
-        app.add_api_route(
-            "/api/core/admin/me",
-            _admin_me_legacy_redirect,
             methods=["GET"],
         )
 

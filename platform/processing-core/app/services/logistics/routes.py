@@ -15,7 +15,7 @@ from app.models.logistics import (
 from app.schemas.logistics import LogisticsStopIn
 from app.services.audit_service import RequestContext
 from app.services.logistics import events, navigator
-from app.services.logistics.repository import get_route, get_route_stops
+from app.services.logistics.repository import get_route, get_route_stops, id_equals, id_in, refresh_by_id
 
 
 class LogisticsRouteError(ValueError):
@@ -34,13 +34,14 @@ def create_route(
     planned_duration_minutes: int | None = None,
     request_ctx: RequestContext | None = None,
 ) -> LogisticsRoute:
-    order = db.query(LogisticsOrder).filter(LogisticsOrder.id == order_id).one_or_none()
+    order = db.query(LogisticsOrder).filter(id_equals(LogisticsOrder.id, order_id)).one_or_none()
     if not order:
         raise LogisticsRouteError("order_not_found")
+    order_tenant_id = order.tenant_id
 
     latest_version = (
         db.query(LogisticsRoute)
-        .filter(LogisticsRoute.order_id == order_id)
+        .filter(id_equals(LogisticsRoute.order_id, order_id))
         .order_by(LogisticsRoute.version.desc())
         .first()
     )
@@ -55,8 +56,10 @@ def create_route(
         created_at=_now(),
     )
     db.add(route)
+    db.flush()
+    route_id = str(route.id)
     db.commit()
-    db.refresh(route)
+    route = refresh_by_id(db, route, LogisticsRoute, route_id)
 
     events.audit_event(
         db,
@@ -72,7 +75,7 @@ def create_route(
     )
     events.register_route_node(
         db,
-        tenant_id=order.tenant_id,
+        tenant_id=order_tenant_id,
         order_id=order_id,
         route_id=str(route.id),
         request_ctx=request_ctx,
@@ -91,14 +94,23 @@ def activate_route(
     route = get_route(db, route_id=route_id)
     if not route:
         raise LogisticsRouteError("route_not_found")
+    route_id_value = str(route.id)
+    route_order_id = str(route.order_id)
 
     if route.status != LogisticsRouteStatus.ACTIVE:
-        db.query(LogisticsRoute).filter(LogisticsRoute.order_id == route.order_id).filter(
+        db.query(LogisticsRoute).filter(id_equals(LogisticsRoute.order_id, route_order_id)).filter(
             LogisticsRoute.status == LogisticsRouteStatus.ACTIVE
-        ).update({"status": LogisticsRouteStatus.ARCHIVED})
-        route.status = LogisticsRouteStatus.ACTIVE
+        ).update({"status": LogisticsRouteStatus.ARCHIVED}, synchronize_session=False)
+        db.query(LogisticsRoute).filter(id_equals(LogisticsRoute.id, route_id_value)).update(
+            {"status": LogisticsRouteStatus.ACTIVE},
+            synchronize_session=False,
+        )
         db.commit()
-        db.refresh(route)
+        db.expire_all()
+        refreshed_route = get_route(db, route_id=route_id_value)
+        if refreshed_route is None:
+            raise LogisticsRouteError("route_not_found")
+        route = refreshed_route
 
     events.audit_event(
         db,
@@ -121,6 +133,8 @@ def upsert_stops(
     route = get_route(db, route_id=route_id)
     if not route:
         raise LogisticsRouteError("route_not_found")
+    route_id_value = str(route.id)
+    route_order_id = str(route.order_id)
 
     sequences = [stop.sequence for stop in stops]
     duplicates = [seq for seq, count in Counter(sequences).items() if count > 1]
@@ -166,11 +180,19 @@ def upsert_stops(
             stop.meta = payload.meta
         updated.append(stop)
 
+    db.flush()
+    stop_ids = [str(stop.id) for stop in updated]
     db.commit()
-    for stop in updated:
-        db.refresh(stop)
+    updated = (
+        db.query(LogisticsStop)
+        .filter(id_in(LogisticsStop.id, stop_ids))
+        .order_by(LogisticsStop.sequence.asc())
+        .all()
+        if stop_ids
+        else []
+    )
 
-    order = db.query(LogisticsOrder).filter(LogisticsOrder.id == route.order_id).one_or_none()
+    order = db.query(LogisticsOrder).filter(id_equals(LogisticsOrder.id, route_order_id)).one_or_none()
     tenant_id = order.tenant_id if order else None
     if tenant_id is not None:
         for stop in updated:
@@ -191,7 +213,7 @@ def upsert_stops(
                 request_ctx=request_ctx,
             )
 
-    _snapshot_from_stops(db, order_id=str(route.order_id), route_id=str(route.id), stops=updated)
+    _snapshot_from_stops(db, order_id=route_order_id, route_id=route_id_value, stops=updated)
 
     return updated
 
@@ -199,6 +221,8 @@ def upsert_stops(
 def _snapshot_from_stops(
     db: Session, *, order_id: str, route_id: str, stops: list[LogisticsStop]
 ) -> None:
+    # Persist the local navigator snapshot used by admin/explain/risk readers.
+    # This is an in-core evidence layer, not external routing ownership.
     points = [
         navigator.GeoPoint(lat=stop.lat, lon=stop.lon)
         for stop in stops

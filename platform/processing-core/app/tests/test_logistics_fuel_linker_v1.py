@@ -2,33 +2,24 @@ import os
 from datetime import datetime, timedelta, timezone
 
 import pytest
-from sqlalchemy import create_engine
-from sqlalchemy.orm import Session, sessionmaker
-from sqlalchemy.pool import StaticPool
+from sqlalchemy.orm import Session
 
 os.environ["DISABLE_CELERY"] = "1"
 
-from app.db import Base
 from app.models import fuel as fuel_models
 from app.models.fleet import FleetDriver, FleetDriverStatus, FleetVehicle, FleetVehicleStatus
 from app.models.fuel import FuelCard, FuelCardStatus, FuelNetwork, FuelStation, FuelTransaction, FuelTransactionStatus
 from app.models.logistics import LogisticsOrderType
 from app.services.logistics.fuel_linker_service import _candidate_for_tx
 from app.services.logistics.orders import create_order
+from app.tests._logistics_route_harness import logistics_fuel_session_context
 
 
 @pytest.fixture()
 def db() -> Session:
-    engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
-    SessionLocal = sessionmaker(autocommit=False, autoflush=False, expire_on_commit=False, bind=engine)
-    Base.metadata.create_all(bind=engine)
-    session = SessionLocal()
-    try:
+    with logistics_fuel_session_context() as ctx:
+        session, _ = ctx
         yield session
-    finally:
-        session.close()
-        Base.metadata.drop_all(bind=engine)
-        engine.dispose()
 
 
 def test_candidate_scoring_time_window_and_station(db: Session):
@@ -36,11 +27,24 @@ def test_candidate_scoring_time_window_and_station(db: Session):
     driver = FleetDriver(tenant_id=1, client_id="client-1", full_name="Driver", status=FleetDriverStatus.ACTIVE)
     network = FuelNetwork(name="N", provider_code="NET", status=fuel_models.FuelNetworkStatus.ACTIVE)
     card = FuelCard(tenant_id=1, client_id="client-1", card_token="c1", status=FuelCardStatus.ACTIVE)
-    station = FuelStation(network_id=str(network.id), station_code="S1", name="Station", country="RU", city="M", lat="55.75", lon="37.6", status=fuel_models.FuelStationStatus.ACTIVE)
-    db.add_all([vehicle, driver, network, card, station])
+    db.add_all([vehicle, driver, network, card])
     db.commit()
-    for model in [vehicle, driver, network, card, station]:
+    for model in [vehicle, driver, network, card]:
         db.refresh(model)
+
+    station = FuelStation(
+        network_id=str(network.id),
+        station_code="S1",
+        name="Station",
+        country="RU",
+        city="M",
+        lat="55.75",
+        lon="37.6",
+        status=fuel_models.FuelStationStatus.ACTIVE,
+    )
+    db.add(station)
+    db.commit()
+    db.refresh(station)
 
     now = datetime.now(timezone.utc)
     trip = create_order(

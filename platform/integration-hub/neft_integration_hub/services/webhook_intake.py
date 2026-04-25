@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+from dataclasses import dataclass
 from typing import Tuple
 
 from sqlalchemy.orm import Session
@@ -10,6 +11,12 @@ from neft_integration_hub.models import WebhookIntakeEvent
 from neft_integration_hub.settings import get_settings
 
 settings = get_settings()
+
+
+@dataclass(frozen=True)
+class IntakeRecordResult:
+    record: WebhookIntakeEvent
+    duplicate: bool = False
 
 
 def compute_signature(payload: bytes, secret: str) -> str:
@@ -37,7 +44,16 @@ def record_intake_event(
     verified: bool,
     request_id: str | None,
     trace_id: str | None,
-) -> WebhookIntakeEvent:
+) -> IntakeRecordResult:
+    if event_id:
+        existing = (
+            db.query(WebhookIntakeEvent)
+            .filter(WebhookIntakeEvent.source == source)
+            .filter(WebhookIntakeEvent.event_id == event_id)
+            .first()
+        )
+        if existing is not None:
+            return IntakeRecordResult(record=existing, duplicate=True)
     record = WebhookIntakeEvent(
         source=source,
         event_type=event_type,
@@ -51,7 +67,7 @@ def record_intake_event(
     db.add(record)
     db.commit()
     db.refresh(record)
-    return record
+    return IntakeRecordResult(record=record, duplicate=False)
 
 
-__all__ = ["compute_signature", "record_intake_event", "verify_signature"]
+__all__ = ["IntakeRecordResult", "compute_signature", "record_intake_event", "verify_signature"]

@@ -12,8 +12,11 @@ class AdminAuditEvent(BaseModel):
     action: str | None = None
     title: str | None = None
     actor: str | None = None
+    actor_type: str | None = None
     reason: str | None = None
     correlation_id: str | None = None
+    entity_type: str | None = None
+    entity_id: str | None = None
     meta: dict | None = None
     payload: dict | None = None
 

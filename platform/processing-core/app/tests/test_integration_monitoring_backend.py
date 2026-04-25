@@ -1,46 +1,59 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from uuid import uuid4
 
 import pytest
-
-pytest.importorskip("fastapi", reason="fastapi not installed; run tests in docker")
+from fastapi import APIRouter, Depends
 from fastapi.testclient import TestClient
 
-from app import services
-from app.db import Base, SessionLocal, engine, get_db
-from app.main import app
+from app.api.dependencies.admin import require_admin_user
+from app.models.external_request_log import ExternalRequestLog
 from app.models.partner import Partner
+from app.routers.admin import integration_monitoring
 from app.services.integration_monitoring import (
     azs_stats,
     log_external_request,
     partner_status_summary,
 )
+from app.tests._scoped_router_harness import router_client_context, scoped_session_context
 
 
-@pytest.fixture(autouse=True)
-def clean_db():
-    Base.metadata.drop_all(bind=engine)
-    Base.metadata.create_all(bind=engine)
-    yield
-    Base.metadata.drop_all(bind=engine)
+INTEGRATION_MONITORING_TEST_TABLES = (
+    Partner.__table__,
+    ExternalRequestLog.__table__,
+)
+
+
+def _admin_integration_router() -> APIRouter:
+    router = APIRouter(dependencies=[Depends(require_admin_user)])
+    router.include_router(integration_monitoring.router)
+    return router
 
 
 @pytest.fixture
 def db():
-    session = SessionLocal()
-    try:
+    with scoped_session_context(tables=INTEGRATION_MONITORING_TEST_TABLES) as session:
         yield session
-    finally:
-        session.close()
 
 
 @pytest.fixture
 def partner(db):
-    p = Partner(id="partner-1", name="Partner 1", type="AZS", token="t", allowed_ips=[], status="active")
-    db.add(p)
+    partner = Partner(
+        id=str(uuid4()),
+        name="Partner 1",
+        type="AZS",
+        code="PARTNER-1",
+        legal_name="Partner 1 LLC",
+        partner_type="OTHER",
+        token="t",
+        allowed_ips=[],
+        status="ACTIVE",
+        contacts={},
+    )
+    db.add(partner)
     db.commit()
-    return p
+    return partner
 
 
 def _seed_logs(db, partner_id: str):
@@ -104,35 +117,15 @@ def test_azs_stats(db, partner):
     assert azs2["declines_by_category"]["RISK"] == 1
 
 
-# ----------------------
-# API layer
-# ----------------------
-
-
 @pytest.fixture
-def api_client(db, partner):
-    from app.api.dependencies.admin import require_admin_user
-
-    def _override_db():
-        session = SessionLocal()
-        try:
-            yield session
-        finally:
-            session.close()
-
-    def _admin_override():
-        return {"roles": ["ADMIN"]}
-
-    app.dependency_overrides.clear()
-    app.dependency_overrides[get_db] = _override_db
-    app.dependency_overrides[require_admin_user] = _admin_override
-    app.dependency_overrides[services.admin_auth.verify_admin_token] = lambda: {"roles": ["ADMIN"]}
-    client = TestClient(app, headers={"Authorization": "Bearer test"})
-    try:
+def api_client(db):
+    with router_client_context(
+        router=_admin_integration_router(),
+        prefix="/api/v1/admin",
+        db_session=db,
+        dependency_overrides={require_admin_user: lambda: {"roles": ["ADMIN"]}},
+    ) as client:
         yield client
-    finally:
-        app.dependency_overrides.pop(get_db, None)
-        app.dependency_overrides.pop(require_admin_user, None)
 
 
 def test_admin_endpoints(api_client: TestClient, db, partner):
@@ -158,7 +151,8 @@ def test_admin_endpoints(api_client: TestClient, db, partner):
 
     since = (datetime.now(timezone.utc) - timedelta(minutes=2)).isoformat()
     resp = api_client.get(
-        "/api/v1/admin/integration/declines/recent", params={"since": since, "partner_id": partner.id}
+        "/api/v1/admin/integration/declines/recent",
+        params={"since": since, "partner_id": partner.id},
     )
     assert resp.status_code == 200
     feed = resp.json()

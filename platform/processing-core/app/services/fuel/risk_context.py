@@ -309,6 +309,8 @@ def _summarize_off_route_events(
 
 
 def _navigator_signals(db, *, order_id: str | None) -> dict:
+    # Risk context consumes the same local navigator evidence contour.
+    # These signals should not be interpreted as processing-core owning external routing transport.
     if not order_id:
         return {"route_deviation_score": None, "eta_overrun_pct": None}
     route = logistics_repository.get_active_route(db, order_id=order_id)

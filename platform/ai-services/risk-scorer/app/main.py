@@ -10,7 +10,20 @@ from fastapi import APIRouter, FastAPI, Response
 from fastapi.openapi.docs import get_swagger_ui_html
 
 from neft_shared.logging_setup import get_logger, init_logging
-from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
+
+try:
+    from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
+
+    _PROMETHEUS_CLIENT_AVAILABLE = True
+except ImportError:  # pragma: no cover - local env dependent
+    CONTENT_TYPE_LATEST = "text/plain; version=0.0.4; charset=utf-8"
+    _PROMETHEUS_CLIENT_AVAILABLE = False
+
+    def generate_latest() -> bytes:
+        return (
+            b"# prometheus_client_unavailable 1\n"
+            b"neft_ai_service_metrics_degraded 1\n"
+        )
 
 from .api.admin.models import router as admin_router
 from .api.v1.health import router as health_router
@@ -37,6 +50,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     init_logging(default_level=settings.log_level, service_name=SERVICE_NAME)
     logger = get_logger(__name__)
     logger.info("AI service starting up")
+    if not _PROMETHEUS_CLIENT_AVAILABLE:
+        logger.warning("prometheus_client_unavailable_metrics_degraded")
     try:
         yield
     finally:

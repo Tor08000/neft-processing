@@ -37,7 +37,7 @@
 | Clearing batch | `scripts\smoke_clearing_batch.cmd` | PASS / SKIP_OK |
 | Client users/roles | `scripts\smoke_client_users_roles.cmd` | PASS / SKIP_OK |
 | Closing package | `scripts\smoke_closing_package.cmd` | PASS / SKIP_OK |
-| Dispute refund | `scripts\smoke_dispute_refund.cmd` | PASS / SKIP_OK |
+| Dispute refund | `scripts\smoke_dispute_refund.cmd` | PASS |
 | EDO SBIS (send/wait/revoke) | `scripts\smoke_edo_sbis_send.cmd`, `scripts\smoke_edo_sbis_wait_signed.cmd`, `scripts\smoke_edo_sbis_revoke.cmd` | PASS / SKIP_OK |
 | Finance negative scenarios | `scripts\smoke_finance_negative_scenarios.cmd` | PASS / SKIP_OK |
 | Fuel ingest/offline/replay | `scripts\smoke_fuel_ingest_batch.cmd`, `scripts\smoke_fuel_offline_reconcile.cmd`, `scripts\smoke_fuel_replay_batch.cmd` | PASS / SKIP_OK |
@@ -48,7 +48,7 @@
 | 1C export | `scripts\smoke_onec_export.cmd` | PASS / SKIP_OK |
 | Operations explain | `scripts\smoke_operations_explain.cmd` | PASS / SKIP_OK |
 | Partner docs/onboarding/webhooks | `scripts\smoke_partner_documents.cmd`, `scripts\smoke_partner_onboarding.cmd`, `scripts\smoke_partner_webhooks.cmd` | PASS / SKIP_OK |
-| Payout export | `scripts\smoke_payouts_batch_export.cmd` | PASS / SKIP_OK |
+| Payout export | `scripts\smoke_payouts_batch_export.cmd` | PASS |
 | Reconciliation | `scripts\smoke_reconciliation_after_bank.cmd`, `scripts\smoke_reconciliation_request_sign.cmd`, `scripts\smoke_reconciliation_run.cmd` | PASS / SKIP_OK |
 | Restart | `scripts\smoke_restart.cmd` | PASS / SKIP_OK |
 | Support ticket | `scripts\smoke_support_ticket.cmd` | PASS / SKIP_OK |

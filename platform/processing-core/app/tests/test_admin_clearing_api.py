@@ -1,114 +1,70 @@
-import os
-from datetime import date, datetime, timedelta, timezone
-from typing import Tuple
+from datetime import date, datetime, timedelta
 
 import pytest
-from fastapi import FastAPI
-from app.fastapi_utils import generate_unique_id
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import Session, sessionmaker
-from sqlalchemy.pool import StaticPool
+from sqlalchemy import text
+from sqlalchemy.orm import Session
 
-# Ensure Celery is disabled for tests so the local evaluator is used
-os.environ["DISABLE_CELERY"] = "1"
+from app.models.clearing_batch import ClearingBatch
+from app.models.clearing_batch_operation import ClearingBatchOperation
 
-from app.api.v1.endpoints.admin_clearing import router as admin_router
-from app.db import Base, get_db
-from app.models.billing_period import BillingPeriod, BillingPeriodStatus, BillingPeriodType
-from app.models.billing_summary import BillingSummary
-from app.models.clearing import Clearing
-from app.models.operation import ProductType
+from ._money_router_harness import (
+    ADMIN_CLEARING_TEST_TABLES,
+    admin_clearing_client_context,
+    money_session_context,
+)
 
 
-@pytest.fixture()
-def admin_client(admin_auth_headers: dict) -> Tuple[TestClient, sessionmaker]:
-    engine = create_engine(
-        "sqlite://",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
-    TestingSessionLocal = sessionmaker(
-        autocommit=False,
-        autoflush=False,
-        expire_on_commit=False,
-        bind=engine,
-        class_=Session,
-    )
-
-    Base.metadata.create_all(bind=engine)
-
-    app = FastAPI(generate_unique_id_function=generate_unique_id)
-    app.include_router(admin_router, prefix="/api/v1")
-
-    def override_get_db():
-        db = TestingSessionLocal()
-        try:
-            yield db
-        finally:
-            db.close()
-
-    app.dependency_overrides[get_db] = override_get_db
-
-    with TestClient(app) as client:
-        client.headers.update(admin_auth_headers)
-        yield client, TestingSessionLocal
-
-    Base.metadata.drop_all(bind=engine)
-    engine.dispose()
+@pytest.fixture
+def session() -> Session:
+    with money_session_context(tables=ADMIN_CLEARING_TEST_TABLES) as db:
+        yield db
 
 
-def _create_batch(db: Session, **kwargs) -> Clearing:
-    batch = Clearing(**kwargs)
+@pytest.fixture
+def admin_client(session: Session) -> TestClient:
+    with admin_clearing_client_context(db_session=session) as api_client:
+        yield api_client
+
+
+def _create_batch(db: Session, **kwargs) -> ClearingBatch:
+    batch = ClearingBatch(**kwargs)
     db.add(batch)
     db.commit()
     db.refresh(batch)
     return batch
 
 
-def _create_period(db: Session, target_date: date) -> BillingPeriod:
-    period = BillingPeriod(
-        period_type=BillingPeriodType.DAILY,
-        start_at=datetime.combine(target_date, datetime.min.time(), tzinfo=timezone.utc),
-        end_at=datetime.combine(target_date, datetime.max.time(), tzinfo=timezone.utc),
-        tz="UTC",
-        status=BillingPeriodStatus.OPEN,
+def test_listing_with_filters(admin_client: TestClient, session: Session):
+    _create_batch(
+        session,
+        date_from=date(2025, 12, 4),
+        date_to=date(2025, 12, 4),
+        merchant_id="m1",
+        total_amount=54321,
+        status="PENDING",
+        operations_count=2,
     )
-    db.add(period)
-    db.flush()
-    return period
+    _create_batch(
+        session,
+        date_from=date(2025, 11, 30),
+        date_to=date(2025, 11, 30),
+        merchant_id="m1",
+        total_amount=100,
+        status="PENDING",
+        operations_count=1,
+    )
+    _create_batch(
+        session,
+        date_from=date(2025, 12, 5),
+        date_to=date(2025, 12, 5),
+        merchant_id="m2",
+        total_amount=200,
+        status="PENDING",
+        operations_count=1,
+    )
 
-
-def test_listing_with_filters(admin_client: Tuple[TestClient, sessionmaker]):
-    client, SessionLocal = admin_client
-
-    with SessionLocal() as db:
-        _create_batch(
-            db,
-            batch_date=date(2025, 12, 4),
-            merchant_id="m1",
-            currency="RUB",
-            total_amount=54321,
-            status="PENDING",
-        )
-        _create_batch(
-            db,
-            batch_date=date(2025, 11, 30),
-            merchant_id="m1",
-            currency="RUB",
-            total_amount=100,
-            status="PENDING",
-        )
-        _create_batch(
-            db,
-            batch_date=date(2025, 12, 5),
-            merchant_id="m2",
-            currency="USD",
-            total_amount=200,
-            status="PENDING",
-        )
-
-    resp = client.get(
+    resp = admin_client.get(
         "/api/v1/admin/clearing/batches",
         params={
             "merchant_id": "m1",
@@ -119,104 +75,79 @@ def test_listing_with_filters(admin_client: Tuple[TestClient, sessionmaker]):
     )
     assert resp.status_code == 200
     data = resp.json()
-    assert data["total"] == 1
-    assert len(data["items"]) == 1
-    assert data["items"][0]["merchant_id"] == "m1"
-    assert data["items"][0]["status"] == "PENDING"
+    assert len(data) == 1
+    assert data[0]["merchant_id"] == "m1"
+    assert data[0]["status"] == "PENDING"
+    assert data[0]["date_from"] == "2025-12-04"
+    assert data[0]["date_to"] == "2025-12-04"
 
 
-def test_pagination(admin_client: Tuple[TestClient, sessionmaker]):
-    client, SessionLocal = admin_client
+def test_pagination(admin_client: TestClient, session: Session):
+    for i in range(3):
+        _create_batch(
+            session,
+            date_from=date(2025, 12, 4) + timedelta(days=i),
+            date_to=date(2025, 12, 4) + timedelta(days=i),
+            merchant_id="m1",
+            total_amount=100 + i,
+            status="PENDING",
+            operations_count=1,
+            created_at=datetime(2025, 12, 4, 12, 0, i),
+        )
 
-    with SessionLocal() as db:
-        for i in range(3):
-            _create_batch(
-                db,
-                batch_date=date(2025, 12, 4) + timedelta(days=i),
-                merchant_id="m1",
-                currency="RUB",
-                total_amount=100 + i,
-                status="PENDING",
-                created_at=datetime(2025, 12, 4, 12, 0, i),
-            )
-
-    resp = client.get(
+    resp = admin_client.get(
         "/api/v1/admin/clearing/batches",
         params={"limit": 1, "offset": 1},
     )
     assert resp.status_code == 200
     data = resp.json()
-    assert data["total"] == 3
-    assert len(data["items"]) == 1
-    # Ordered by batch_date descending
-    assert data["items"][0]["batch_date"] == "2025-12-05"
+    assert len(data) == 1
+    assert data[0]["date_from"] == "2025-12-05"
+    assert data[0]["date_to"] == "2025-12-05"
 
 
-def test_details_endpoint(admin_client: Tuple[TestClient, sessionmaker]):
-    client, SessionLocal = admin_client
+def test_details_endpoint(admin_client: TestClient, session: Session):
+    batch = _create_batch(
+        session,
+        date_from=date(2025, 12, 6),
+        date_to=date(2025, 12, 6),
+        merchant_id="m3",
+        total_amount=999,
+        status="PENDING",
+        operations_count=1,
+    )
+    session.add_all(
+        [
+            ClearingBatchOperation(batch_id=batch.id, operation_id="op-1", amount=999),
+        ]
+    )
+    session.execute(text("INSERT INTO operations (operation_id) VALUES ('op-1')"))
+    session.commit()
 
-    with SessionLocal() as db:
-        batch = _create_batch(
-            db,
-            batch_date=date(2025, 12, 6),
-            merchant_id="m3",
-            currency="RUB",
-            total_amount=999,
-            status="PENDING",
-            details=[{"id": "s1", "total_amount": 999}],
-        )
-
-    resp = client.get(f"/api/v1/admin/clearing/batches/{batch.id}")
+    resp = admin_client.get(f"/api/v1/admin/clearing/batches/{batch.id}")
     assert resp.status_code == 200
     payload = resp.json()
     assert payload["id"] == batch.id
-    assert payload["details"] == [{"id": "s1", "total_amount": 999}]
+    assert payload["date_from"] == "2025-12-06"
+    assert payload["date_to"] == "2025-12-06"
+    assert payload["operations"][0]["operation_id"] == "op-1"
 
 
-def test_run_clearing_idempotent(admin_client: Tuple[TestClient, sessionmaker]):
-    client, SessionLocal = admin_client
-    target_date = date(2024, 1, 2)
+def test_mark_sent_and_confirmed(admin_client: TestClient, session: Session):
+    batch = _create_batch(
+        session,
+        date_from=date(2025, 12, 7),
+        date_to=date(2025, 12, 7),
+        merchant_id="m4",
+        total_amount=1500,
+        status="PENDING",
+        operations_count=2,
+    )
 
-    with SessionLocal() as db:
-        period = _create_period(db, target_date)
-        db.add_all(
-            [
-                BillingSummary(
-                    id="s1",
-                    billing_date=target_date,
-                    billing_period_id=period.id,
-                    client_id="c1",
-                    merchant_id="m1",
-                    product_type=ProductType.AI92,
-                    currency="RUB",
-                    total_amount=500,
-                    total_captured_amount=500,
-                    operations_count=1,
-                    commission_amount=5,
-                ),
-                BillingSummary(
-                    id="s2",
-                    billing_date=target_date,
-                    billing_period_id=period.id,
-                    client_id="c2",
-                    merchant_id="m1",
-                    product_type=ProductType.AI95,
-                    currency="RUB",
-                    total_amount=700,
-                    total_captured_amount=700,
-                    operations_count=1,
-                    commission_amount=7,
-                ),
-            ]
-        )
-        db.commit()
+    mark_sent = admin_client.post(f"/api/v1/admin/clearing/batches/{batch.id}/mark-sent")
+    assert mark_sent.status_code == 200
+    assert mark_sent.json()["status"] == "SENT"
 
-    resp = client.post("/api/v1/admin/clearing/run", params={"clearing_date": target_date.isoformat()})
-    assert resp.status_code == 200
-    data = resp.json()
-    assert data["total"] == 1
-    assert data["items"][0]["total_amount"] == 1200
-
-    resp_repeat = client.post("/api/v1/admin/clearing/run", params={"clearing_date": target_date.isoformat()})
-    assert resp_repeat.status_code == 200
-    assert resp_repeat.json()["total"] == 1
+    mark_confirmed = admin_client.post(f"/api/v1/admin/clearing/batches/{batch.id}/mark-confirmed")
+    assert mark_confirmed.status_code == 200
+    assert mark_confirmed.json()["status"] == "CONFIRMED"

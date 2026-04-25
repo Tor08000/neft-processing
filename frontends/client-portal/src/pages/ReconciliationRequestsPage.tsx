@@ -1,6 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { createReconciliationRequest, downloadReconciliationResult, fetchReconciliationRequests } from "../api/reconciliation";
 import { useAuth } from "../auth/AuthContext";
+import { Table, type Column } from "../components/common/Table";
+import { AppEmptyState, AppErrorState } from "../components/states";
 import type { ReconciliationRequest } from "../types/reconciliation";
 import { CopyButton } from "../components/CopyButton";
 import { formatDate } from "../utils/format";
@@ -12,7 +14,8 @@ export function ReconciliationRequestsPage() {
   const { user } = useAuth();
   const [items, setItems] = useState<ReconciliationRequest[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [form, setForm] = useState({ date_from: "", date_to: "", note: "" });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -22,19 +25,18 @@ export function ReconciliationRequestsPage() {
     return roles.some((role) => ACTION_ROLES.includes(role));
   }, [user?.roles]);
 
-  const loadRequests = () => {
+  const loadRequests = useCallback(() => {
     setIsLoading(true);
-    setError(null);
+    setLoadError(null);
     fetchReconciliationRequests(user)
       .then((data) => setItems(data.items ?? []))
-      .catch((err: Error) => setError(err.message))
+      .catch((err: Error) => setLoadError(err.message))
       .finally(() => setIsLoading(false));
-  };
+  }, [user]);
 
   useEffect(() => {
     loadRequests();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user]);
+  }, [loadRequests]);
 
   const existingForPeriod = useMemo(() => {
     if (!form.date_from || !form.date_to) return null;
@@ -42,14 +44,24 @@ export function ReconciliationRequestsPage() {
       (item) =>
         item.date_from === form.date_from &&
         item.date_to === form.date_to &&
-        ["REQUESTED", "IN_PROGRESS", "GENERATED", "SENT"].includes(item.status),
+      ["REQUESTED", "IN_PROGRESS", "GENERATED", "SENT"].includes(item.status),
     );
   }, [form.date_from, form.date_to, items]);
+  const invalidPeriod = useMemo(
+    () => Boolean(form.date_from && form.date_to && form.date_from > form.date_to),
+    [form.date_from, form.date_to],
+  );
 
   const handleSubmit = async (evt: React.FormEvent<HTMLFormElement>) => {
     evt.preventDefault();
+    setActionError(null);
+    setNotice(null);
     if (!form.date_from || !form.date_to) {
-      setError("Укажите период");
+      setActionError("Укажите период");
+      return;
+    }
+    if (invalidPeriod) {
+      setActionError("Дата окончания должна быть не раньше даты начала.");
       return;
     }
     if (existingForPeriod) {
@@ -57,8 +69,6 @@ export function ReconciliationRequestsPage() {
       return;
     }
     setIsSubmitting(true);
-    setError(null);
-    setNotice(null);
     try {
       const created = await createReconciliationRequest(user, {
         date_from: form.date_from,
@@ -72,8 +82,9 @@ export function ReconciliationRequestsPage() {
         return [created, ...prev];
       });
       setForm({ date_from: "", date_to: "", note: "" });
+      setNotice("Запрос создан. Следите за статусом в истории ниже.");
     } catch (err) {
-      setError((err as Error).message);
+      setActionError((err as Error).message);
     } finally {
       setIsSubmitting(false);
     }
@@ -82,10 +93,80 @@ export function ReconciliationRequestsPage() {
   const handleDownload = async (item: ReconciliationRequest) => {
     try {
       await downloadReconciliationResult(item.id, user);
+      setActionError(null);
     } catch (err) {
-      setError((err as Error).message);
+      setActionError((err as Error).message);
     }
   };
+
+  const columns: Column<ReconciliationRequest>[] = [
+    {
+      key: "id",
+      title: "ID",
+      render: (item) => (
+        <div className="stack-inline">
+          <span className="muted small">{item.id.slice(0, 8)}</span>
+          <CopyButton value={item.id} />
+        </div>
+      ),
+    },
+    {
+      key: "period",
+      title: "Период",
+      render: (item) => (
+        <>
+          {formatDate(item.date_from)} — {formatDate(item.date_to)}
+        </>
+      ),
+    },
+    {
+      key: "status",
+      title: "Статус",
+      render: (item) => (
+        <span className={`pill ${getReconciliationStatusTone(item.status)}`}>
+          {getReconciliationStatusLabel(item.status)}
+        </span>
+      ),
+    },
+    {
+      key: "note",
+      title: "Комментарий",
+      render: (item) => item.note_client || "—",
+    },
+    {
+      key: "hash",
+      title: "SHA256",
+      render: (item) =>
+        item.result_hash_sha256 ? (
+          <div className="stack-inline">
+            <span className="muted small">{item.result_hash_sha256.slice(0, 10)}…</span>
+            <CopyButton value={item.result_hash_sha256} />
+          </div>
+        ) : (
+          <span className="muted">—</span>
+        ),
+    },
+    {
+      key: "created",
+      title: "Создан",
+      render: (item) => (item.requested_at ? formatDate(item.requested_at) : "—"),
+    },
+    {
+      key: "file",
+      title: "Файл",
+      render: (item) => {
+        const hasResult = Boolean(item.result_object_key);
+        const canDownload = hasResult && ["GENERATED", "SENT", "ACKNOWLEDGED"].includes(item.status);
+        return canDownload ? (
+          <button type="button" className="link-button" onClick={() => void handleDownload(item)}>
+            Скачать
+          </button>
+        ) : (
+          <span className="muted">—</span>
+        );
+      },
+    },
+  ];
 
   return (
     <div className="card">
@@ -96,9 +177,9 @@ export function ReconciliationRequestsPage() {
         </div>
       </div>
 
-      {error ? (
+      {actionError ? (
         <div className="card error" role="alert">
-          {error}
+          {actionError}
         </div>
       ) : null}
       {notice ? (
@@ -109,124 +190,105 @@ export function ReconciliationRequestsPage() {
 
       <div className="card__section">
         <h3>Новый запрос</h3>
-        <form className="form-grid" onSubmit={handleSubmit}>
-          <label>
-            Период с
-            <input
-              type="date"
-              value={form.date_from}
-              onChange={(evt) => setForm((prev) => ({ ...prev, date_from: evt.target.value }))}
-              disabled={!canAct || isSubmitting}
-            />
-          </label>
-          <label>
-            Период по
-            <input
-              type="date"
-              value={form.date_to}
-              onChange={(evt) => setForm((prev) => ({ ...prev, date_to: evt.target.value }))}
-              disabled={!canAct || isSubmitting}
-            />
-          </label>
-          <label className="form-grid__full">
-            Комментарий
-            <textarea
-              value={form.note}
-              onChange={(evt) => setForm((prev) => ({ ...prev, note: evt.target.value }))}
-              placeholder="Например: по всем операциям за месяц"
-              rows={3}
-              disabled={!canAct || isSubmitting}
-            />
-          </label>
-          <div className="form-grid__actions">
-            <button type="submit" disabled={!canAct || isSubmitting}>
-              {existingForPeriod
-                ? `Запрос уже создан (${getReconciliationStatusLabel(existingForPeriod.status)})`
-                : isSubmitting
-                  ? "Отправляем..."
-                  : "Отправить запрос"}
-            </button>
-            {!canAct ? <span className="muted small">Доступно только администраторам клиента.</span> : null}
-          </div>
-        </form>
+        {!canAct ? (
+          <AppEmptyState
+            title="Создание запроса недоступно"
+            description="Новый акт сверки может запросить владелец, администратор или бухгалтер клиента."
+          />
+        ) : (
+          <>
+            {actionError ? <AppErrorState message={actionError} variant="compact" /> : null}
+            {notice ? (
+              <div className="card" role="status">
+                {notice}
+              </div>
+            ) : null}
+            <form className="form-grid" onSubmit={handleSubmit}>
+              <label>
+                Период с
+                <input
+                  type="date"
+                  value={form.date_from}
+                  onChange={(evt) => setForm((prev) => ({ ...prev, date_from: evt.target.value }))}
+                  disabled={isSubmitting}
+                />
+              </label>
+              <label>
+                Период по
+                <input
+                  type="date"
+                  value={form.date_to}
+                  onChange={(evt) => setForm((prev) => ({ ...prev, date_to: evt.target.value }))}
+                  disabled={isSubmitting}
+                />
+              </label>
+              <label className="form-grid__full">
+                Комментарий
+                <textarea
+                  value={form.note}
+                  onChange={(evt) => setForm((prev) => ({ ...prev, note: evt.target.value }))}
+                  placeholder="Например: по всем операциям за месяц"
+                  rows={3}
+                  disabled={isSubmitting}
+                />
+              </label>
+              <div className="form-grid__actions">
+                <button type="submit" disabled={isSubmitting || invalidPeriod || Boolean(existingForPeriod)}>
+                  {existingForPeriod
+                    ? `Запрос уже создан (${getReconciliationStatusLabel(existingForPeriod.status)})`
+                    : isSubmitting
+                      ? "Отправляем..."
+                      : "Отправить запрос"}
+                </button>
+                {invalidPeriod ? (
+                  <span className="muted small">Проверьте период: дата окончания не должна быть раньше даты начала.</span>
+                ) : existingForPeriod ? (
+                  <span className="muted small">
+                    За этот период уже есть активный запрос: {getReconciliationStatusLabel(existingForPeriod.status)}.
+                  </span>
+                ) : (
+                  <span className="muted small">История ниже покажет статус и готовый файл для скачивания.</span>
+                )}
+              </div>
+            </form>
+          </>
+        )}
       </div>
 
       <div className="card__section">
         <h3>История запросов</h3>
-        {isLoading ? (
-          <div className="skeleton-stack">
-            <div className="skeleton-line" />
-            <div className="skeleton-line" />
-            <div className="skeleton-line" />
-          </div>
-        ) : items.length === 0 ? (
-          <div className="empty-state">
-            <p className="muted">Запросов пока нет.</p>
-            <p className="muted small">Запросите акт сверки, чтобы получить официальный документ.</p>
-            <button type="button" className="ghost" onClick={loadRequests}>
-              Обновить
-            </button>
-          </div>
-        ) : (
-          <table className="table">
-            <thead>
-              <tr>
-                <th>ID</th>
-                <th>Период</th>
-                <th>Статус</th>
-                <th>Комментарий</th>
-                <th>SHA256</th>
-                <th>Создан</th>
-                <th>Файл</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((item) => {
-                const hasResult = Boolean(item.result_object_key);
-                const canDownload = hasResult && ["GENERATED", "SENT", "ACKNOWLEDGED"].includes(item.status);
-                return (
-                  <tr key={item.id}>
-                    <td>
-                      <div className="stack-inline">
-                        <span className="muted small">{item.id.slice(0, 8)}</span>
-                        <CopyButton value={item.id} />
-                      </div>
-                    </td>
-                    <td>
-                      {formatDate(item.date_from)} — {formatDate(item.date_to)}
-                    </td>
-                    <td>
-                      <span className={`pill ${getReconciliationStatusTone(item.status)}`}>
-                        {getReconciliationStatusLabel(item.status)}
-                      </span>
-                    </td>
-                    <td>{item.note_client || "—"}</td>
-                    <td>
-                      {item.result_hash_sha256 ? (
-                        <div className="stack-inline">
-                          <span className="muted small">{item.result_hash_sha256.slice(0, 10)}…</span>
-                          <CopyButton value={item.result_hash_sha256} />
-                        </div>
-                      ) : (
-                        <span className="muted">—</span>
-                      )}
-                    </td>
-                    <td>{item.requested_at ? formatDate(item.requested_at) : "—"}</td>
-                    <td>
-                      {canDownload ? (
-                        <button type="button" className="link-button" onClick={() => handleDownload(item)}>
-                          Скачать
-                        </button>
-                      ) : (
-                        <span className="muted">—</span>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        )}
+        <Table
+          columns={columns}
+          data={items}
+          loading={isLoading}
+          rowKey={(item) => item.id}
+          toolbar={
+            <div className="table-toolbar">
+              <div className="toolbar-actions">
+                <button type="button" className="button secondary" onClick={loadRequests} disabled={isLoading}>
+                  Обновить
+                </button>
+              </div>
+            </div>
+          }
+          errorState={
+            loadError
+              ? {
+                  title: "Не удалось загрузить историю сверки",
+                  description: loadError,
+                  actionLabel: "Повторить",
+                  actionOnClick: loadRequests,
+                }
+              : undefined
+          }
+          emptyState={{
+            title: "Запросов пока нет",
+            description: "Запросите акт сверки, чтобы получить официальный документ.",
+            actionLabel: "Обновить",
+            actionOnClick: loadRequests,
+          }}
+          footer={loadError ? null : <div className="table-footer__content muted">Запросов: {items.length}</div>}
+        />
       </div>
     </div>
   );

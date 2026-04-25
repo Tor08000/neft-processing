@@ -24,7 +24,9 @@ from app.schemas import (
     VerifyRequest,
     VerifyResponse,
 )
-from app.sign.registry import ProviderRegistry, get_registry
+from app.sign.providers.base import SignProviderFailure
+from app.sign.providers.provider_x import has_real_provider_x_credentials
+from app.sign.registry import ProviderRegistry, get_registry, refresh_default_registry
 from app.settings import get_settings
 from app.storage import S3Storage
 from app.templates import TemplateRegistry
@@ -82,17 +84,89 @@ DOCUMENT_SERVICE_VERIFY_TOTAL = Counter(
 DOCUMENT_SERVICE_UP.set(1)
 
 
+def _provider_mode(value: str | None, default: str = "production") -> str:
+    mode = (value or default).strip().lower()
+    if mode in {"prod", "real"}:
+        return "production"
+    return mode or default
+
+
+def _esign_provider_health() -> list[dict[str, object]]:
+    sign_settings = get_settings()
+    mode = _provider_mode(sign_settings.provider_x_mode)
+    base_url_source = sign_settings.provider_x_sandbox_base_url if mode == "sandbox" else sign_settings.provider_x_base_url
+    configured = bool((base_url_source or "").strip()) and has_real_provider_x_credentials(
+        sign_settings.provider_x_api_key,
+        sign_settings.provider_x_api_secret,
+    )
+    unsupported = mode not in {"mock", "stub", "sandbox", "production", "degraded", "disabled"}
+    if unsupported:
+        status = "UNSUPPORTED"
+        last_error_code = "esign_provider_unsupported"
+    elif mode == "disabled":
+        status = "DISABLED"
+        last_error_code = None
+    elif mode == "degraded":
+        status = "DEGRADED"
+        last_error_code = "esign_provider_degraded"
+    elif mode in {"mock", "stub"}:
+        status = "CONFIGURED"
+        last_error_code = None
+    else:
+        status = "HEALTHY" if configured else "DEGRADED"
+        last_error_code = None if configured else "esign_provider_not_configured"
+    return [
+        {
+            "service": SERVICE_NAME,
+            "provider": "esign_provider",
+            "mode": mode,
+            "status": status,
+            "configured": configured or mode in {"mock", "stub"},
+            "last_success_at": None,
+            "last_error_code": last_error_code,
+            "message": (
+                "Provider-backed e-sign transport is configured"
+                if status in {"HEALTHY", "CONFIGURED"}
+                else "E-sign requires provider URL and credentials before provider smoke can pass"
+            ),
+        }
+    ]
+
+
+def _provider_error_status(exc: SignProviderFailure) -> int:
+    if exc.category == "timeout":
+        return 504
+    if exc.category == "rate_limited":
+        return 503
+    if exc.category == "degraded":
+        return 503
+    return 502
+
+
+def _provider_error_detail(exc: SignProviderFailure, provider: str) -> dict[str, str]:
+    return {
+        "category": exc.category,
+        "error": exc.code,
+        "message": str(exc),
+        "provider": provider,
+        "mode": _provider_mode(get_settings().provider_x_mode),
+    }
+
+
 
 
 def _enforce_prod_guardrails() -> None:
     app_env = os.getenv("APP_ENV", "prod").strip().lower()
     allow_override = os.getenv("ALLOW_MOCK_PROVIDERS_IN_PROD", "0").strip() == "1"
-    mode = (settings.provider_x_mode or "").strip().lower()
+    sign_settings = get_settings()
+    mode = (sign_settings.provider_x_mode or "").strip().lower()
     if app_env in {"prod", "production"} and mode in {"mock", "stub"} and not allow_override:
         raise RuntimeError(
             "prod guardrail violation: PROVIDER_X_MODE is mock/stub in prod. "
             "Use ALLOW_MOCK_PROVIDERS_IN_PROD=1 only for explicit override."
         )
+
+
 def get_storage() -> S3Storage:
     return S3Storage()
 
@@ -114,6 +188,9 @@ def get_template_registry() -> TemplateRegistry:
 @app.on_event("startup")
 def startup() -> None:
     _enforce_prod_guardrails()
+    refresh_default_registry()
+
+
 @app.middleware("http")
 async def metrics_middleware(request: Request, call_next: Callable[[Request], Response]) -> Response:
     try:
@@ -136,7 +213,17 @@ async def metrics_middleware(request: Request, call_next: Callable[[Request], Re
 
 @app.get("/health")
 def health() -> dict:
-    return {"status": "ok", "service": SERVICE_NAME, "version": SERVICE_VERSION}
+    sign_settings = get_settings()
+    external_providers = _esign_provider_health()
+    mode = _provider_mode(sign_settings.provider_x_mode)
+    return {
+        "status": "ok",
+        "service": SERVICE_NAME,
+        "version": SERVICE_VERSION,
+        "provider_modes": {"provider_x": mode, "esign_provider": mode},
+        "external_providers": external_providers,
+        "providers": external_providers,
+    }
 
 
 @app.get("/metrics", include_in_schema=False)
@@ -400,6 +487,13 @@ def sign_document(
     except KeyError as exc:
         DOCUMENT_SERVICE_SIGN_TOTAL.labels(status="invalid_provider").inc()
         raise HTTPException(status_code=422, detail="unknown_provider") from exc
+    except SignProviderFailure as exc:
+        DOCUMENT_SERVICE_SIGN_TOTAL.labels(status=exc.category).inc()
+        DOCUMENT_SERVICE_SIGN_ERRORS_TOTAL.labels(code=exc.code).inc()
+        raise HTTPException(
+            status_code=_provider_error_status(exc),
+            detail=_provider_error_detail(exc, payload.provider),
+        ) from exc
     except Exception as exc:  # noqa: BLE001
         DOCUMENT_SERVICE_SIGN_TOTAL.labels(status="fail").inc()
         DOCUMENT_SERVICE_SIGN_ERRORS_TOTAL.labels(code=exc.__class__.__name__).inc()
@@ -473,6 +567,13 @@ def verify_document(
     except KeyError as exc:
         DOCUMENT_SERVICE_VERIFY_TOTAL.labels(status="invalid_provider").inc()
         raise HTTPException(status_code=422, detail="unknown_provider") from exc
+    except SignProviderFailure as exc:
+        DOCUMENT_SERVICE_VERIFY_TOTAL.labels(status=exc.category).inc()
+        DOCUMENT_SERVICE_SIGN_ERRORS_TOTAL.labels(code=exc.code).inc()
+        raise HTTPException(
+            status_code=_provider_error_status(exc),
+            detail=_provider_error_detail(exc, payload.provider),
+        ) from exc
     except Exception as exc:  # noqa: BLE001
         DOCUMENT_SERVICE_VERIFY_TOTAL.labels(status="fail").inc()
         logger.exception(

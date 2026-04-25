@@ -4,9 +4,10 @@ import { fetchClientInvoiceDetails, initPaymentIntakeAttachment, submitPaymentIn
 import { useAuth } from "../auth/AuthContext";
 import type { ClientInvoiceDetails, ClientPaymentIntake } from "../types/portal";
 import { MoneyValue } from "../components/common/MoneyValue";
-import { AppErrorState, AppLoadingState } from "../components/states";
+import { AppEmptyState, AppErrorState, AppLoadingState } from "../components/states";
 import { formatDate, formatDateTime, formatNumberParts } from "../utils/format";
 import { getInvoiceStatusLabel, getInvoiceStatusTone } from "../utils/invoices";
+import { FinanceOverview } from "@shared/brand/components";
 
 const BANK_DETAILS = {
   recipient: "ООО «Нефть»",
@@ -32,31 +33,33 @@ export function ClientInvoiceDetailsPage() {
   const [bankReference, setBankReference] = useState("");
   const [comment, setComment] = useState("");
   const [proofFile, setProofFile] = useState<File | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     if (!id) return;
     setIsLoading(true);
     setError(null);
+    setInvoice(null);
     fetchClientInvoiceDetails(user, id)
       .then((data) => setInvoice(data))
       .catch((err: Error) => setError(err.message))
       .finally(() => setIsLoading(false));
-  }, [id, user]);
+  }, [id, user, reloadKey]);
 
   if (!id) {
-    return null;
+    return <AppEmptyState title="Счёт не найден" description="Проверьте ссылку и попробуйте снова." />;
   }
 
   if (isLoading) {
-    return <AppLoadingState />;
+    return <AppLoadingState label="Загружаем счёт..." />;
   }
 
   if (error) {
-    return <AppErrorState message={error} />;
+    return <AppErrorState message={error} onRetry={() => setReloadKey((value) => value + 1)} />;
   }
 
   if (!invoice) {
-    return <AppErrorState message="Инвойс не найден" />;
+    return <AppEmptyState title="Счёт не найден" description="Попробуйте вернуться к списку счетов и открыть документ заново." />;
   }
 
   const intakeList = invoice.payment_intakes ?? [];
@@ -172,44 +175,53 @@ export function ClientInvoiceDetailsPage() {
             ) : null}
           </div>
         </div>
-        <div className="stats-grid">
-          <div className="stat">
-            <span className="muted">Статус</span>
-            <strong className={`neft-chip neft-chip-${getInvoiceStatusTone(invoice.status)}`}>
-              {getInvoiceStatusLabel(invoice.status)}
-            </strong>
-          </div>
-          <div className="stat">
-            <span className="muted">Сумма</span>
-            <strong>
-              <MoneyValue amount={invoice.amount_total ?? 0} currency={invoiceCurrency} />
-            </strong>
-          </div>
-          <div className="stat">
-            <span className="muted">Оплачено</span>
-            <strong>
-              <MoneyValue amount={invoice.amount_paid ?? 0} currency={invoiceCurrency} />
-            </strong>
-          </div>
-          <div className="stat">
-            <span className="muted">Остаток</span>
-            <strong>
-              <MoneyValue amount={invoice.amount_due ?? 0} currency={invoiceCurrency} />
-            </strong>
-          </div>
-          <div className="stat">
-            <span className="muted">Срок оплаты</span>
-            <strong>{invoice.due_at ? formatDate(invoice.due_at) : "—"}</strong>
-          </div>
-          <div className="stat">
-            <span className="muted">Дата приостановки</span>
-            <strong>{invoice.suspend_at ? formatDate(invoice.suspend_at) : "—"}</strong>
-          </div>
-          <div className="stat">
-            <span className="muted">Статус подписки</span>
-            <strong>{subscriptionStatusLabel}</strong>
-          </div>
-        </div>
+        <FinanceOverview
+          items={[
+            {
+              id: "status",
+              label: "Статус",
+              value: (
+                <span className={`neft-chip neft-chip-${getInvoiceStatusTone(invoice.status)}`}>
+                  {getInvoiceStatusLabel(invoice.status)}
+                </span>
+              ),
+              tone: invoice.status === "OVERDUE" ? "warning" : "info",
+            },
+            {
+              id: "amount-total",
+              label: "Сумма",
+              value: <MoneyValue amount={invoice.amount_total ?? 0} currency={invoiceCurrency} />,
+              tone: "premium",
+            },
+            {
+              id: "amount-paid",
+              label: "Оплачено",
+              value: <MoneyValue amount={invoice.amount_paid ?? 0} currency={invoiceCurrency} />,
+              tone: "success",
+            },
+            {
+              id: "amount-due",
+              label: "Остаток",
+              value: <MoneyValue amount={invoice.amount_due ?? 0} currency={invoiceCurrency} />,
+              tone: invoice.amount_due ? "warning" : "default",
+            },
+            {
+              id: "due-at",
+              label: "Срок оплаты",
+              value: invoice.due_at ? formatDate(invoice.due_at) : "—",
+            },
+            {
+              id: "suspend-at",
+              label: "Дата приостановки",
+              value: invoice.suspend_at ? formatDate(invoice.suspend_at) : "—",
+            },
+            {
+              id: "subscription-status",
+              label: "Статус подписки",
+              value: subscriptionStatusLabel,
+            },
+          ]}
+        />
       </div>
 
       <section className="card">
@@ -297,33 +309,42 @@ export function ClientInvoiceDetailsPage() {
           {submitSuccess ? <div className="success form-grid__full" style={{ padding: 12 }}>{submitSuccess}</div> : null}
         </form>
 
-        {intakeList.length ? (
-          <div style={{ marginTop: 16 }}>
-            <h4>Отправленные подтверждения</h4>
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Дата</th>
-                  <th>Сумма</th>
-                  <th>Статус</th>
-                  <th>Комментарий</th>
-                </tr>
-              </thead>
-              <tbody>
-                {intakeList.map((intake) => (
-                  <tr key={intake.id}>
-                    <td>{formatDateTime(intake.created_at)}</td>
-                    <td>
-                      <MoneyValue amount={intake.amount} currency={intake.currency ?? invoiceCurrency} />
-                    </td>
-                    <td>{renderIntakeStatus(intake)}</td>
-                    <td>{intake.review_note ?? intake.comment ?? "—"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : null}
+        <div style={{ marginTop: 16 }}>
+          <h4>Отправленные подтверждения</h4>
+          {intakeList.length ? (
+            <div className="table-shell">
+              <div className="table-scroll">
+                <table className="table neft-table">
+                  <thead>
+                    <tr>
+                      <th>Дата</th>
+                      <th>Сумма</th>
+                      <th>Статус</th>
+                      <th>Комментарий</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {intakeList.map((intake) => (
+                      <tr key={intake.id}>
+                        <td>{formatDateTime(intake.created_at)}</td>
+                        <td>
+                          <MoneyValue amount={intake.amount} currency={intake.currency ?? invoiceCurrency} />
+                        </td>
+                        <td>{renderIntakeStatus(intake)}</td>
+                        <td>{intake.review_note ?? intake.comment ?? "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : (
+            <AppEmptyState
+              title="Подтверждений оплаты пока нет"
+              description="После отправки платёжного подтверждения здесь появится история проверки."
+            />
+          )}
+        </div>
       </section>
 
       <section className="card">
@@ -331,32 +352,36 @@ export function ClientInvoiceDetailsPage() {
           <h3>Платежи</h3>
         </div>
         {payments.length ? (
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Дата</th>
-                <th>Сумма</th>
-                <th>Статус</th>
-                <th>Провайдер</th>
-                <th>Ссылка</th>
-              </tr>
-            </thead>
-            <tbody>
-              {payments.map((payment) => (
-                <tr key={`${payment.external_ref}-${payment.created_at}`}>
-                  <td>{formatDateTime(payment.created_at)}</td>
-                  <td>
-                    <MoneyValue amount={payment.amount} currency={invoiceCurrency} />
-                  </td>
-                  <td>{payment.status}</td>
-                  <td>{payment.provider ?? "—"}</td>
-                  <td>{payment.external_ref ?? "—"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <div className="table-shell">
+            <div className="table-scroll">
+              <table className="table neft-table">
+                <thead>
+                  <tr>
+                    <th>Дата</th>
+                    <th>Сумма</th>
+                    <th>Статус</th>
+                    <th>Провайдер</th>
+                    <th>Ссылка</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {payments.map((payment) => (
+                    <tr key={`${payment.external_ref}-${payment.created_at}`}>
+                      <td>{formatDateTime(payment.created_at)}</td>
+                      <td>
+                        <MoneyValue amount={payment.amount} currency={invoiceCurrency} />
+                      </td>
+                      <td>{payment.status}</td>
+                      <td>{payment.provider ?? "—"}</td>
+                      <td>{payment.external_ref ?? "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
         ) : (
-          <p className="muted">Платежей пока нет.</p>
+          <AppEmptyState title="Платежей пока нет" description="Оплаченные операции появятся здесь после подтверждения провайдером или банковской сверки." />
         )}
       </section>
 
@@ -365,43 +390,47 @@ export function ClientInvoiceDetailsPage() {
           <h3>Начисления за использование</h3>
         </div>
         {usageLines.length ? (
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Описание</th>
-                <th>Количество</th>
-                <th>Цена за единицу</th>
-                <th>Сумма</th>
-              </tr>
-            </thead>
-            <tbody>
-              {usageLines.map((line, index) => (
-                <tr key={`${line.ref_code ?? "usage"}-${index}`}>
-                  <td>{line.description ?? line.ref_code ?? "Usage"}</td>
-                  <td>
-                    {formatQuantity(line.quantity ?? undefined)}
-                    {line.unit ? ` ${line.unit}` : ""}
-                  </td>
-                  <td>
-                    {line.unit_price !== null && line.unit_price !== undefined ? (
-                      <MoneyValue amount={line.unit_price} currency={invoiceCurrency} />
-                    ) : (
-                      "—"
-                    )}
-                  </td>
-                  <td>
-                    {line.amount !== null && line.amount !== undefined ? (
-                      <MoneyValue amount={line.amount} currency={invoiceCurrency} />
-                    ) : (
-                      "—"
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <div className="table-shell">
+            <div className="table-scroll">
+              <table className="table neft-table">
+                <thead>
+                  <tr>
+                    <th>Описание</th>
+                    <th>Количество</th>
+                    <th>Цена за единицу</th>
+                    <th>Сумма</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {usageLines.map((line, index) => (
+                    <tr key={`${line.ref_code ?? "usage"}-${index}`}>
+                      <td>{line.description ?? line.ref_code ?? "Usage"}</td>
+                      <td>
+                        {formatQuantity(line.quantity ?? undefined)}
+                        {line.unit ? ` ${line.unit}` : ""}
+                      </td>
+                      <td>
+                        {line.unit_price !== null && line.unit_price !== undefined ? (
+                          <MoneyValue amount={line.unit_price} currency={invoiceCurrency} />
+                        ) : (
+                          "—"
+                        )}
+                      </td>
+                      <td>
+                        {line.amount !== null && line.amount !== undefined ? (
+                          <MoneyValue amount={line.amount} currency={invoiceCurrency} />
+                        ) : (
+                          "—"
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
         ) : (
-          <p className="muted">Начислений за использование пока нет.</p>
+          <AppEmptyState title="Начислений за использование пока нет" description="Usage-строки появятся здесь после расчёта потребления за период." />
         )}
       </section>
 
@@ -410,30 +439,34 @@ export function ClientInvoiceDetailsPage() {
           <h3>Возвраты</h3>
         </div>
         {refunds.length ? (
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Дата</th>
-                <th>Сумма</th>
-                <th>Статус</th>
-                <th>Причина</th>
-              </tr>
-            </thead>
-            <tbody>
-              {refunds.map((refund) => (
-                <tr key={`${refund.external_ref}-${refund.created_at}`}>
-                  <td>{formatDateTime(refund.created_at)}</td>
-                  <td>
-                    <MoneyValue amount={refund.amount} currency={invoiceCurrency} />
-                  </td>
-                  <td>{refund.status}</td>
-                  <td>{refund.reason ?? "—"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <div className="table-shell">
+            <div className="table-scroll">
+              <table className="table neft-table">
+                <thead>
+                  <tr>
+                    <th>Дата</th>
+                    <th>Сумма</th>
+                    <th>Статус</th>
+                    <th>Причина</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {refunds.map((refund) => (
+                    <tr key={`${refund.external_ref}-${refund.created_at}`}>
+                      <td>{formatDateTime(refund.created_at)}</td>
+                      <td>
+                        <MoneyValue amount={refund.amount} currency={invoiceCurrency} />
+                      </td>
+                      <td>{refund.status}</td>
+                      <td>{refund.reason ?? "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
         ) : (
-          <p className="muted">Возвратов пока нет.</p>
+          <AppEmptyState title="Возвратов пока нет" description="Если по счёту появятся возвраты или корректировки, они отобразятся здесь." />
         )}
       </section>
     </div>

@@ -4,10 +4,18 @@ import io
 import uuid
 from datetime import datetime, timedelta, timezone
 
+import app.main as app_main
+import pytest
 from fastapi.testclient import TestClient
 from jose import jwt
 
+from app.db import Base, engine
+from app.domains.client.onboarding.documents.models import ClientDocument
+from app.domains.client.onboarding.models import ClientOnboardingApplication
 from app.main import app
+from app.models.client import Client
+from app.models.client_user_roles import ClientUserRole
+from app.models.client_users import ClientUser
 
 
 class _InMemoryStorage:
@@ -21,6 +29,23 @@ class _InMemoryStorage:
 
     def get_object_stream(self, bucket: str, key: str):
         return io.BytesIO(self.data[(bucket, key)])
+
+
+@pytest.fixture(autouse=True)
+def clean_db(monkeypatch: pytest.MonkeyPatch):
+    tables = [
+        Client.__table__,
+        ClientUser.__table__,
+        ClientUserRole.__table__,
+        ClientOnboardingApplication.__table__,
+        ClientDocument.__table__,
+    ]
+    monkeypatch.setattr(app_main.settings, "APP_ENV", "dev", raising=False)
+    monkeypatch.setattr("app.services.portal_me.DB_SCHEMA", None, raising=False)
+    Base.metadata.drop_all(bind=engine, tables=tables)
+    Base.metadata.create_all(bind=engine, tables=tables)
+    yield
+    Base.metadata.drop_all(bind=engine, tables=tables)
 
 
 def _email() -> str:
@@ -91,6 +116,15 @@ def _setup_env(monkeypatch, secret: str = "review-secret") -> None:
     monkeypatch.setenv("CLIENT_PUBLIC_KEY", secret)
     monkeypatch.setenv("CLIENT_TOKEN_SECRET", secret)
     monkeypatch.setenv("CLIENT_TOKEN_ALG", "HS256")
+    monkeypatch.setenv("NEFT_CLIENT_ISSUER", "neft-auth")
+    monkeypatch.setenv("NEFT_CLIENT_AUDIENCE", "neft-client")
+    monkeypatch.setattr(app_main.settings, "APP_ENV", "dev", raising=False)
+    monkeypatch.setattr("app.services.admin_auth.ALLOWED_ALGS", ["HS256"], raising=False)
+    monkeypatch.setattr("app.services.admin_auth.EXPECTED_ISSUER", "neft-auth", raising=False)
+    monkeypatch.setattr("app.services.admin_auth.EXPECTED_AUDIENCE", "neft-admin", raising=False)
+    monkeypatch.setattr("app.services.client_auth.ALLOWED_ALGS", ["HS256"], raising=False)
+    monkeypatch.setattr("app.services.client_auth.EXPECTED_ISSUER", "neft-auth", raising=False)
+    monkeypatch.setattr("app.services.client_auth.EXPECTED_AUDIENCE", "neft-client", raising=False)
     monkeypatch.setattr(
         "app.routers.client_onboarding_documents_v1.OnboardingDocumentsStorage.from_env",
         lambda: _InMemoryStorage(),
@@ -148,6 +182,56 @@ def test_onboarding_review_happy_path(monkeypatch) -> None:
 
         me = api_client.get(f"{base}/client/v1/me", headers={"Authorization": f"Bearer {client_token}"})
         assert me.status_code == 200
+
+
+def test_onboarding_review_portal_me_handoff(monkeypatch) -> None:
+    secret = "review-secret"
+    _setup_env(monkeypatch, secret)
+    monkeypatch.setattr("app.services.portal_me.settings.LEGAL_GATE_ENABLED", False, raising=False)
+    admin_token = _jwt(secret, roles=["ADMIN"], aud="neft-admin", iss="neft-auth", sub="admin-1")
+
+    with TestClient(app) as api_client:
+        base = _base_prefix(api_client)
+        app_id, onboarding_token, doc_ids = _create_submit_with_docs(api_client, base)
+
+        started = api_client.post(
+            f"{base}/admin/v1/onboarding/applications/{app_id}/start-review",
+            headers={"Authorization": f"Bearer {admin_token}"},
+        )
+        assert started.status_code == 200
+
+        for doc_id in doc_ids:
+            verify = api_client.post(
+                f"{base}/admin/v1/onboarding/documents/{doc_id}/verify",
+                headers={"Authorization": f"Bearer {admin_token}"},
+                json={"comment": "ok"},
+            )
+            assert verify.status_code == 200
+
+        approved = api_client.post(
+            f"{base}/admin/v1/onboarding/applications/{app_id}/approve",
+            headers={"Authorization": f"Bearer {admin_token}"},
+            json={"comment": "approved"},
+        )
+        assert approved.status_code == 200
+
+        token_issue = api_client.post(
+            f"{base}/client/v1/onboarding/my-application/issue-client-token",
+            headers={"Authorization": f"Bearer {onboarding_token}"},
+        )
+        assert token_issue.status_code == 200
+        client_token = token_issue.json()["access_token"]
+
+        portal_me = api_client.get(f"{base}/portal/me", headers={"Authorization": f"Bearer {client_token}"})
+        assert portal_me.status_code == 200
+
+    payload = portal_me.json()
+    assert payload["org"] is not None
+    assert payload["org"]["name"] == "ACME LLC"
+    assert payload["org"]["inn"] == "7701234567"
+    assert payload["org"]["org_type"] == "LEGAL"
+    assert payload["access_state"] == "NEEDS_PLAN"
+    assert payload["access_reason"] == "subscription_missing"
 
 
 def test_onboarding_review_reject_and_policy(monkeypatch) -> None:
@@ -208,7 +292,10 @@ def test_permissions_and_admin_download(monkeypatch) -> None:
             f"{base}/admin/v1/onboarding/applications",
             headers={"Authorization": f"Bearer {client_like_token}"},
         )
-        assert forbidden.status_code == 403
+        assert forbidden.status_code == 401
+        body = forbidden.json()
+        assert body["error"] == "admin_unauthorized"
+        assert body["message"]["reason_code"] == "TOKEN_WRONG_PORTAL"
 
         downloaded = api_client.get(
             f"{base}/admin/v1/onboarding/documents/{doc_ids[0]}/download",

@@ -1,12 +1,21 @@
 from __future__ import annotations
 
+from datetime import date
+
+import pytest
+from fastapi import Depends
 from fastapi.testclient import TestClient
+from sqlalchemy import Column, MetaData, String, Table, create_engine, text
+from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.pool import StaticPool
 
 from app.api.dependencies.client import client_portal_user
+from app.db import Base, get_db
+from app.main import app
 from app.domains.documents.models import Document, DocumentDirection, DocumentFile, DocumentSignature, DocumentStatus, DocumentTimelineEvent
 from app.domains.documents.repo import DocumentsRepository
 from app.domains.documents.service import DocumentsService
-from app.main import app
+from app.routers.client_documents_v1 import _service
 
 
 class _StorageStub:
@@ -26,43 +35,136 @@ class _StorageMissing:
         raise FileNotFoundError(key)
 
 
-def _cleanup(db):
-    db.query(DocumentTimelineEvent).delete()
-    db.query(DocumentSignature).delete()
-    db.query(DocumentFile).delete()
-    db.query(Document).delete()
-    db.commit()
+def _clone_tables_without_duplicate_indexes(*tables):
+    metadata = MetaData()
+    cloned_tables = []
+    for table in tables:
+        cloned = table.to_metadata(metadata)
+        seen = set()
+        for index in list(cloned.indexes):
+            if index.name in seen:
+                cloned.indexes.remove(index)
+            else:
+                seen.add(index.name)
+        cloned_tables.append(cloned)
+    return cloned_tables
 
 
-def _mk_doc(db, *, client_id: str = "client-a", direction: str = DocumentDirection.INBOUND.value, status: str = DocumentStatus.READY_TO_SIGN.value) -> str:
-    item = Document(id="10000000-0000-0000-0000-000000000001", client_id=client_id, direction=direction, title="doc", status=status)
-    db.add(item)
-    db.commit()
-    return str(item.id)
+@pytest.fixture(autouse=True)
+def _allow_prod_mock_guardrails(monkeypatch):
+    monkeypatch.setenv("ALLOW_MOCK_PROVIDERS_IN_PROD", "1")
 
 
-def _attach_file(db, document_id: str, storage_key: str = "s3://doc.pdf") -> None:
-    db.add(
-        DocumentFile(
-            id="10000000-0000-0000-0000-000000000002",
-            document_id=document_id,
-            storage_key=storage_key,
-            filename="doc.pdf",
-            mime="application/pdf",
-            size=4,
-            sha256="",
-        )
+@pytest.fixture()
+def db_session_factory() -> sessionmaker[Session]:
+    engine = create_engine(
+        "sqlite+pysqlite:///:memory:",
+        future=True,
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
     )
-    db.commit()
+
+    if "users" not in Base.metadata.tables:
+        Table("users", Base.metadata, Column("id", String(64), primary_key=True), extend_existing=True)
+    if "certificates" not in Base.metadata.tables:
+        Table("certificates", Base.metadata, Column("id", String(64), primary_key=True), extend_existing=True)
+
+    for table in _clone_tables_without_duplicate_indexes(
+        Base.metadata.tables["users"],
+        Base.metadata.tables["certificates"],
+        Document.__table__,
+        DocumentFile.__table__,
+        DocumentSignature.__table__,
+        DocumentTimelineEvent.__table__,
+    ):
+        table.create(bind=engine, checkfirst=True)
+
+    testing_session_local = sessionmaker(
+        bind=engine,
+        class_=Session,
+        autoflush=False,
+        autocommit=False,
+        expire_on_commit=False,
+    )
+
+    def override_get_db():
+        db = testing_session_local()
+        try:
+            yield db
+        finally:
+            db.close()
+
+    app.dependency_overrides[get_db] = override_get_db
+    try:
+        yield testing_session_local
+    finally:
+        app.dependency_overrides.clear()
+        engine.dispose()
 
 
-def _override_service(test_db_session, storage):
-    service = DocumentsService(repo=DocumentsRepository(db=test_db_session), storage=storage)
-    app.dependency_overrides.clear()
-    app.dependency_overrides[client_portal_user] = lambda: {"client_id": "client-a", "user_id": "20000000-0000-0000-0000-000000000001"}
-    import app.routers.client_documents_v1 as router_module
+def _cleanup(db_session_factory: sessionmaker[Session]) -> None:
+    with db_session_factory() as db:
+        db.execute(text("INSERT OR IGNORE INTO users (id) VALUES ('20000000-0000-0000-0000-000000000001')"))
+        db.query(DocumentTimelineEvent).delete()
+        db.query(DocumentSignature).delete()
+        db.query(DocumentFile).delete()
+        db.query(Document).delete()
+        db.commit()
 
-    app.dependency_overrides[router_module._service] = lambda: service
+
+def _mk_doc(
+    db_session_factory: sessionmaker[Session],
+    *,
+    client_id: str = "client-a",
+    direction: str = DocumentDirection.INBOUND.value,
+    status: str = DocumentStatus.READY_TO_SIGN.value,
+) -> str:
+    with db_session_factory() as db:
+        item = Document(
+            id="10000000-0000-0000-0000-000000000001",
+            tenant_id=0,
+            client_id=client_id,
+            document_type="ACT",
+            period_from=date(2025, 1, 1),
+            period_to=date(2025, 1, 1),
+            version=1,
+            direction=direction,
+            title="doc",
+            status=status,
+        )
+        db.add(item)
+        db.commit()
+    return "10000000-0000-0000-0000-000000000001"
+
+
+def _attach_file(db_session_factory: sessionmaker[Session], document_id: str, storage_key: str = "s3://doc.pdf") -> None:
+    with db_session_factory() as db:
+        db.add(
+            DocumentFile(
+                id="10000000-0000-0000-0000-000000000002",
+                document_id=document_id,
+                file_type="PDF",
+                bucket="client-documents",
+                object_key=storage_key,
+                storage_key=storage_key,
+                filename="doc.pdf",
+                mime="application/pdf",
+                size=4,
+                size_bytes=4,
+                content_type="application/pdf",
+                sha256="",
+            )
+        )
+        db.commit()
+
+
+def _install_overrides(storage, *, client_id: str = "client-a", user_id: str = "20000000-0000-0000-0000-000000000001") -> None:
+    app.dependency_overrides[client_portal_user] = lambda: {"client_id": client_id, "user_id": user_id}
+
+    def override_service(db: Session = Depends(get_db)) -> DocumentsService:
+        return DocumentsService(repo=DocumentsRepository(db=db), storage=storage)
+
+    app.dependency_overrides[_service] = override_service
 
 
 def _sign(c: TestClient, doc_id: str, token: str):
@@ -73,11 +175,11 @@ def _sign(c: TestClient, doc_id: str, token: str):
     )
 
 
-def test_sign_forbidden_for_other_client(make_jwt, test_db_session):
-    _cleanup(test_db_session)
-    doc_id = _mk_doc(test_db_session, client_id="client-b")
-    _attach_file(test_db_session, doc_id)
-    _override_service(test_db_session, _StorageStub({"s3://doc.pdf": b"pdf"}))
+def test_sign_forbidden_for_other_client(make_jwt, db_session_factory):
+    _cleanup(db_session_factory)
+    doc_id = _mk_doc(db_session_factory, client_id="client-b")
+    _attach_file(db_session_factory, doc_id)
+    _install_overrides(_StorageStub({"s3://doc.pdf": b"pdf"}), client_id="client-a")
     token = make_jwt(roles=("CLIENT_USER",), client_id="client-a")
     try:
         with TestClient(app) as c:
@@ -87,41 +189,43 @@ def test_sign_forbidden_for_other_client(make_jwt, test_db_session):
         app.dependency_overrides.clear()
 
 
-def test_sign_forbidden_for_outbound(make_jwt, test_db_session):
-    _cleanup(test_db_session)
-    doc_id = _mk_doc(test_db_session, direction=DocumentDirection.OUTBOUND.value)
-    _attach_file(test_db_session, doc_id)
-    _override_service(test_db_session, _StorageStub({"s3://doc.pdf": b"pdf"}))
+def test_sign_forbidden_for_outbound(make_jwt, db_session_factory):
+    _cleanup(db_session_factory)
+    doc_id = _mk_doc(db_session_factory, direction=DocumentDirection.OUTBOUND.value)
+    _attach_file(db_session_factory, doc_id)
+    _install_overrides(_StorageStub({"s3://doc.pdf": b"pdf"}))
     token = make_jwt(roles=("CLIENT_USER",), client_id="client-a")
     try:
         with TestClient(app) as c:
             resp = _sign(c, doc_id, token)
         assert resp.status_code == 409
-        assert resp.json()["detail"] == "SIGN_NOT_ALLOWED_FOR_OUTBOUND"
+        body = resp.json()
+        assert body["error"]["type"] == "http_error"
+        assert body["error"]["message"] == "SIGN_NOT_ALLOWED_FOR_OUTBOUND"
     finally:
         app.dependency_overrides.clear()
 
-
-def test_sign_requires_ready_status(make_jwt, test_db_session):
-    _cleanup(test_db_session)
-    doc_id = _mk_doc(test_db_session, status=DocumentStatus.DRAFT.value)
-    _attach_file(test_db_session, doc_id)
-    _override_service(test_db_session, _StorageStub({"s3://doc.pdf": b"pdf"}))
+def test_sign_requires_ready_status(make_jwt, db_session_factory):
+    _cleanup(db_session_factory)
+    doc_id = _mk_doc(db_session_factory, status=DocumentStatus.DRAFT.value)
+    _attach_file(db_session_factory, doc_id)
+    _install_overrides(_StorageStub({"s3://doc.pdf": b"pdf"}))
     token = make_jwt(roles=("CLIENT_USER",), client_id="client-a")
     try:
         with TestClient(app) as c:
             resp = _sign(c, doc_id, token)
         assert resp.status_code == 409
-        assert resp.json()["detail"] == "DOC_NOT_READY_TO_SIGN"
+        body = resp.json()
+        assert body["error"]["type"] == "http_error"
+        assert body["error"]["message"] == "DOC_NOT_READY_TO_SIGN"
     finally:
         app.dependency_overrides.clear()
 
-
-def test_sign_creates_signature_and_updates_doc(make_jwt, test_db_session):
-    _cleanup(test_db_session)
-    doc_id = _mk_doc(test_db_session)
-    _attach_file(test_db_session, doc_id)
-    _override_service(test_db_session, _StorageStub({"s3://doc.pdf": b"pdf"}))
+def test_sign_creates_signature_and_updates_doc(make_jwt, db_session_factory):
+    _cleanup(db_session_factory)
+    doc_id = _mk_doc(db_session_factory)
+    _attach_file(db_session_factory, doc_id)
+    _install_overrides(_StorageStub({"s3://doc.pdf": b"pdf"}))
     token = make_jwt(roles=("CLIENT_USER",), client_id="client-a")
     try:
         with TestClient(app) as c:
@@ -130,26 +234,51 @@ def test_sign_creates_signature_and_updates_doc(make_jwt, test_db_session):
         body = resp.json()
         assert body["status"] == DocumentStatus.SIGNED_CLIENT.value
 
-        sig_count = test_db_session.query(DocumentSignature).filter(DocumentSignature.document_id == doc_id).count()
-        assert sig_count == 1
-        doc = test_db_session.query(Document).filter(Document.id == doc_id).one()
-        assert doc.status == DocumentStatus.SIGNED_CLIENT.value
-        event = (
-            test_db_session.query(DocumentTimelineEvent)
-            .filter(DocumentTimelineEvent.document_id == doc_id)
-            .filter(DocumentTimelineEvent.event_type == "SIGNED_CLIENT")
-            .one_or_none()
-        )
-        assert event is not None
+        with db_session_factory() as db:
+            sig_count = db.query(DocumentSignature).filter(DocumentSignature.document_id == doc_id).count()
+            assert sig_count == 1
+            doc = db.query(Document).filter(Document.id == doc_id).one()
+            assert doc.status == DocumentStatus.SIGNED_CLIENT.value
+            event = (
+                db.query(DocumentTimelineEvent)
+                .filter(DocumentTimelineEvent.document_id == doc_id)
+                .filter(DocumentTimelineEvent.event_type == "SIGNED_CLIENT")
+                .one_or_none()
+            )
+            assert event is not None
     finally:
         app.dependency_overrides.clear()
 
 
-def test_sign_idempotent(make_jwt, test_db_session):
-    _cleanup(test_db_session)
-    doc_id = _mk_doc(test_db_session)
-    _attach_file(test_db_session, doc_id)
-    _override_service(test_db_session, _StorageStub({"s3://doc.pdf": b"pdf"}))
+def test_signed_inbound_detail_exposes_signature_hash_and_file_kind(make_jwt, db_session_factory):
+    _cleanup(db_session_factory)
+    doc_id = _mk_doc(db_session_factory)
+    _attach_file(db_session_factory, doc_id)
+    _install_overrides(_StorageStub({"s3://doc.pdf": b"pdf"}))
+    token = make_jwt(roles=("CLIENT_USER",), client_id="client-a")
+    try:
+        with TestClient(app) as c:
+            signed = _sign(c, doc_id, token)
+            detail = c.get(
+                f"/api/core/client/documents/{doc_id}",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+        assert signed.status_code == 200
+        assert detail.status_code == 200
+        payload = detail.json()
+        assert payload["document_hash_sha256"] == signed.json()["document_hash_sha256"]
+        assert payload["requires_action"] is False
+        assert payload["action_code"] is None
+        assert payload["files"][0]["kind"] == "PDF"
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_sign_idempotent(make_jwt, db_session_factory):
+    _cleanup(db_session_factory)
+    doc_id = _mk_doc(db_session_factory)
+    _attach_file(db_session_factory, doc_id)
+    _install_overrides(_StorageStub({"s3://doc.pdf": b"pdf"}))
     token = make_jwt(roles=("CLIENT_USER",), client_id="client-a")
     try:
         with TestClient(app) as c:
@@ -157,22 +286,25 @@ def test_sign_idempotent(make_jwt, test_db_session):
             second = _sign(c, doc_id, token)
         assert first.status_code == 200
         assert second.status_code == 200
-        sig_count = test_db_session.query(DocumentSignature).filter(DocumentSignature.document_id == doc_id).count()
-        assert sig_count == 1
+        with db_session_factory() as db:
+            sig_count = db.query(DocumentSignature).filter(DocumentSignature.document_id == doc_id).count()
+            assert sig_count == 1
     finally:
         app.dependency_overrides.clear()
 
 
-def test_sign_fails_if_file_missing(make_jwt, test_db_session):
-    _cleanup(test_db_session)
-    doc_id = _mk_doc(test_db_session)
-    _attach_file(test_db_session, doc_id, storage_key="s3://missing.pdf")
-    _override_service(test_db_session, _StorageMissing())
+def test_sign_fails_if_file_missing(make_jwt, db_session_factory):
+    _cleanup(db_session_factory)
+    doc_id = _mk_doc(db_session_factory)
+    _attach_file(db_session_factory, doc_id, storage_key="s3://missing.pdf")
+    _install_overrides(_StorageMissing())
     token = make_jwt(roles=("CLIENT_USER",), client_id="client-a")
     try:
         with TestClient(app) as c:
             resp = _sign(c, doc_id, token)
         assert resp.status_code == 409
-        assert resp.json()["detail"] == "DOC_FILE_MISSING"
+        body = resp.json()
+        assert body["error"]["type"] == "http_error"
+        assert body["error"]["message"] == "DOC_FILE_MISSING"
     finally:
         app.dependency_overrides.clear()

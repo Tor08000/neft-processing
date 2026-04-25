@@ -31,7 +31,7 @@ def resolve_access_state(
     upper_roles = {str(role).upper() for role in org_roles if role}
     subscription_status = _normalize_status(subscription.status) if subscription else None
 
-    if "CLIENT" in upper_roles:
+    if actor_type == "client" and "CLIENT" in upper_roles:
         if subscription_status and subscription_status in SUSPENDED_STATUSES:
             return PortalAccessState.SUSPENDED, "billing_suspended"
         if subscription_status and subscription_status in OVERDUE_STATUSES:
@@ -40,26 +40,25 @@ def resolve_access_state(
     if legal and legal.required_enabled and not legal.accepted:
         return PortalAccessState.LEGAL_PENDING, "legal_not_verified"
 
-    if "CLIENT" in upper_roles:
+    if actor_type == "client" and "CLIENT" in upper_roles:
         if onboarding_profile_complete is False:
             return PortalAccessState.NEEDS_ONBOARDING, "profile_missing"
+        normalized_org_status = _normalize_status(org_status)
+        if not normalized_org_status or normalized_org_status not in {"ACTIVE", "ONBOARDING"}:
+            return PortalAccessState.NEEDS_ONBOARDING, "org_pending"
         if not subscription or not subscription.plan_code:
             return PortalAccessState.NEEDS_PLAN, "subscription_missing"
         if not contract_status:
             return PortalAccessState.NEEDS_CONTRACT, "contract_missing"
-        if _normalize_status(contract_status) not in {"SIGNED", "SIGNED_SIMPLE", "SIGNED_PEP"}:
+        if _normalize_status(contract_status) not in {"SIGNED", "SIGNED_SIMPLE", "SIGNED_PEP", "SIGNED_LEGACY_ACTIVE"}:
             return PortalAccessState.NEEDS_CONTRACT, "contract_not_signed"
-        normalized_org_status = _normalize_status(org_status)
-        if not normalized_org_status or normalized_org_status not in {"ACTIVE", "ONBOARDING"}:
-            return PortalAccessState.NEEDS_ONBOARDING, "org_pending"
     else:
+        if actor_type == "partner" and "PARTNER" in upper_roles:
+            if partner and partner.status and _normalize_status(partner.status) != "ACTIVE":
+                return PortalAccessState.NEEDS_ONBOARDING, "partner_onboarding"
         normalized_org_status = _normalize_status(org_status)
         if not normalized_org_status or normalized_org_status not in {"ACTIVE", "ONBOARDING"}:
             return PortalAccessState.NEEDS_ONBOARDING, "org_pending"
-
-    if "PARTNER" in upper_roles:
-        if partner and partner.status and _normalize_status(partner.status) != "ACTIVE":
-            return PortalAccessState.NEEDS_ONBOARDING, "partner_onboarding"
 
     modules_payload = None
     if isinstance(entitlements_snapshot, dict):
@@ -70,7 +69,7 @@ def resolve_access_state(
         if not enabled_modules:
             return PortalAccessState.MODULE_DISABLED, "module_disabled"
 
-    if entitlements_snapshot is not None and isinstance(entitlements_snapshot, dict):
+    if actor_type != "partner" and entitlements_snapshot is not None and isinstance(entitlements_snapshot, dict):
         caps_payload = entitlements_snapshot.get("capabilities")
         if isinstance(caps_payload, list) and not caps_payload and not capabilities:
             return PortalAccessState.MISSING_CAPABILITY, "missing_capability"

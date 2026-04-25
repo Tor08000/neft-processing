@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.schemas.kpi import KpiSummary
 from app.services import admin_auth, client_auth
+from app.services.token_claims import DEFAULT_TENANT_ID, resolve_token_tenant_id
 from app.services.kpi_service import build_kpi_summary
 
 router = APIRouter(prefix="/kpi", tags=["kpi"])
@@ -47,6 +48,7 @@ def _resolve_token_context(request: Request) -> tuple[str, dict]:
 
 def _resolve_tenant_id(
     *,
+    db: Session,
     token: dict,
     token_type: str,
     tenant_override: int | None,
@@ -57,17 +59,21 @@ def _resolve_tenant_id(
             if not roles.intersection(ADMIN_OVERRIDE_ROLES):
                 raise HTTPException(status_code=403, detail="forbidden")
             return tenant_override, None
-        tenant_id = token.get("tenant_id")
-        if tenant_id is None:
-            raise HTTPException(status_code=403, detail="Missing tenant context")
-        return int(tenant_id), None
+        return resolve_token_tenant_id(token, error_detail="Missing tenant context"), None
 
     if tenant_override is not None:
         raise HTTPException(status_code=403, detail="forbidden")
-    tenant_id = token.get("tenant_id")
-    if tenant_id is None:
-        raise HTTPException(status_code=403, detail="Missing tenant context")
-    return int(tenant_id), str(token.get("client_id") or "") or None
+    client_id = str(token.get("client_id") or "") or None
+    return (
+        resolve_token_tenant_id(
+            token,
+            db=db,
+            client_id=client_id,
+            default=DEFAULT_TENANT_ID,
+            error_detail="Missing tenant context",
+        ),
+        client_id,
+    )
 
 
 @router.get("/summary", response_model=KpiSummary)
@@ -79,6 +85,7 @@ def kpi_summary(
 ) -> KpiSummary:
     token_type, token = _resolve_token_context(request)
     resolved_tenant_id, client_id = _resolve_tenant_id(
+        db=db,
         token=token,
         token_type=token_type,
         tenant_override=tenant_id,

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { createCase, type CaseKind, type CasePriority } from "../api/cases";
 import { createCaseExport, type CaseExportKind } from "../api/adminExports";
 import { fetchExplainActions, fetchExplainDiff, fetchExplainV2, evaluateWhatIf } from "../api/explainV2";
@@ -31,7 +31,7 @@ import { buildMasterySnapshot } from "../mastery/levels";
 import { loadMasteryEvents, loadMasteryState } from "../mastery/storage";
 import { recordCaseExport, type CaseExportType } from "../utils/caseExportRegistry";
 import { redactForExport } from "../redaction/apply";
-import { withBase } from "@shared/lib/path";
+import { DetailPanel } from "@shared/brand/components";
 import type {
   ExplainActionCatalogItem,
   ExplainDiffResponse,
@@ -367,6 +367,7 @@ const ActionSelectionList = ({
 );
 
 export const ExplainPage = () => {
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { toast, showToast } = useToast();
   const [queryState, setQueryState] = useState<ExplainQueryState>(() => parseExplainQueryState(searchParams));
@@ -400,7 +401,7 @@ export const ExplainPage = () => {
   const [lastRunAt, setLastRunAt] = useState<Date | null>(null);
   const [lastRunDuration, setLastRunDuration] = useState<number | null>(null);
   const [streak, setStreak] = useState<StreakState>(() => loadStreakState());
-  const [achievementStats, setAchievementStats] = useState<AchievementStats>(() => loadAchievementStats());
+  const [, setAchievementStats] = useState<AchievementStats>(() => loadAchievementStats());
   const [achievements, setAchievements] = useState<AchievementsState>(() => loadAchievementsState());
   const [masterySnapshot, setMasterySnapshot] = useState(() =>
     buildMasterySnapshot({
@@ -758,13 +759,9 @@ export const ExplainPage = () => {
   }, [kind]);
 
   const explainScore = useMemo(() => computeExplainScore(payload), [payload]);
-  const unlockedAchievements = useMemo(
-    () => ACHIEVEMENT_DEFINITIONS.filter((achievement) => achievements[achievement.key]),
-    [achievements],
-  );
   const unlockedAchievementKeys = useMemo(
-    () => unlockedAchievements.map((achievement) => achievement.key),
-    [unlockedAchievements],
+    () => ACHIEVEMENT_DEFINITIONS.filter((achievement) => achievements[achievement.key]).map((achievement) => achievement.key),
+    [achievements],
   );
 
   const handleCreateCase = useCallback(async () => {
@@ -1088,8 +1085,8 @@ export const ExplainPage = () => {
 
   const canExport = Boolean(payload || diffData || queryState.selectedActions.length);
   const masteryTitle = masterySnapshot.missingRequirements.length
-    ? `What counts:\n${masterySnapshot.missingRequirements.join("\n")}`
-    : "All criteria met.";
+    ? `Coverage details:\n${masterySnapshot.missingRequirements.join("\n")}`
+    : "Coverage baseline met.";
 
   return (
     <div className="explain-v2">
@@ -1158,8 +1155,8 @@ export const ExplainPage = () => {
             <span>Source: {sourceLabel}</span>
             <div className="explain-control-bar__mastery" title={masteryTitle}>
               <div className="explain-control-bar__mastery-row">
-                <span className="pill pill--outline">Mastery: {masterySnapshot.label}</span>
-                {masterySnapshot.nextLabel ? <span>Next: {masterySnapshot.nextLabel}</span> : <span>Top level</span>}
+                <span className="pill pill--outline">Coverage: {masterySnapshot.label}</span>
+                {masterySnapshot.nextLabel ? <span>Focus next: {masterySnapshot.nextLabel}</span> : <span>Stable level</span>}
               </div>
               <div className="explain-control-bar__mastery-progress">
                 <div className="explain-control-bar__mastery-bar">
@@ -1167,7 +1164,7 @@ export const ExplainPage = () => {
                 </div>
                 <span>{Math.round(masterySnapshot.progressToNext * 100)}%</span>
                 <details className="explain-control-bar__mastery-details">
-                  <summary>What counts</summary>
+                  <summary>Coverage details</summary>
                   <div className="explain-control-bar__mastery-body">
                     {masterySnapshot.requirements.length ? (
                       <ul>
@@ -1179,11 +1176,11 @@ export const ExplainPage = () => {
                         ))}
                       </ul>
                     ) : (
-                      <div>All criteria met.</div>
+                      <div>Coverage baseline met.</div>
                     )}
                     {masterySnapshot.recommendations.length ? (
                       <div className="muted small">
-                        Next steps: {masterySnapshot.recommendations.join(" · ")}
+                        Attention next: {masterySnapshot.recommendations.join(" · ")}
                       </div>
                     ) : null}
                   </div>
@@ -1192,25 +1189,6 @@ export const ExplainPage = () => {
             </div>
             <div className="explain-control-bar__meta">
               {hasUnsavedChanges ? <span className="pill pill--accent">Unsaved changes</span> : null}
-              <span className="pill pill--outline" title="Consecutive explain runs without interruption">
-                🔥 Streak: {streak.count || "—"}
-              </span>
-              {unlockedAchievements.length ? (
-                <div
-                  className="explain-control-bar__achievements"
-                  title={`Progress: ${achievementStats.explainRuns} explains · ${achievementStats.diffRuns} diffs · ${achievementStats.casesCreated} cases`}
-                >
-                  {unlockedAchievements.map((achievement) => (
-                    <span
-                      key={achievement.key}
-                      className="explain-achievement"
-                      title={`${achievement.label} · ${achievement.description}`}
-                    >
-                      {achievement.icon}
-                    </span>
-                  ))}
-                </div>
-              ) : null}
             </div>
           </div>
         </div>
@@ -1575,7 +1553,7 @@ export const ExplainPage = () => {
                           type="button"
                           className="neft-btn-secondary"
                           onClick={() => {
-                            window.location.href = withBase(`/support/cases/${createdCaseId}`);
+                            navigate(`/cases/${createdCaseId}`);
                           }}
                         >
                           Открыть кейс
@@ -1709,30 +1687,31 @@ export const ExplainPage = () => {
         </div>
       ) : null}
 
-      {drawerOpen ? (
-        <div className="explain-drawer">
-          <div className="explain-drawer__content">
-            <div className="explain-drawer__header">
-              <h3>What-if сравнение</h3>
-              <button type="button" className="ghost" onClick={() => setDrawerOpen(false)}>
-                Закрыть
-              </button>
-            </div>
-            <div className="explain-drawer__body">
-              <div className="explain-drawer__actions">
-                <h4>Выбранные действия</h4>
-                <div className="explain-drawer__list">
-                  {selectedActions.length ? (
-                    selectedActions.map((item) => (
-                      <div key={item.action_code} className="explain-drawer__selected">
-                        <strong>{item.label}</strong>
-                        {item.description ? <span className="muted small">{item.description}</span> : null}
-                      </div>
-                    ))
-                  ) : (
-                    <div className="muted small">Выберите 2–3 действия в списке выше.</div>
-                  )}
-                </div>
+      <DetailPanel
+        open={drawerOpen}
+        title="What-if сравнение"
+        subtitle="Симуляция изменений без применения"
+        onClose={() => setDrawerOpen(false)}
+        closeLabel="Закрыть"
+        size="xl"
+      >
+        <div className="detail-panel__split">
+          <div className="detail-panel__aside">
+            <div className="detail-panel__card">
+              <h4>Выбранные действия</h4>
+              <div className="timeline-list">
+                {selectedActions.length ? (
+                  selectedActions.map((item) => (
+                    <div key={item.action_code} className="timeline-item">
+                      <div className="timeline-item__title">{item.label}</div>
+                      {item.description ? <div className="muted small">{item.description}</div> : null}
+                    </div>
+                  ))
+                ) : (
+                  <div className="muted small">Выберите 2–3 действия в списке выше.</div>
+                )}
+              </div>
+              <div className="toolbar-actions">
                 <button
                   type="button"
                   className="primary"
@@ -1749,37 +1728,39 @@ export const ExplainPage = () => {
                 >
                   Сравнить
                 </button>
-                <div className="muted small">Применение недоступно — только симуляция.</div>
               </div>
+              <div className="muted small">Применение недоступно — только симуляция.</div>
+            </div>
+          </div>
 
-              <div className="explain-drawer__results">
-                <div className="explain-whatif-banner">Симуляция (не исполняется)</div>
-                {isWhatIfLoading ? <div className="muted">Рассчитываем...</div> : null}
-                {whatIfError ? <div className="muted">Ошибка: {whatIfError}</div> : null}
-                {filteredCandidates.map(({ action, candidate }) => (
-                  <div key={action.action_code} className="explain-whatif-card">
-                    <div className="explain-whatif-card__title">{action.label}</div>
-                    {candidate ? (
-                      <>
-                        <div className="explain-whatif-card__meta">
-                          <span>Эффект: {candidate.projection.expected_effect_label}</span>
-                          <span>Вероятность: {candidate.projection.probability_improved_pct}%</span>
-                        </div>
-                        <div className="explain-whatif-card__meta">
-                          <span>Risk: {candidate.risk.outlook}</span>
-                          <span>Memory penalty: {candidate.memory.memory_penalty_pct}%</span>
-                        </div>
-                      </>
-                    ) : (
-                      <div className="muted">Нет данных симуляции.</div>
-                    )}
-                  </div>
-                ))}
-              </div>
+          <div className="detail-panel__content">
+            <div className="detail-panel__card">
+              <div className="explain-whatif-banner">Симуляция (не исполняется)</div>
+              {isWhatIfLoading ? <div className="muted">Рассчитываем...</div> : null}
+              {whatIfError ? <div className="muted">Ошибка: {whatIfError}</div> : null}
+              {filteredCandidates.map(({ action, candidate }) => (
+                <div key={action.action_code} className="explain-whatif-card">
+                  <div className="explain-whatif-card__title">{action.label}</div>
+                  {candidate ? (
+                    <>
+                      <div className="explain-whatif-card__meta">
+                        <span>Эффект: {candidate.projection.expected_effect_label}</span>
+                        <span>Вероятность: {candidate.projection.probability_improved_pct}%</span>
+                      </div>
+                      <div className="explain-whatif-card__meta">
+                        <span>Risk: {candidate.risk.outlook}</span>
+                        <span>Memory penalty: {candidate.memory.memory_penalty_pct}%</span>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="muted">Нет данных симуляции.</div>
+                  )}
+                </div>
+              ))}
             </div>
           </div>
         </div>
-      ) : null}
+      </DetailPanel>
     </div>
   );
 };

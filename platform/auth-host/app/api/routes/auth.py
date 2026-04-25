@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import hashlib
 import logging
 import os
@@ -123,6 +124,35 @@ async def _create_session(*, user_id: str, tenant_id: str, portal: str, request:
     return session_id
 
 
+async def _create_session_best_effort(*, user_id: str, tenant_id: str, portal: str, request: Request) -> str | None:
+    try:
+        return await _create_session(user_id=user_id, tenant_id=tenant_id, portal=portal, request=request)
+    except Exception:
+        logger.warning("auth session persistence skipped")
+        return None
+
+
+async def _issue_refresh_token_best_effort(*, session_id: str | None, user_id: str, tenant_id: str, request: Request) -> str | None:
+    if not session_id:
+        return None
+
+    refresh_token, _refresh_jti, refresh_exp = _create_refresh_token(
+        user_id=user_id,
+        tenant_id=tenant_id,
+        device_key=_device_key(request),
+    )
+    try:
+        await _persist_refresh_token(
+            session_id=session_id,
+            refresh_token=refresh_token,
+            expires_at=refresh_exp,
+        )
+    except Exception:
+        logger.warning("refresh token persistence skipped")
+        return None
+    return refresh_token
+
+
 async def _revoke_session(*, sid: str, reason: str | None = None) -> None:
     async with get_conn() as (conn, cur):
         await cur.execute(
@@ -199,6 +229,16 @@ async def _create_core_client(*, user_id: str, email: str, full_name: str | None
                 "INSERT INTO client_onboarding (client_id, owner_user_id, step, status) VALUES (%s, %s, %s, %s)",
                 (client_id, user_id, "PROFILE", "DRAFT"),
             )
+            if await _core_table_exists(cur, "client_users"):
+                await cur.execute(
+                    "INSERT INTO client_users (id, client_id, user_id, status) VALUES (%s, %s, %s, %s) ON CONFLICT DO NOTHING",
+                    (str(uuid4()), client_id, user_id, "ACTIVE"),
+                )
+            if await _core_table_exists(cur, "client_user_roles"):
+                await cur.execute(
+                    "INSERT INTO client_user_roles (id, client_id, user_id, roles) VALUES (%s, %s, %s, %s) ON CONFLICT DO NOTHING",
+                    (str(uuid4()), client_id, user_id, json.dumps(["CLIENT_OWNER"])),
+                )
             await conn.commit()
     finally:
         await conn.close()
@@ -491,16 +531,12 @@ async def register(request: Request, payload: RegisterRequest) -> SignupResponse
     expires_in = settings.access_token_expires_min * 60
     issuer, audience = _portal_token_config("client")
     tenant_token_version = await _get_tenant_token_version(user.tenant_id)
-    try:
-        session_id = await _create_session(
-            user_id=str(user.id),
-            tenant_id=str(user.tenant_id),
-            portal=portal,
-            request=request,
-        )
-    except Exception:
-        logger.warning("auth session persistence skipped")
-        session_id = str(uuid4())
+    session_id = await _create_session_best_effort(
+        user_id=str(user.id),
+        tenant_id=str(user.tenant_id),
+        portal=portal,
+        request=request,
+    )
     try:
         token = create_access_token(
             user.email,
@@ -605,16 +641,12 @@ async def login(request: Request, payload: LoginRequest) -> TokenResponse:
         if org_id is None and _is_dev_env():
             org_id = settings.demo_org_id
     tenant_token_version = await _get_tenant_token_version(user.tenant_id)
-    try:
-        session_id = await _create_session(
-            user_id=str(user.id),
-            tenant_id=str(user.tenant_id),
-            portal=portal,
-            request=request,
-        )
-    except Exception:
-        logger.warning("auth session persistence skipped")
-        session_id = str(uuid4())
+    session_id = await _create_session_best_effort(
+        user_id=str(user.id),
+        tenant_id=str(user.tenant_id),
+        portal=portal,
+        request=request,
+    )
     try:
         token = create_access_token(
             user_email,
@@ -635,19 +667,12 @@ async def login(request: Request, payload: LoginRequest) -> TokenResponse:
         logger.error("RSA keys unavailable during login", extra={"login": login_identifier})
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="rsa_keys_unavailable")
 
-    refresh_token, _refresh_jti, refresh_exp = _create_refresh_token(
+    refresh_token = await _issue_refresh_token_best_effort(
+        session_id=session_id,
         user_id=str(user.id),
         tenant_id=str(user.tenant_id),
-        device_key=_device_key(request),
+        request=request,
     )
-    try:
-        await _persist_refresh_token(
-            session_id=session_id,
-            refresh_token=refresh_token,
-            expires_at=refresh_exp,
-        )
-    except Exception:
-        logger.warning("refresh token persistence skipped")
     logger.info("login success", extra={"event_type": "login_success", "tenant_id": user.tenant_id, "user_id": user.id})
     return TokenResponse(
         access_token=token,
@@ -722,16 +747,12 @@ async def oauth_callback(request: Request, code: str, state: str) -> TokenRespon
             org_id = settings.demo_org_id
 
     tenant_token_version = await _get_tenant_token_version(user.tenant_id)
-    try:
-        session_id = await _create_session(
-            user_id=str(user.id),
-            tenant_id=str(user.tenant_id),
-            portal=portal,
-            request=request,
-        )
-    except Exception:
-        logger.warning("auth session persistence skipped")
-        session_id = str(uuid4())
+    session_id = await _create_session_best_effort(
+        user_id=str(user.id),
+        tenant_id=str(user.tenant_id),
+        portal=portal,
+        request=request,
+    )
     token = create_access_token(
         user.id,
         roles=roles,
@@ -748,19 +769,12 @@ async def oauth_callback(request: Request, code: str, state: str) -> TokenRespon
         tenant_token_version=tenant_token_version,
         session_id=session_id,
     )
-    refresh_token, _refresh_jti, refresh_exp = _create_refresh_token(
+    refresh_token = await _issue_refresh_token_best_effort(
+        session_id=session_id,
         user_id=str(user.id),
         tenant_id=str(user.tenant_id),
-        device_key=_device_key(request),
+        request=request,
     )
-    try:
-        await _persist_refresh_token(
-            session_id=session_id,
-            refresh_token=refresh_token,
-            expires_at=refresh_exp,
-        )
-    except Exception:
-        logger.warning("refresh token persistence skipped")
     logger.info("sso login", extra={"event_type": "sso_login", "tenant_id": user.tenant_id, "user_id": user.id})
     return TokenResponse(
         access_token=token,

@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
+from app.api.dependencies.admin import require_admin_user
 from app.db import get_db
 from app.models.unified_rule import (
     RuleSetActive,
@@ -20,6 +21,11 @@ from app.services.unified_rules_engine import validate_conflicts
 
 
 router = APIRouter(prefix="/api/v1/admin/rules", tags=["admin-rules"])
+canonical_router = APIRouter(
+    prefix="/v1/admin/rules",
+    tags=["admin-rules"],
+    dependencies=[Depends(require_admin_user)],
+)
 
 
 @router.post("/versions", response_model=RuleSetVersionOut, status_code=201)
@@ -121,3 +127,38 @@ def create_unified_rule(
     db.commit()
     db.refresh(rule)
     return UnifiedRuleOut.model_validate(rule)
+
+
+@canonical_router.post("/versions", response_model=RuleSetVersionOut, status_code=201)
+def create_rule_set_version_canonical(
+    payload: RuleSetVersionCreate,
+    db: Session = Depends(get_db),
+) -> RuleSetVersionOut:
+    return create_rule_set_version(payload=payload, db=db)
+
+
+@canonical_router.get("/versions", response_model=list[RuleSetVersionOut])
+def list_rule_set_versions_canonical(
+    scope: UnifiedRuleScope | None = Query(None),
+    db: Session = Depends(get_db),
+) -> list[RuleSetVersionOut]:
+    return list_rule_set_versions(scope=scope, db=db)
+
+
+@canonical_router.post("/versions/{version_id}/publish")
+def publish_rule_set_version_canonical(version_id: int, db: Session = Depends(get_db)) -> dict:
+    return publish_rule_set_version(version_id=version_id, db=db)
+
+
+@canonical_router.post("/versions/{version_id}/activate")
+def activate_rule_set_version_canonical(version_id: int, db: Session = Depends(get_db)) -> dict:
+    return activate_rule_set_version(version_id=version_id, db=db)
+
+
+@canonical_router.post("/rules", response_model=UnifiedRuleOut, status_code=201)
+def create_unified_rule_canonical(
+    payload: UnifiedRuleCreate,
+    version_id: int = Query(..., alias="version_id"),
+    db: Session = Depends(get_db),
+) -> UnifiedRuleOut:
+    return create_unified_rule(payload=payload, version_id=version_id, db=db)

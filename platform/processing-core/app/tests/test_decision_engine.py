@@ -1,35 +1,54 @@
 from datetime import datetime, timezone
+from uuid import uuid4
 
 import pytest
 
-from app.db import Base, engine, get_sessionmaker
+from app.models.audit_log import AuditLog
 from app.models.billing_period import BillingPeriod, BillingPeriodStatus, BillingPeriodType
+from app.models.decision_result import DecisionResult as DecisionResultRecord
 from app.models.payout_batch import PayoutBatch, PayoutBatchState
-from app.models.payout_export_file import PayoutExportFormat
-from app.models.risk_types import RiskDecisionType
+from app.models.payout_batch import PayoutItem
+from app.models.payout_export_file import PayoutExportFile, PayoutExportFormat
+from app.models.risk_decision import RiskDecision
+from app.models.risk_policy import RiskPolicy
+from app.models.risk_threshold import RiskThreshold
 from app.models.risk_threshold_set import RiskThresholdSet
+from app.models.risk_training_snapshot import RiskTrainingSnapshot
+from app.models.risk_types import RiskDecisionType
 from app.models.risk_types import RiskSubjectType, RiskThresholdAction, RiskThresholdScope
 from app.services.decision import DecisionAction, DecisionContext, DecisionEngine
 from app.services.decision.scoring import StubRiskScorer
 from app.services.payout_exports import PayoutExportError, create_payout_export
+from app.tests._scoped_router_harness import scoped_session_context
 
 
-@pytest.fixture(autouse=True)
-def clean_db():
-    Base.metadata.drop_all(bind=engine)
-    Base.metadata.create_all(bind=engine)
-    yield
-    Base.metadata.drop_all(bind=engine)
+DECISION_ENGINE_TEST_TABLES = (
+    AuditLog.__table__,
+    BillingPeriod.__table__,
+    DecisionResultRecord.__table__,
+    PayoutBatch.__table__,
+    PayoutItem.__table__,
+    PayoutExportFile.__table__,
+    RiskDecision.__table__,
+    RiskPolicy.__table__,
+    RiskThreshold.__table__,
+    RiskThresholdSet.__table__,
+    RiskTrainingSnapshot.__table__,
+)
 
 
 def _fixed_now() -> datetime:
     return datetime(2024, 1, 1, tzinfo=timezone.utc)
 
 
-@pytest.fixture(autouse=True)
-def _seed_global_thresholds():
-    session = get_sessionmaker()()
-    session.add_all(
+@pytest.fixture
+def session(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(
+        "app.services.decision.engine.LegalGraphBuilder.ensure_risk_decision_graph",
+        lambda self, risk_decision: None,
+    )
+    with scoped_session_context(tables=DECISION_ENGINE_TEST_TABLES) as db:
+        db.add_all(
         [
             RiskThresholdSet(
                 id="global-payment",
@@ -59,13 +78,12 @@ def _seed_global_thresholds():
                 allow_threshold=10,
             ),
         ]
-    )
-    session.commit()
-    session.close()
+        )
+        db.commit()
+        yield db
 
 
-def test_decision_engine_determinism():
-    session = get_sessionmaker()()
+def test_decision_engine_determinism(session):
     engine_instance = DecisionEngine(session, scorer=StubRiskScorer(default_score=20), now_provider=_fixed_now)
     context = DecisionContext(
         tenant_id=1,
@@ -86,11 +104,9 @@ def test_decision_engine_determinism():
     assert first.rule_hits == second.rule_hits
     assert first.explain == second.explain
     assert first.decision_version == second.decision_version
-    session.close()
 
 
-def test_rules_limit_decline():
-    session = get_sessionmaker()()
+def test_rules_limit_decline(session):
     engine_instance = DecisionEngine(session, scorer=StubRiskScorer(default_score=10), now_provider=_fixed_now)
     context = DecisionContext(
         tenant_id=1,
@@ -105,11 +121,9 @@ def test_rules_limit_decline():
 
     result = engine_instance.evaluate(context)
     assert result.outcome == "DECLINE"
-    session.close()
 
 
-def test_rules_blocked_client_declines_action():
-    session = get_sessionmaker()()
+def test_rules_blocked_client_declines_action(session):
     engine_instance = DecisionEngine(session, scorer=StubRiskScorer(default_score=10), now_provider=_fixed_now)
     context = DecisionContext(
         tenant_id=1,
@@ -125,11 +139,9 @@ def test_rules_blocked_client_declines_action():
     result = engine_instance.evaluate(context)
     assert result.outcome == "DECLINE"
     assert result.risk_decision == RiskDecisionType.BLOCK
-    session.close()
 
 
-def test_rules_normal_payment_allow():
-    session = get_sessionmaker()()
+def test_rules_normal_payment_allow(session):
     engine_instance = DecisionEngine(session, scorer=StubRiskScorer(default_score=10), now_provider=_fixed_now)
     context = DecisionContext(
         tenant_id=1,
@@ -144,13 +156,13 @@ def test_rules_normal_payment_allow():
 
     result = engine_instance.evaluate(context)
     assert result.outcome == "ALLOW"
-    session.close()
 
 
-def test_payout_export_open_period_declines_via_decision_engine():
-    session = get_sessionmaker()()
+def test_payout_export_open_period_declines_via_decision_engine(session):
+    period_id = str(uuid4())
+    batch_id = str(uuid4())
     period = BillingPeriod(
-        id="period-1",
+        id=period_id,
         period_type=BillingPeriodType.ADHOC,
         start_at=_fixed_now(),
         end_at=_fixed_now(),
@@ -158,7 +170,7 @@ def test_payout_export_open_period_declines_via_decision_engine():
         status=BillingPeriodStatus.OPEN,
     )
     batch = PayoutBatch(
-        id="batch-1",
+        id=batch_id,
         tenant_id=1,
         partner_id="partner-1",
         date_from=period.start_at.date(),
@@ -180,12 +192,10 @@ def test_payout_export_open_period_declines_via_decision_engine():
             bank_format_code=None,
             token=token,
         )
-    assert "decision_decline" in str(exc.value)
-    session.close()
+    assert "risk_decline" in str(exc.value)
 
 
-def test_document_finalize_without_ack_declines():
-    session = get_sessionmaker()()
+def test_document_finalize_without_ack_declines(session):
     engine_instance = DecisionEngine(session, scorer=StubRiskScorer(default_score=10), now_provider=_fixed_now)
     context = DecisionContext(
         tenant_id=1,
@@ -201,4 +211,3 @@ def test_document_finalize_without_ack_declines():
 
     result = engine_instance.evaluate(context)
     assert result.outcome == "DECLINE"
-    session.close()

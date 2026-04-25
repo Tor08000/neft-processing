@@ -17,6 +17,7 @@ export const ClientForm: React.FC<ClientFormProps> = ({
   showClientId = true,
 }) => {
   const [clientId, setClientId] = useState(initialValues?.client_id ?? "");
+  const [tenantId, setTenantId] = useState(String(initialValues?.tenant_id ?? ""));
   const [legalName, setLegalName] = useState(initialValues?.legal_name ?? "");
   const [status, setStatus] = useState(initialValues?.status ?? "");
   const [country, setCountry] = useState(initialValues?.country ?? "");
@@ -24,6 +25,7 @@ export const ClientForm: React.FC<ClientFormProps> = ({
 
   useEffect(() => {
     setClientId(initialValues?.client_id ?? "");
+    setTenantId(String(initialValues?.tenant_id ?? ""));
     setLegalName(initialValues?.legal_name ?? "");
     setStatus(initialValues?.status ?? "");
     setCountry(initialValues?.country ?? "");
@@ -34,6 +36,7 @@ export const ClientForm: React.FC<ClientFormProps> = ({
     event.preventDefault();
     onSubmit({
       client_id: clientId,
+      tenant_id: tenantId ? Number(tenantId) : undefined,
       legal_name: legalName,
       status: status || undefined,
       country: country || undefined,
@@ -49,6 +52,10 @@ export const ClientForm: React.FC<ClientFormProps> = ({
           <input value={clientId} onChange={(e) => setClientId(e.target.value)} required />
         </label>
       )}
+      <label>
+        Tenant ID
+        <input value={tenantId} onChange={(e) => setTenantId(e.target.value)} required />
+      </label>
       <label>
         Legal name
         <input value={legalName} onChange={(e) => setLegalName(e.target.value)} required />

@@ -1,30 +1,20 @@
 import pytest
-from sqlalchemy import create_engine
-from sqlalchemy.orm import Session, sessionmaker
-from sqlalchemy.pool import StaticPool
-
-from app.db import Base
+from sqlalchemy.orm import Session
 from app.models.ops import OpsEscalationPriority, OpsEscalationSource, OpsEscalationStatus, OpsEscalationTarget
 from app.models.unified_explain import PrimaryReason
 from app.services.ops.escalations import ack_escalation, close_escalation, create_escalation_if_missing
+from app.tests._ops_test_harness import build_ops_session_factory, teardown_ops_session_factory
 
 
 @pytest.fixture()
 def db_session() -> Session:
-    engine = create_engine(
-        "sqlite://",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
-    SessionLocal = sessionmaker(autocommit=False, autoflush=False, expire_on_commit=False, bind=engine)
-    Base.metadata.create_all(bind=engine)
+    SessionLocal, engine = build_ops_session_factory()
     session = SessionLocal()
     try:
         yield session
     finally:
         session.close()
-        Base.metadata.drop_all(bind=engine)
-        engine.dispose()
+        teardown_ops_session_factory(engine)
 
 
 def _create_escalation(db_session: Session):

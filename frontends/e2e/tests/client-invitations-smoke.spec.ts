@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "playwright/test";
 import { CLIENT_BASE_URL, loginClient } from "./helpers";
 
 test("@smoke client invitations page opens", async ({ page }) => {

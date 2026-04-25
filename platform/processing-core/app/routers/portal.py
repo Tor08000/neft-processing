@@ -14,6 +14,7 @@ from app.models.audit_log import AuditVisibility
 from app.models.finance import CreditNote, InvoicePayment
 from app.models.invoice import Invoice, InvoiceStatus
 from app.models.marketplace_contracts import Contract, ContractObligation, ContractStatus, SLAResult
+from app.models.marketplace_orders import MarketplaceOrder
 from app.models.marketplace_order_sla import (
     MarketplaceOrderContractLink,
     OrderSlaConsequence,
@@ -48,6 +49,7 @@ from app.schemas.marketplace.sla import (
     OrderSlaEvaluationsResponse,
 )
 from app.services.audit_service import AuditService, _sanitize_token_for_audit, request_context_from_request
+from app.services.entitlements_service import assert_module_enabled
 from app.services.s3_storage import S3Storage
 from app.security.rbac.guard import require_permission
 from app.security.rbac.ownership import (
@@ -131,15 +133,23 @@ def _assert_marketplace_order_access(
     order_id: str,
     client_id: str | None = None,
     partner_id: str | None = None,
-) -> Contract:
+) -> Contract | MarketplaceOrder:
     contract = _resolve_order_contract(db, order_id=order_id)
-    if not contract:
+    if contract:
+        if client_id and str(contract.party_a_id) != client_id and str(contract.party_b_id) != client_id:
+            raise HTTPException(status_code=403, detail="forbidden")
+        if partner_id and str(contract.party_a_id) != partner_id and str(contract.party_b_id) != partner_id:
+            raise HTTPException(status_code=403, detail="forbidden")
+        return contract
+
+    order = db.query(MarketplaceOrder).filter(MarketplaceOrder.id == order_id).one_or_none()
+    if not order:
         raise HTTPException(status_code=404, detail="order_not_found")
-    if client_id and str(contract.party_a_id) != client_id and str(contract.party_b_id) != client_id:
+    if client_id and str(order.client_id) != client_id:
         raise HTTPException(status_code=403, detail="forbidden")
-    if partner_id and str(contract.party_a_id) != partner_id and str(contract.party_b_id) != partner_id:
+    if partner_id and str(order.partner_id) != partner_id:
         raise HTTPException(status_code=403, detail="forbidden")
-    return contract
+    return order
 
 
 def _sla_summary(db: Session, *, contract_ids: list[str]) -> PortalSlaSummary:
@@ -244,6 +254,7 @@ def get_client_order_sla(
     db: Session = Depends(get_db),
 ) -> OrderSlaEvaluationsResponse:
     client_id = _ensure_client_context(principal)
+    assert_module_enabled(db, client_id=client_id, module_code="MARKETPLACE")
     _assert_marketplace_order_access(db, order_id=order_id, client_id=client_id)
     evaluations = (
         db.query(OrderSlaEvaluation)
@@ -280,6 +291,7 @@ def get_client_order_sla_consequences(
     db: Session = Depends(get_db),
 ) -> OrderSlaConsequencesResponse:
     client_id = _ensure_client_context(principal)
+    assert_module_enabled(db, client_id=client_id, module_code="MARKETPLACE")
     _assert_marketplace_order_access(db, order_id=order_id, client_id=client_id)
     consequences = (
         db.query(OrderSlaConsequence)
@@ -287,8 +299,6 @@ def get_client_order_sla_consequences(
         .order_by(OrderSlaConsequence.created_at.desc())
         .all()
     )
-    if not consequences:
-        raise HTTPException(status_code=404, detail="order_sla_consequences_not_found")
     return OrderSlaConsequencesResponse(
         items=[
             OrderSlaConsequenceOut(
@@ -361,8 +371,6 @@ def get_partner_order_sla_consequences(
         .order_by(OrderSlaConsequence.created_at.desc())
         .all()
     )
-    if not consequences:
-        raise HTTPException(status_code=404, detail="order_sla_consequences_not_found")
     return OrderSlaConsequencesResponse(
         items=[
             OrderSlaConsequenceOut(

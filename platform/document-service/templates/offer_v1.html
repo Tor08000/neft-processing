@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>NEFT Offer</title>
+    <style>
+      body { font-family: Arial, sans-serif; margin: 40px; color: #111827; line-height: 1.5; }
+      h1 { font-size: 22px; margin-bottom: 8px; }
+      h2 { font-size: 15px; margin-top: 24px; }
+      .meta { margin: 18px 0; padding: 12px; border: 1px solid #d1d5db; }
+      .muted { color: #4b5563; font-size: 12px; }
+    </style>
+  </head>
+  <body>
+    <h1>NEFT Platform Offer</h1>
+    <p class="muted">Generated for onboarding application {{ application_id }}.</p>
+    <div class="meta">
+      <div><strong>Company:</strong> {{ company_name }}</div>
+      <div><strong>INN:</strong> {{ inn }}</div>
+      <div><strong>OGRN:</strong> {{ ogrn }}</div>
+      <div><strong>Email:</strong> {{ email }}</div>
+      <div><strong>Phone:</strong> {{ phone or "not provided" }}</div>
+    </div>
+    <h2>Commercial Scope</h2>
+    <p>
+      NEFT offers platform access for fuel, marketplace, logistics, document,
+      support, and finance read workflows under the selected tariff and active
+      platform rules.
+    </p>
+    <h2>Acceptance</h2>
+    <p>
+      The offer is accepted through the onboarding signing flow. The resulting
+      signed document and audit trail are retained as platform evidence.
+    </p>
+  </body>
+</html>

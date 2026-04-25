@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.orm import Session
 
@@ -9,6 +11,7 @@ from app.models.marketplace_orders import (
     MarketplaceOrderPaymentMethod,
     MarketplaceOrderStatus,
 )
+from app.schemas.cases import CaseListResponse, CaseResponse
 from app.schemas.marketplace.orders import (
     OrderCancelRequest,
     OrderCreateRequest,
@@ -23,7 +26,10 @@ from app.schemas.marketplace.orders import (
 from app.security.rbac.guard import require_permission
 from app.security.rbac.principal import Principal
 from app.services.audit_service import _sanitize_token_for_audit, request_context_from_request
+from app.services.case_escalation_service import compute_sla_state
+from app.services.entitlements_service import assert_module_enabled
 from app.services.marketplace_orders_service import MarketplaceOrdersService, MarketplaceOrdersServiceError
+from app.services.token_claims import DEFAULT_TENANT_ID, resolve_token_tenant_id
 
 
 router = APIRouter(prefix="/marketplace/client/orders", tags=["client-portal-v1"])
@@ -38,14 +44,35 @@ def _ensure_client_context(principal: Principal) -> str:
     return str(principal.client_id)
 
 
+def _ensure_marketplace_client_context(principal: Principal, db: Session) -> str:
+    client_id = _ensure_client_context(principal)
+    assert_module_enabled(db, client_id=client_id, module_code="MARKETPLACE")
+    return client_id
+
+
+def _marketplace_request_context(*, request: Request, principal: Principal, db: Session, client_id: str):
+    tenant_id = resolve_token_tenant_id(
+        principal.raw_claims,
+        db=db,
+        client_id=client_id,
+        default=DEFAULT_TENANT_ID,
+        error_detail="missing_tenant_context",
+    )
+    return request_context_from_request(
+        request,
+        token=_sanitize_token_for_audit(principal.raw_claims),
+        tenant_id_override=tenant_id,
+    )
+
+
 def _order_out(order) -> OrderOut:
     return OrderOut(
         id=str(order.id),
         client_id=str(order.client_id),
         partner_id=str(order.partner_id),
         status=order.status.value if hasattr(order.status, "value") else order.status,
-        payment_status=order.payment_status,
-        payment_method=order.payment_method,
+        payment_status=order.payment_status.value if hasattr(order.payment_status, "value") else order.payment_status,
+        payment_method=order.payment_method.value if hasattr(order.payment_method, "value") else order.payment_method,
         currency=order.currency,
         subtotal_amount=order.subtotal_amount,
         discount_amount=order.discount_amount,
@@ -133,10 +160,8 @@ def list_client_orders(
     principal: Principal = Depends(require_permission("client:marketplace:orders:list")),
     db: Session = Depends(get_db),
 ) -> OrderListResponse:
-    client_id = _ensure_client_context(principal)
-    service = MarketplaceOrdersService(
-        db, request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(principal.raw_claims))
-    )
+    client_id = _ensure_marketplace_client_context(principal, db)
+    service = MarketplaceOrdersService(db, request_ctx=_marketplace_request_context(request=request, principal=principal, db=db, client_id=client_id))
     items, total = service.list_orders_for_client(
         client_id=client_id,
         status=status,
@@ -153,10 +178,8 @@ def create_client_order(
     principal: Principal = Depends(require_permission("client:marketplace:orders:create")),
     db: Session = Depends(get_db),
 ) -> OrderOut:
-    client_id = _ensure_client_context(principal)
-    service = MarketplaceOrdersService(
-        db, request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(principal.raw_claims))
-    )
+    client_id = _ensure_marketplace_client_context(principal, db)
+    service = MarketplaceOrdersService(db, request_ctx=_marketplace_request_context(request=request, principal=principal, db=db, client_id=client_id))
     try:
         order = service.create_order(
             client_id=client_id,
@@ -177,10 +200,8 @@ def get_client_order(
     principal: Principal = Depends(require_permission("client:marketplace:orders:view")),
     db: Session = Depends(get_db),
 ) -> OrderDetailOut:
-    client_id = _ensure_client_context(principal)
-    service = MarketplaceOrdersService(
-        db, request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(principal.raw_claims))
-    )
+    client_id = _ensure_marketplace_client_context(principal, db)
+    service = MarketplaceOrdersService(db, request_ctx=_marketplace_request_context(request=request, principal=principal, db=db, client_id=client_id))
     try:
         order = service.get_order_for_client(order_id=order_id, client_id=client_id)
         events = service.list_order_events(order_id=order_id)
@@ -203,16 +224,45 @@ def list_client_order_events(
     principal: Principal = Depends(require_permission("client:marketplace:orders:view")),
     db: Session = Depends(get_db),
 ) -> list[OrderEventOut]:
-    client_id = _ensure_client_context(principal)
-    service = MarketplaceOrdersService(
-        db, request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(principal.raw_claims))
-    )
+    client_id = _ensure_marketplace_client_context(principal, db)
+    service = MarketplaceOrdersService(db, request_ctx=_marketplace_request_context(request=request, principal=principal, db=db, client_id=client_id))
     try:
         _ = service.get_order_for_client(order_id=order_id, client_id=client_id)
         events = service.list_order_events(order_id=order_id)
     except MarketplaceOrdersServiceError as exc:
         _handle_service_error(exc)
     return [_event_out(event) for event in events]
+
+
+@router.get("/{order_id}/incidents", response_model=CaseListResponse)
+def list_client_order_incidents(
+    order_id: str,
+    request: Request,
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    principal: Principal = Depends(require_permission("client:marketplace:orders:view")),
+    db: Session = Depends(get_db),
+) -> CaseListResponse:
+    client_id = _ensure_marketplace_client_context(principal, db)
+    service = MarketplaceOrdersService(db, request_ctx=_marketplace_request_context(request=request, principal=principal, db=db, client_id=client_id))
+    try:
+        items, total = service.list_order_cases_for_client(
+            order_id=order_id,
+            client_id=client_id,
+            limit=limit,
+            offset=offset,
+        )
+    except MarketplaceOrdersServiceError as exc:
+        _handle_service_error(exc)
+    now = datetime.now(timezone.utc)
+    for item in items:
+        item.sla_state = compute_sla_state(item, now=now)
+    return CaseListResponse(
+        items=[CaseResponse.model_validate(item) for item in items],
+        total=total,
+        limit=limit,
+        next_cursor=None,
+    )
 
 
 @router.post("/{order_id}:pay", response_model=OrderOut)
@@ -223,10 +273,8 @@ def pay_client_order(
     principal: Principal = Depends(require_permission("client:marketplace:orders:pay")),
     db: Session = Depends(get_db),
 ) -> OrderOut:
-    client_id = _ensure_client_context(principal)
-    service = MarketplaceOrdersService(
-        db, request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(principal.raw_claims))
-    )
+    client_id = _ensure_marketplace_client_context(principal, db)
+    service = MarketplaceOrdersService(db, request_ctx=_marketplace_request_context(request=request, principal=principal, db=db, client_id=client_id))
     try:
         order = service.pay_order(
             client_id=client_id,
@@ -248,10 +296,8 @@ def cancel_client_order(
     principal: Principal = Depends(require_permission("client:marketplace:orders:cancel")),
     db: Session = Depends(get_db),
 ) -> OrderOut:
-    client_id = _ensure_client_context(principal)
-    service = MarketplaceOrdersService(
-        db, request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(principal.raw_claims))
-    )
+    client_id = _ensure_marketplace_client_context(principal, db)
+    service = MarketplaceOrdersService(db, request_ctx=_marketplace_request_context(request=request, principal=principal, db=db, client_id=client_id))
     try:
         order = service.cancel_order(
             client_id=client_id,

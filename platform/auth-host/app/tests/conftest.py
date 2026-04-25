@@ -1,8 +1,13 @@
 from __future__ import annotations
 
+import asyncio
 import os
+import socket
 import sys
 from pathlib import Path
+
+import pytest
+import psycopg
 
 
 def _prioritize_service(service_root: Path) -> None:
@@ -56,3 +61,55 @@ _prepend_path(shared_path)
 
 if service_root.exists():
     _prioritize_service(service_root)
+
+if sys.platform == "win32" and hasattr(asyncio, "WindowsSelectorEventLoopPolicy"):
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
+
+def _port_open(host: str, port: int) -> bool:
+    try:
+        with socket.create_connection((host, port), timeout=0.5):
+            return True
+    except OSError:
+        return False
+
+
+def _configure_local_docker_postgres_for_host_tests() -> None:
+    if os.getenv("POSTGRES_HOST"):
+        return
+
+    if _port_open("localhost", 5432):
+        os.environ["POSTGRES_HOST"] = "localhost"
+
+
+_configure_local_docker_postgres_for_host_tests()
+
+
+def _can_reach_auth_db() -> bool:
+    try:
+        from app import db
+
+        dsn = db.DSN_ASYNC
+        if dsn.startswith("postgresql://"):
+            dsn = dsn.replace("postgresql://", "postgresql+psycopg://", 1)
+        elif dsn.startswith("postgres://"):
+            dsn = dsn.replace("postgres://", "postgresql+psycopg://", 1)
+        with psycopg.connect(dsn):
+            return True
+    except Exception:
+        return False
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _restore_auth_runtime_truth_after_suite():
+    yield
+
+    if not _can_reach_auth_db():
+        return
+
+    from app import bootstrap, db
+    from app.settings import Settings
+    from app.tests.migration_helpers import run_auth_migrations
+
+    run_auth_migrations(db.DSN_ASYNC)
+    asyncio.run(bootstrap.bootstrap_required_users(Settings()))

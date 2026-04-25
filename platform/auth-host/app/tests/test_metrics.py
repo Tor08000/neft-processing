@@ -17,8 +17,8 @@ from app.main import app
 
 
 def test_metrics_endpoint():
-    with TestClient(app) as client:
-        response = client.get("/metrics")
+    client = TestClient(app)
+    response = client.get("/metrics")
 
     assert response.status_code == 200
-    assert "auth_host_up" in response.text
+    assert b"auth_host_up" in response.content

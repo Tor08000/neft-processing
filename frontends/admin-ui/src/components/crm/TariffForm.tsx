@@ -8,63 +8,98 @@ interface TariffFormProps {
   submitLabel?: string;
 }
 
-const domainsList = ["fuel", "logistics", "docs", "risk"];
+const featureKeys = [
+  { key: "fuel", label: "fuel" },
+  { key: "logistics", label: "logistics" },
+  { key: "docs", label: "docs" },
+  { key: "risk", label: "risk" },
+  { key: "export", label: "export" },
+  { key: "subscription_meter_fuel_enabled", label: "subscription_meter_fuel_enabled" },
+];
 
 export const TariffForm: React.FC<TariffFormProps> = ({ initialValues, onSubmit, submitting, submitLabel = "Сохранить" }) => {
+  const [tariffId, setTariffId] = useState(initialValues?.tariff_id ?? initialValues?.id ?? "");
   const [name, setName] = useState(initialValues?.name ?? "");
+  const [description, setDescription] = useState(initialValues?.description ?? "");
   const [status, setStatus] = useState(initialValues?.status ?? "");
-  const [baseFee, setBaseFee] = useState(String(initialValues?.base_fee ?? ""));
-  const [includedSummary, setIncludedSummary] = useState(initialValues?.included_summary ?? "");
-  const [domains, setDomains] = useState<Record<string, boolean>>({});
+  const [billingPeriod, setBillingPeriod] = useState(initialValues?.billing_period ?? "MONTHLY");
+  const [baseFeeMinor, setBaseFeeMinor] = useState(String(initialValues?.base_fee_minor ?? ""));
+  const [currency, setCurrency] = useState(initialValues?.currency ?? "RUB");
+  const [features, setFeatures] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
+    setTariffId(initialValues?.tariff_id ?? initialValues?.id ?? "");
     setName(initialValues?.name ?? "");
+    setDescription(initialValues?.description ?? "");
     setStatus(initialValues?.status ?? "");
-    setBaseFee(String(initialValues?.base_fee ?? ""));
-    setIncludedSummary(initialValues?.included_summary ?? "");
-    setDomains(initialValues?.domains ?? {});
+    setBillingPeriod(initialValues?.billing_period ?? "MONTHLY");
+    setBaseFeeMinor(String(initialValues?.base_fee_minor ?? ""));
+    setCurrency(initialValues?.currency ?? "RUB");
+    setFeatures(initialValues?.features ?? {});
   }, [initialValues]);
 
-  const toggleDomain = (key: string) => {
-    setDomains((prev) => ({ ...prev, [key]: !prev[key] }));
+  const toggleFeature = (key: string) => {
+    setFeatures((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault();
     onSubmit({
+      id: tariffId,
       name,
+      description: description || undefined,
       status: status || undefined,
-      base_fee: baseFee ? Number(baseFee) : undefined,
-      included_summary: includedSummary || undefined,
-      domains,
+      billing_period: billingPeriod,
+      base_fee_minor: baseFeeMinor ? Number(baseFeeMinor) : undefined,
+      currency,
+      features,
     });
   };
 
   return (
     <form onSubmit={handleSubmit} style={{ display: "grid", gap: 12 }}>
       <label>
+        Tariff ID
+        <input value={tariffId} onChange={(e) => setTariffId(e.target.value)} required />
+      </label>
+      <label>
         Tariff name
         <input value={name} onChange={(e) => setName(e.target.value)} required />
+      </label>
+      <label>
+        Description
+        <input value={description} onChange={(e) => setDescription(e.target.value)} />
       </label>
       <label>
         Status
         <input value={status} onChange={(e) => setStatus(e.target.value)} placeholder="ACTIVE" />
       </label>
       <label>
-        Base fee
-        <input value={baseFee} onChange={(e) => setBaseFee(e.target.value)} />
+        Billing period
+        <select value={billingPeriod} onChange={(e) => setBillingPeriod(e.target.value)}>
+          <option value="MONTHLY">MONTHLY</option>
+          <option value="YEARLY">YEARLY</option>
+        </select>
       </label>
       <label>
-        Included summary
-        <input value={includedSummary} onChange={(e) => setIncludedSummary(e.target.value)} />
+        Base fee minor
+        <input value={baseFeeMinor} onChange={(e) => setBaseFeeMinor(e.target.value)} />
+      </label>
+      <label>
+        Currency
+        <input value={currency} onChange={(e) => setCurrency(e.target.value)} placeholder="RUB" />
       </label>
       <div>
-        <div style={{ fontWeight: 600, marginBottom: 6 }}>Domains</div>
+        <div style={{ fontWeight: 600, marginBottom: 6 }}>Features</div>
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-          {domainsList.map((domain) => (
-            <label key={domain} style={{ display: "flex", gap: 6, alignItems: "center" }}>
-              <input type="checkbox" checked={Boolean(domains[domain])} onChange={() => toggleDomain(domain)} />
-              {domain}
+          {featureKeys.map((feature) => (
+            <label key={feature.key} style={{ display: "flex", gap: 6, alignItems: "center" }}>
+              <input
+                type="checkbox"
+                checked={Boolean(features[feature.key])}
+                onChange={() => toggleFeature(feature.key)}
+              />
+              {feature.label}
             </label>
           ))}
         </div>

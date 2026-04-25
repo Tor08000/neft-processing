@@ -7,6 +7,7 @@ import ForbiddenPage from "../ForbiddenPage";
 import type { FleetGroup } from "../../types/fleet";
 import { describeError } from "../../utils/apiErrors";
 import { formatDateTime } from "../../utils/format";
+import { fleetGroupsPageCopy } from "./fleetPageCopy";
 
 export const FleetGroupsPage = () => {
   const { accessToken } = useAuth();
@@ -35,7 +36,7 @@ export const FleetGroupsPage = () => {
         setIsForbidden(true);
         return;
       }
-      setError({ title: "Не удалось загрузить группы", description: summary.message, details: summary.details });
+      setError({ title: fleetGroupsPageCopy.errors.load, description: summary.message, details: summary.details });
     } finally {
       setLoading(false);
     }
@@ -46,13 +47,13 @@ export const FleetGroupsPage = () => {
   }, [loadGroups]);
 
   const columns: DataColumn<FleetGroup>[] = [
-    { key: "name", title: "Group", render: (row) => row.name },
-    { key: "description", title: "Description", render: (row) => row.description ?? "—" },
-    { key: "created_at", title: "Created", render: (row) => formatDateTime(row.created_at) },
+    { key: "name", title: fleetGroupsPageCopy.columns.group, render: (row) => row.name },
+    { key: "description", title: fleetGroupsPageCopy.columns.description, render: (row) => row.description ?? fleetGroupsPageCopy.values.fallback },
+    { key: "created_at", title: fleetGroupsPageCopy.columns.created, render: (row) => formatDateTime(row.created_at) },
   ];
 
   if (loading) {
-    return <Loader label="Загружаем группы" />;
+    return <Loader label={fleetGroupsPageCopy.loading} />;
   }
 
   if (isForbidden) {
@@ -60,13 +61,13 @@ export const FleetGroupsPage = () => {
   }
 
   if (unavailable) {
-    return <div className="card">Fleet groups endpoint unavailable in this environment.</div>;
+    return <div className="card">{fleetGroupsPageCopy.unavailable}</div>;
   }
 
   return (
     <div>
       <div className="page-header">
-        <h1>Fleet · Groups</h1>
+        <h1>{fleetGroupsPageCopy.title}</h1>
       </div>
       <DataTable
         data={groups}
@@ -74,8 +75,8 @@ export const FleetGroupsPage = () => {
         loading={false}
         errorState={error ? { title: error.title, description: error.description, details: error.details } : undefined}
         emptyState={{
-          title: "Группы не найдены",
-          description: "Добавьте группы в клиентском кабинете, чтобы управлять доступом к картам.",
+          title: fleetGroupsPageCopy.empty.title,
+          description: fleetGroupsPageCopy.empty.description,
         }}
       />
     </div>

@@ -2,7 +2,7 @@
   "app": {
     "title": "Client Portal",
     "clientLabel": "Client {id}",
-    "clientFallback": "Client workspace",
+    "clientFallback": "Client portal",
     "signedInAs": "Signed in as",
     "configMissing": "Client base path is missing",
     "configError": "App misconfigured: API base URL missing",
@@ -485,13 +485,13 @@
   },
   "marketplaceOrderDetails": {
     "title": "Order details",
-    "subtitle": "Order status, SLA, incidents, and invoices.",
+    "subtitle": "Order status, SLA, incidents, and adjustments.",
     "partner": "Partner: {name}",
     "tabs": {
       "timeline": "Timeline",
       "sla": "SLA",
       "incidents": "Incidents",
-      "invoices": "Invoices & Credits"
+      "invoices": "Credits & Penalties"
     },
     "fields": {
       "status": "Order status",
@@ -501,7 +501,6 @@
     },
     "actions": {
       "contactSupport": "Contact support",
-      "downloadInvoice": "Download invoice",
       "confirmCancel": "Cancel this order?",
       "pay": "Pay now",
       "paying": "Processing payment...",
@@ -534,13 +533,11 @@
       }
     },
     "invoices": {
-      "emptyTitle": "No invoices yet",
-      "emptyDescription": "Invoices will appear after billing is generated.",
-      "table": {
-        "number": "Invoice number",
-        "status": "Status",
-        "amount": "Amount"
-      },
+      "emptyTitle": "No credits or penalties yet",
+      "emptyDescription": "Adjustments will appear after SLA consequences are calculated.",
+      "frozenTailTitle": "Credits and penalties are not mounted yet",
+      "frozenTailDescription": "This order still sits on the explicit consequence compatibility tail. Credits and penalties stay hidden until the SLA consequence owner is opened.",
+
       "creditsTitle": "Credits and penalties",
       "credits": {
         "table": {
@@ -572,7 +569,9 @@
     "subtitle": "Generated documents with legal status and files.",
     "errors": {
       "loadFailedTitle": "Documents are unavailable",
-      "loadFailedDescription": "Unable to load the document list. Try refreshing the page."
+      "loadFailedDescription": "Unable to load the document list. Try refreshing the page.",
+      "downloadFailed": "Unable to download the document.",
+      "ackFailed": "Unable to update the document status."
     },
     "demo": {
       "title": "Documents will appear later in the demo",
@@ -654,7 +653,14 @@
       "reconciliation": "Reconciliation",
       "actions": "Actions"
     },
-    "noFile": "No file"
+    "noFile": "No file",
+    "footer": {
+      "rows": "Rows: {count}"
+    },
+    "filteredEmpty": {
+      "title": "Filters returned no data",
+      "description": "Reset the filters or adjust the reconciliation scope."
+    }
   },
   "filters": {
     "periodPresets": {
@@ -1249,12 +1255,30 @@
     "statusCreated": "Created",
     "statusInProgress": "In progress",
     "statusCompleted": "Completed",
+    "statusCancelled": "Cancelled",
     "searchPlaceholder": "Trip number, driver, vehicle, location",
     "pagination": "Page {page} of {total}",
     "metaTitle": "Meta JSON",
     "loading": "Loading trip",
     "emptyTitle": "No trips",
     "emptyDescription": "Trips will appear once they are created.",
+    "create": {
+      "open": "Create trip",
+      "title": "Create trip",
+      "tripTitle": "Title",
+      "origin": "Origin",
+      "destination": "Destination",
+      "originLat": "Origin latitude",
+      "originLon": "Origin longitude",
+      "destinationLat": "Destination latitude",
+      "destinationLon": "Destination longitude",
+      "plannedStart": "Planned start",
+      "plannedEnd": "Planned end",
+      "submit": "Create trip",
+      "created": "Trip created",
+      "error": "Unable to create trip",
+      "validationRequired": "Fill origin, destination, and coordinates."
+    },
     "errors": {
       "loadFailed": "Unable to load trips",
       "noPermission": "Insufficient permissions",
@@ -1513,7 +1537,109 @@
       "noSummary": "No spend summary"
     }
   },
-  "menu": {
+  "demoEmptyState": {
+    "title": "Section unavailable in demo",
+    "description": "All data and flows will be available here in the live environment."
+  },
+  "accessGate": {
+    "loading": "Checking access...",
+    "defaultTitle": "Section",
+    "diagnostics": {
+      "endpoint": "Endpoint",
+      "status": "Status",
+      "requestId": "Request ID",
+      "show": "Show diagnostics",
+      "hide": "Hide diagnostics",
+      "error": "Error",
+      "kind": "Kind",
+      "correlationId": "Correlation ID",
+      "errorId": "Error ID"
+    },
+    "portalState": {
+      "forbidden": {
+        "title": "Access restricted",
+        "description": "You do not have enough permissions to access the portal.",
+        "action": "Back to dashboard"
+      },
+      "serviceUnavailable": "The service is temporarily unavailable. Please try again later.",
+      "networkDown": "No connection to the server. Check your internet connection.",
+      "apiMisconfigured": "API version mismatch or route unavailable.",
+      "appError": "Application error"
+    },
+    "progress": {
+      "currentStage": "Current stage",
+      "selectedPlan": "Selected plan",
+      "notSelected": "Not selected",
+      "customerType": "Customer type",
+      "remaining": "Remaining",
+      "setupComplete": "Setup complete",
+      "nextStep": "Next step",
+      "choosePlan": "choose plan",
+      "chooseCustomerType": "choose customer type",
+      "completeProfile": "complete profile",
+      "reviewDocuments": "review documents",
+      "acceptSigning": "accept signing",
+      "completePayment": "complete payment"
+    },
+    "states": {
+      "needsOnboarding": {
+        "title": "Connect company",
+        "description": "Complete company onboarding to open this section.",
+        "action": "Go to onboarding"
+      },
+      "needsPlan": {
+        "title": "Choose a plan",
+        "description": "An active plan is required to access this section.",
+        "action": "Continue onboarding",
+        "secondaryAction": "Contact manager"
+      },
+      "needsContract": {
+        "title": "Sign the contract",
+        "description": "Complete contract signing to open this section.",
+        "action": "Go to signing"
+      },
+      "overdue": {
+        "title": "Pay invoice",
+        "description": "Access is restricted because of overdue invoices.",
+        "action": "Open invoices"
+      },
+      "suspended": {
+        "title": "Access suspended",
+        "description": "Payment is overdue and access is temporarily suspended.",
+        "action": "Contact support"
+      },
+      "legalPending": {
+        "title": "Documents under review",
+        "description": "Access is temporarily limited until document review is complete.",
+        "action": "Go to documents"
+      },
+      "payoutBlocked": {
+        "title": "Payouts blocked",
+        "description": "Payouts are temporarily blocked. Contact support for details.",
+        "action": "Contact support"
+      },
+      "slaPenalty": {
+        "title": "SLA penalties",
+        "description": "Access is restricted due to SLA penalties. Contact support.",
+        "action": "Contact support"
+      },
+      "forbiddenRole": "You do not have permission to view this section.",
+      "demoUnavailable": {
+        "title": "Section unavailable in demo",
+        "description": "Capabilities for \"{title}\" will be available here in the live environment.",
+        "action": "Go to overview"
+      },
+      "subscriptionLocked": {
+        "title": "Unavailable by subscription",
+        "description": "An extended plan or module activation is required for access.",
+        "action": "Go to subscription"
+      },
+      "serviceUnavailable": "The service is temporarily unavailable. Please try again later.",
+      "misconfig": "Portal configuration is unavailable. Please try again later or contact support.",
+      "techError": "Technical error. Please try again later.",
+      "home": "Go home"
+    }
+  },  "menu": {
     "logisticsFuelControl": "Fuel control"
   }
 }

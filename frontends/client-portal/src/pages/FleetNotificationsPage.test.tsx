@@ -2,11 +2,13 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { App } from "../App";
 import type { AuthSession } from "../api/types";
+import { AuthProvider } from "../auth/AuthContext";
+import { I18nProvider } from "../i18n";
+import { FleetNotificationsPage } from "./FleetNotificationsPage";
 
 const session: AuthSession = {
-  token: "token-1",
+  token: "test.header.payload",
   email: "client@demo.test",
   roles: ["CLIENT_OWNER"],
   subjectType: "CLIENT",
@@ -18,6 +20,8 @@ describe("FleetNotificationsPage", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
+    window.localStorage.clear();
+    window.sessionStorage.clear();
   });
 
   it("renders alerts list", async () => {
@@ -53,7 +57,11 @@ describe("FleetNotificationsPage", () => {
 
     render(
       <MemoryRouter initialEntries={["/fleet/notifications"]}>
-        <App initialSession={session} />
+        <I18nProvider locale="ru">
+          <AuthProvider initialSession={session}>
+            <FleetNotificationsPage />
+          </AuthProvider>
+        </I18nProvider>
       </MemoryRouter>,
     );
 
@@ -96,7 +104,11 @@ describe("FleetNotificationsPage", () => {
 
     render(
       <MemoryRouter initialEntries={["/fleet/notifications"]}>
-        <App initialSession={session} />
+        <I18nProvider locale="ru">
+          <AuthProvider initialSession={session}>
+            <FleetNotificationsPage />
+          </AuthProvider>
+        </I18nProvider>
       </MemoryRouter>,
     );
 

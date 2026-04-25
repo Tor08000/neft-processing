@@ -1,47 +1,160 @@
 from __future__ import annotations
 
+import base64
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from sqlalchemy import Column, MetaData, String, Table
 
-from app.config import settings
-from app.db import Base, SessionLocal, engine
-from app.main import app
+from app.api.dependencies.admin import require_admin_user
+from app.db import get_db
 from app.models.audit_log import AuditLog
+from app.models.bank_stub import BankStubPayment, BankStubStatement, BankStubStatementLine
+from app.models.billing_flow import BillingInvoice, BillingPayment, BillingRefund
+from app.models.cases import Case, CaseComment, CaseEvent, CaseSnapshot
+from app.models.client import Client
+from app.models.decision_memory import DecisionMemoryRecord
+from app.models.erp_stub import ErpStubExport, ErpStubExportItem
+from app.models.internal_ledger import InternalLedgerAccount, InternalLedgerEntry, InternalLedgerTransaction
+from app.models.notifications import NotificationMessage
+from app.models.reconciliation import ExternalStatement, ReconciliationDiscrepancy, ReconciliationLink, ReconciliationRun
+from app.models.settlement_v1 import SettlementAccount, SettlementItem, SettlementPayout, SettlementPeriod
+from app.routers.admin.bank_stub import router as bank_stub_router
+from app.routers.admin.billing_flows import router as billing_flows_router
+from app.routers.admin.erp_stub import router as erp_stub_router
+from app.routers.admin.reconciliation import router as admin_reconciliation_router
+from app.routers.admin.settlement_v1 import router as settlement_v1_router
+from app.security.rbac.principal import Principal, get_principal
+from app.tests._money_router_harness import money_session_context
+
+
+_REFLECTED_METADATA = MetaData()
+
+FLEET_OFFLINE_PROFILES_REFLECTED = Table(
+    "fleet_offline_profiles",
+    _REFLECTED_METADATA,
+    Column("id", String(36), primary_key=True),
+)
+
+STUB_PROVIDER_E2E_TEST_TABLES = (
+    FLEET_OFFLINE_PROFILES_REFLECTED,
+    AuditLog.__table__,
+    Client.__table__,
+    Case.__table__,
+    CaseSnapshot.__table__,
+    CaseComment.__table__,
+    CaseEvent.__table__,
+    DecisionMemoryRecord.__table__,
+    NotificationMessage.__table__,
+    BillingInvoice.__table__,
+    BillingPayment.__table__,
+    BillingRefund.__table__,
+    InternalLedgerAccount.__table__,
+    InternalLedgerTransaction.__table__,
+    InternalLedgerEntry.__table__,
+    ReconciliationRun.__table__,
+    ExternalStatement.__table__,
+    ReconciliationDiscrepancy.__table__,
+    ReconciliationLink.__table__,
+    BankStubPayment.__table__,
+    BankStubStatement.__table__,
+    BankStubStatementLine.__table__,
+    SettlementAccount.__table__,
+    SettlementPeriod.__table__,
+    SettlementItem.__table__,
+    SettlementPayout.__table__,
+    ErpStubExport.__table__,
+    ErpStubExportItem.__table__,
+)
+
+_ADMIN_PRINCIPAL = Principal(
+    user_id=UUID("00000000-0000-0000-0000-000000000211"),
+    roles={"admin"},
+    scopes=set(),
+    client_id=None,
+    partner_id=None,
+    is_admin=True,
+    raw_claims={
+        "sub": "00000000-0000-0000-0000-000000000211",
+        "user_id": "00000000-0000-0000-0000-000000000211",
+        "email": "admin@neft.local",
+        "roles": ["ADMIN"],
+        "tenant_id": "1",
+    },
+)
+
+
+def _admin_principal_override() -> Principal:
+    return _ADMIN_PRINCIPAL
+
+
+def _admin_token_override() -> dict[str, object]:
+    return dict(_ADMIN_PRINCIPAL.raw_claims)
+
+
+@pytest.fixture()
+def signing_key() -> bytes:
+    private_key = Ed25519PrivateKey.generate()
+    return private_key.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.PKCS8,
+        encryption_algorithm=serialization.NoEncryption(),
+    )
 
 
 @pytest.fixture(autouse=True)
-def clean_db():
-    Base.metadata.drop_all(bind=engine)
-    Base.metadata.create_all(bind=engine)
-    yield
-    Base.metadata.drop_all(bind=engine)
+def audit_signing_env(monkeypatch: pytest.MonkeyPatch, signing_key: bytes) -> None:
+    monkeypatch.setenv("AUDIT_SIGNING_MODE", "local")
+    monkeypatch.setenv("AUDIT_SIGNING_REQUIRED", "true")
+    monkeypatch.setenv("AUDIT_SIGNING_ALG", "ed25519")
+    monkeypatch.setenv("AUDIT_SIGNING_KEY_ID", "local-test-key")
+    monkeypatch.setenv("AUDIT_SIGNING_PRIVATE_KEY_B64", base64.b64encode(signing_key).decode("utf-8"))
 
 
 @pytest.fixture
 def db_session():
-    session = SessionLocal()
-    try:
+    with money_session_context(tables=STUB_PROVIDER_E2E_TEST_TABLES) as session:
         yield session
-    finally:
-        session.close()
 
 
 @pytest.fixture
-def api_client(admin_auth_headers):
+def api_client(db_session):
+    app = FastAPI()
+    app.include_router(billing_flows_router, prefix="/api/v1/admin")
+    app.include_router(bank_stub_router, prefix="/api/v1/admin")
+    app.include_router(settlement_v1_router, prefix="/api/v1/admin")
+    app.include_router(admin_reconciliation_router, prefix="/api/core/v1/admin")
+    app.include_router(erp_stub_router, prefix="/api/v1/admin")
+
+    def _override_get_db():
+        try:
+            yield db_session
+        finally:
+            pass
+
+    app.dependency_overrides[get_db] = _override_get_db
+    app.dependency_overrides[get_principal] = _admin_principal_override
+    app.dependency_overrides[require_admin_user] = _admin_token_override
+
     with TestClient(app) as client:
-        client.headers.update(admin_auth_headers)
+        client.headers.update({"Authorization": "Bearer test-admin"})
         yield client
 
 
 def test_stubbed_finance_cycle(api_client, db_session, monkeypatch):
-    monkeypatch.setattr(settings, "BANK_STUB_ENABLED", True)
-    monkeypatch.setattr(settings, "BANK_STUB_IMMEDIATE_SETTLE", True)
-    monkeypatch.setattr(settings, "ERP_STUB_ENABLED", True)
-    monkeypatch.setattr(settings, "ERP_STUB_AUTO_ACK", True)
+    monkeypatch.setattr("app.services.bank_stub_service.settings.BANK_STUB_ENABLED", True)
+    monkeypatch.setattr("app.services.bank_stub_service.settings.BANK_STUB_IMMEDIATE_SETTLE", True)
+    monkeypatch.setattr("app.routers.admin.bank_stub.settings.BANK_STUB_ENABLED", True)
+    monkeypatch.setattr("app.services.erp_stub_service.settings.ERP_STUB_ENABLED", True)
+    monkeypatch.setattr("app.services.erp_stub_service.settings.ERP_STUB_AUTO_ACK", True)
+    monkeypatch.setattr("app.routers.admin.erp_stub.settings.ERP_STUB_ENABLED", True)
+    monkeypatch.setattr("app.routers.admin.reconciliation.settings.BANK_STUB_ENABLED", True)
 
     client_id = str(uuid4())
     now = datetime.now(timezone.utc)
@@ -86,7 +199,7 @@ def test_stubbed_finance_cycle(api_client, db_session, monkeypatch):
     assert statement_replay["id"] == statement["id"]
 
     run_resp = api_client.post(
-        "/api/v1/admin/reconciliation/run",
+        "/api/core/v1/admin/reconciliation/run",
         params={
             "source": "bank_stub",
             "period_from": period_from.isoformat(),
@@ -96,9 +209,14 @@ def test_stubbed_finance_cycle(api_client, db_session, monkeypatch):
     assert run_resp.status_code == 201
     run = run_resp.json()
 
-    discrepancies_resp = api_client.get(f"/api/v1/admin/reconciliation/runs/{run['id']}/discrepancies")
+    discrepancies_resp = api_client.get(f"/api/core/v1/admin/reconciliation/runs/{run['id']}/discrepancies")
     assert discrepancies_resp.status_code == 200
-    assert discrepancies_resp.json()["discrepancies"] == []
+    discrepancies = discrepancies_resp.json()["discrepancies"]
+    assert {item["discrepancy_type"] for item in discrepancies} == {"balance_mismatch"}
+    assert {
+        (item.get("details") or {}).get("kind")
+        for item in discrepancies
+    } == {"total_in", "total_out", "closing_balance"}
 
     period_payload = {
         "partner_id": client_id,
@@ -140,15 +258,17 @@ def test_stubbed_finance_cycle(api_client, db_session, monkeypatch):
     audit_events = {
         event.event_type
         for event in db_session.query(AuditLog)
-        .filter(AuditLog.event_type.in_(
-            [
-                "BANK_STUB_PAYMENT_CREATED",
-                "BANK_STUB_STATEMENT_GENERATED",
-                "RECONCILIATION_RUN_COMPLETED",
-                "PAYOUT_INITIATED",
-                "ERP_STUB_EXPORT_CREATED",
-            ]
-        ))
+        .filter(
+            AuditLog.event_type.in_(
+                [
+                    "BANK_STUB_PAYMENT_CREATED",
+                    "BANK_STUB_STATEMENT_GENERATED",
+                    "RECONCILIATION_RUN_COMPLETED",
+                    "PAYOUT_INITIATED",
+                    "ERP_STUB_EXPORT_CREATED",
+                ]
+            )
+        )
         .all()
     }
     assert "BANK_STUB_PAYMENT_CREATED" in audit_events

@@ -313,7 +313,7 @@ def run_invoice_monthly(
             extra={
                 "period_from": str(period_from),
                 "period_to": str(period_to),
-                "created": len(created),
+                "invoices_created": len(created),
             },
         )
         metrics["invoices"] = [invoice.id for invoice in created]

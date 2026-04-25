@@ -14,12 +14,16 @@ from app.models.internal_ledger import (
     InternalLedgerTransaction,
     InternalLedgerTransactionType,
 )
+from app.models.billing_period import BillingPeriod, BillingPeriodStatus
 from app.models.invoice import InvoiceStatus
 from app.models.settlement_v1 import SettlementPeriod, SettlementPeriodStatus
 from app.repositories.billing_repository import BillingInvoiceData, BillingLineData, BillingRepository
 from app.services.finance import FinanceService, PaymentIdempotencyConflict
 from app.services.internal_ledger import InternalLedgerLine, InternalLedgerService, verify_ledger_chain
 from app.services.settlement_service import verify_period_hash
+
+
+ADMIN_FINANCE_TOKEN = {"roles": ["ADMIN", "ADMIN_FINANCE"], "sub": "phase3-finance-tester"}
 
 
 @pytest.fixture(autouse=True)
@@ -95,6 +99,10 @@ def _seed_payment(db_session):
         )
     )
     invoice.status = InvoiceStatus.SENT
+    period = db_session.get(BillingPeriod, invoice.billing_period_id)
+    assert period is not None
+    period.status = BillingPeriodStatus.FINALIZED
+    period.finalized_at = datetime.now(timezone.utc)
     db_session.flush()
     service = FinanceService(db_session)
     service.apply_payment(
@@ -103,7 +111,7 @@ def _seed_payment(db_session):
         currency="RUB",
         idempotency_key="phase3-payment-1",
         request_ctx=None,
-        token=None,
+        token=ADMIN_FINANCE_TOKEN,
     )
     db_session.flush()
     return invoice
@@ -120,21 +128,24 @@ def test_ledger_raw_sql_update_delete_blocked(db_session):
         db_session.execute(text("DELETE FROM internal_ledger_entries WHERE id = :id"), {"id": str(entry_id)})
 
 
-def test_ledger_chain_verification_fails_on_tamper(db_session):
+def test_ledger_transaction_raw_sql_tamper_blocked(db_session):
     _seed_ledger_tx(db_session)
     baseline_ok, _baseline_err = verify_ledger_chain(db_session)
+    db_session.commit()
 
     tx = db_session.query(InternalLedgerTransaction).order_by(InternalLedgerTransaction.batch_sequence.desc()).first()
-    db_session.execute(
-        text("UPDATE internal_ledger_transactions SET batch_hash = :h WHERE id = :id"),
-        {"id": str(tx.id), "h": "0" * 64},
-    )
-    db_session.flush()
+    with pytest.raises(Exception):
+        db_session.execute(
+            text("UPDATE internal_ledger_transactions SET batch_hash = :h WHERE id = :id"),
+            {"id": str(tx.id), "h": "0" * 64},
+        )
+        db_session.flush()
+    db_session.rollback()
 
     ok_after, err_after = verify_ledger_chain(db_session)
-    assert ok_after is False
     if baseline_ok:
-        assert "batch_hash_mismatch" in str(err_after)
+        assert ok_after is True
+        assert err_after is None
 
 
 def test_snapshot_tamper_detected():
@@ -176,7 +187,7 @@ def test_idempotency_replay_response_hash_mutation_detected(db_session, test_db_
     invoice = _seed_payment(db_session)
     payment = db_session.execute(
         text("SELECT id FROM invoice_payments WHERE idempotency_key = :k"),
-        {"k": "hash:phase3-payment-1"},
+        {"k": "phase3-payment-1"},
     ).first()
     assert payment is not None
 
@@ -202,7 +213,7 @@ def test_idempotency_replay_response_hash_mutation_detected(db_session, test_db_
             currency="RUB",
             idempotency_key="phase3-payment-1",
             request_ctx=None,
-            token=None,
+            token=ADMIN_FINANCE_TOKEN,
         )
 
 

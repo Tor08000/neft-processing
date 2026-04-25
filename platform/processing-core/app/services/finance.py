@@ -6,6 +6,7 @@ import json
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Tuple
+from uuid import UUID
 
 from sqlalchemy import select, text
 from sqlalchemy.exc import DBAPIError, IntegrityError, SQLAlchemyError
@@ -130,6 +131,11 @@ class FinanceService:
             extra_payload=extra_payload,
         )
         self.db.commit()
+
+    @staticmethod
+    def _mark_payment_invariant_failure() -> None:
+        billing_metrics.mark_payment_error()
+        billing_metrics.mark_payment_failed()
 
     def _lock_invoice(self, invoice_id: str) -> Invoice:
         stmt = select(Invoice).where(Invoice.id == invoice_id)
@@ -347,7 +353,7 @@ class FinanceService:
             payment=payment,
             tenant_id=self._resolve_tenant_id(request_ctx),
         )
-        self._ensure_settlement_allocation(
+        self._ensure_settlement_allocation_with_invariant_guard(
             invoice=invoice,
             source_type=SettlementSourceType.PAYMENT,
             source_id=str(payment.id),
@@ -355,6 +361,7 @@ class FinanceService:
             currency=payment.currency,
             applied_at=payment.created_at,
             request_ctx=request_ctx,
+            on_violation=self._mark_payment_invariant_failure,
         )
         self.reconcile_invoice_allocations(
             invoice.id,
@@ -524,9 +531,14 @@ class FinanceService:
                 .one_or_none()
             )
         elif source_type == SettlementSourceType.REFUND:
+            refund_lookup_id = source_id
+            try:
+                refund_lookup_id = UUID(str(source_id))
+            except (TypeError, ValueError, AttributeError):
+                refund_lookup_id = source_id
             source_obj = (
                 self.db.query(RefundRequest)
-                .filter(RefundRequest.id == source_id)
+                .filter(RefundRequest.id == refund_lookup_id)
                 .one_or_none()
             )
 
@@ -553,6 +565,39 @@ class FinanceService:
             )
 
         return allocation
+
+    def _ensure_settlement_allocation_with_invariant_guard(
+        self,
+        *,
+        invoice: Invoice,
+        source_type: SettlementSourceType,
+        source_id: str,
+        amount: int,
+        currency: str,
+        applied_at: datetime | None,
+        request_ctx: RequestContext | None,
+        on_violation=None,
+    ) -> InvoiceSettlementAllocation:
+        try:
+            return self._ensure_settlement_allocation(
+                invoice=invoice,
+                source_type=source_type,
+                source_id=source_id,
+                amount=amount,
+                currency=currency,
+                applied_at=applied_at,
+                request_ctx=request_ctx,
+            )
+        except FinancialInvariantViolation as exc:
+            self.db.rollback()
+            if on_violation is not None:
+                on_violation()
+            self._audit_invariant_violation(
+                exc,
+                request_ctx=request_ctx,
+                extra_payload={"invoice_id": invoice.id},
+            )
+            raise
 
     def reconcile_invoice_allocations(
         self,
@@ -924,7 +969,7 @@ class FinanceService:
                     )
                     raise
 
-                self._ensure_settlement_allocation(
+                self._ensure_settlement_allocation_with_invariant_guard(
                     invoice=invoice,
                     source_type=SettlementSourceType.PAYMENT,
                     source_id=str(payment.id),
@@ -932,6 +977,7 @@ class FinanceService:
                     currency=currency,
                     applied_at=payment.created_at,
                     request_ctx=request_ctx,
+                    on_violation=self._mark_payment_invariant_failure,
                 )
 
             self.reconcile_invoice_allocations(
@@ -987,7 +1033,7 @@ class FinanceService:
                 credit_note=existing,
                 tenant_id=self._resolve_tenant_id(request_ctx),
             )
-            self._ensure_settlement_allocation(
+            self._ensure_settlement_allocation_with_invariant_guard(
                 invoice=invoice,
                 source_type=SettlementSourceType.CREDIT_NOTE,
                 source_id=str(existing.id),
@@ -1116,7 +1162,7 @@ class FinanceService:
                 )
                 raise
 
-            self._ensure_settlement_allocation(
+            self._ensure_settlement_allocation_with_invariant_guard(
                 invoice=invoice,
                 source_type=SettlementSourceType.CREDIT_NOTE,
                 source_id=str(credit_note.id),
@@ -1183,7 +1229,7 @@ class FinanceService:
                     refund=existing_by_ref,
                     tenant_id=self._resolve_tenant_id(request_ctx),
                 )
-                self._ensure_settlement_allocation(
+                self._ensure_settlement_allocation_with_invariant_guard(
                     invoice=invoice,
                     source_type=SettlementSourceType.REFUND,
                     source_id=str(existing_by_ref.id),
@@ -1298,7 +1344,7 @@ class FinanceService:
                             refund=existing,
                             tenant_id=self._resolve_tenant_id(request_ctx),
                         )
-                        self._ensure_settlement_allocation(
+                        self._ensure_settlement_allocation_with_invariant_guard(
                             invoice=invoice,
                             source_type=SettlementSourceType.REFUND,
                             source_id=str(existing.id),
@@ -1327,7 +1373,7 @@ class FinanceService:
                 )
                 raise
 
-            self._ensure_settlement_allocation(
+            self._ensure_settlement_allocation_with_invariant_guard(
                 invoice=invoice,
                 source_type=SettlementSourceType.REFUND,
                 source_id=str(refund.id),

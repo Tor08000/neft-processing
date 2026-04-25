@@ -7,7 +7,7 @@ from uuid import uuid4
 from sqlalchemy import JSON, Boolean, Column, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func
 
 from app.db import Base
-from app.db.types import ExistingEnum, GUID
+from app.db.types import ExistingEnum
 
 
 class DocumentEnvelopeStatus(str, Enum):
@@ -42,8 +42,8 @@ class DocumentEnvelope(Base):
         UniqueConstraint("provider", "envelope_id", name="uq_document_envelopes_provider"),
     )
 
-    id = Column(GUID(), primary_key=True, default=lambda: str(uuid4()))
-    document_id = Column(GUID(), ForeignKey("documents.id"), nullable=False, index=True)
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    document_id = Column(String(36), ForeignKey("documents.id"), nullable=False, index=True)
     provider = Column(String(64), nullable=False, index=True)
     envelope_id = Column(String(128), nullable=False)
     status = Column(ExistingEnum(DocumentEnvelopeStatus, name="document_envelope_status"), nullable=False)
@@ -52,12 +52,17 @@ class DocumentEnvelope(Base):
     error_message = Column(Text, nullable=True)
     meta = Column(JSON, nullable=True)
 
+    def __init__(self, **kwargs):
+        kwargs.setdefault("id", str(uuid4()))
+        super().__init__(**kwargs)
+
 
 class DocumentSignature(Base):
     __tablename__ = "document_signatures"
+    __table_args__ = {"extend_existing": True}
 
-    id = Column(GUID(), primary_key=True, default=lambda: str(uuid4()))
-    document_id = Column(GUID(), ForeignKey("documents.id"), nullable=False, index=True)
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    document_id = Column(String(36), ForeignKey("documents.id"), nullable=False, index=True)
     provider = Column(String(64), nullable=False, index=True)
     version = Column(Integer, nullable=False, server_default="1")
     request_id = Column(String(128), nullable=True)
@@ -79,18 +84,35 @@ class DocumentSignature(Base):
     finished_at = Column(DateTime(timezone=True), nullable=True)
     meta = Column(JSON, nullable=True)
     signature_type = Column(ExistingEnum(SignatureType, name="signature_type"), nullable=False)
-    file_id = Column(GUID(), ForeignKey("document_files.id"), nullable=True)
+    file_id = Column(String(36), ForeignKey("document_files.id"), nullable=True)
     signature_hash_sha256 = Column(String(64), nullable=False)
     signed_at = Column(DateTime(timezone=True), nullable=True)
-    certificate_id = Column(GUID(), ForeignKey("certificates.id"), nullable=True)
+    certificate_id = Column(String(36), ForeignKey("certificates.id"), nullable=True)
     verified = Column(Boolean, nullable=False, server_default="false")
     verification_details = Column(JSON, nullable=True)
+
+    def __init__(self, **kwargs):
+        kwargs.setdefault("id", str(uuid4()))
+        super().__init__(**kwargs)
+
+
+def _repair_mapper_against_current_table(mapper_cls) -> None:
+    mapper = mapper_cls.__mapper__
+    for prop in mapper.column_attrs:
+        for column in prop.columns:
+            current_column = mapper_cls.__table__.c.get(column.key)
+            if current_column is not None and current_column not in mapper._columntoproperty:
+                mapper._columntoproperty[current_column] = prop
+
+
+def repair_legal_integration_mappers() -> None:
+    _repair_mapper_against_current_table(DocumentSignature)
 
 
 class Certificate(Base):
     __tablename__ = "certificates"
 
-    id = Column(GUID(), primary_key=True, default=lambda: str(uuid4()))
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid4()))
     subject_dn = Column(Text, nullable=True)
     issuer_dn = Column(Text, nullable=True)
     serial_number = Column(Text, nullable=True)
@@ -101,6 +123,10 @@ class Certificate(Base):
     revocation_checked_at = Column(DateTime(timezone=True), nullable=True)
     meta = Column(JSON, nullable=True)
 
+    def __init__(self, **kwargs):
+        kwargs.setdefault("id", str(uuid4()))
+        super().__init__(**kwargs)
+
 
 class LegalProviderConfig(Base):
     __tablename__ = "legal_provider_configs"
@@ -108,7 +134,7 @@ class LegalProviderConfig(Base):
         UniqueConstraint("tenant_id", "client_id", name="uq_legal_provider_configs_scope"),
     )
 
-    id = Column(GUID(), primary_key=True, default=lambda: str(uuid4()))
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid4()))
     tenant_id = Column(Integer, nullable=False, index=True)
     client_id = Column(String(64), nullable=False, index=True)
     signing_provider = Column(String(64), nullable=False, server_default="none")
@@ -116,6 +142,10 @@ class LegalProviderConfig(Base):
     require_signature_for_finalize = Column(Boolean, nullable=False, server_default="false")
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    def __init__(self, **kwargs):
+        kwargs.setdefault("id", str(uuid4()))
+        super().__init__(**kwargs)
 
 
 __all__ = [

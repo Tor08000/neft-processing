@@ -18,8 +18,26 @@ from app.schemas.partner_management import (
     PartnerUserRoleOut,
     PartnerUserRoleSelfCreate,
 )
+from app.services.partner_context import (
+    resolve_partner_from_link,
+    resolve_partner_user_link,
+    update_partner_runtime_fields,
+)
 
 router = APIRouter(prefix="/partner", tags=["partner-management-v1"])
+
+PROFILE_MANAGER_ROLES = {
+    "PARTNER_OWNER",
+    "PARTNER_MANAGER",
+    "PARTNER_ACCOUNTANT",
+    "PARTNER_SERVICE_MANAGER",
+}
+LOCATION_MANAGER_ROLES = {
+    "PARTNER_OWNER",
+    "PARTNER_MANAGER",
+    "PARTNER_SERVICE_MANAGER",
+}
+USER_MANAGER_ROLES = {"PARTNER_OWNER"}
 
 
 def _user_id_from_token(token: dict) -> str:
@@ -33,8 +51,8 @@ def get_current_partner_link(
     token: dict = Depends(partner_portal_user),
     db: Session = Depends(get_db),
 ) -> PartnerUserRole:
-    user_id = _user_id_from_token(token)
-    link = db.query(PartnerUserRole).filter(PartnerUserRole.user_id == user_id).first()
+    _user_id_from_token(token)
+    link = resolve_partner_user_link(db, claims=token)
     if not link:
         raise HTTPException(status_code=403, detail="partner_not_linked")
     return link
@@ -44,7 +62,7 @@ def get_current_partner(
     link: PartnerUserRole = Depends(get_current_partner_link),
     db: Session = Depends(get_db),
 ) -> Partner:
-    partner = db.get(Partner, link.partner_id)
+    partner = resolve_partner_from_link(db, link=link)
     if not partner:
         raise HTTPException(status_code=403, detail="partner_not_linked")
     if partner.status != "ACTIVE":
@@ -52,13 +70,13 @@ def get_current_partner(
     return partner
 
 
-def _ensure_owner(link: PartnerUserRole) -> None:
-    roles = set(link.roles or [])
-    if "PARTNER_OWNER" not in roles:
+def _ensure_any_role(link: PartnerUserRole, allowed_roles: set[str]) -> None:
+    roles = {str(role).upper() for role in (link.roles or []) if role}
+    if roles.isdisjoint(allowed_roles):
         raise HTTPException(status_code=403, detail="forbidden")
 
 
-@router.get("/me", response_model=PartnerMeOut)
+@router.get("/self-profile", response_model=PartnerMeOut)
 def partner_me(
     partner: Partner = Depends(get_current_partner),
     link: PartnerUserRole = Depends(get_current_partner_link),
@@ -69,19 +87,24 @@ def partner_me(
     )
 
 
-@router.patch("/me", response_model=PartnerOut)
+@router.patch("/self-profile", response_model=PartnerOut)
 def patch_partner_me(
     payload: PartnerMePatch,
     partner: Partner = Depends(get_current_partner),
+    link: PartnerUserRole = Depends(get_current_partner_link),
     db: Session = Depends(get_db),
 ) -> PartnerOut:
-    if payload.contacts is not None:
-        partner.contacts = payload.contacts
-    if payload.brand_name is not None:
-        partner.brand_name = payload.brand_name
-    db.add(partner)
-    db.commit()
-    db.refresh(partner)
+    _ensure_any_role(link, PROFILE_MANAGER_ROLES)
+    next_contacts = payload.contacts if payload.contacts is not None else (partner.contacts or {})
+    next_brand_name = payload.brand_name if payload.brand_name is not None else partner.brand_name
+    partner = update_partner_runtime_fields(
+        db,
+        partner_id=str(partner.id),
+        brand_name=next_brand_name,
+        contacts=next_contacts,
+    )
+    if partner is None:
+        raise HTTPException(status_code=404, detail="partner_not_linked")
     return PartnerOut.model_validate(partner, from_attributes=True)
 
 
@@ -98,8 +121,10 @@ def list_locations(
 def create_location(
     payload: PartnerLocationCreate,
     partner: Partner = Depends(get_current_partner),
+    link: PartnerUserRole = Depends(get_current_partner_link),
     db: Session = Depends(get_db),
 ) -> PartnerLocationOut:
+    _ensure_any_role(link, LOCATION_MANAGER_ROLES)
     row = PartnerLocation(partner_id=partner.id, **payload.model_dump())
     db.add(row)
     db.commit()
@@ -112,8 +137,10 @@ def patch_location(
     location_id: str,
     payload: PartnerLocationUpdate,
     partner: Partner = Depends(get_current_partner),
+    link: PartnerUserRole = Depends(get_current_partner_link),
     db: Session = Depends(get_db),
 ) -> PartnerLocationOut:
+    _ensure_any_role(link, LOCATION_MANAGER_ROLES)
     row = db.get(PartnerLocation, location_id)
     if not row or str(row.partner_id) != str(partner.id):
         raise HTTPException(status_code=404, detail="location_not_found")
@@ -129,8 +156,10 @@ def patch_location(
 def delete_location(
     location_id: str,
     partner: Partner = Depends(get_current_partner),
+    link: PartnerUserRole = Depends(get_current_partner_link),
     db: Session = Depends(get_db),
 ) -> PartnerLocationOut:
+    _ensure_any_role(link, LOCATION_MANAGER_ROLES)
     row = db.get(PartnerLocation, location_id)
     if not row or str(row.partner_id) != str(partner.id):
         raise HTTPException(status_code=404, detail="location_not_found")
@@ -157,7 +186,7 @@ def add_my_partner_user(
     link: PartnerUserRole = Depends(get_current_partner_link),
     db: Session = Depends(get_db),
 ) -> PartnerUserRoleOut:
-    _ensure_owner(link)
+    _ensure_any_role(link, USER_MANAGER_ROLES)
     user_id = payload.user_id or payload.email
     if not user_id:
         raise HTTPException(status_code=400, detail="user_id_required")
@@ -179,7 +208,7 @@ def delete_my_partner_user(
     link: PartnerUserRole = Depends(get_current_partner_link),
     db: Session = Depends(get_db),
 ) -> None:
-    _ensure_owner(link)
+    _ensure_any_role(link, USER_MANAGER_ROLES)
     row = db.query(PartnerUserRole).filter(PartnerUserRole.partner_id == partner.id, PartnerUserRole.user_id == user_id).first()
     if not row:
         raise HTTPException(status_code=404, detail="partner_user_not_found")

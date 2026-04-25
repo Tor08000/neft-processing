@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { useLegalGate } from "../auth/LegalGateContext";
 import { EmptyState } from "@shared/ui/EmptyState";
 import { useAuth } from "../auth/AuthContext";
 import { fetchPartnerLegalProfile } from "../api/partnerLegal";
 import type { PartnerLegalProfileResponse } from "../types/partnerLegal";
-import { isDemoPartner } from "@shared/demo/demo";
 
 const formatDate = (value?: string | null) => {
   if (!value) return "—";
@@ -28,7 +28,6 @@ export function LegalPage() {
   const [profileState, setProfileState] = useState<PartnerLegalProfileResponse | null>(null);
   const [profileLoading, setProfileLoading] = useState(false);
   const [profileError, setProfileError] = useState<string | null>(null);
-  const isDemoPartnerAccount = isDemoPartner(user?.email ?? null);
 
   useEffect(() => {
     void refresh();
@@ -76,9 +75,9 @@ export function LegalPage() {
         {profileLoading ? <div className="muted">Проверяем профиль...</div> : null}
         {profileError ? <div className="error">{profileError}</div> : null}
         <div className="actions">
-          <button type="button" className="primary" disabled={isDemoPartnerAccount} title={isDemoPartnerAccount ? "Доступно в рабочем контуре" : undefined}>
-            Заполнить профиль
-          </button>
+          <Link className="primary" to="/partner/profile">
+            Обновить реквизиты
+          </Link>
         </div>
       </div>
       {checklist ? (

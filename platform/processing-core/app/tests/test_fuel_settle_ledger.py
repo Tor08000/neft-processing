@@ -3,34 +3,47 @@ from uuid import uuid4
 
 import pytest
 
-from app.db import Base, SessionLocal, engine
+from app.domains.ledger.models import LedgerEntryV1
 from app.models.fleet import FleetVehicle, FleetVehicleStatus
-from app.models.fuel import FuelCard, FuelCardStatus, FuelNetwork, FuelStation
+from app.models.fuel import FuelCard, FuelCardStatus, FuelNetwork, FuelStation, FuelTransaction
 from app.models.internal_ledger import InternalLedgerEntry, InternalLedgerEntryDirection
 from app.models.money_flow_v3 import MoneyFlowLink, MoneyFlowLinkNodeType, MoneyFlowLinkType
+from app.models.risk_threshold_set import RiskThresholdSet
+from app.models.risk_types import RiskSubjectType, RiskThresholdAction, RiskThresholdScope
 from app.schemas.fuel import FuelAuthorizeRequest
 from app.services.fuel.authorize import authorize_fuel_tx
 from app.services.fuel.settlement import reverse_fuel_tx, settle_fuel_tx
-
-
-@pytest.fixture(autouse=True)
-def _setup_db():
-    Base.metadata.drop_all(bind=engine)
-    Base.metadata.create_all(bind=engine)
-    yield
-    Base.metadata.drop_all(bind=engine)
+from app.tests._fuel_runtime_test_harness import (
+    FUEL_SETTLEMENT_LEDGER_TEST_TABLES,
+    fuel_runtime_session_context,
+)
 
 
 @pytest.fixture
 def session():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+    with fuel_runtime_session_context(tables=FUEL_SETTLEMENT_LEDGER_TEST_TABLES) as session:
+        yield session
+
+
+def _ensure_threshold_set(db) -> None:
+    if db.get(RiskThresholdSet, "fuel-settle-ledger-thresholds"):
+        return
+    db.add(
+        RiskThresholdSet(
+            id="fuel-settle-ledger-thresholds",
+            subject_type=RiskSubjectType.PAYMENT,
+            scope=RiskThresholdScope.GLOBAL,
+            action=RiskThresholdAction.PAYMENT,
+            block_threshold=90,
+            review_threshold=70,
+            allow_threshold=0,
+        )
+    )
+    db.commit()
 
 
 def _seed_refs(db):
+    _ensure_threshold_set(db)
     network = FuelNetwork(id=str(uuid4()), name="NET-1", provider_code="net-1", status="ACTIVE")
     station = FuelStation(
         id=str(uuid4()),
@@ -81,9 +94,13 @@ def test_settle_and_reverse_balanced_entries(session):
     assert tx_id
 
     settled = settle_fuel_tx(session, transaction_id=tx_id)
+    legacy_tx = session.query(FuelTransaction).filter(FuelTransaction.id == tx_id).one()
+    assert legacy_tx.ledger_transaction_id is not None
+    v1_entry = session.query(LedgerEntryV1).filter(LedgerEntryV1.id == settled.ledger_transaction_id).one()
+    assert v1_entry.idempotency_key == f"fuel:capture:{tx_id}"
     entries = (
         session.query(InternalLedgerEntry)
-        .filter(InternalLedgerEntry.ledger_transaction_id == settled.ledger_transaction_id)
+        .filter(InternalLedgerEntry.ledger_transaction_id == legacy_tx.ledger_transaction_id)
         .all()
     )
     assert len(entries) == 2

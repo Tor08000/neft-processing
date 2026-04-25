@@ -19,10 +19,11 @@ from app.services.accounting_export.monitoring import check_overdue_batches
 
 @pytest.fixture(autouse=True)
 def clean_db():
-    Base.metadata.drop_all(bind=engine)
-    Base.metadata.create_all(bind=engine)
+    tables = [AccountingExportBatch.__table__, AuditLog.__table__, BillingPeriod.__table__]
+    Base.metadata.drop_all(bind=engine, tables=tables)
+    Base.metadata.create_all(bind=engine, tables=tables)
     yield
-    Base.metadata.drop_all(bind=engine)
+    Base.metadata.drop_all(bind=engine, tables=tables)
 
 
 def _make_period() -> BillingPeriod:

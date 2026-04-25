@@ -11,7 +11,7 @@ import sqlalchemy as sa
 from alembic import op
 
 from alembic_helpers import DB_SCHEMA
-from app.db.types import GUID
+from db.types import GUID
 
 
 revision = "20299310_0159_clients_schema_align_with_orm"

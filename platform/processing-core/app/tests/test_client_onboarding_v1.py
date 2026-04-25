@@ -4,7 +4,7 @@ import uuid
 
 from fastapi.testclient import TestClient
 
-from app.main import app
+from app.tests._client_docflow_onboarding_harness import docflow_api_client, setup_docflow_env
 
 
 def _email() -> str:
@@ -20,8 +20,8 @@ def _create(api_client: TestClient, email: str | None = None):
 
 
 def test_create_draft_returns_token(monkeypatch) -> None:
-    monkeypatch.setenv("ONBOARDING_TOKEN_SECRET", "test-onboarding-secret")
-    with TestClient(app) as api_client:
+    setup_docflow_env(monkeypatch)
+    with docflow_api_client() as (api_client, _):
         app_id, _, payload = _create(api_client)
     assert app_id
     assert payload["application"]["status"] == "DRAFT"
@@ -29,19 +29,20 @@ def test_create_draft_returns_token(monkeypatch) -> None:
 
 
 def test_submit_without_required_fields(monkeypatch) -> None:
-    monkeypatch.setenv("ONBOARDING_TOKEN_SECRET", "test-onboarding-secret")
-    with TestClient(app) as api_client:
+    setup_docflow_env(monkeypatch)
+    with docflow_api_client() as (api_client, _):
         app_id, token, _ = _create(api_client)
         resp = api_client.post(
             f"/api/core/client/v1/onboarding/applications/{app_id}/submit",
             headers={"Authorization": f"Bearer {token}"},
         )
     assert resp.status_code == 400
+    assert resp.json()["detail"]["reason_code"] == "missing_required_fields"
 
 
 def test_update_draft_ok(monkeypatch) -> None:
-    monkeypatch.setenv("ONBOARDING_TOKEN_SECRET", "test-onboarding-secret")
-    with TestClient(app) as api_client:
+    setup_docflow_env(monkeypatch)
+    with docflow_api_client() as (api_client, _):
         app_id, token, _ = _create(api_client)
         resp = api_client.put(
             f"/api/core/client/v1/onboarding/applications/{app_id}",
@@ -53,8 +54,8 @@ def test_update_draft_ok(monkeypatch) -> None:
 
 
 def test_update_after_submit_conflict(monkeypatch) -> None:
-    monkeypatch.setenv("ONBOARDING_TOKEN_SECRET", "test-onboarding-secret")
-    with TestClient(app) as api_client:
+    setup_docflow_env(monkeypatch)
+    with docflow_api_client() as (api_client, _):
         app_id, token, _ = _create(api_client)
         api_client.put(
             f"/api/core/client/v1/onboarding/applications/{app_id}",
@@ -72,19 +73,21 @@ def test_update_after_submit_conflict(monkeypatch) -> None:
             headers={"Authorization": f"Bearer {token}"},
         )
     assert update_resp.status_code == 409
+    assert update_resp.json()["detail"]["reason_code"] == "application_not_editable"
 
 
 def test_get_without_token_401(monkeypatch) -> None:
-    monkeypatch.setenv("ONBOARDING_TOKEN_SECRET", "test-onboarding-secret")
-    with TestClient(app) as api_client:
+    setup_docflow_env(monkeypatch)
+    with docflow_api_client() as (api_client, _):
         app_id, _, _ = _create(api_client)
         resp = api_client.get(f"/api/core/client/v1/onboarding/applications/{app_id}")
     assert resp.status_code == 401
+    assert resp.json()["detail"]["reason_code"] == "missing_onboarding_token"
 
 
 def test_get_with_wrong_token_403(monkeypatch) -> None:
-    monkeypatch.setenv("ONBOARDING_TOKEN_SECRET", "test-onboarding-secret")
-    with TestClient(app) as api_client:
+    setup_docflow_env(monkeypatch)
+    with docflow_api_client() as (api_client, _):
         app1, token1, _ = _create(api_client)
         app2, _, _ = _create(api_client)
         assert app1 != app2
@@ -93,15 +96,21 @@ def test_get_with_wrong_token_403(monkeypatch) -> None:
             headers={"Authorization": f"Bearer {token1}"},
         )
     assert resp.status_code == 403
+    assert resp.json()["detail"]["reason_code"] == "onboarding_token_app_mismatch"
 
 
 def test_happy_path_submit_and_get(monkeypatch) -> None:
-    monkeypatch.setenv("ONBOARDING_TOKEN_SECRET", "test-onboarding-secret")
-    with TestClient(app) as api_client:
+    setup_docflow_env(monkeypatch)
+    with docflow_api_client() as (api_client, _):
         app_id, token, _ = _create(api_client)
         update = api_client.put(
             f"/api/core/client/v1/onboarding/applications/{app_id}",
-            json={"company_name": "ООО Счастливый путь", "inn": "1234567890", "org_type": "ООО", "phone": "+79991234567"},
+            json={
+                "company_name": "ООО Счастливый путь",
+                "inn": "1234567890",
+                "org_type": "ООО",
+                "phone": "+79991234567",
+            },
             headers={"Authorization": f"Bearer {token}"},
         )
         assert update.status_code == 200

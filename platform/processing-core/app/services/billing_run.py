@@ -104,7 +104,11 @@ class BillingRunService:
             (Operation.amount_settled > 0, Operation.amount_settled),
             else_=0,
         )
-        billable_amount = func.greatest(base_amount - func.coalesce(Operation.refunded_amount, 0), 0)
+        net_amount = base_amount - func.coalesce(Operation.refunded_amount, 0)
+        billable_amount = case(
+            (net_amount > 0, net_amount),
+            else_=0,
+        )
 
         query = (
             self.db.query(Operation, billable_amount.label("billable_amount"))
@@ -292,7 +296,10 @@ class BillingRunService:
                     resource_type="BILLING_PERIOD",
                     tenant_id=actor.tenant_id,
                     client_id=None,
-                    status=billing_period.status.value if billing_period.status else None,
+                    # Policy guards admin/finance ownership; period openness is
+                    # enforced below as a domain conflict so finalized/locked
+                    # periods map to the expected 409 path instead of 403.
+                    status=None,
                 )
                 decision = self.policy_engine.check(
                     actor=actor,

@@ -49,6 +49,11 @@ class BillingInvoice(Base):
     ledger_tx_id = Column(GUID(), nullable=False)
     audit_event_id = Column(GUID(), nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    pdf_status = Column(String(32), nullable=False, server_default="NONE")
+    pdf_object_key = Column(String(512), nullable=True)
+    pdf_url = Column(String(512), nullable=True)
+    pdf_hash = Column(String(64), nullable=True)
+    pdf_generated_at = Column(DateTime(timezone=True), nullable=True)
 
 
 class BillingPayment(Base):

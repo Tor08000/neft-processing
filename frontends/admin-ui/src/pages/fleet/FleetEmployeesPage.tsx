@@ -8,6 +8,7 @@ import ForbiddenPage from "../ForbiddenPage";
 import type { FleetEmployee } from "../../types/fleet";
 import { describeError } from "../../utils/apiErrors";
 import { formatDateTime } from "../../utils/format";
+import { fleetEmployeesPageCopy } from "./fleetPageCopy";
 
 export const FleetEmployeesPage = () => {
   const { accessToken } = useAuth();
@@ -36,7 +37,7 @@ export const FleetEmployeesPage = () => {
         setIsForbidden(true);
         return;
       }
-      setError({ title: "Не удалось загрузить сотрудников", description: summary.message, details: summary.details });
+      setError({ title: fleetEmployeesPageCopy.errors.load, description: summary.message, details: summary.details });
     } finally {
       setLoading(false);
     }
@@ -47,13 +48,17 @@ export const FleetEmployeesPage = () => {
   }, [loadEmployees]);
 
   const columns: DataColumn<FleetEmployee>[] = [
-    { key: "email", title: "Email", render: (row) => row.email },
-    { key: "status", title: "Status", render: (row) => (row.status ? <StatusBadge status={row.status} /> : "—") },
-    { key: "created_at", title: "Created", render: (row) => formatDateTime(row.created_at) },
+    { key: "email", title: fleetEmployeesPageCopy.columns.email, render: (row) => row.email },
+    {
+      key: "status",
+      title: fleetEmployeesPageCopy.columns.status,
+      render: (row) => (row.status ? <StatusBadge status={row.status} /> : fleetEmployeesPageCopy.values.fallback),
+    },
+    { key: "created_at", title: fleetEmployeesPageCopy.columns.created, render: (row) => formatDateTime(row.created_at) },
   ];
 
   if (loading) {
-    return <Loader label="Загружаем сотрудников" />;
+    return <Loader label={fleetEmployeesPageCopy.loading} />;
   }
 
   if (isForbidden) {
@@ -61,13 +66,13 @@ export const FleetEmployeesPage = () => {
   }
 
   if (unavailable) {
-    return <div className="card">Fleet employees endpoint unavailable in this environment.</div>;
+    return <div className="card">{fleetEmployeesPageCopy.unavailable}</div>;
   }
 
   return (
     <div>
       <div className="page-header">
-        <h1>Fleet · Employees</h1>
+        <h1>{fleetEmployeesPageCopy.title}</h1>
       </div>
       <DataTable
         data={employees}
@@ -75,8 +80,8 @@ export const FleetEmployeesPage = () => {
         loading={false}
         errorState={error ? { title: error.title, description: error.description, details: error.details } : undefined}
         emptyState={{
-          title: "Сотрудники не найдены",
-          description: "Пригласите сотрудников в клиентском кабинете, чтобы настроить роли доступа.",
+          title: fleetEmployeesPageCopy.empty.title,
+          description: fleetEmployeesPageCopy.empty.description,
         }}
       />
     </div>

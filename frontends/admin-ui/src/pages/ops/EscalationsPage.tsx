@@ -1,6 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { request } from "../../api/http";
+import { ApiError, request } from "../../api/http";
 import { useAuth } from "../../auth/AuthContext";
+import { EmptyState } from "../../components/common/EmptyState";
+import { ErrorState } from "../../components/common/ErrorState";
+import { Loader } from "../../components/Loader/Loader";
 import { Toast } from "../../components/common/Toast";
 import { EscalationRow, OpsEscalationRow } from "../../components/ops/EscalationRow";
 import { ReasonModal } from "../../components/ops/ReasonModal";
@@ -61,8 +64,10 @@ const CLOSE_REASON_OPTIONS = [
   { value: "CLOSE_OTHER", label: "Other" },
 ] as const;
 
+const EMPTY_VALUE = "-";
+
 const formatTimestamp = (value?: string | null) => {
-  if (!value) return "—";
+  if (!value) return EMPTY_VALUE;
   return new Date(value).toLocaleString();
 };
 
@@ -84,6 +89,7 @@ export const EscalationsPage: React.FC = () => {
   const { toast, showToast } = useToast();
   const [items, setItems] = useState<OpsEscalation[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<Error | null>(null);
   const [target, setTarget] = useState<string>("");
   const [status, setStatus] = useState<string>("");
   const [primaryReason, setPrimaryReason] = useState<string>("");
@@ -102,25 +108,35 @@ export const EscalationsPage: React.FC = () => {
     return params.toString();
   }, [target, status, primaryReason, overdueOnly, clientId]);
 
+  const hasFilters = Boolean(target || status || primaryReason || overdueOnly || clientId.trim());
+
   const selectedEscalation = useMemo(
     () => items.find((item) => item.id === selectedId) ?? null,
     [items, selectedId],
   );
 
+  const resetFilters = () => {
+    setTarget("");
+    setStatus("");
+    setPrimaryReason("");
+    setClientId("");
+    setOverdueOnly(false);
+  };
+
   const loadEscalations = useCallback(async () => {
     if (!accessToken) return;
     setLoading(true);
+    setLoadError(null);
+    setItems([]);
+    setSelectedId(null);
     try {
       const data = await request<EscalationResponse>(`/ops/escalations?${query}`, {}, accessToken);
       setItems(data.items);
-      setSelectedId((prev) => {
-        if (prev && data.items.some((item) => item.id === prev)) {
-          return prev;
-        }
-        return data.items[0]?.id ?? null;
-      });
+      setSelectedId(data.items[0]?.id ?? null);
     } catch (err) {
-      showToast("error", err instanceof Error ? err.message : "Не удалось загрузить escalations");
+      const error = err instanceof Error ? err : new Error("Failed to load escalations");
+      setLoadError(error);
+      showToast("error", error.message);
     } finally {
       setLoading(false);
     }
@@ -148,7 +164,7 @@ export const EscalationsPage: React.FC = () => {
       showToast("success", action === "ack" ? "Escalation acked" : "Escalation closed");
       loadEscalations();
     } catch (err) {
-      showToast("error", err instanceof Error ? err.message : "Ошибка обновления");
+      showToast("error", err instanceof Error ? err.message : "Failed to update escalation");
     }
   };
 
@@ -163,13 +179,13 @@ export const EscalationsPage: React.FC = () => {
         onCancel={() => setActionModal(null)}
         onConfirm={(payload) => {
           if (!actionModal) return;
-          handleAction(actionModal.id, actionModal.action, payload);
+          void handleAction(actionModal.id, actionModal.action, payload);
           setActionModal(null);
         }}
       />
       <div>
         <h1 style={{ fontSize: 24, fontWeight: 700 }}>Ops Escalations</h1>
-        <p style={{ color: "#475569" }}>Inbox для SLA escalation задач</p>
+        <p style={{ color: "#475569" }}>Operator inbox for SLA escalation cases.</p>
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 }}>
@@ -214,20 +230,52 @@ export const EscalationsPage: React.FC = () => {
           <input type="checkbox" checked={overdueOnly} onChange={(event) => setOverdueOnly(event.target.checked)} />
           <span>Overdue only</span>
         </label>
-        <div style={{ display: "flex", alignItems: "flex-end" }}>
+        <div style={{ display: "flex", alignItems: "flex-end", gap: 8, flexWrap: "wrap" }}>
           <button
             type="button"
-            onClick={loadEscalations}
+            onClick={() => void loadEscalations()}
             style={{ padding: "10px 16px", borderRadius: 8, border: "1px solid #cbd5e1" }}
           >
             Refresh
           </button>
+          {hasFilters ? (
+            <button
+              type="button"
+              onClick={resetFilters}
+              style={{ padding: "10px 16px", borderRadius: 8, border: "1px solid #cbd5e1" }}
+            >
+              Reset filters
+            </button>
+          ) : null}
         </div>
       </div>
 
-      {loading ? (
-        <div>Loading...</div>
-      ) : (
+      {loading ? <Loader label="Loading escalations" /> : null}
+
+      {!loading && loadError ? (
+        <ErrorState
+          title="Failed to load escalations"
+          description={loadError.message}
+          requestId={loadError instanceof ApiError ? loadError.requestId : null}
+          correlationId={loadError instanceof ApiError ? loadError.correlationId : null}
+          actionLabel="Retry"
+          onAction={() => void loadEscalations()}
+        />
+      ) : null}
+
+      {!loading && !loadError && items.length === 0 ? (
+        <EmptyState
+          title={hasFilters ? "No escalations match current filters" : "Escalations inbox is clear"}
+          description={
+            hasFilters
+              ? "Adjust or reset the filters to inspect a different operator slice."
+              : "There are no open escalations for the current view."
+          }
+          primaryAction={{ label: hasFilters ? "Reset filters" : "Refresh", onClick: hasFilters ? resetFilters : () => void loadEscalations() }}
+        />
+      ) : null}
+
+      {!loading && !loadError && items.length > 0 ? (
         <div style={{ display: "grid", gap: 16 }}>
           <div style={{ background: "#fff", borderRadius: 12, padding: 16 }}>
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
@@ -243,37 +291,29 @@ export const EscalationsPage: React.FC = () => {
                 </tr>
               </thead>
               <tbody>
-                {items.length ? (
-                  items.map((item) => {
-                    const rowItem: OpsEscalationRow = {
-                      id: item.id,
-                      target: item.target,
-                      status: item.status,
-                      priority: item.priority,
-                      primary_reason: item.primary_reason,
-                      reason_code: item.reason_code,
-                      subject_type: item.subject_type,
-                      subject_id: item.subject_id,
-                      sla_due_at: item.sla_due_at,
-                      sla_overdue: item.sla_overdue,
-                      created_at: item.created_at,
-                    };
-                    return (
-                      <EscalationRow
-                        key={item.id}
-                        item={rowItem}
-                        isSelected={item.id === selectedId}
-                        onSelect={setSelectedId}
-                      />
-                    );
-                  })
-                ) : (
-                  <tr>
-                    <td colSpan={6} style={{ padding: 12, textAlign: "center", color: "#94a3b8" }}>
-                      No escalations found
-                    </td>
-                  </tr>
-                )}
+                {items.map((item) => {
+                  const rowItem: OpsEscalationRow = {
+                    id: item.id,
+                    target: item.target,
+                    status: item.status,
+                    priority: item.priority,
+                    primary_reason: item.primary_reason,
+                    reason_code: item.reason_code,
+                    subject_type: item.subject_type,
+                    subject_id: item.subject_id,
+                    sla_due_at: item.sla_due_at,
+                    sla_overdue: item.sla_overdue,
+                    created_at: item.created_at,
+                  };
+                  return (
+                    <EscalationRow
+                      key={item.id}
+                      item={rowItem}
+                      isSelected={item.id === selectedId}
+                      onSelect={setSelectedId}
+                    />
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -283,7 +323,7 @@ export const EscalationsPage: React.FC = () => {
                 <div>
                   <h3 style={{ margin: 0 }}>Escalation {selectedEscalation.id}</h3>
                   <div style={{ color: "#475569", fontSize: 12 }}>
-                    Target: {selectedEscalation.target} · Status: {selectedEscalation.status}
+                    Target: {selectedEscalation.target} | Status: {selectedEscalation.status}
                   </div>
                 </div>
                 <div style={{ display: "flex", gap: 8 }}>
@@ -328,25 +368,25 @@ export const EscalationsPage: React.FC = () => {
                   </span>
                 </div>
                 <div>
-                  <strong>ACK reason</strong>: {selectedEscalation.ack_reason_code ?? "—"}{" "}
-                  {selectedEscalation.ack_reason_text ? `· ${selectedEscalation.ack_reason_text}` : ""}
+                  <strong>ACK reason</strong>: {selectedEscalation.ack_reason_code ?? EMPTY_VALUE}{" "}
+                  {selectedEscalation.ack_reason_text ? `| ${selectedEscalation.ack_reason_text}` : ""}
                 </div>
                 <div>
-                  <strong>Close reason</strong>: {selectedEscalation.close_reason_code ?? "—"}{" "}
-                  {selectedEscalation.close_reason_text ? `· ${selectedEscalation.close_reason_text}` : ""}
+                  <strong>Close reason</strong>: {selectedEscalation.close_reason_code ?? EMPTY_VALUE}{" "}
+                  {selectedEscalation.close_reason_text ? `| ${selectedEscalation.close_reason_text}` : ""}
                 </div>
                 <div>
                   <strong>SLA due at</strong>: {formatTimestamp(selectedEscalation.sla_due_at)}
                 </div>
                 <div>
-                  <strong>Client</strong>: {selectedEscalation.client_id ?? "—"}
+                  <strong>Client</strong>: {selectedEscalation.client_id ?? EMPTY_VALUE}
                 </div>
                 <div>
-                  <strong>Snapshot hash</strong>: {selectedEscalation.unified_explain_snapshot_hash ?? "—"}
+                  <strong>Snapshot hash</strong>: {selectedEscalation.unified_explain_snapshot_hash ?? EMPTY_VALUE}
                 </div>
               </div>
               <div>
-                <h4 style={{ marginBottom: 8 }}>Unified Explain snapshot</h4>
+                <h4 style={{ marginBottom: 8 }}>Unified explain snapshot</h4>
                 <pre
                   style={{
                     background: "#f8fafc",
@@ -358,31 +398,31 @@ export const EscalationsPage: React.FC = () => {
                 >
                   {selectedEscalation.unified_explain_snapshot
                     ? JSON.stringify(selectedEscalation.unified_explain_snapshot, null, 2)
-                    : "—"}
+                    : EMPTY_VALUE}
                 </pre>
               </div>
               <div>
                 <h4 style={{ marginBottom: 8 }}>History</h4>
                 <ul style={{ margin: 0, paddingLeft: 18 }}>
                   <li>Created: {formatTimestamp(selectedEscalation.created_at)}</li>
-                  {selectedEscalation.acked_at && (
+                  {selectedEscalation.acked_at ? (
                     <li>
-                      ACK: {formatTimestamp(selectedEscalation.acked_at)} · {selectedEscalation.acked_by ?? "—"} ·{" "}
-                      {selectedEscalation.ack_reason_code ?? "—"} · {selectedEscalation.ack_reason_text ?? "—"}
+                      ACK: {formatTimestamp(selectedEscalation.acked_at)} | {selectedEscalation.acked_by ?? EMPTY_VALUE} |{" "}
+                      {selectedEscalation.ack_reason_code ?? EMPTY_VALUE} | {selectedEscalation.ack_reason_text ?? EMPTY_VALUE}
                     </li>
-                  )}
-                  {selectedEscalation.closed_at && (
+                  ) : null}
+                  {selectedEscalation.closed_at ? (
                     <li>
-                      Closed: {formatTimestamp(selectedEscalation.closed_at)} · {selectedEscalation.closed_by ?? "—"} ·{" "}
-                      {selectedEscalation.close_reason_code ?? "—"} · {selectedEscalation.close_reason_text ?? "—"}
+                      Closed: {formatTimestamp(selectedEscalation.closed_at)} | {selectedEscalation.closed_by ?? EMPTY_VALUE} |{" "}
+                      {selectedEscalation.close_reason_code ?? EMPTY_VALUE} | {selectedEscalation.close_reason_text ?? EMPTY_VALUE}
                     </li>
-                  )}
+                  ) : null}
                 </ul>
               </div>
             </div>
           ) : null}
         </div>
-      )}
+      ) : null}
     </div>
   );
 };

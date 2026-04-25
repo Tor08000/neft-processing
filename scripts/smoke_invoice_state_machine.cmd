@@ -11,8 +11,8 @@ set "CORE_URL=%GATEWAY_BASE%%CORE_BASE%/v1/admin"
 if "%API_BASE%"=="" set "API_BASE=%CORE_URL%"
 set "INVOICES_URL=%GATEWAY_BASE%/api/core/v1/admin/billing/invoices"
 
-if "%ADMIN_EMAIL%"=="" set "ADMIN_EMAIL=admin@example.com"
-if "%ADMIN_PASSWORD%"=="" set "ADMIN_PASSWORD=admin"
+if "%ADMIN_EMAIL%"=="" set "ADMIN_EMAIL=admin@neft.local"
+if "%ADMIN_PASSWORD%"=="" set "ADMIN_PASSWORD=Neft123!"
 
 set "TOKEN="
 set "AUTH_HEADER="

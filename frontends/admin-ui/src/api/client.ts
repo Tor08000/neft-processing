@@ -15,6 +15,12 @@ export class UnauthorizedError extends Error {
   }
 }
 
+export type DownloadPayload = {
+  blob: Blob;
+  fileName: string | null;
+  contentType: string | null;
+};
+
 function normalizeBasePath(rawBase: string): string {
   const withLeading = rawBase.startsWith("/") ? rawBase : `/${rawBase}`;
   const normalized = withLeading.endsWith("/") ? withLeading : `${withLeading}/`;
@@ -65,6 +71,22 @@ export function getStoredToken(): string | null {
 function authHeaders(): Record<string, string> {
   const token = getStoredToken();
   return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+function parseFileName(contentDisposition: string | null): string | null {
+  if (!contentDisposition) {
+    return null;
+  }
+  const utfMatch = contentDisposition.match(/filename\*=UTF-8''([^;]+)/i);
+  if (utfMatch?.[1]) {
+    try {
+      return decodeURIComponent(utfMatch[1]);
+    } catch {
+      return utfMatch[1];
+    }
+  }
+  const plainMatch = contentDisposition.match(/filename="?([^";]+)"?/i);
+  return plainMatch?.[1] ?? null;
 }
 
 class ApiClient {
@@ -138,6 +160,38 @@ class ApiClient {
       body: body ? JSON.stringify(body) : undefined,
     });
   }
+
+  async download(path: string, params?: Record<string, unknown>, accept?: string): Promise<DownloadPayload> {
+    const url = buildUrl(path, params);
+    const res = await fetch(url, {
+      method: "GET",
+      headers: {
+        Accept: accept ?? "*/*",
+        ...authHeaders(),
+      },
+    });
+    if (res.status === 401) {
+      redirectToLogin();
+      throw new UnauthorizedError();
+    }
+    if (!res.ok) {
+      let detail: unknown;
+      try {
+        detail = await res.json();
+      } catch {
+        detail = await res.text();
+      }
+      const message = typeof detail === "string" ? detail : JSON.stringify(detail);
+      const payload = detail && typeof detail === "object" ? (detail as { error?: string }) : null;
+      const requestId = res.headers.get("x-request-id") ?? res.headers.get("x-correlation-id");
+      throw new ApiError(message, res.status, requestId, null, payload?.error ?? null);
+    }
+    return {
+      blob: await res.blob(),
+      fileName: parseFileName(res.headers.get("content-disposition")),
+      contentType: res.headers.get("content-type"),
+    };
+  }
 }
 
 export const apiClient = new ApiClient();
@@ -146,3 +200,4 @@ export const apiPost = apiClient.post.bind(apiClient);
 export const apiPut = apiClient.put.bind(apiClient);
 export const apiPatch = apiClient.patch.bind(apiClient);
 export const apiFetcher = apiClient.fetcher;
+export const apiDownload = apiClient.download.bind(apiClient);

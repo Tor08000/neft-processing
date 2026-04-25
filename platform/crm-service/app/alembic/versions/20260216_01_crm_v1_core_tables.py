@@ -8,14 +8,30 @@ Create Date: 2026-02-16
 from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
+from sqlalchemy import inspect
 
 revision = "20260216_01"
 down_revision = None
 branch_labels = None
 depends_on = None
 
+CRM_CORE_TABLES = (
+    "crm_contacts",
+    "crm_pipelines",
+    "crm_pipeline_stages",
+    "crm_deals",
+    "crm_tasks",
+    "crm_comments",
+    "crm_audit_events",
+)
+
 
 def upgrade() -> None:
+    bind = op.get_bind()
+    inspector = inspect(bind)
+    if all(inspector.has_table(table_name) for table_name in CRM_CORE_TABLES):
+        return
+
     op.create_table(
         "crm_contacts",
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),

@@ -6,6 +6,8 @@ from enum import Enum
 
 from pydantic import BaseModel, ConfigDict, Field
 
+InvoiceId = str | int
+
 
 class BillingPaymentIntakeStatus(str, Enum):
     SUBMITTED = "SUBMITTED"
@@ -43,7 +45,7 @@ class PaymentIntakeCreateRequest(BaseModel):
 class PaymentIntakeOut(BaseModel):
     id: int
     org_id: int
-    invoice_id: int
+    invoice_id: InvoiceId
     status: BillingPaymentIntakeStatus
     amount: Decimal
     currency: str
@@ -79,7 +81,7 @@ class PaymentIntakeRejectRequest(BaseModel):
 
 
 class ClientPaymentIntakeRequest(BaseModel):
-    invoice_id: int
+    invoice_id: InvoiceId
     amount: Decimal = Field(..., gt=0)
     method: str = Field(..., min_length=1, max_length=64)
     reference: str | None = None

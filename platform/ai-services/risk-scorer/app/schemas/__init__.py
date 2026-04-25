@@ -24,6 +24,11 @@ class ScoreResponse(BaseModel):
     decision: Decision
     reason: str
     reasons: List[str] = Field(default_factory=list)
+    provider: str = Field(description="Источник скоринга")
+    score_source: str = Field(description="Тип скоринга")
+    degraded: bool = Field(default=False, description="Явный degraded flag")
+    assumptions: List[str] = Field(default_factory=list, description="Допущения при расчёте")
+    trace: dict = Field(default_factory=dict, description="Детерминированный trace скоринга")
 
 
 from .risk_score import (  # noqa: E402

@@ -17,6 +17,8 @@ export async function fetchAuditFeed(
     type?: string;
     correlation_id?: string;
     search?: string;
+    entity_type?: string;
+    entity_id?: string;
     limit?: number;
     offset?: number;
     scope?: string;

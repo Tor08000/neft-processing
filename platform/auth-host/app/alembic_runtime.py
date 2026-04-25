@@ -30,6 +30,13 @@ AUTH_TABLE_RESET_ALLOWLIST: tuple[str, ...] = (
     "users",
 )
 
+KNOWN_FOREIGN_AUTH_DB_REVISIONS: tuple[str, ...] = (
+    # Legacy shared-public stamp from the crm-service history.
+    # In auth-host dev stacks this means the auth schema owner is foreign,
+    # so the safe recovery path is the existing auth reset flow.
+    "20260216_01",
+)
+
 
 @dataclass(slots=True)
 class AlembicState:
@@ -52,6 +59,10 @@ def _bool_env(name: str, default: bool = False) -> bool:
     if value is None:
         return default
     return value.strip().lower() not in {"0", "false", "no", "off"}
+
+
+def _is_dev_env() -> bool:
+    return (os.getenv("APP_ENV", "dev") or "dev").strip().lower() == "dev"
 
 
 def make_alembic_config() -> Config:
@@ -106,7 +117,9 @@ def should_reset_for_broken_revision(*, db_revision: str | None, revision_known:
     mode = (os.getenv("AUTH_DB_RECOVERY") or os.getenv("DEV_DB_RECOVERY") or "").strip().lower()
     if mode == "reset":
         return True
-    return _bool_env("AUTH_ALEMBIC_AUTO_REPAIR", False)
+    if _bool_env("AUTH_ALEMBIC_AUTO_REPAIR", False):
+        return True
+    return _is_dev_env() and db_revision in KNOWN_FOREIGN_AUTH_DB_REVISIONS
 
 
 def read_alembic_state(dsn: str) -> AlembicState:

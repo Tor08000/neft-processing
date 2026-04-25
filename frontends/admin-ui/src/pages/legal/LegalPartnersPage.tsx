@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { fetchLegalPartner, fetchLegalPartners, updateLegalPartnerStatus } from "../../api/legalPartners";
 import type { LegalPartnerDetail, LegalPartnerSummary } from "../../types/legalPartners";
 import { Table, type Column } from "../../components/Table/Table";
@@ -13,6 +13,8 @@ import { JsonViewer } from "../../components/common/JsonViewer";
 import { ApiError } from "../../api/http";
 import { AdminMisconfigPage } from "../admin/AdminStatusPages";
 import { EmptyState } from "@shared/ui/EmptyState";
+import { ErrorState } from "../../components/common/ErrorState";
+import { describeRuntimeError } from "../../api/runtimeError";
 
 type StatusAction = { status: string } | null;
 
@@ -36,7 +38,10 @@ export const LegalPartnersPage: React.FC = () => {
   const [selectedPartner, setSelectedPartner] = useState<string | null>(searchParams.get("partner_id"));
   const [action, setAction] = useState<StatusAction>(null);
 
+  const canRead = Boolean(profile?.permissions.legal?.read);
   const canWrite = Boolean(profile?.permissions.legal?.write) && !profile?.read_only;
+  const canUseApi = Boolean(accessToken) && canRead;
+  const filtersActive = Boolean(statusFilter || search.trim());
 
   const filters = useMemo(
     () => ({
@@ -57,15 +62,15 @@ export const LegalPartnersPage: React.FC = () => {
   } = useQuery({
     queryKey: ["legal-partners", filters],
     queryFn: () => fetchLegalPartners(accessToken ?? "", filters),
-    enabled: Boolean(accessToken),
+    enabled: canUseApi,
     staleTime: 20_000,
     placeholderData: (prev) => prev,
   });
 
-  const { data: detailData, isLoading: detailLoading, refetch: refetchDetail } = useQuery({
+  const { data: detailData, isLoading: detailLoading, error: detailError, refetch: refetchDetail } = useQuery({
     queryKey: ["legal-partner", selectedPartner],
     queryFn: () => fetchLegalPartner(accessToken ?? "", selectedPartner ?? ""),
-    enabled: Boolean(accessToken && selectedPartner),
+    enabled: Boolean(canUseApi && selectedPartner),
   });
 
   if (listError instanceof ApiError && listError.status === 404) {
@@ -75,6 +80,13 @@ export const LegalPartnersPage: React.FC = () => {
   const total = data?.total ?? 0;
   const items = data?.items ?? [];
   const normalizedDetail = normalizeDetail(detailData ?? null);
+  const listRuntimeError =
+    listError && !(listError instanceof ApiError && listError.status === 404)
+      ? describeRuntimeError(listError, "Failed to load partner legal review queue.")
+      : null;
+  const detailRuntimeError = detailError
+    ? describeRuntimeError(detailError, "Failed to load partner legal detail.")
+    : null;
 
   const columns: Column<LegalPartnerSummary>[] = [
     { key: "partner_id", title: "Partner ID", render: (row) => row.partner_id },
@@ -105,6 +117,24 @@ export const LegalPartnersPage: React.FC = () => {
     setSearchParams({});
   };
 
+  if (!canUseApi) {
+    return (
+      <div className="stack">
+        <div className="page-header">
+          <div>
+            <h1>Legal partners</h1>
+            <p className="muted">Canonical partner legal review queue and operator detail surface.</p>
+          </div>
+        </div>
+        <EmptyState
+          title="Legal partner review is access-limited"
+          description="The current admin profile cannot access the partner legal review owner route."
+          hint="Switch to an admin account with legal read permissions."
+        />
+      </div>
+    );
+  }
+
   const handleStatusUpdate = async ({ reason, correlationId }: { reason: string; correlationId: string }) => {
     if (!accessToken || !selectedPartner || !action) return;
     if (!canWrite) return;
@@ -120,7 +150,13 @@ export const LegalPartnersPage: React.FC = () => {
   return (
     <div className="stack">
       <div className="page-header">
-        <h1>Legal partners</h1>
+        <div>
+          <h1>Legal partners</h1>
+          <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+            <Link to="/legal/documents">Documents</Link>
+            <Link to="/legal/partners">Partners</Link>
+          </div>
+        </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           <button type="button" className="ghost" onClick={() => refetch()}>
             Refresh
@@ -147,24 +183,53 @@ export const LegalPartnersPage: React.FC = () => {
         </button>
       </div>
 
-      {!isLoading && !isFetching && items.length === 0 ? (
-        <EmptyState
-          title="Нет партнёров"
-          description="По текущим фильтрам партнёры не найдены."
-          hint="Попробуйте изменить фильтры или запрос."
-          primaryAction={{ label: "Сбросить фильтры", onClick: handleResetFilters }}
-        />
-      ) : (
-        <>
-          <Table columns={columns} data={items} loading={isLoading} onRowClick={handleSelect} />
-          <Pagination total={total} limit={limit} offset={offset} onChange={(value) => setOffset(value)} />
-        </>
-      )}
+      <Table
+        columns={columns}
+        data={items}
+        loading={isLoading && !data}
+        onRowClick={handleSelect}
+        errorState={
+          listRuntimeError
+            ? {
+                title: "Failed to load legal partners",
+                description: listRuntimeError.description,
+                actionLabel: "Retry",
+                actionOnClick: () => {
+                  void refetch();
+                },
+                details: listRuntimeError.details,
+                requestId: listRuntimeError.requestId,
+                correlationId: listRuntimeError.correlationId,
+              }
+            : undefined
+        }
+        emptyState={{
+          title: filtersActive ? "No partners match the current legal filters" : "Legal partner review queue is empty",
+          description: filtersActive
+            ? "Broaden the current search or reset the legal review filters."
+            : "The owner route is healthy, but no partner is waiting in the legal review queue yet.",
+          hint: filtersActive
+            ? "Filtered-empty state is scoped only to the current legal review search."
+            : "Select a partner once the first legal review record appears in the queue.",
+          primaryAction: filtersActive ? { label: "Reset filters", onClick: handleResetFilters } : undefined,
+        }}
+        footer={<Pagination total={total} limit={limit} offset={offset} onChange={(value) => setOffset(value)} />}
+      />
 
       <section className="card">
         <h2 style={{ marginTop: 0 }}>Partner detail</h2>
         {detailLoading ? (
           <Loader label="Loading partner profile" />
+        ) : detailRuntimeError && selectedPartner ? (
+          <ErrorState
+            title="Failed to load partner detail"
+            description={detailRuntimeError.description}
+            actionLabel="Retry"
+            onAction={() => void refetchDetail()}
+            details={detailRuntimeError.details}
+            requestId={detailRuntimeError.requestId}
+            correlationId={detailRuntimeError.correlationId}
+          />
         ) : detailData ? (
           <div style={{ display: "grid", gap: 12 }}>
             <div>
@@ -187,7 +252,10 @@ export const LegalPartnersPage: React.FC = () => {
                   ))}
                 </ul>
               ) : (
-                <div className="muted">Документы не найдены</div>
+                <EmptyState
+                  title="No legal documents linked yet"
+                  description="The selected partner does not have linked legal documents in the current owner payload."
+                />
               )}
             </div>
             <div>
@@ -199,7 +267,10 @@ export const LegalPartnersPage: React.FC = () => {
                   ))}
                 </ul>
               ) : (
-                <div className="muted">Блокировки не найдены</div>
+                <EmptyState
+                  title="No payout blocks detected"
+                  description="The current legal detail payload does not report payout blocks for this partner."
+                />
               )}
             </div>
             {normalizedDetail?.profile ? (
@@ -227,7 +298,10 @@ export const LegalPartnersPage: React.FC = () => {
             </div>
           </div>
         ) : (
-          <div className="muted">Select a partner to view details.</div>
+          <EmptyState
+            title="Choose a partner to review legal detail"
+            description="Select any partner from the queue to inspect documents, payout blocks, and the legal profile."
+          />
         )}
       </section>
 

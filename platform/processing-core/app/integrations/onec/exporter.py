@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import date, datetime, timezone
 from decimal import Decimal
-from uuid import uuid4
+from uuid import UUID, uuid4
 from xml.etree import ElementTree
 
 from sqlalchemy.orm import Session
@@ -26,6 +26,15 @@ from app.models.invoice import Invoice
 from app.services.audit_service import AuditService, RequestContext
 
 logger = get_logger(__name__)
+
+
+def _load_client_for_invoice(db: Session, *, client_id: str | None) -> Client | None:
+    if not client_id:
+        return None
+    try:
+        return db.get(Client, UUID(str(client_id)))
+    except (TypeError, ValueError, AttributeError):
+        return None
 
 
 def _resolve_invoice_status(invoice: Invoice) -> str:
@@ -81,7 +90,7 @@ def export_onec_documents(
 
     counterparts: dict[str, Client] = {}
     for invoice in invoices:
-        client = db.query(Client).filter(Client.id == invoice.client_id).one_or_none()
+        client = _load_client_for_invoice(db, client_id=invoice.client_id)
         if client:
             counterparts[str(client.id)] = client
 

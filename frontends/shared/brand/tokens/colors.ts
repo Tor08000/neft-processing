@@ -1,0 +1,46 @@
+export const brandColors = {
+  background: {
+    canvas: "#0B1020",
+    surface: "#11182A",
+    surface2: "#151E33",
+    elevated: "#1A2440",
+    overlay: "rgba(4, 8, 20, 0.72)",
+  },
+  text: {
+    primary: "#F5F7FB",
+    secondary: "#A8B3CF",
+    muted: "#74809D",
+    inverse: "#0B1020",
+  },
+  brand: {
+    primary: "#E3AC21",
+    primaryHover: "#F0BD45",
+    primaryActive: "#C89414",
+    accent: "#2F6BFF",
+    accentHover: "#4C80FF",
+    accentActive: "#2155D6",
+    gold: "#E3AC21",
+    red: "#F02020",
+    white: "#FFFFFF",
+    black: "#17181B",
+  },
+  semantic: {
+    success: "#16C784",
+    warning: "#F5B942",
+    danger: "#F04D4D",
+    info: "#38BDF8",
+  },
+  chart: {
+    blue: "#2F6BFF",
+    green: "#16C784",
+    red: "#F04D4D",
+    yellow: "#F5B942",
+    purple: "#8B5CF6",
+    cyan: "#22D3EE",
+  },
+  border: {
+    default: "rgba(255, 255, 255, 0.08)",
+    strong: "rgba(255, 255, 255, 0.16)",
+    focus: "#2F6BFF",
+  },
+} as const;

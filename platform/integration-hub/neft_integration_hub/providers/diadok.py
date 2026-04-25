@@ -2,15 +2,35 @@ from __future__ import annotations
 
 import base64
 import json
+import socket
 import time
 from dataclasses import dataclass
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-from neft_integration_hub.providers.base import ProviderStatus
+from neft_integration_hub.providers.base import (
+    ProviderAuthError,
+    ProviderDegradedError,
+    ProviderFailure,
+    ProviderStatus,
+    ProviderTimeoutError,
+)
 from neft_integration_hub.settings import get_settings
 
 settings = get_settings()
+
+_PLACEHOLDER_SECRETS = {"change-me", "changeme", "dev-key", "dev-secret", "test", "dummy", "placeholder"}
+_PLACEHOLDER_URLS = {"https://diadok.example.com", "http://diadok.example.com"}
+
+
+def _real_secret(value: str | None) -> bool:
+    normalized = (value or "").strip()
+    return bool(normalized) and normalized.lower() not in _PLACEHOLDER_SECRETS
+
+
+def _real_provider_url(value: str | None) -> bool:
+    normalized = (value or "").strip().rstrip("/")
+    return bool(normalized) and normalized.lower() not in _PLACEHOLDER_URLS
 
 
 @dataclass
@@ -40,12 +60,48 @@ class MockDiadokProvider:
 
 
 @dataclass
+class MockSbisProvider(MockDiadokProvider):
+    def send(self, document_bytes: bytes, meta: dict) -> str:
+        timestamp = int(time.time())
+        return f"sandbox-sbis-{timestamp}"
+
+
+@dataclass
+class UnavailableDiadokProvider:
+    mode: str
+    provider: str = "DIADOK"
+
+    def _raise(self) -> None:
+        provider_label = self.provider.upper()
+        raise ProviderDegradedError(
+            f"{provider_label} provider is {self.mode}",
+            code=f"{provider_label.lower()}_{self.mode}",
+            provider=provider_label,
+        )
+
+    def send(self, document_bytes: bytes, meta: dict) -> str:
+        self._raise()
+
+    def poll(self, provider_message_id: str) -> ProviderStatus:
+        self._raise()
+
+    def download_signed(self, provider_message_id: str) -> bytes | None:
+        self._raise()
+
+
+@dataclass
 class ProdDiadokProvider:
     base_url: str = settings.diadok_base_url
     api_token: str = settings.diadok_api_token
     timeout_seconds: int = settings.diadok_timeout_seconds
 
     def send(self, document_bytes: bytes, meta: dict) -> str:
+        if not _real_provider_url(self.base_url) or not _real_secret(self.api_token):
+            raise ProviderDegradedError(
+                "Diadok base URL or API token is not configured",
+                code="diadok_unconfigured",
+                provider="DIADOK",
+            )
         payload = json.dumps(
             {"document": base64.b64encode(document_bytes).decode("utf-8"), "meta": meta},
             ensure_ascii=False,
@@ -76,9 +132,31 @@ class ProdDiadokProvider:
                 return data
             return json.loads(data.decode("utf-8"))
         except HTTPError as exc:
-            raise RuntimeError(f"diadok_http_error:{exc.code}") from exc
+            if exc.code in {401, 403}:
+                raise ProviderAuthError(
+                    "Diadok authentication failed",
+                    code=f"diadok_http_{exc.code}",
+                    provider="DIADOK",
+                ) from exc
+            raise ProviderFailure(
+                f"Diadok returned HTTP {exc.code}",
+                code=f"diadok_http_{exc.code}",
+                error_type="provider_error",
+                retryable=exc.code >= 500,
+                provider="DIADOK",
+            ) from exc
+        except socket.timeout as exc:
+            raise ProviderTimeoutError("Diadok request timed out", code="diadok_timeout", provider="DIADOK") from exc
+        except TimeoutError as exc:
+            raise ProviderTimeoutError("Diadok request timed out", code="diadok_timeout", provider="DIADOK") from exc
         except URLError as exc:
-            raise RuntimeError("diadok_unavailable") from exc
+            raise ProviderFailure(
+                "Diadok transport is unavailable",
+                code="diadok_unavailable",
+                error_type="provider_error",
+                retryable=True,
+                provider="DIADOK",
+            ) from exc
 
 
-__all__ = ["MockDiadokProvider", "ProdDiadokProvider"]
+__all__ = ["MockDiadokProvider", "MockSbisProvider", "ProdDiadokProvider", "UnavailableDiadokProvider"]

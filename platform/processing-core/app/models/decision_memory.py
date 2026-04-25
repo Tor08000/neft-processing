@@ -71,17 +71,17 @@ class DecisionMemoryRecord(Base):
         Index("ix_decision_memory_audit_event", "audit_event_id"),
     )
 
-    id = Column(GUID(), primary_key=True, default=new_uuid_str)
-    case_id = Column(GUID(), nullable=True, index=True)
+    id = Column(String(36), primary_key=True, default=new_uuid_str)
+    case_id = Column(String(36), nullable=True, index=True)
     decision_type = Column(String(32), nullable=False)
-    decision_ref_id = Column(GUID(), nullable=False)
+    decision_ref_id = Column(String(36), nullable=False)
     decision_at = Column(DateTime(timezone=True), nullable=False)
-    decided_by_user_id = Column(GUID(), nullable=True)
+    decided_by_user_id = Column(String(36), nullable=True)
     context_snapshot = Column(JSON, nullable=False)
     rationale = Column(Text, nullable=True)
     score_snapshot = Column(JSON, nullable=True)
     mastery_snapshot = Column(JSON, nullable=True)
-    audit_event_id = Column(GUID(), ForeignKey("case_events.id", ondelete="RESTRICT"), nullable=False)
+    audit_event_id = Column(String(36), ForeignKey("case_events.id", ondelete="RESTRICT"), nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 

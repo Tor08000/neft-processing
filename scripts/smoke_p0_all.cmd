@@ -1,5 +1,5 @@
 @echo off
-setlocal EnableExtensions EnableDelayedExpansion
+setlocal EnableExtensions DisableDelayedExpansion
 chcp 65001 >nul
 
 set "SCRIPT_NAME=smoke_p0_all"
@@ -16,11 +16,13 @@ if "%CORE_ADMIN_VERIFY%"=="" set "CORE_ADMIN_VERIFY=%CORE_BASE%/admin/auth/verif
 if "%CLIENT_EMAIL%"=="" (
   for /f "usebackq tokens=*" %%t in (`python -c "import uuid; print(f'client-smoke-{uuid.uuid4().hex[:8]}@neft.local')"` ) do set "CLIENT_EMAIL=%%t"
 )
-if "%CLIENT_PASSWORD%"=="" set "CLIENT_PASSWORD=client"
+if "%CLIENT_PASSWORD%"=="" set "CLIENT_PASSWORD=Client123!"
 if "%PARTNER_EMAIL%"=="" set "PARTNER_EMAIL=partner@neft.local"
 if "%PARTNER_PASSWORD%"=="" set "PARTNER_PASSWORD=Partner123!"
-if "%ADMIN_EMAIL%"=="" set "ADMIN_EMAIL=admin@example.com"
-if "%ADMIN_PASSWORD%"=="" set "ADMIN_PASSWORD=admin"
+if "%ADMIN_EMAIL%"=="" set "ADMIN_EMAIL=admin@neft.local"
+if "%ADMIN_PASSWORD%"=="" set "ADMIN_PASSWORD=Neft123!"
+
+call "%~dp0seed_partner_money_e2e.cmd" >nul 2>nul || goto :fail
 
 set "CLIENT_SIGNUP_FILE=%TEMP%\client_signup.json"
 set "CLIENT_SIGNUP_BODY_FILE=%TEMP%\client_signup_body_%RANDOM%.json"
@@ -57,7 +59,7 @@ call :http_request "GET" "%CORE_PARTNER%/auth/verify" "%PARTNER_AUTH_HEADER%" ""
 call :http_request "GET" "%CORE_PORTAL%/me" "%PARTNER_AUTH_HEADER%" "" "200" "%TEMP%\partner_portal_me.json" || goto :fail
 for /f "usebackq tokens=*" %%t in (`python -c "import json; data=json.load(open(r'%TEMP%\partner_portal_me.json')); print(str((data.get('actor_type') or '')).lower())"`) do set "PARTNER_ACTOR=%%t"
 if /i not "%PARTNER_ACTOR%"=="partner" goto :fail
-call :http_request "GET" "%CORE_PARTNER%/dashboard" "%PARTNER_AUTH_HEADER%" "" "200" "%TEMP%\partner_dashboard.json" || goto :fail
+call :http_request "GET" "%CORE_PARTNER%/finance/dashboard" "%PARTNER_AUTH_HEADER%" "" "200" "%TEMP%\partner_dashboard.json" || goto :fail
 call :http_request "GET" "%CORE_PARTNER%/ledger?limit=5" "%PARTNER_AUTH_HEADER%" "" "200" "%TEMP%\partner_ledger.json" || goto :fail
 
 call :login "%ADMIN_EMAIL%" "%ADMIN_PASSWORD%" "admin" ADMIN_TOKEN || goto :fail

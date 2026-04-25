@@ -11,6 +11,8 @@ def test_redaction_masks_email_phone_and_token() -> None:
     redacted = redact_deep(payload, "", include_hash=False)
     assert redacted["email"] != payload["email"]
     assert redacted["phone"] != payload["phone"]
-    assert redacted["token"] == REDACTION_DISPLAY
+    assert redacted["token"]["redacted"] is True
+    assert redacted["token"]["display"] == REDACTION_DISPLAY
     assert redacted["nested"]["contact_email"] != payload["nested"]["contact_email"]
-    assert REDACTION_DISPLAY in redacted["nested"]["meta"]
+    assert redacted["nested"]["meta"]["redacted"] is True
+    assert REDACTION_DISPLAY in redacted["nested"]["meta"]["display"]

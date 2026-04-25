@@ -35,10 +35,11 @@
 
 **Gateway rules (client vs admin, SPA split)**
 - `/client/` routes to client SPA; `/admin/` routes to admin SPA. Assets are separated by prefix.
-- `/api/core/client/*` requires client auth verification; `/api/core/v1/admin/*` requires admin auth verification.
+- `/api/core/client/*` requires client auth verification; exception: `/api/core/client/v1/onboarding/*` and `/api/core/client/docflow/*` use short-lived onboarding tokens and are verified inside `processing-core`.
+- `/api/core/v1/admin/*` requires admin auth verification.
 
 **Forbidden cross-portal access**
-- Enforced by gateway `auth_request` + 401/403 handlers on the `/api/core/client/*` and `/api/core/v1/admin/*` prefixes.
+- Enforced by gateway `auth_request` + 401/403 handlers on the protected `/api/core/client/*` and `/api/core/v1/admin/*` prefixes; onboarding-token docflow routes are explicit gateway pass-throughs and remain protected by core's onboarding-token guard.
 
 **Evidence (files/endpoints)**:
 - `gateway/nginx.conf` (SPA routing + auth_request guards).
@@ -53,6 +54,7 @@
 
 **`/portal/me` as SSoT (client bootstrap)**
 - Portal bootstrap uses `GET /api/core/portal/me` to resolve user, org, roles, subscription and entitlements snapshot (hash + computed_at), then client-specific endpoints enrich the portal state. `GET /api/core/client/me` remains as a compatibility client-focused view built on top of the same portal payload.
+- `org.org_type` from `portal/me` is now the shell-composition input for `INDIVIDUAL` vs `BUSINESS`; client UI must not invent a second client-kind source.
 
 **Entitlements engine v2 (snapshot + hash + overrides + addons)**
 - `get_org_entitlements_snapshot()` builds snapshot from `org_subscriptions`, `subscription_plan_features`, `subscription_plan_modules`, addons, overrides, and persists `org_entitlements_snapshot` with a hash/version.
@@ -75,20 +77,25 @@
 ## 3.4 Onboarding (AS-IS)
 
 **Org create → contract generate → sign → ACTIVE/PENDING**
-- Self-signup onboarding flow (`/client/onboarding/*`) supports status, profile save, contract generation, contract retrieval, and contract signing.
-- On sign: client status becomes `ACTIVE` if feature flag `auto_activate_after_sign` enabled, otherwise `PENDING_ACTIVATION`.
+- Canonical authenticated onboarding flow is frontend `/onboarding*` plus backend `/api/core/client/onboarding/*`; legacy `/connect*` frontend routes are compatibility redirects only.
+- Self-signup onboarding flow (`/api/core/client/onboarding/*`) supports status, profile save, contract generation, contract retrieval, and contract signing.
+- Contract-sign family is the canonical current authenticated onboarding activation path. On sign: client/onboarding status becomes `ACTIVE` if feature flag `auto_activate_after_sign` enabled, otherwise `PENDING_ACTIVATION`.
 
 **Wizard routes + backend endpoints**
-- `/client/onboarding/status`
-- `/client/onboarding/profile`
-- `/client/onboarding/contract/generate`
-- `/client/onboarding/contract`
-- `/client/onboarding/contract/sign`
-- Commercial onboarding state: `/api/client/onboarding/state` + `/api/client/onboarding/step`
-- Client portal org + contract endpoints: `/client/org`, `/client/contracts/generate`, `/client/contracts/current`, `/client/contracts/sign-simple`
+- Frontend canonical routes: `/onboarding`, `/onboarding/plan`, `/onboarding/contract`
+- Frontend compatibility redirects: `/connect*` → `/onboarding*`
+- Backend canonical onboarding routes:
+  - `/api/core/client/onboarding/status`
+  - `/api/core/client/onboarding/profile`
+  - `/api/core/client/onboarding/contract/generate`
+  - `/api/core/client/onboarding/contract`
+  - `/api/core/client/onboarding/contract/sign`
+- Commercial-layer compatibility state endpoints: `/api/client/onboarding/state` + `/api/client/onboarding/step`
+- Client portal org + contract endpoints: `/api/core/client/org`, `/api/core/client/contracts/generate`, `/api/core/client/contracts/current`, `/api/core/client/contracts/sign-simple`
 
 **Status machine**
 - `ClientOnboarding` transitions profile → contract → activation; contract sign sets onboarding `ACTIVATION` and client status (`ACTIVE` or `PENDING_ACTIVATION`).
+- `POST /api/core/client/onboarding/activate` remains a compatibility/internal route and is not the canonical consumer-facing activation step for the current authenticated onboarding flow.
 
 **Evidence (files/endpoints)**:
 - `platform/processing-core/app/routers/client_onboarding.py` (status/profile/contract/generate/sign).
@@ -111,7 +118,7 @@
 - **Evidence**: `platform/processing-core/app/routers/client_portal_v1.py`.
 - **How to verify (Windows CMD)**:
   - `curl -i -H "Authorization: Bearer %TOKEN%" http://localhost/api/core/client/users`
-  - `curl -i -X POST -H "Authorization: Bearer %TOKEN%" -H "Content-Type: application/json" -d "{\"email\":\"user@example.com\",\"role\":\"CLIENT_USER\"}" http://localhost/api/core/client/users/invite`
+  - `curl -i -X POST -H "Authorization: Bearer %TOKEN%" -H "Content-Type: application/json" -d "{\"email\":\"user@example.com\",\"roles\":[\"CLIENT_MANAGER\"]}" http://localhost/api/core/client/users/invite`
 
 ### Cards / Limits / Access (bulk)
 - **Routes/API**: `/client/cards`, `/client/cards/{id}`, `/client/cards/{id}/limits`, `/client/cards/{id}/access`, bulk endpoints for block/unblock/access/limit templates.
@@ -128,22 +135,27 @@
 - **RBAC**: permission-guarded (`require_permission(Permission.CLIENT_FLEET_*)`).
 - **ABAC**: NOT IMPLEMENTED (fleet module uses RBAC + client_id scoping).
 - **Gating**: `enforce_entitlement()` on write access (billing policy).
+- **Ownership note**: `/api/client/fleet/*` is still the mounted fleet owner surface in the current topology; there is no live `/api/core/client/fleet/*` handoff yet.
 - **Evidence**: `platform/processing-core/app/routers/client_fleet.py`.
 - **How to verify (Windows CMD)**:
-  - `curl -i -H "Authorization: Bearer %TOKEN%" http://localhost/api/core/client/fleet/cards`
+  - `curl -i -H "Authorization: Bearer %TOKEN%" http://localhost/api/client/fleet/cards`
 
 ### Documents
 - **Routes/API**:
-  - `/api/v1/client/documents` (list)
-  - `/api/v1/client/documents/{document_id}` (details)
-  - `/api/v1/client/documents/{document_id}/download`
-  - Portal listing: `/client/docs/list`, `/client/docs/{document_id}/download`.
+  - Canonical general docflow: `/api/core/client/documents*`
+  - Portal read/download projections: `/api/core/client/docs/list`, `/api/core/client/docs/{document_id}/download`, `/api/core/client/docs/contracts/*`, `/api/core/client/docs/invoices`
+  - Legacy closing-doc compatibility: `/api/v1/client/documents`, `/api/v1/client/documents/{document_id}`, `/api/v1/client/documents/{document_id}/download`
+  - Manual-ack compatibility tails: `/api/v1/client/documents/{document_type}/{document_id}/ack`, `/api/v1/client/closing-packages/{package_id}/ack`
+  - Frontend entry split: `/client/documents*` is the canonical general documents shell; `/documents/:id` remains the final legacy detail/file/history compatibility tail.
 - **RBAC**: client token required.
 - **ABAC**: `require_abac("documents:download")` on downloads + ABAC resource builder.
 - **Gating**: `assert_module_enabled(..., module_code="DOCS")`.
-- **Evidence**: `platform/processing-core/app/routers/client_documents.py`, `platform/processing-core/app/routers/client_portal_v1.py`.
+- **Ownership note**: `/api/core/client/documents*` is the canonical general owner surface; `/api/v1/client/documents*` stays frozen for closing docs and manual-ack semantics and must not be treated as the default client documents API.
+- **Evidence**: `platform/processing-core/app/routers/client_documents_v1.py`, `platform/processing-core/app/routers/client_documents.py`, `platform/processing-core/app/routers/client_portal_v1.py`, `platform/processing-core/app/tests/test_client_documents_ownership_truth.py`, `frontends/client-portal/src/App.documents-routing.test.tsx`.
 - **How to verify (Windows CMD)**:
+  - `curl -i -H "Authorization: Bearer %TOKEN%" http://localhost/api/core/client/documents`
   - `curl -i -H "Authorization: Bearer %TOKEN%" http://localhost/api/v1/client/documents`
+  - `curl -i -X POST -H "Authorization: Bearer %TOKEN%" http://localhost/api/v1/client/documents/INVOICE_PDF/%INVOICE_ID%/ack`
 
 ### Marketplace / Fleet stubs gating
 - **Marketplace routes**: `/client/marketplace/products`, `/client/marketplace/products/{id}`, `/client/marketplace/recommendations`.
@@ -201,6 +213,7 @@
 **Payment intake (manual proof + approve/reject)**
 - Client submits payment intake via `/client/invoices/{invoice_id}/payment-intakes` + attachment init.
 - Admin reviews via `/api/core/v1/admin/billing/payment-intakes/{id}/approve|reject`.
+- Ownership note: canonical client-portal-v1 invoice flow lives under `/api/core/client/invoices*`; legacy `/api/client/invoices*` from `portal.py` remains a separate public billing projection around `invoice_ref`/`Invoice` and is not route-parity with the canonical subscription invoice owner.
 - **Evidence**: `platform/processing-core/app/routers/client_portal_v1.py`, `platform/processing-core/app/routers/admin/billing_payment_intakes.py`.
 - **How to verify (Windows CMD)**: `curl -i -X POST -H "Authorization: Bearer %TOKEN%" -H "Content-Type: application/json" -d "{\"amount\":1000,\"currency\":\"RUB\"}" http://localhost/api/core/client/invoices/%INVOICE_ID%/payment-intakes`
 
@@ -256,9 +269,13 @@
 **Windows smoke scripts (actual files)**
 - `scripts\smoke_client_portal.cmd` (portal load + auth login/register + core health).
 - `scripts\billing_smoke.cmd` (admin billing periods/run/invoices/pdf).
-- `scripts\smoke_support_ticket.cmd` — **NOT IMPLEMENTED** (stub).
-- `scripts\smoke_reconciliation_run.cmd` — **NOT IMPLEMENTED** (stub).
-- `scripts\smoke_client_users_roles.cmd` — **NOT IMPLEMENTED** (stub).
+- `scripts\smoke_support_ticket.cmd` — real compatibility support-request -> canonical case smoke.
+- `scripts\smoke_operations_explain.cmd` — real operations list/detail + KPI explain smoke.
+- `scripts\smoke_reconciliation_request_sign.cmd` — real reconciliation request -> attach result -> download -> ack smoke.
+- `scripts\smoke_cards_issue.cmd` — real seeded card status-cycle smoke.
+- `scripts\smoke_limits_apply_and_enforce.cmd` — real card limit apply/read smoke.
+- `scripts\smoke_client_users_roles.cmd` — real client users/roles smoke (`register -> login -> verify -> me -> portal/me -> users -> role update -> invite -> resend -> revoke`) over mounted owner routes.
+- `scripts\smoke_reconciliation_run.cmd` — real admin reconciliation smoke over canonical `/api/core/v1/admin/reconciliation/*` routes.
 
 **Minimum bring-up (local)**
 - Use `docker compose up -d` (standard local stack).
@@ -284,9 +301,9 @@
 
 **Known limitations (code evidence only)**
 - OTP-based signup not found in auth-host; only register/login flows exist.
-- Error pages/uncaught error UX not found in client portal source.
-- Several smoke scripts are stubs and return NOT IMPLEMENTED.
+- Global uncaught-error boundary exists in `frontends/client-portal/src/components/ErrorBoundary.tsx`; explicit client failure pages exist in `frontends/client-portal/src/pages/ServiceUnavailablePage.tsx` and `frontends/client-portal/src/pages/TechErrorPage.tsx`.
+- Client auth/bootstrap and the compose-gate onboarding review/approve/doc-signing/docflow smokes are no longer stubbed; remaining client gaps are product/UI contours rather than placeholder smoke entrypoints.
 
 ---
 
-**Current milestone — Client Portal is v1.4 feature complete; remaining items:** OTP signup, explicit error pages/UX handling, and any UI for reconciliation fixtures/support smoke workflows not found in code (NOT IMPLEMENTED).
+**Current milestone — Client Portal is v1.4 feature complete; remaining items:** OTP signup and any UI for reconciliation fixtures/support smoke workflows not found in code (NOT IMPLEMENTED). Explicit error pages/uncaught error handling are already present in the portal shell.

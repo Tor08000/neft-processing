@@ -9,6 +9,7 @@ from __future__ import annotations
 import sqlalchemy as sa
 from alembic import op
 
+from alembic_helpers import column_exists, constraint_exists, create_index_if_not_exists, create_table_if_not_exists
 from db.schema import resolve_db_schema
 
 SCHEMA = resolve_db_schema().schema
@@ -20,23 +21,31 @@ depends_on = None
 
 
 def upgrade() -> None:
-    with op.batch_alter_table("fuel_transactions", schema=SCHEMA) as batch_op:
-        batch_op.add_column(sa.Column("external_settlement_ref", sa.String(length=128), nullable=True))
-        batch_op.add_column(sa.Column("external_reverse_ref", sa.String(length=128), nullable=True))
-        batch_op.create_unique_constraint(
-            "uq_fuel_transactions_tenant_network_external_ref",
-            ["tenant_id", "network_id", "external_ref"],
-        )
-        batch_op.create_unique_constraint(
-            "uq_fuel_transactions_settlement_ref",
-            ["id", "external_settlement_ref"],
-        )
-        batch_op.create_unique_constraint(
-            "uq_fuel_transactions_reverse_ref",
-            ["id", "external_reverse_ref"],
-        )
+    bind = op.get_bind()
 
-    op.create_table(
+    with op.batch_alter_table("fuel_transactions", schema=SCHEMA) as batch_op:
+        if not column_exists(bind, "fuel_transactions", "external_settlement_ref", schema=SCHEMA):
+            batch_op.add_column(sa.Column("external_settlement_ref", sa.String(length=128), nullable=True))
+        if not column_exists(bind, "fuel_transactions", "external_reverse_ref", schema=SCHEMA):
+            batch_op.add_column(sa.Column("external_reverse_ref", sa.String(length=128), nullable=True))
+        if not constraint_exists(bind, "fuel_transactions", "uq_fuel_transactions_tenant_network_external_ref", schema=SCHEMA):
+            batch_op.create_unique_constraint(
+                "uq_fuel_transactions_tenant_network_external_ref",
+                ["tenant_id", "network_id", "external_ref"],
+            )
+        if not constraint_exists(bind, "fuel_transactions", "uq_fuel_transactions_settlement_ref", schema=SCHEMA):
+            batch_op.create_unique_constraint(
+                "uq_fuel_transactions_settlement_ref",
+                ["id", "external_settlement_ref"],
+            )
+        if not constraint_exists(bind, "fuel_transactions", "uq_fuel_transactions_reverse_ref", schema=SCHEMA):
+            batch_op.create_unique_constraint(
+                "uq_fuel_transactions_reverse_ref",
+                ["id", "external_reverse_ref"],
+            )
+
+    create_table_if_not_exists(
+        bind,
         "fuel_analytics_events",
         sa.Column("id", sa.String(length=36), nullable=False),
         sa.Column("fuel_tx_id", sa.String(length=36), nullable=False),
@@ -48,7 +57,8 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
         schema=SCHEMA,
     )
-    op.create_index(
+    create_index_if_not_exists(
+        bind,
         "ix_fuel_analytics_events_fuel_tx_id",
         "fuel_analytics_events",
         ["fuel_tx_id"],

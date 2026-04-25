@@ -196,27 +196,34 @@ def advance(
     request_ctx: RequestContext | None,
 ) -> tuple[ClientOnboardingState, OnboardingFacts]:
     state = get_or_init_state(db, client_id=client_id)
-    meta = state.meta or {}
+    # JSON columns don't track repeated in-place mutations reliably.
+    # Copy before each action so later onboarding steps persist cumulatively.
+    meta = dict(state.meta or {})
     facts = _gather_facts(db, client_id=client_id, meta=meta)
+
+    def _return_blocked(reason: str) -> tuple[ClientOnboardingState, OnboardingFacts]:
+        blocked = _block_state(db, state=state, reason=reason, request_ctx=request_ctx)
+        return blocked, facts
+
     if action == OnboardingAction.REQUEST_LEGAL:
         meta["legal_requested"] = True
         meta.setdefault("legal_accepted", True)
     elif action == OnboardingAction.GENERATE_CONTRACT and not facts.legal_accepted:
-        _block_state(db, state=state, reason="legal_not_accepted", request_ctx=request_ctx)
+        return _return_blocked("legal_not_accepted")
     elif action == OnboardingAction.SIGN_CONTRACT and not facts.legal_accepted:
-        _block_state(db, state=state, reason="legal_not_accepted", request_ctx=request_ctx)
+        return _return_blocked("legal_not_accepted")
     elif action == OnboardingAction.ASSIGN_SUBSCRIPTION and not facts.contract_signed:
-        _block_state(db, state=state, reason="contract_not_signed", request_ctx=request_ctx)
+        return _return_blocked("contract_not_signed")
     elif action == OnboardingAction.APPLY_LIMITS_PROFILE and not facts.subscription_assigned:
-        _block_state(db, state=state, reason="subscription_not_assigned", request_ctx=request_ctx)
+        return _return_blocked("subscription_not_assigned")
     elif action == OnboardingAction.ISSUE_CARDS and not facts.limits_applied:
-        _block_state(db, state=state, reason="limits_not_applied", request_ctx=request_ctx)
+        return _return_blocked("limits_not_applied")
     elif action == OnboardingAction.SKIP_CARDS and not facts.limits_applied:
-        _block_state(db, state=state, reason="limits_not_applied", request_ctx=request_ctx)
+        return _return_blocked("limits_not_applied")
     elif action == OnboardingAction.ACTIVATE_CLIENT and not (facts.subscription_assigned and facts.limits_applied):
-        _block_state(db, state=state, reason="activation_prerequisites_missing", request_ctx=request_ctx)
+        return _return_blocked("activation_prerequisites_missing")
     elif action == OnboardingAction.ALLOW_FIRST_OPERATION and not facts.client_activated:
-        _block_state(db, state=state, reason="client_not_active", request_ctx=request_ctx)
+        return _return_blocked("client_not_active")
 
     if action == OnboardingAction.ISSUE_CARDS:
         meta["cards_issued"] = True

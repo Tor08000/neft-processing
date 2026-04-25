@@ -115,81 +115,115 @@ export function ClientInvoicesPage() {
     return `${from}-${to}`;
   }, [filters.limit, offset, total]);
 
-  if (error) {
-    return (
-      <div className="card error" role="alert">
-        {error}
-      </div>
-    );
-  }
-
   return (
-    <div className="card">
-      <div className="card__header">
+    <div className="stack">
+      <div className="page-header">
         <div>
           <h2>Инвойсы</h2>
           <p className="muted">Просматривайте выставленные счета и состояние оплат.</p>
         </div>
       </div>
 
-      <div className="filters">
-        <div className="filter">
-          <label htmlFor="dateFrom">Период с</label>
-          <input
-            id="dateFrom"
-            name="dateFrom"
-            type="date"
-            value={filters.dateFrom}
-            onChange={handleFilterChange}
-          />
-        </div>
-        <div className="filter">
-          <label htmlFor="dateTo">Период по</label>
-          <input id="dateTo" name="dateTo" type="date" value={filters.dateTo} onChange={handleFilterChange} />
-        </div>
-        <div className="filter">
-          <label>Статус</label>
-          <div className="status-grid">
-            {STATUS_OPTIONS.map((opt) => (
-              <label key={opt.value} className="checkbox">
-                <input
-                  type="checkbox"
-                  checked={filters.status.includes(opt.value)}
-                  onChange={() => toggleStatus(opt.value)}
-                />
-                {opt.label}
-              </label>
-            ))}
-          </div>
-        </div>
-        <div className="filter quick-filters">
-          <button type="button" className="ghost" onClick={handleQuickUnpaid}>
-            Только неоплаченные
-          </button>
-          <button type="button" className="ghost" onClick={handleQuickMonth}>
-            За этот месяц
-          </button>
-        </div>
-        <div className="filter">
-          <label htmlFor="limit">Лимит</label>
-          <select id="limit" value={filters.limit} onChange={handleLimitChange}>
-            {[25, 50].map((value) => (
-              <option key={value} value={value}>
-                {value}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="filter">
-          <button type="button" className="secondary neft-btn-secondary" onClick={handleResetFilters} disabled={!filtersActive}>
-            Сбросить
-          </button>
-        </div>
-      </div>
-
       <Table
         data={items}
         loading={isLoading}
+        rowKey={(invoice) => String(invoice.id)}
+        toolbar={
+          <div className="filters">
+            <div className="filter">
+              <label htmlFor="dateFrom">Период с</label>
+              <input
+                id="dateFrom"
+                name="dateFrom"
+                type="date"
+                value={filters.dateFrom}
+                onChange={handleFilterChange}
+              />
+            </div>
+            <div className="filter">
+              <label htmlFor="dateTo">Период по</label>
+              <input id="dateTo" name="dateTo" type="date" value={filters.dateTo} onChange={handleFilterChange} />
+            </div>
+            <div className="filter">
+              <label>Статус</label>
+              <div className="status-grid">
+                {STATUS_OPTIONS.map((opt) => (
+                  <label key={opt.value} className="checkbox">
+                    <input
+                      type="checkbox"
+                      checked={filters.status.includes(opt.value)}
+                      onChange={() => toggleStatus(opt.value)}
+                    />
+                    {opt.label}
+                  </label>
+                ))}
+              </div>
+            </div>
+            <div className="filter quick-filters toolbar-actions">
+              <button type="button" className="ghost" onClick={handleQuickUnpaid}>
+                Только неоплаченные
+              </button>
+              <button type="button" className="ghost" onClick={handleQuickMonth}>
+                За этот месяц
+              </button>
+            </div>
+            <div className="filter">
+              <label htmlFor="limit">Лимит</label>
+              <select id="limit" value={filters.limit} onChange={handleLimitChange}>
+                {[25, 50].map((value) => (
+                  <option key={value} value={value}>
+                    {value}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="filter">
+              <button
+                type="button"
+                className="secondary neft-btn-secondary"
+                onClick={handleResetFilters}
+                disabled={!filtersActive}
+              >
+                Сбросить
+              </button>
+            </div>
+          </div>
+        }
+        errorState={
+          error
+            ? {
+                title: "Не удалось загрузить инвойсы",
+                description: error,
+                actionLabel: "Повторить",
+                actionOnClick: () => setFilters((prev) => ({ ...prev })),
+              }
+            : undefined
+        }
+        footer={
+          <div className="table-footer__content pagination">
+            <div className="muted small">
+              Показаны {totalRange} из {total}
+            </div>
+            <div className="toolbar-actions">
+              <button
+                type="button"
+                className="ghost"
+                onClick={() => setOffset(Math.max(0, offset - filters.limit))}
+                disabled={offset === 0}
+              >
+                Назад
+              </button>
+              <button
+                type="button"
+                className="ghost"
+                onClick={() => setOffset(offset + filters.limit)}
+                disabled={offset + filters.limit >= total}
+              >
+                Далее
+              </button>
+            </div>
+          </div>
+        }
         columns={[
           {
             key: "number",
@@ -227,7 +261,7 @@ export function ClientInvoicesPage() {
             key: "actions",
             title: "",
             render: (invoice) => (
-              <div className="actions">
+              <div className="table-row-actions">
                 {invoice.id ? (
                   <Link to={`/invoices/${invoice.id}`} className="ghost">
                     Открыть
@@ -254,25 +288,6 @@ export function ClientInvoicesPage() {
           actionOnClick: filtersActive ? handleResetFilters : () => setFilters((prev) => ({ ...prev })),
         }}
       />
-
-      <div className="pagination">
-        <div className="muted small">
-          Показаны {totalRange} из {total}
-        </div>
-        <div className="actions">
-          <button type="button" className="ghost" onClick={() => setOffset(Math.max(0, offset - filters.limit))} disabled={offset === 0}>
-            Назад
-          </button>
-          <button
-            type="button"
-            className="ghost"
-            onClick={() => setOffset(offset + filters.limit)}
-            disabled={offset + filters.limit >= total}
-          >
-            Далее
-          </button>
-        </div>
-      </div>
     </div>
   );
 }

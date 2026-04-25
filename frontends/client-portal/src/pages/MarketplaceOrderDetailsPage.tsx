@@ -6,7 +6,6 @@ import {
   fetchMarketplaceOrderDetails,
   fetchMarketplaceOrderEvents,
   fetchMarketplaceOrderIncidents,
-  fetchMarketplaceOrderInvoices,
   fetchMarketplaceOrderSla,
   payMarketplaceOrder,
   sendMarketplaceClientEvents,
@@ -20,13 +19,16 @@ import type {
   MarketplaceOrderConsequence,
   MarketplaceOrderDetails,
   MarketplaceOrderEvent,
-  MarketplaceOrderInvoice,
   MarketplaceOrderSlaMetric,
 } from "../types/marketplace";
 import { formatDate, formatDateTime } from "../utils/format";
 import { getOrderStatusLabel } from "../utils/status";
 import { useI18n } from "../i18n";
 import { canCancelMarketplaceOrder } from "../utils/marketplacePermissions";
+import {
+  getMarketplaceOrderStatusClass,
+  isCancelableMarketplaceOrderStatus,
+} from "../utils/marketplaceOrders";
 import type { CaseItem } from "../types/cases";
 
 interface OrderErrorState {
@@ -37,18 +39,13 @@ interface OrderErrorState {
 
 type DetailsTab = "timeline" | "sla" | "incidents" | "invoices";
 
-const statusClass = (status?: string | null) => {
-  if (!status) return "neft-chip neft-chip-warn";
-  const normalized = status.toLowerCase();
-  if (["completed", "confirmed"].includes(normalized)) return "neft-chip neft-chip-ok";
-  if (["cancelled", "canceled", "failed"].includes(normalized)) return "neft-chip neft-chip-err";
-  return "neft-chip neft-chip-warn";
-};
 
-const resolveAmount = (order: MarketplaceOrderDetails) =>
-  order.price_snapshot?.total_amount ?? order.total_amount ?? null;
+const resolveAmount = (order: MarketplaceOrderDetails) => order.total_amount ?? null;
 
-const resolveCurrency = (order: MarketplaceOrderDetails) => order.price_snapshot?.currency ?? order.currency ?? "RUB";
+const resolveCurrency = (order: MarketplaceOrderDetails) => order.currency ?? "RUB";
+
+const resolveOrderTitle = (order: MarketplaceOrderDetails | null, fallback: string) =>
+  order?.lines?.[0]?.title_snapshot ?? fallback;
 
 const resolveActorLabel = (actor?: string | null) => {
   if (!actor) return "—";
@@ -59,6 +56,8 @@ const resolveActorLabel = (actor?: string | null) => {
   return actor;
 };
 
+const isNotFoundApiError = (error: unknown) => error instanceof ApiError && error.status === 404;
+
 export function MarketplaceOrderDetailsPage() {
   const { orderId } = useParams<{ orderId: string }>();
   const { user } = useAuth();
@@ -68,22 +67,21 @@ export function MarketplaceOrderDetailsPage() {
   const [events, setEvents] = useState<MarketplaceOrderEvent[]>([]);
   const [sla, setSla] = useState<MarketplaceOrderSlaMetric[]>([]);
   const [consequences, setConsequences] = useState<MarketplaceOrderConsequence[]>([]);
-  const [invoices, setInvoices] = useState<MarketplaceOrderInvoice[]>([]);
   const [incidents, setIncidents] = useState<CaseItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isEventsLoading, setIsEventsLoading] = useState(true);
   const [isSlaLoading, setIsSlaLoading] = useState(true);
   const [isConsequencesLoading, setIsConsequencesLoading] = useState(true);
-  const [isInvoicesLoading, setIsInvoicesLoading] = useState(true);
   const [isIncidentsLoading, setIsIncidentsLoading] = useState(true);
+  const [consequencesFrozenTail, setConsequencesFrozenTail] = useState(false);
   const [orderError, setOrderError] = useState<OrderErrorState | null>(null);
   const [eventsError, setEventsError] = useState<OrderErrorState | null>(null);
   const [slaError, setSlaError] = useState<OrderErrorState | null>(null);
   const [consequencesError, setConsequencesError] = useState<OrderErrorState | null>(null);
-  const [invoicesError, setInvoicesError] = useState<OrderErrorState | null>(null);
   const [incidentsError, setIncidentsError] = useState<OrderErrorState | null>(null);
   const resolvedAmount = order ? resolveAmount(order) : null;
   const resolvedCurrency = order ? resolveCurrency(order) : "RUB";
+  const orderTitle = resolveOrderTitle(order, t("marketplaceOrderDetails.title"));
   const [isSupportOpen, setIsSupportOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<DetailsTab>("timeline");
   const [isPaying, setIsPaying] = useState(false);
@@ -131,8 +129,12 @@ export function MarketplaceOrderDetailsPage() {
     setSlaError(null);
     setIsSlaLoading(true);
     fetchMarketplaceOrderSla(user, orderId)
-      .then((data) => setSla(data.obligations ?? []))
+      .then((data) => setSla(data.items ?? []))
       .catch((err: unknown) => {
+        if (isNotFoundApiError(err)) {
+          setSla([]);
+          return;
+        }
         if (err instanceof ApiError) {
           setSlaError({ message: err.message, status: err.status, correlationId: err.correlationId });
           return;
@@ -146,9 +148,18 @@ export function MarketplaceOrderDetailsPage() {
     if (!user || !orderId) return;
     setConsequencesError(null);
     setIsConsequencesLoading(true);
+    setConsequencesFrozenTail(false);
     fetchMarketplaceOrderConsequences(user, orderId)
-      .then((data) => setConsequences(data.items ?? []))
+      .then((data) => {
+        setConsequences(data.items ?? []);
+        setConsequencesFrozenTail(false);
+      })
       .catch((err: unknown) => {
+        if (isNotFoundApiError(err)) {
+          setConsequences([]);
+          setConsequencesFrozenTail(true);
+          return;
+        }
         if (err instanceof ApiError) {
           setConsequencesError({ message: err.message, status: err.status, correlationId: err.correlationId });
           return;
@@ -158,21 +169,6 @@ export function MarketplaceOrderDetailsPage() {
       .finally(() => setIsConsequencesLoading(false));
   }, [user, orderId, t]);
 
-  useEffect(() => {
-    if (!user || !orderId) return;
-    setInvoicesError(null);
-    setIsInvoicesLoading(true);
-    fetchMarketplaceOrderInvoices(user, orderId)
-      .then((data) => setInvoices(data ?? []))
-      .catch((err: unknown) => {
-        if (err instanceof ApiError) {
-          setInvoicesError({ message: err.message, status: err.status, correlationId: err.correlationId });
-          return;
-        }
-        setInvoicesError({ message: err instanceof Error ? err.message : t("marketplaceOrderDetails.errors.invoicesFailed") });
-      })
-      .finally(() => setIsInvoicesLoading(false));
-  }, [user, orderId, t]);
 
   useEffect(() => {
     if (!user || !orderId) return;
@@ -201,8 +197,6 @@ export function MarketplaceOrderDetailsPage() {
     ],
     [t],
   );
-
-  const invoiceExport = invoices.find((invoice) => invoice.url);
 
   const handleCancel = async () => {
     if (!user || !orderId) return;
@@ -260,21 +254,15 @@ export function MarketplaceOrderDetailsPage() {
       <div className="card">
         <div className="card__header">
           <div>
-            <h2>{order?.service_title ?? t("marketplaceOrderDetails.title")}</h2>
-            <p className="muted">
-              {order?.partner_name ? t("marketplaceOrderDetails.partner", { name: order.partner_name }) : t("marketplaceOrderDetails.subtitle")}
-            </p>
+            <h2>{orderTitle}</h2>
+            <p className="muted">{order?.id ?? t("marketplaceOrderDetails.subtitle")}</p>
           </div>
           <div className="actions">
             <button type="button" className="secondary" onClick={() => setIsSupportOpen(true)}>
               {t("marketplaceOrderDetails.actions.contactSupport")}
             </button>
-            {invoiceExport ? (
-              <a href={invoiceExport.url ?? "#"} className="link-button" target="_blank" rel="noreferrer">
-                {t("marketplaceOrderDetails.actions.downloadInvoice")}
-              </a>
-            ) : null}
-            {canCancel && order?.status === "CREATED" ? (
+
+            {canCancel && isCancelableMarketplaceOrderStatus(order?.status) ? (
               <button type="button" className="secondary" onClick={handleCancel}>
                 {t("actions.cancel")}
               </button>
@@ -311,7 +299,7 @@ export function MarketplaceOrderDetailsPage() {
           <div className="grid two">
             <div className="card muted-card">
               <div className="muted small">{t("marketplaceOrderDetails.fields.status")}</div>
-              <div className={statusClass(order.status)}>{getOrderStatusLabel(order.status)}</div>
+              <div className={getMarketplaceOrderStatusClass(order.status)}>{getOrderStatusLabel(order.status)}</div>
               <div className="muted small">{t("marketplaceOrderDetails.fields.created")}</div>
               <div>{order.created_at ? formatDate(order.created_at) : "—"}</div>
             </div>
@@ -366,7 +354,7 @@ export function MarketplaceOrderDetailsPage() {
                       <strong>{event.event_type}</strong>
                       <div className="muted small">{event.created_at ? formatDateTime(event.created_at) : "—"}</div>
                       <div className="muted small">{t("marketplaceOrderDetails.timeline.actor", { actor: resolveActorLabel(event.actor_type) })}</div>
-                      {event.note ? <div className="muted">{event.note}</div> : null}
+                      {event.comment ? <div className="muted">{event.comment}</div> : null}
                     </div>
                   </li>
                 ))}
@@ -402,12 +390,16 @@ export function MarketplaceOrderDetailsPage() {
                 </thead>
                 <tbody>
                   {sla.map((metric) => (
-                    <tr key={`${metric.metric}-${metric.deadline_at ?? ""}`}>
-                      <td>{metric.metric}</td>
-                      <td>{metric.threshold ?? "—"}</td>
+                    <tr key={metric.id}>
+                      <td>{metric.obligation_id}</td>
+                      <td>
+                        {metric.period_start && metric.period_end
+                          ? `${formatDateTime(metric.period_start)} — ${formatDateTime(metric.period_end)}`
+                          : "—"}
+                      </td>
                       <td>{metric.measured_value ?? "—"}</td>
                       <td>{metric.status ?? "—"}</td>
-                      <td>{metric.penalty ?? "—"}</td>
+                      <td>{metric.breach_reason ?? metric.breach_severity ?? "—"}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -463,49 +455,32 @@ export function MarketplaceOrderDetailsPage() {
 
         {activeTab === "invoices" ? (
           <div className="stack">
-            {invoicesError ? (
-              <AppErrorState message={invoicesError.message} status={invoicesError.status} correlationId={invoicesError.correlationId} />
-            ) : null}
-            {isInvoicesLoading || isConsequencesLoading ? (
+            {isConsequencesLoading ? (
               <div className="skeleton-stack">
                 <div className="skeleton-line" />
                 <div className="skeleton-line" />
               </div>
             ) : null}
-            {!invoicesError && !isInvoicesLoading && invoices.length === 0 ? (
-              <AppEmptyState title={t("marketplaceOrderDetails.invoices.emptyTitle")} description={t("marketplaceOrderDetails.invoices.emptyDescription")} />
+            {consequencesError ? (
+              <AppErrorState
+                message={consequencesError.message}
+                status={consequencesError.status}
+                correlationId={consequencesError.correlationId}
+              />
             ) : null}
-            {!invoicesError && !isInvoicesLoading && invoices.length > 0 ? (
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>{t("marketplaceOrderDetails.invoices.table.number")}</th>
-                    <th>{t("marketplaceOrderDetails.invoices.table.status")}</th>
-                    <th>{t("marketplaceOrderDetails.invoices.table.amount")}</th>
-                    <th />
-                  </tr>
-                </thead>
-                <tbody>
-                  {invoices.map((invoice) => (
-                    <tr key={invoice.id}>
-                      <td>{invoice.invoice_number ?? invoice.id}</td>
-                      <td>{invoice.status ?? "—"}</td>
-                      <td>
-                        {invoice.amount !== undefined && invoice.amount !== null
-                          ? <MoneyValue amount={invoice.amount} currency={invoice.currency ?? "RUB"} />
-                          : "—"}
-                      </td>
-                      <td>
-                        {invoice.url ? (
-                          <a href={invoice.url} target="_blank" rel="noreferrer" className="link-button">
-                            {t("actions.download")}
-                          </a>
-                        ) : null}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            {!consequencesError && !isConsequencesLoading && consequences.length === 0 ? (
+              <AppEmptyState
+                title={
+                  consequencesFrozenTail
+                    ? t("marketplaceOrderDetails.invoices.frozenTailTitle")
+                    : t("marketplaceOrderDetails.invoices.emptyTitle")
+                }
+                description={
+                  consequencesFrozenTail
+                    ? t("marketplaceOrderDetails.invoices.frozenTailDescription")
+                    : t("marketplaceOrderDetails.invoices.emptyDescription")
+                }
+              />
             ) : null}
             {!consequencesError && !isConsequencesLoading && consequences.length > 0 ? (
               <div>
@@ -524,26 +499,19 @@ export function MarketplaceOrderDetailsPage() {
                   <tbody>
                     {consequences.map((item) => (
                       <tr key={item.id}>
-                        <td>{item.type ?? "—"}</td>
+                        <td>{item.consequence_type ?? "—"}</td>
                         <td>
                           {item.amount !== undefined && item.amount !== null
                             ? <MoneyValue amount={item.amount} currency={item.currency ?? "RUB"} />
                             : "—"}
                         </td>
-                        <td>{item.reason ?? "—"}</td>
+                        <td>{item.status ?? item.billing_invoice_id ?? item.billing_refund_id ?? item.ledger_tx_id ?? "—"}</td>
                         <td>{item.created_at ? formatDateTime(item.created_at) : "—"}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
-            ) : null}
-            {consequencesError ? (
-              <AppErrorState
-                message={consequencesError.message}
-                status={consequencesError.status}
-                correlationId={consequencesError.correlationId}
-              />
             ) : null}
           </div>
         ) : null}

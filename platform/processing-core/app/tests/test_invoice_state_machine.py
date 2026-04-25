@@ -3,6 +3,8 @@ from datetime import date, datetime
 import pytest
 
 from app.models.invoice import Invoice, InvoiceStatus
+from app.services.decision import DecisionOutcome, DecisionResult
+from app.services.decision.engine import DecisionEngine
 from app.services.invoice_state_machine import InvoiceInvariantError, InvoiceStateMachine, InvalidTransitionError
 
 
@@ -29,10 +31,20 @@ def _make_invoice(status: InvoiceStatus) -> Invoice:
     )
 
 
-def test_draft_to_issued_sets_timestamp_and_due():
+def test_draft_to_issued_sets_timestamp_and_due(monkeypatch: pytest.MonkeyPatch):
     now = datetime(2024, 2, 1, 10, 0, 0)
     invoice = _make_invoice(InvoiceStatus.DRAFT)
     machine = InvoiceStateMachine(invoice, db=_StubSession(), now_provider=lambda: now)
+
+    def _allow_issue(self, context):
+        return DecisionResult(
+            decision_id="test-issue",
+            decision_version="unit-test",
+            outcome=DecisionOutcome.ALLOW,
+            risk_score=0,
+        )
+
+    monkeypatch.setattr(DecisionEngine, "evaluate", _allow_issue)
 
     machine.transition(
         to=InvoiceStatus.ISSUED,

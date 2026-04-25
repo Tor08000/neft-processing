@@ -3,52 +3,93 @@ from __future__ import annotations
 from datetime import date, datetime, time, timezone
 
 import pytest
+from sqlalchemy import Column, MetaData, String, Table, create_engine
+from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.pool import StaticPool
 
-from app.db import Base, SessionLocal, engine, reset_engine
 from app.models.accounting_export_batch import (
     AccountingExportBatch,
     AccountingExportFormat,
     AccountingExportState,
     AccountingExportType,
 )
+from app.models.audit_log import AuditLog
 from app.models.billing_period import BillingPeriod, BillingPeriodStatus, BillingPeriodType
 from app.models.client_actions import DocumentAcknowledgement
 from app.models.documents import ClosingPackage, ClosingPackageStatus, Document, DocumentFile, DocumentFileType, DocumentStatus, DocumentType
+from app.models.documents import DocumentDirection
 from app.models.finance import InvoicePayment, InvoiceSettlementAllocation, SettlementSourceType
 from app.models.invoice import Invoice, InvoicePdfStatus, InvoiceStatus
-from app.models.legal_graph import LegalEdge, LegalEdgeType, LegalGraphSnapshotScopeType, LegalNode, LegalNodeType
+from app.models.legal_graph import (
+    LegalEdge,
+    LegalEdgeType,
+    LegalGraphSnapshot,
+    LegalGraphSnapshotScopeType,
+    LegalNode,
+    LegalNodeType,
+)
+from app.models.risk_decision import RiskDecision
 from app.services.legal_graph import GraphContext, LegalGraphBuilder, LegalGraphSnapshotService
 from app.services.legal_graph.completeness import check_billing_period_completeness
 from app.services.legal_graph.queries import trace
 from app.services.legal_graph.registry import LegalGraphRegistry
 
 
-@pytest.fixture(autouse=True)
-def _use_sqlite(monkeypatch: pytest.MonkeyPatch):
-    import app.db as db
-
-    monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
-    monkeypatch.setenv("TEST_DATABASE_URL", "sqlite:///:memory:")
-    monkeypatch.setattr(db, "DATABASE_URL", "sqlite:///:memory:", raising=False)
-    monkeypatch.setattr(db, "raw_db_url", "sqlite:///:memory:", raising=False)
-    reset_engine()
-
-
-@pytest.fixture(autouse=True)
-def _reset_db(_use_sqlite):
-    Base.metadata.drop_all(bind=engine)
-    Base.metadata.create_all(bind=engine)
-    yield
-    Base.metadata.drop_all(bind=engine)
+LEGAL_GRAPH_TEST_TABLES = (
+    AuditLog.__table__,
+    BillingPeriod.__table__,
+    Invoice.__table__,
+    Document.__table__,
+    DocumentFile.__table__,
+    ClosingPackage.__table__,
+    DocumentAcknowledgement.__table__,
+    InvoicePayment.__table__,
+    InvoiceSettlementAllocation.__table__,
+    AccountingExportBatch.__table__,
+    RiskDecision.__table__,
+    LegalNode.__table__,
+    LegalEdge.__table__,
+    LegalGraphSnapshot.__table__,
+)
 
 
 @pytest.fixture
 def session():
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    stub_metadata = MetaData()
+
+    def stub_metadata_table(name: str) -> Table:
+        return Table(
+            name,
+            stub_metadata,
+            Column("id", String(36), primary_key=True),
+        )
+
+    stub_metadata_table("clearing_batch")
+    stub_metadata_table("reconciliation_requests")
+    stub_metadata.create_all(bind=engine)
+    for table in LEGAL_GRAPH_TEST_TABLES:
+        table.create(bind=engine, checkfirst=True)
+
+    SessionLocal = sessionmaker(
+        autocommit=False,
+        autoflush=False,
+        expire_on_commit=False,
+        bind=engine,
+    )
     db = SessionLocal()
     try:
         yield db
     finally:
         db.close()
+        for table in reversed(LEGAL_GRAPH_TEST_TABLES):
+            table.drop(bind=engine, checkfirst=True)
+        stub_metadata.drop_all(bind=engine)
+        engine.dispose()
 
 
 def test_node_upsert_idempotent(session):
@@ -155,6 +196,8 @@ def test_graph_completeness_integration(session):
     invoice_doc = Document(
         tenant_id=1,
         client_id="client-1",
+        direction=DocumentDirection.OUTBOUND,
+        title="Invoice",
         document_type=DocumentType.INVOICE,
         period_from=period_date,
         period_to=period_date,
@@ -167,6 +210,8 @@ def test_graph_completeness_integration(session):
     act_doc = Document(
         tenant_id=1,
         client_id="client-1",
+        direction=DocumentDirection.OUTBOUND,
+        title="Act",
         document_type=DocumentType.ACT,
         period_from=period_date,
         period_to=period_date,
@@ -178,6 +223,8 @@ def test_graph_completeness_integration(session):
     recon_doc = Document(
         tenant_id=1,
         client_id="client-1",
+        direction=DocumentDirection.OUTBOUND,
+        title="Reconciliation act",
         document_type=DocumentType.RECONCILIATION_ACT,
         period_from=period_date,
         period_to=period_date,

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from math import asin, cos, radians, sin, sqrt
 
 from neft_logistics_service.providers.base import BaseProvider
@@ -9,6 +10,9 @@ from neft_logistics_service.schemas import (
     EtaRequest,
     EtaResponse,
     Explain,
+    RoutePreviewGeometryPoint,
+    RoutePreviewRequest,
+    RoutePreviewResponse,
 )
 
 from neft_logistics_service.schemas.fleet import FleetListRequest, FleetListResponse, FleetUpsertRequest, FleetUpsertResponse, FleetVehicle
@@ -18,6 +22,22 @@ from neft_logistics_service.schemas.trips import TripCreateRequest, TripCreateRe
 
 class MockProvider(BaseProvider):
     name = "mock"
+
+    def preview_route(self, request: RoutePreviewRequest) -> RoutePreviewResponse:
+        distance_km = _route_distance_km(request)
+        speed_kmh = _estimated_speed(request)
+        eta_minutes = max(1, int(round(distance_km / max(speed_kmh, 1) * 60)))
+        confidence = _eta_confidence(request)
+        return RoutePreviewResponse(
+            provider=self.name,
+            geometry=[RoutePreviewGeometryPoint(lat=point.lat, lon=point.lon) for point in request.points],
+            distance_km=distance_km,
+            eta_minutes=eta_minutes,
+            confidence=confidence,
+            computed_at=datetime.now(timezone.utc),
+            degraded=False,
+            degradation_reason=None,
+        )
 
     def fleet_list(self, request: FleetListRequest) -> FleetListResponse:
         return FleetListResponse(items=[], total=0, limit=request.limit, offset=request.offset, request_id="mock-request")
@@ -33,7 +53,16 @@ class MockProvider(BaseProvider):
 
     def fuel_get_consumption(self, request: FuelConsumptionRequest) -> FuelConsumptionResponse:
         liters = round(request.distance_km * 0.28, 2)
-        return FuelConsumptionResponse(trip_id=request.trip_id, liters=liters, method="mock", request_id="mock-request")
+        return FuelConsumptionResponse(
+            trip_id=request.trip_id,
+            liters=liters,
+            method="mock",
+            provider_mode="mock",
+            sandbox_proof={"provider": "mock", "formula": "distance_km*0.28"},
+            retryable=False,
+            request_id="mock-request",
+            idempotency_key=request.idempotency_key,
+        )
 
 
     def compute_eta(self, request: EtaRequest) -> EtaResponse:
@@ -58,6 +87,7 @@ class MockProvider(BaseProvider):
             deviation_meters=int(round(deviation_m)),
             is_violation=is_violation,
             confidence=confidence,
+            provider=self.name,
             explain=explain,
         )
 

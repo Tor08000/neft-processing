@@ -56,12 +56,29 @@ export interface MarketplaceProductDetails {
 
 export interface MarketplaceOffer {
   id: string;
-  price?: number | null;
+  subject_type?: MarketplaceProductType | null;
+  subject_id?: string | null;
+  title?: string | null;
+  price_model?: MarketplacePriceModel | null;
+  price_amount?: number | null;
+  price_min?: number | null;
+  price_max?: number | null;
   currency?: string | null;
+  geo_scope?: string | null;
+  location_ids?: string[] | null;
+  terms?: Record<string, unknown> | null;
+  valid_from?: string | null;
+  valid_to?: string | null;
+  price?: number | null;
   location_name?: string | null;
   availability?: string | null;
   conditions?: string | null;
   documents?: string[] | null;
+}
+
+export interface MarketplaceProductOffersResponse {
+  items: MarketplaceOffer[];
+  total?: number | null;
 }
 
 export interface MarketplacePartner {
@@ -81,25 +98,39 @@ export interface MarketplaceServiceDetails {
   documents?: string[] | null;
 }
 
+export type MarketplaceOrderStatus =
+  | "CREATED"
+  | "PENDING_PAYMENT"
+  | "PAID"
+  | "CONFIRMED"
+  | "CONFIRMED_BY_PARTNER"
+  | "IN_PROGRESS"
+  | "COMPLETED"
+  | "DECLINED_BY_PARTNER"
+  | "CANCELED_BY_CLIENT"
+  | "CANCELLED"
+  | "PAYMENT_FAILED"
+  | "FAILED"
+  | "ACCEPTED"
+  | "REJECTED"
+  | "CLOSED"
+  | "REFUNDED";
+
 export interface MarketplaceOrderSummary {
   id: string;
-  service_title?: string | null;
-  partner_name?: string | null;
+  client_id?: string | null;
+  partner_id?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
   subtotal_amount?: number | null;
   discount_amount?: number | null;
   total_amount?: number | null;
   currency?: string | null;
-  status?: string | null;
+  status?: MarketplaceOrderStatus | null;
   payment_status?: string | null;
   payment_method?: string | null;
-  documents_status?: string | null;
-  sla_status?: "OK" | "VIOLATION" | "UNKNOWN" | null;
-  price_snapshot?: {
-    total_amount?: number | null;
-    currency?: string | null;
-  } | null;
+  audit_event_id?: string | null;
+  external_ref?: string | null;
 }
 
 export interface MarketplaceOrdersResponse {
@@ -109,102 +140,93 @@ export interface MarketplaceOrdersResponse {
   offset?: number | null;
 }
 
-export interface MarketplaceOrderDetails {
+export interface MarketplaceOrderLine {
   id: string;
-  status?: string | null;
-  service_title?: string | null;
-  partner_name?: string | null;
-  subtotal_amount?: number | null;
-  discount_amount?: number | null;
-  total_amount?: number | null;
-  currency?: string | null;
-  payment_status?: string | null;
-  payment_method?: string | null;
+  order_id?: string | null;
+  offer_id?: string | null;
+  subject_type?: string | null;
+  subject_id?: string | null;
+  title_snapshot: string;
+  qty?: number | null;
+  unit_price?: number | null;
+  line_amount?: number | null;
+  meta?: Record<string, unknown> | null;
+}
+
+export interface MarketplaceOrderProof {
+  id: string;
+  order_id?: string | null;
+  kind?: string | null;
+  attachment_id?: string | null;
+  note?: string | null;
   created_at?: string | null;
-  updated_at?: string | null;
-  documents_status?: string | null;
-  price_snapshot?: {
-    total_amount?: number | null;
-    currency?: string | null;
-  } | null;
+  meta?: Record<string, unknown> | null;
+}
+
+export interface MarketplaceOrderDetails extends MarketplaceOrderSummary {
+  lines?: MarketplaceOrderLine[] | null;
+  proofs?: MarketplaceOrderProof[] | null;
+  events?: MarketplaceOrderEvent[] | null;
 }
 
 export interface MarketplaceOrderEvent {
   id: string;
+  order_id?: string | null;
   event_type: string;
-  status?: string | null;
-  note?: string | null;
-  actor_type?: "client" | "partner" | "system" | string | null;
+  occurred_at?: string | null;
+  payload_redacted?: Record<string, unknown> | null;
+  actor_type?: "client" | "partner" | "admin" | "system" | string | null;
+  actor_id?: string | null;
+  audit_event_id?: string | null;
+  created_at: string;
+  before_status?: string | null;
+  after_status?: string | null;
+  reason_code?: string | null;
+  comment?: string | null;
+  meta?: Record<string, unknown> | null;
+}
+
+
+export interface MarketplaceOrderSlaMetric {
+  id: string;
+  order_id: string;
+  contract_id: string;
+  obligation_id: string;
+  period_start: string;
+  period_end: string;
+  measured_value: number;
+  status: string;
+  breach_reason?: string | null;
+  breach_severity?: string | null;
   created_at: string;
 }
 
-export interface MarketplaceOrderDocumentFile {
-  id: string;
-  name?: string | null;
-  url?: string | null;
-}
-
-export interface MarketplaceOrderDocument {
-  id: string;
-  type: string;
-  status?: string | null;
-  signature_status?: string | null;
-  edo_status?: string | null;
-  url?: string | null;
-  files?: MarketplaceOrderDocumentFile[] | null;
-}
-
-export interface MarketplaceOrderDocumentsResponse {
-  items: MarketplaceOrderDocument[];
-}
-
-export interface MarketplaceOrderSlaMetric {
-  metric: string;
-  threshold?: number | null;
-  comparison?: string | null;
-  window?: string | null;
-  measured_value?: number | null;
-  status?: "OK" | "VIOLATION" | "UNKNOWN" | null;
-  deadline_at?: string | null;
-  reason?: string | null;
-  penalty?: string | null;
-}
-
 export interface MarketplaceOrderSlaResponse {
-  obligations?: MarketplaceOrderSlaMetric[] | null;
+  items?: MarketplaceOrderSlaMetric[] | null;
 }
 
 export interface MarketplaceOrderConsequence {
   id: string;
-  type?: string | null;
-  amount?: number | null;
-  currency?: string | null;
-  reason?: string | null;
-  created_at?: string | null;
+  order_id: string;
+  evaluation_id: string;
+  consequence_type: string;
+  amount: number;
+  currency: string;
+  billing_invoice_id?: string | null;
+  billing_refund_id?: string | null;
+  ledger_tx_id?: string | null;
+  status: string;
+  created_at: string;
 }
 
 export interface MarketplaceOrderConsequencesResponse {
   items?: MarketplaceOrderConsequence[] | null;
 }
 
-export interface MarketplaceOrderInvoice {
-  id: string;
-  invoice_number?: string | null;
-  status?: string | null;
-  amount?: number | null;
-  currency?: string | null;
-  url?: string | null;
-}
 
 export interface MarketplaceCreateOrderPayload {
   items: { offer_id: string; qty?: number | null }[];
   payment_method: string;
-}
-
-export interface MarketplaceProductOrderPayload {
-  product_id: string;
-  qty?: number | null;
-  notes?: string | null;
 }
 
 export interface MarketplaceCreateOrderResponse {

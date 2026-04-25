@@ -1,11 +1,13 @@
 import { render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { App } from "../App";
 import type { AuthSession } from "../api/types";
+import { AuthProvider } from "../auth/AuthContext";
+import { I18nProvider } from "../i18n";
+import { FleetPolicyExecutionsPage } from "./FleetPolicyExecutionsPage";
 
 const adminSession: AuthSession = {
-  token: "token-1",
+  token: "test.header.payload",
   email: "client@demo.test",
   roles: ["CLIENT_OWNER"],
   subjectType: "CLIENT",
@@ -17,6 +19,8 @@ describe("FleetPolicyExecutionsPage", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
+    window.localStorage.clear();
+    window.sessionStorage.clear();
   });
 
   it("renders executions table", async () => {
@@ -52,7 +56,11 @@ describe("FleetPolicyExecutionsPage", () => {
 
     render(
       <MemoryRouter initialEntries={["/fleet/policies/executions"]}>
-        <App initialSession={adminSession} />
+        <I18nProvider locale="ru">
+          <AuthProvider initialSession={adminSession}>
+            <FleetPolicyExecutionsPage />
+          </AuthProvider>
+        </I18nProvider>
       </MemoryRouter>,
     );
 
@@ -73,7 +81,11 @@ describe("FleetPolicyExecutionsPage", () => {
 
     render(
       <MemoryRouter initialEntries={["/fleet/policies/executions"]}>
-        <App initialSession={adminSession} />
+        <I18nProvider locale="ru">
+          <AuthProvider initialSession={adminSession}>
+            <FleetPolicyExecutionsPage />
+          </AuthProvider>
+        </I18nProvider>
       </MemoryRouter>,
     );
 

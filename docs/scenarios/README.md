@@ -7,8 +7,8 @@ Each scenario file follows a uniform template and explicitly marks missing funct
 
 - **API prefixes**:
   - Auth-host: `/v1/auth` (service `platform/auth-host`).
-  - Core/Processing API: `/api` (legacy) and `/api/v1/core` (core prefix) in `platform/processing-core`.
-  - Client portal: `/v1/client` in `platform/processing-core`.
+  - Core/Processing API: canonical owners usually live under `/api/core/*`; compatibility/public families may remain under `/api/*` or `/api/v1/*` in `platform/processing-core`.
+  - Client portal compatibility families: `/api/v1/client/*`; canonical client owners are scenario-specific and may live under `/api/core/client/*` or `/api/core/v1/client/*`.
   - Client fleet: `/api/client/fleet` in `platform/processing-core`.
   - Integration hub: `/v1/webhooks` in `platform/integration-hub`.
 - **Event catalog**: `docs/as-is/EVENT_CATALOG.md`.

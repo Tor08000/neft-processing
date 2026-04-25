@@ -146,7 +146,11 @@ def build_risk_section(db: Session, *, tx: FuelTransaction) -> dict[str, Any] | 
             payload.setdefault("policy_id", decision.policy_id)
             payload.setdefault("decision_id", decision.decision_id)
             payload.setdefault("factors", decision.reasons)
-            payload.setdefault("decision_hash", decision.features_snapshot.get("decision_hash") if isinstance(decision.features_snapshot, dict) else None)
+            if isinstance(decision.features_snapshot, dict):
+                payload.setdefault("decision_hash", decision.features_snapshot.get("decision_hash"))
+                payload.setdefault("context_hash", decision.features_snapshot.get("context_hash"))
+                payload.setdefault("scoring_trace_hash", decision.features_snapshot.get("scoring_trace_hash"))
+                payload.setdefault("scoring_source", decision.features_snapshot.get("scoring_source"))
     fraud_signals = meta.get("fraud_signals")
     if isinstance(fraud_signals, list):
         payload["fraud_signals"] = fraud_signals
@@ -204,6 +208,8 @@ def build_navigator_section(
     order_id: str,
     route_id: str | None,
 ) -> dict[str, Any] | None:
+    # Unified explain reads the latest local navigator snapshot/explain artifacts.
+    # It does not turn processing-core into a real routing provider owner.
     if not order_id:
         return None
 
@@ -277,6 +283,7 @@ def build_money_section_for_fuel(db: Session, *, fuel_tx_id: str) -> dict[str, A
 
 def build_money_section_for_invoice(db: Session, *, invoice_id: str) -> dict[str, Any] | None:
     invoice = db.get(Invoice, invoice_id)
+    money_summary = _build_money_summary(db, invoice=invoice)
     ledger_transactions = (
         db.execute(
             select(InternalLedgerTransaction).where(
@@ -287,7 +294,9 @@ def build_money_section_for_invoice(db: Session, *, invoice_id: str) -> dict[str
         .all()
     )
     if not ledger_transactions:
-        return None
+        if money_summary is None:
+            return None
+        return {"ledger_postings": [], "money_summary": money_summary}
 
     entries = (
         db.execute(
@@ -343,7 +352,6 @@ def build_money_section_for_invoice(db: Session, *, invoice_id: str) -> dict[str
         )
 
     ledger_postings = sorted(ledger_postings, key=lambda item: item["ledger_transaction_id"])
-    money_summary = _build_money_summary(db, invoice=invoice)
     return {"ledger_postings": ledger_postings, "money_summary": money_summary}
 
 

@@ -9,6 +9,8 @@ const files = [
   "../pages/MarketplaceOrdersPage.tsx",
   "../pages/ClientDocumentsPage.tsx",
   "../pages/FinanceExportsPage.tsx",
+  "../components/AccessGate.tsx",
+  "../components/DemoEmptyState.tsx",
 ].map((file) => path.join(__dirname, file));
 
 describe("i18n key pages", () => {

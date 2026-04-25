@@ -447,6 +447,17 @@ export interface MarketplaceOrderEvent {
   comment?: string | null;
 }
 
+export interface MarketplaceOrderIncident {
+  id: string;
+  title: string;
+  status: string;
+  queue?: string | null;
+  priority?: string | null;
+  updatedAt: string;
+  sourceRefType?: string | null;
+  sourceRefId?: string | null;
+}
+
 export interface MarketplaceOrderProof {
   id: string;
   orderId: string;
@@ -542,14 +553,6 @@ export interface MarketplaceDocumentDetails extends MarketplaceDocument {
     signedAt?: string | null;
   }> | null;
   edoEvents?: MarketplaceEdoEvent[] | null;
-}
-
-export interface MarketplaceSettlementLink {
-  id: string;
-  status: string;
-  periodStart?: string | null;
-  periodEnd?: string | null;
-  payoutBatchId?: string | null;
 }
 
 export interface MarketplacePayout {

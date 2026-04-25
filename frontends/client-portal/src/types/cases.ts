@@ -1,5 +1,5 @@
-export type CaseKind = "operation" | "invoice" | "order" | "kpi";
-export type CaseStatus = "TRIAGE" | "IN_PROGRESS" | "RESOLVED" | "CLOSED";
+export type CaseKind = "operation" | "invoice" | "order" | "support" | "dispute" | "incident" | "kpi" | "fleet" | "booking";
+export type CaseStatus = "TRIAGE" | "IN_PROGRESS" | "WAITING" | "RESOLVED" | "CLOSED";
 export type CasePriority = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
 export type CaseQueue = "FRAUD_OPS" | "FINANCE_OPS" | "SUPPORT" | "GENERAL";
 export type CaseSlaState = "ON_TRACK" | "WARNING" | "BREACHED";
@@ -25,10 +25,12 @@ export interface CaseItem {
   id: string;
   tenant_id: number;
   kind: CaseKind;
+  entity_type?: string | null;
   entity_id?: string | null;
   kpi_key?: string | null;
   window_days?: number | null;
   title: string;
+  description?: string | null;
   status: CaseStatus;
   queue: CaseQueue;
   priority: CasePriority;
@@ -36,8 +38,12 @@ export interface CaseItem {
   first_response_due_at?: string | null;
   resolve_due_at?: string | null;
   sla_state?: CaseSlaState | null;
+  client_id?: string | null;
+  partner_id?: string | null;
   created_by?: string | null;
   assigned_to?: string | null;
+  case_source_ref_type?: string | null;
+  case_source_ref_id?: string | null;
   created_at: string;
   updated_at: string;
   last_activity_at: string;
@@ -54,5 +60,6 @@ export interface CaseDetailsResponse {
   case: CaseItem;
   latest_snapshot?: CaseSnapshot | null;
   comments: CaseComment[];
+  timeline: Array<{ status: CaseStatus; occurred_at: string }>;
   snapshots?: CaseSnapshot[] | null;
 }

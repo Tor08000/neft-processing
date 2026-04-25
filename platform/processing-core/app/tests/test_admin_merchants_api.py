@@ -1,24 +1,40 @@
 import pytest
+from fastapi import APIRouter, Depends
 from fastapi.testclient import TestClient
+from sqlalchemy.orm import Session
 
-from app.db import Base, SessionLocal, engine
-from app.main import app
+from app.api.dependencies.admin import require_admin_user
 from app.models.merchant import Merchant
 from app.models.terminal import Terminal
+from app.routers.admin.merchants import router as admin_merchants_router
+from app.tests._scoped_router_harness import router_client_context, scoped_session_context
 
 
-@pytest.fixture(autouse=True)
-def clean_db():
-    Base.metadata.drop_all(bind=engine)
-    Base.metadata.create_all(bind=engine)
-    yield
-    Base.metadata.drop_all(bind=engine)
+ADMIN_MERCHANTS_TEST_TABLES = (
+    Merchant.__table__,
+    Terminal.__table__,
+)
 
 
-@pytest.fixture
-def client(admin_auth_headers: dict):
-    with TestClient(app) as api_client:
-        api_client.headers.update(admin_auth_headers)
+def _admin_merchants_test_router() -> APIRouter:
+    router = APIRouter(prefix="/api/v1/admin", dependencies=[Depends(require_admin_user)])
+    router.include_router(admin_merchants_router)
+    return router
+
+
+@pytest.fixture()
+def db_session() -> Session:
+    with scoped_session_context(tables=ADMIN_MERCHANTS_TEST_TABLES) as session:
+        yield session
+
+
+@pytest.fixture()
+def client(db_session: Session) -> TestClient:
+    with router_client_context(
+        router=_admin_merchants_test_router(),
+        db_session=db_session,
+        dependency_overrides={require_admin_user: lambda: {"roles": ["ADMIN"], "sub": "admin-1"}},
+    ) as api_client:
         yield api_client
 
 
@@ -37,19 +53,15 @@ def test_create_and_get_merchant(client: TestClient):
     assert get_resp.json()["status"] == "ACTIVE"
 
 
-def test_merchants_list_filters(client: TestClient):
-    session = SessionLocal()
-    try:
-        session.add_all(
-            [
-                Merchant(id="m-1", name="Alpha", status="ACTIVE"),
-                Merchant(id="m-2", name="Beta", status="INACTIVE"),
-                Merchant(id="m-3", name="Gamma", status="ACTIVE"),
-            ]
-        )
-        session.commit()
-    finally:
-        session.close()
+def test_merchants_list_filters(client: TestClient, db_session: Session):
+    db_session.add_all(
+        [
+            Merchant(id="m-1", name="Alpha", status="ACTIVE"),
+            Merchant(id="m-2", name="Beta", status="INACTIVE"),
+            Merchant(id="m-3", name="Gamma", status="ACTIVE"),
+        ]
+    )
+    db_session.commit()
 
     list_resp = client.get(
         "/api/v1/admin/merchants",
@@ -57,7 +69,7 @@ def test_merchants_list_filters(client: TestClient):
     )
     assert list_resp.status_code == 200
     data = list_resp.json()
-    assert data["total"] >= 3  # includes default merchant created on startup
+    assert data["total"] == 2
     assert all(item["status"] == "ACTIVE" for item in data["items"])
 
     name_filter = client.get(
@@ -68,13 +80,9 @@ def test_merchants_list_filters(client: TestClient):
     assert name_filter.json()["items"][0]["id"] == "m-3"
 
 
-def test_create_and_list_terminals(client: TestClient):
-    session = SessionLocal()
-    try:
-        session.add(Merchant(id="m-1", name="Alpha", status="ACTIVE"))
-        session.commit()
-    finally:
-        session.close()
+def test_create_and_list_terminals(client: TestClient, db_session: Session):
+    db_session.add(Merchant(id="m-1", name="Alpha", status="ACTIVE"))
+    db_session.commit()
 
     create_resp = client.post(
         "/api/v1/admin/terminals",
@@ -98,7 +106,7 @@ def test_create_and_list_terminals(client: TestClient):
     assert data["items"][0]["location"] == "Moscow"
 
 
-def test_not_found_and_validation(client: TestClient):
+def test_not_found_and_validation(client: TestClient, db_session: Session):
     not_found = client.get("/api/v1/admin/merchants/nonexistent")
     assert not_found.status_code == 404
 
@@ -108,12 +116,8 @@ def test_not_found_and_validation(client: TestClient):
     )
     assert invalid.status_code == 422
 
-    session = SessionLocal()
-    try:
-        session.add(Merchant(id="m-1", name="Alpha", status="ACTIVE"))
-        session.commit()
-    finally:
-        session.close()
+    db_session.add(Merchant(id="m-1", name="Alpha", status="ACTIVE"))
+    db_session.commit()
 
     terminal_missing_merchant = client.post(
         "/api/v1/admin/terminals",
@@ -125,24 +129,20 @@ def test_not_found_and_validation(client: TestClient):
     assert terminal_not_found.status_code == 404
 
 
-def test_terminal_updates(client: TestClient):
-    session = SessionLocal()
-    try:
-        session.add_all(
-            [
-                Merchant(id="m-1", name="Alpha", status="ACTIVE"),
-                Merchant(id="m-2", name="Beta", status="ACTIVE"),
-                Terminal(
-                    id="t-1",
-                    merchant_id="m-1",
-                    status="ACTIVE",
-                    location="Initial",
-                ),
-            ]
-        )
-        session.commit()
-    finally:
-        session.close()
+def test_terminal_updates(client: TestClient, db_session: Session):
+    db_session.add_all(
+        [
+            Merchant(id="m-1", name="Alpha", status="ACTIVE"),
+            Merchant(id="m-2", name="Beta", status="ACTIVE"),
+            Terminal(
+                id="t-1",
+                merchant_id="m-1",
+                status="ACTIVE",
+                location="Initial",
+            ),
+        ]
+    )
+    db_session.commit()
 
     put_resp = client.put(
         "/api/v1/admin/terminals/t-1",

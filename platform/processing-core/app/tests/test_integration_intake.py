@@ -6,68 +6,143 @@ from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
 
-from app.db import Base, SessionLocal, engine, get_db
-from app.main import app
+from app.api.v1.endpoints.intake import router as intake_router
+from app.models.account import Account, AccountBalance
 from app.models.card import Card
 from app.models.client import Client
+from app.models.external_request_log import ExternalRequestLog
+from app.models.fuel import FuelNetwork, FuelStation, FuelStationNetwork
+from app.models.ledger_entry import LedgerEntry
+from app.models.limit_rule import LimitRule
 from app.models.merchant import Merchant
+from app.models.operation import Operation
 from app.models.partner import Partner
+from app.models.risk_score import RiskLevel
 from app.models.terminal import Terminal
+from app.models.unified_rule import UnifiedRulePolicy
 from app.services import transactions_service
+from app.services.decision import DecisionOutcome, DecisionResult
+from app.tests._scoped_router_harness import router_client_context, scoped_session_context
+
+
+INTAKE_TEST_TABLES = (
+    Partner.__table__,
+    Client.__table__,
+    Card.__table__,
+    Merchant.__table__,
+    Terminal.__table__,
+    FuelNetwork.__table__,
+    FuelStationNetwork.__table__,
+    FuelStation.__table__,
+    Operation.__table__,
+    LimitRule.__table__,
+    Account.__table__,
+    AccountBalance.__table__,
+    LedgerEntry.__table__,
+    ExternalRequestLog.__table__,
+)
+
+
+class _ApprovedContractLimits:
+    approved = True
+    violations: list[object] = []
+
+
+def _allow_decision() -> DecisionResult:
+    return DecisionResult(
+        decision_id=str(uuid4()),
+        decision_version="test",
+        outcome=DecisionOutcome.ALLOW,
+        risk_score=0,
+        risk_level=RiskLevel.LOW,
+        explain={"reason_codes": []},
+    )
 
 
 @pytest.fixture(autouse=True)
-def _reset_db():
-    Base.metadata.drop_all(bind=engine)
-    Base.metadata.create_all(bind=engine)
-    yield
-    Base.metadata.drop_all(bind=engine)
-
-
-@pytest.fixture(autouse=True)
-def _override_db_dependency():
-    def _get_db_override():
-        db = SessionLocal()
-        try:
-            yield db
-        finally:
-            db.close()
-
-    app.dependency_overrides[get_db] = _get_db_override
-    yield
-    app.dependency_overrides.pop(get_db, None)
-
-
-@pytest.fixture
-def client():
-    return TestClient(app)
+def _allow_intake_dependencies(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(transactions_service, "RISK_ENGINE_OVERRIDE", None)
+    monkeypatch.setattr(
+        transactions_service.DecisionEngine,
+        "evaluate",
+        lambda *_args, **_kwargs: _allow_decision(),
+    )
+    monkeypatch.setattr(
+        transactions_service,
+        "evaluate_with_db",
+        lambda *_args, **_kwargs: (UnifiedRulePolicy.ALLOW, [], None),
+    )
+    monkeypatch.setattr(
+        transactions_service,
+        "check_contractual_limits",
+        lambda *_args, **_kwargs: _ApprovedContractLimits(),
+    )
 
 
 @pytest.fixture
-def seed_refs():
-    db = SessionLocal()
+def session():
+    with scoped_session_context(tables=INTAKE_TEST_TABLES) as session:
+        yield session
+
+
+@pytest.fixture
+def client(session) -> TestClient:
+    with router_client_context(router=intake_router, db_session=session) as client:
+        yield client
+
+
+@pytest.fixture
+def seed_refs(session):
+    partner_id = str(uuid4())
+    client_id = uuid4()
+    merchant_id = str(uuid4())
+    fuel_network_id = str(uuid4())
+    station_network_id = str(uuid4())
+    station_id = str(uuid4())
+
     partner = Partner(
-        id="partner-1",
+        id=partner_id,
         name="Test Partner",
         type="AZS",
-        status="active",
+        code="PARTNER-1",
+        legal_name="Test Partner LLC",
+        partner_type="OTHER",
+        status="ACTIVE",
         allowed_ips=["testclient"],
         token="token-123",
+        contacts={},
     )
-    client_id = uuid4()
-    db.add(partner)
-    db.add(Client(id=client_id, name="Client", status="ACTIVE"))
-    db.add(Card(id="card-1", client_id=str(client_id), status="ACTIVE"))
-    db.add(Merchant(id="m-1", name="M1", status="ACTIVE"))
-    db.add(Terminal(id="t-1", merchant_id="m-1", status="ACTIVE"))
-    db.commit()
-    db.close()
-    return {"partner": partner, "card_id": "card-1", "terminal_id": "t-1"}
+    session.add(partner)
+    session.add(Client(id=client_id, name="Client", status="ACTIVE"))
+    session.add(Card(id="card-1", client_id=str(client_id), status="ACTIVE"))
+    session.add(Merchant(id=merchant_id, name="M1", status="ACTIVE"))
+    session.add(Terminal(id="t-1", merchant_id=merchant_id, status="ACTIVE"))
+    session.add(
+        FuelNetwork(
+            id=fuel_network_id,
+            name="Network",
+            provider_code="network-1",
+            status="ACTIVE",
+        )
+    )
+    session.add(FuelStationNetwork(id=station_network_id, name="Station Network"))
+    session.add(
+        FuelStation(
+            id=station_id,
+            network_id=fuel_network_id,
+            station_network_id=station_network_id,
+            name="Station",
+            station_code="station-1",
+            status="ACTIVE",
+        )
+    )
+    session.commit()
+    return {"partner_id": partner_id, "token": partner.token, "card_id": "card-1", "terminal_id": "t-1"}
 
 
-def _intake_payload(seed_refs: dict, **overrides):
+def _intake_payload(seed_refs: dict[str, str], **overrides):
     payload = {
-        "external_partner_id": seed_refs["partner"].id,
+        "external_partner_id": seed_refs["partner_id"],
         "terminal_id": seed_refs["terminal_id"],
         "amount": 10_000,
         "currency": "RUB",
@@ -80,11 +155,11 @@ def _intake_payload(seed_refs: dict, **overrides):
     return payload
 
 
-def _auth_headers(seed_refs: dict):
-    return {"x-partner-token": seed_refs["partner"].token}
+def _auth_headers(seed_refs: dict[str, str]):
+    return {"x-partner-token": seed_refs["token"]}
 
 
-def test_intake_authorize_success(client: TestClient, seed_refs: dict, monkeypatch: pytest.MonkeyPatch):
+def test_intake_authorize_success(client: TestClient, seed_refs: dict[str, str], monkeypatch: pytest.MonkeyPatch):
     def allow_risk(context, db=None):
         return transactions_service.risk_adapter.RiskEvaluation(
             decision=transactions_service.risk_adapter.RiskDecision(
@@ -106,7 +181,7 @@ def test_intake_authorize_success(client: TestClient, seed_refs: dict, monkeypat
     assert data["operation_id"]
 
 
-def test_intake_risk_decline(client: TestClient, seed_refs: dict, monkeypatch: pytest.MonkeyPatch):
+def test_intake_risk_decline(client: TestClient, seed_refs: dict[str, str], monkeypatch: pytest.MonkeyPatch):
     def hard_decline(context, db=None):
         return transactions_service.risk_adapter.RiskEvaluation(
             decision=transactions_service.risk_adapter.RiskDecision(
@@ -128,7 +203,7 @@ def test_intake_risk_decline(client: TestClient, seed_refs: dict, monkeypatch: p
     assert data["risk_code"] in {"BLOCK", "RISK_HARD_DECLINE"}
 
 
-def test_intake_limit_decline(client: TestClient, seed_refs: dict):
+def test_intake_limit_decline(client: TestClient, seed_refs: dict[str, str]):
     payload = _intake_payload(seed_refs, amount=200_000)
     response = client.post("/api/v1/intake/authorize", json=payload, headers=_auth_headers(seed_refs))
     data = response.json()
@@ -138,7 +213,7 @@ def test_intake_limit_decline(client: TestClient, seed_refs: dict):
     assert data["limit_code"] == "LIMIT_EXCEEDED"
 
 
-def test_intake_posting_error(client: TestClient, seed_refs: dict, monkeypatch: pytest.MonkeyPatch):
+def test_intake_posting_error(client: TestClient, seed_refs: dict[str, str], monkeypatch: pytest.MonkeyPatch):
     def allow_risk(context, db=None):
         return transactions_service.risk_adapter.RiskEvaluation(
             decision=transactions_service.risk_adapter.RiskDecision(
@@ -161,7 +236,7 @@ def test_intake_posting_error(client: TestClient, seed_refs: dict, monkeypatch: 
     assert data["response_code"] == "POSTING_ERROR"
 
 
-def test_invalid_partner_rejected(client: TestClient, seed_refs: dict):
+def test_invalid_partner_rejected(client: TestClient, seed_refs: dict[str, str]):
     payload = _intake_payload(seed_refs)
     headers = _auth_headers(seed_refs)
     headers["x-forwarded-for"] = "192.168.1.10"

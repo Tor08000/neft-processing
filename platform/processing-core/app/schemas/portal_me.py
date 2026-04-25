@@ -66,7 +66,20 @@ class PortalMePartnerSlaState(BaseModel):
     penalty_amount: Decimal
 
 
+class PortalMePartnerWorkspace(BaseModel):
+    code: str
+    label: str
+    default_route: str
+
+
 class PortalMePartner(BaseModel):
+    partner_id: str | None = None
+    partner_type: str | None = None
+    kind: str | None = None
+    partner_role: str | None = None
+    partner_roles: list[str] | None = None
+    default_route: str | None = None
+    workspaces: list[PortalMePartnerWorkspace] | None = None
     status: str | None = None
     profile: PortalMePartnerProfile | None = None
     finance_state: PortalMePartnerFinanceState | None = None

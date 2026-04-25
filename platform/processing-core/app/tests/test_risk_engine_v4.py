@@ -2,29 +2,38 @@ from datetime import datetime, timezone
 
 import pytest
 
-from app.db import Base, SessionLocal, engine
+from app.models.audit_log import AuditLog
+from app.models.decision_result import DecisionResult as DecisionResultRecord
 from app.models.risk_policy import RiskPolicy
+from app.models.risk_decision import RiskDecision
+from app.models.risk_threshold import RiskThreshold
 from app.models.risk_threshold_set import RiskThresholdSet
+from app.models.risk_training_snapshot import RiskTrainingSnapshot
 from app.models.risk_types import RiskDecisionType, RiskSubjectType, RiskThresholdAction, RiskThresholdScope
 from app.services.decision import DecisionAction, DecisionContext, DecisionEngine, DecisionOutcome
 from app.services.decision.scoring import StubRiskScorer
+from app.tests._scoped_router_harness import scoped_session_context
 
 
-@pytest.fixture(autouse=True)
-def _setup_db():
-    Base.metadata.drop_all(bind=engine)
-    Base.metadata.create_all(bind=engine)
-    yield
-    Base.metadata.drop_all(bind=engine)
+RISK_ENGINE_TEST_TABLES = (
+    AuditLog.__table__,
+    DecisionResultRecord.__table__,
+    RiskDecision.__table__,
+    RiskPolicy.__table__,
+    RiskThreshold.__table__,
+    RiskThresholdSet.__table__,
+    RiskTrainingSnapshot.__table__,
+)
 
 
 @pytest.fixture
-def session():
-    db = SessionLocal()
-    try:
+def session(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(
+        "app.services.decision.engine.LegalGraphBuilder.ensure_risk_decision_graph",
+        lambda self, risk_decision: None,
+    )
+    with scoped_session_context(tables=RISK_ENGINE_TEST_TABLES) as db:
         yield db
-    finally:
-        db.close()
 
 
 def _threshold_set(*, threshold_set_id: str) -> RiskThresholdSet:

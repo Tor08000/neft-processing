@@ -10,15 +10,21 @@ from sqlalchemy import create_engine, text
 from neft_shared.logging_setup import get_logger
 from neft_shared.settings import get_settings
 
-from app.job_evidence import record_job_finish, record_job_start
+from app.job_evidence import (
+    _build_engine_connect_args,
+    _resolve_database_url,
+    record_job_finish,
+    record_job_start,
+)
 
 logger = get_logger(__name__)
 settings = get_settings()
+_database_url = _resolve_database_url()
 _engine = create_engine(
-    settings.database_url,
+    _database_url,
     future=True,
     pool_pre_ping=True,
-    connect_args={"prepare_threshold": 0},
+    connect_args=_build_engine_connect_args(_database_url),
 )
 
 

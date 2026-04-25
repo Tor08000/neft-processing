@@ -10,13 +10,20 @@ The E-sign flow is handled by **processing-core** (request orchestration + audit
 
 Set provider configuration via environment variables:
 
-- `PROVIDER_X_MODE` (default: `mock`)
+- `PROVIDER_X_MODE` (default: `real`)
 - `PROVIDER_X_BASE_URL` (for real provider calls)
-- `PROVIDER_X_API_KEY`
-- `PROVIDER_X_API_SECRET`
+- `PROVIDER_X_API_KEY` (required for `real` / `prod` / `sandbox`)
+- `PROVIDER_X_API_SECRET` (required for `real` / `prod` / `sandbox`)
 - `PROVIDER_X_TIMEOUT_SECONDS`
 
-Mock mode is enabled by default if `PROVIDER_X_BASE_URL` is empty.
+Supported `PROVIDER_X_MODE` values:
+
+- `real` / `prod` - live Provider X transport; startup fails fast if the URL or non-placeholder credentials are missing.
+- `sandbox` - sandbox Provider X transport; requires `PROVIDER_X_SANDBOX_BASE_URL` plus non-placeholder credentials.
+- `mock` - explicit local mock only.
+- `degraded` / `disabled` - explicit degraded mode; `/v1/sign` and `/v1/verify` surface structured `503` responses instead of pretending signing succeeded.
+
+Mock is never inferred from an empty base URL. Placeholder credentials such as `dev-key`, `dev-secret`, or `change-me` are treated as unconfigured.
 
 ### Processing-core
 
@@ -37,7 +44,7 @@ POST /api/v1/admin/documents/{document_id}/sign/request
 ```
 
 Core behavior:
-- Creates a `document_signatures` record with status `REQUESTED` → `SIGNING`.
+- Creates a `document_signatures` record with status `REQUESTED` -> `SIGNING`.
 - Calls document-service to sign the PDF from S3.
 - Updates status to `SIGNED` or `FAILED`.
 - Writes audit events:

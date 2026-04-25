@@ -2,34 +2,44 @@ from datetime import datetime, timezone
 from uuid import uuid4
 
 import pytest
+from sqlalchemy.orm import Session
 
-from app.db import Base, SessionLocal, engine
 from app.models.fleet import FleetVehicle, FleetVehicleStatus
 from app.models.fuel import FuelCard, FuelCardStatus, FuelLimit, FuelLimitPeriod, FuelLimitScopeType, FuelLimitType
 from app.models.fuel import FuelNetwork, FuelStation, FuelStationNetwork
 from app.models.rule import Rule
+from app.models.risk_threshold_set import RiskThresholdSet
+from app.models.risk_types import RiskSubjectType, RiskThresholdAction, RiskThresholdScope
 from app.schemas.fuel import DeclineCode, FuelAuthorizeRequest
 from app.services.fuel.authorize import authorize_fuel_tx
-
-
-@pytest.fixture(autouse=True)
-def _setup_db():
-    Base.metadata.drop_all(bind=engine)
-    Base.metadata.create_all(bind=engine)
-    yield
-    Base.metadata.drop_all(bind=engine)
+from app.tests._fuel_runtime_test_harness import fuel_runtime_session_context
 
 
 @pytest.fixture
-def session():
-    db = SessionLocal()
-    try:
+def session() -> Session:
+    with fuel_runtime_session_context() as db:
         yield db
-    finally:
-        db.close()
+
+
+def _ensure_threshold_set(db: Session) -> None:
+    if db.get(RiskThresholdSet, "fuel-authorize-thresholds"):
+        return
+    db.add(
+        RiskThresholdSet(
+            id="fuel-authorize-thresholds",
+            subject_type=RiskSubjectType.PAYMENT,
+            scope=RiskThresholdScope.GLOBAL,
+            action=RiskThresholdAction.PAYMENT,
+            block_threshold=90,
+            review_threshold=70,
+            allow_threshold=0,
+        )
+    )
+    db.commit()
 
 
 def _seed_refs(db):
+    _ensure_threshold_set(db)
     network = FuelNetwork(id=str(uuid4()), name="NET-1", provider_code="net-1", status="ACTIVE")
     station_network = FuelStationNetwork(id=str(uuid4()), name="Main Network", meta={"brand": "Main"})
     station = FuelStation(

@@ -1,7 +1,9 @@
 import { apiGet, apiPatch, apiPost } from "./client";
 
-export type CaseKind = "operation" | "invoice" | "order" | "kpi";
-export type CaseStatus = "TRIAGE" | "IN_PROGRESS" | "RESOLVED" | "CLOSED";
+const BASE_CASES_PATH = "/api/core/cases";
+
+export type CaseKind = "operation" | "invoice" | "order" | "support" | "dispute" | "incident" | "kpi" | "fleet" | "booking";
+export type CaseStatus = "TRIAGE" | "IN_PROGRESS" | "WAITING" | "RESOLVED" | "CLOSED";
 export type CasePriority = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
 export type CaseQueue = "FRAUD_OPS" | "FINANCE_OPS" | "SUPPORT" | "GENERAL";
 export type CaseSlaState = "ON_TRACK" | "WARNING" | "BREACHED";
@@ -27,10 +29,12 @@ export interface CaseItem {
   id: string;
   tenant_id: number;
   kind: CaseKind;
+  entity_type?: string | null;
   entity_id?: string | null;
   kpi_key?: string | null;
   window_days?: number | null;
   title: string;
+  description?: string | null;
   status: CaseStatus;
   queue: CaseQueue;
   priority: CasePriority;
@@ -38,8 +42,12 @@ export interface CaseItem {
   first_response_due_at?: string | null;
   resolve_due_at?: string | null;
   sla_state?: CaseSlaState | null;
+  client_id?: string | null;
+  partner_id?: string | null;
   created_by?: string | null;
   assigned_to?: string | null;
+  case_source_ref_type?: string | null;
+  case_source_ref_id?: string | null;
   created_at: string;
   updated_at: string;
   last_activity_at: string;
@@ -56,21 +64,26 @@ export interface CaseDetailsResponse {
   case: CaseItem;
   latest_snapshot?: CaseSnapshot | null;
   comments: CaseComment[];
+  timeline: Array<{ status: CaseStatus; occurred_at: string }>;
   snapshots?: CaseSnapshot[] | null;
 }
 
 export interface CaseCreatePayload {
   kind: CaseKind;
+  entity_type?: string | null;
   entity_id?: string | null;
   kpi_key?: string | null;
   window_days?: number | null;
   title?: string | null;
+  description?: string | null;
   priority: CasePriority;
   note?: string | null;
   explain?: unknown | null;
   diff?: unknown | null;
   selected_actions?: { code: string; what_if?: unknown | null }[] | null;
   mastery_snapshot?: Record<string, unknown> | null;
+  client_id?: string | null;
+  partner_id?: string | null;
 }
 
 export interface CaseUpdatePayload {
@@ -91,25 +104,26 @@ export function fetchCases(params: {
   sla_state?: CaseSlaState;
   escalation_level_min?: number;
   assigned_to?: string;
+  entity_type?: string;
   q?: string;
   limit?: number;
   cursor?: string;
 }): Promise<CaseListResponse> {
-  return apiGet("/cases", params);
+  return apiGet(BASE_CASES_PATH, params);
 }
 
 export function fetchCaseDetails(caseId: string, includeSnapshots = false): Promise<CaseDetailsResponse> {
-  return apiGet(`/cases/${caseId}`, { include_snapshots: includeSnapshots });
+  return apiGet(`${BASE_CASES_PATH}/${caseId}`, { include_snapshots: includeSnapshots });
 }
 
 export function createCase(payload: CaseCreatePayload): Promise<CaseItem> {
-  return apiPost("/cases", payload);
+  return apiPost(BASE_CASES_PATH, payload);
 }
 
 export function updateCase(caseId: string, payload: CaseUpdatePayload): Promise<CaseItem> {
-  return apiPatch(`/cases/${caseId}`, payload);
+  return apiPatch(`${BASE_CASES_PATH}/${caseId}`, payload);
 }
 
 export function addCaseComment(caseId: string, payload: CaseCommentPayload): Promise<CaseComment> {
-  return apiPost(`/cases/${caseId}/comments`, payload);
+  return apiPost(`${BASE_CASES_PATH}/${caseId}/comments`, payload);
 }

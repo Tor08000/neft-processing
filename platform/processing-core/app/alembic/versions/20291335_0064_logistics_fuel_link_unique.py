@@ -20,8 +20,9 @@ depends_on = None
 
 
 def upgrade() -> None:
+    bind = op.get_bind()
     if not constraint_exists(
-        op.get_bind(),
+        bind,
         "fuel_route_links",
         "uq_fuel_route_links_fuel_tx_id",
         schema=SCHEMA,

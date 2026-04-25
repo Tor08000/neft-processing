@@ -76,6 +76,7 @@ if not "%STATUS%"=="%EXPECTED%" (
 exit /b 0
 
 :log
-echo %~1
-echo %~1>> "%LOG_FILE%"
+set "LOG_MESSAGE=%~1"
+echo(!LOG_MESSAGE!
+>> "%LOG_FILE%" echo(!LOG_MESSAGE!
 exit /b 0

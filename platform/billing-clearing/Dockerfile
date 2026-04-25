@@ -6,28 +6,21 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1
 
-# 1. Ставим зависимости воркеров
+# Keep dependency layers independent from shared runtime code changes.
 COPY platform/billing-clearing/requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir -r /tmp/requirements.txt
 
-# 2. Кладём общую питон-библиотеку и добавляем её в PYTHONPATH
-#    ВАЖНО: копируем всю shared/python, чтобы внутри был /opt/python/neft_shared
 COPY shared/python /opt/python
-RUN pip install -e /opt/python
-ENV PYTHONPATH="/app/services/workers:/app"
+ENV PYTHONPATH="/app/services/workers:/app:/opt/python"
 
-# подключаем sitecustomize.py, чтобы он подхватывался автоматически
+# sitecustomize is copied into /app so Python imports it automatically.
 COPY sitecustomize.py /app/sitecustomize.py
 
-# 3. Копируем код воркеров
 COPY platform/billing-clearing /app/services/workers
 
-# 4. Чиним переводы строк и права у entrypoint.sh
 RUN sed -i 's/\r$//' /app/services/workers/entrypoint.sh \
     && chmod +x /app/services/workers/entrypoint.sh
 
-# 5. Рабочая директория воркеров для корректных импортов
 WORKDIR /app/services/workers
 
-# 6. Общая точка входа (он сам решает, worker или beat по переменным)
 ENTRYPOINT ["/app/services/workers/entrypoint.sh"]

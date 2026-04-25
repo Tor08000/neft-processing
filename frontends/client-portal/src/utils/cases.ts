@@ -4,6 +4,7 @@ export const caseStatusLabel = (status: CaseStatus): string => {
   const map: Record<CaseStatus, string> = {
     TRIAGE: "Триаж",
     IN_PROGRESS: "В работе",
+    WAITING: "Ожидание",
     RESOLVED: "Решён",
     CLOSED: "Закрыт",
   };

@@ -77,7 +77,7 @@ def test_partner_me_returns_partner_for_linked_user() -> None:
     )
     assert create.status_code == 201
 
-    me = client.get("/api/core/partner/me")
+    me = client.get("/api/core/partner/self-profile")
     assert me.status_code == 200
     assert me.json()["partner"]["code"] == "partner-001"
 
@@ -134,7 +134,7 @@ def test_partner_terms_get() -> None:
 def test_partner_guard_rejects_client_token() -> None:
     client, _ = _make_client()
     client.app.dependency_overrides[partner_portal_user] = lambda: (_ for _ in ()).throw(HTTPException(status_code=403, detail="forbidden"))
-    response = client.get("/api/core/partner/me")
+    response = client.get("/api/core/partner/self-profile")
     assert response.status_code == 403
 
 

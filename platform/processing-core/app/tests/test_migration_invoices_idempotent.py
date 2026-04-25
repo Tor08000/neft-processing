@@ -1,6 +1,7 @@
 import importlib
 
 import pytest
+import sqlalchemy as sa
 
 migration = importlib.import_module("app.alembic.versions.20270115_0020_invoices")
 
@@ -39,7 +40,11 @@ def dummy_environment(monkeypatch: pytest.MonkeyPatch):
 
     monkeypatch.setattr(migration, "op", op)
     monkeypatch.setattr(migration, "ensure_pg_enum", lambda *args, **kwargs: None)
-    monkeypatch.setattr(migration, "safe_enum", lambda *args, **kwargs: "enum")
+    monkeypatch.setattr(
+        migration,
+        "safe_enum",
+        lambda *args, **kwargs: sa.Enum(*migration.INVOICE_STATUS_VALUES, name="invoicestatus", native_enum=False),
+    )
     monkeypatch.setattr(migration, "create_table_if_not_exists", create_table_if_not_exists)
     monkeypatch.setattr(migration, "create_index_if_not_exists", create_index_if_not_exists)
 

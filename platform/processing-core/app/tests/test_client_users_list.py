@@ -3,7 +3,14 @@ from __future__ import annotations
 from fastapi.testclient import TestClient
 
 from app.main import app
-from app.tests.test_admin_onboarding_approve import _InMemoryStorage, _base_prefix, _create_and_submit_application, _jwt
+from app.tests.test_admin_onboarding_approve import (
+    _InMemoryStorage,
+    _base_prefix,
+    _configure_onboarding_test_env,
+    _create_and_submit_application,
+    _jwt,
+    onboarding_sqlite_harness,
+)
 
 
 def _bootstrap_client(api_client: TestClient, secret: str) -> tuple[str, str]:
@@ -24,24 +31,21 @@ def _bootstrap_client(api_client: TestClient, secret: str) -> tuple[str, str]:
 
 def test_client_users_list_returns_200_on_clean_setup(monkeypatch) -> None:
     secret = "users-list-secret"
-    monkeypatch.setenv("ONBOARDING_TOKEN_SECRET", "onboarding-secret")
-    monkeypatch.setenv("CLIENT_TOKEN_SECRET", secret)
-    monkeypatch.setenv("CLIENT_PUBLIC_KEY", secret)
-    monkeypatch.setenv("ADMIN_PUBLIC_KEY", secret)
-    monkeypatch.setenv("NEFT_AUTH_ALLOWED_ALGS", "HS256")
+    _configure_onboarding_test_env(monkeypatch, secret)
     monkeypatch.setattr("app.routers.client_onboarding_documents_v1.OnboardingDocumentsStorage.from_env", lambda: _InMemoryStorage())
     monkeypatch.setattr("app.routers.admin_onboarding_review_v1.OnboardingDocumentsStorage.from_env", lambda: _InMemoryStorage())
 
-    with TestClient(app) as api_client:
-        base, client_id = _bootstrap_client(api_client, secret)
-        token = _jwt(
-            secret,
-            roles=["CLIENT_OWNER"],
-            aud="neft-client",
-            iss="neft-client",
-            sub="owner-1",
-            extra={"client_id": client_id, "user_id": "owner-1", "subject_type": "client_user"},
-        )
-        response = api_client.get(f"{base}/client/users", headers={"Authorization": f"Bearer {token}"})
-        assert response.status_code == 200
-        assert "items" in response.json()
+    with onboarding_sqlite_harness():
+        with TestClient(app) as api_client:
+            base, client_id = _bootstrap_client(api_client, secret)
+            token = _jwt(
+                secret,
+                roles=["CLIENT_OWNER"],
+                aud="neft-client",
+                iss="neft-client",
+                sub="owner-1",
+                extra={"client_id": client_id, "user_id": "owner-1", "subject_type": "client_user"},
+            )
+            response = api_client.get(f"{base}/client/users", headers={"Authorization": f"Bearer {token}"})
+            assert response.status_code == 200
+            assert "items" in response.json()

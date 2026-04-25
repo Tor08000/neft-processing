@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from sqlalchemy import or_
+from sqlalchemy import String, cast, or_
+from sqlalchemy.engine import Row
 from sqlalchemy.orm import Session
 
+from app.api.dependencies.admin_capability import require_admin_capability
 from app.api.dependencies.admin import require_admin_user
 from app.db import get_db
 from app.models.partner import Partner
@@ -15,10 +17,15 @@ from app.schemas.admin.legal_partners import (
     LegalPartnerStatusUpdate,
     LegalPartnerSummary,
 )
+from app.services.partner_context import resolve_partner_by_id
 from app.services.audit_service import _sanitize_token_for_audit, request_context_from_request
 from app.services.partner_legal_service import PartnerLegalError, PartnerLegalService
 
-router = APIRouter(prefix="/legal", tags=["admin-legal-partners"])
+router = APIRouter(
+    prefix="/legal",
+    tags=["admin-legal-partners"],
+    dependencies=[Depends(require_admin_capability("legal"))],
+)
 
 
 def _tables_ready(db: Session, table_names: list[str]) -> bool:
@@ -46,7 +53,7 @@ def _serialize_summary(
     elif details and details.updated_at:
         updated_at = details.updated_at
     else:
-        updated_at = partner.created_at
+        updated_at = getattr(partner, "created_at", None)
     partner_name = partner.name or (details.legal_name if details else None)
     return LegalPartnerSummary(
         partner_id=str(partner.id),
@@ -104,6 +111,26 @@ def _serialize_detail(
     )
 
 
+def _unpack_partner_row(
+    row,
+    *,
+    has_profiles: bool,
+    has_details: bool,
+) -> tuple[Partner, PartnerLegalProfile | None, PartnerLegalDetails | None]:
+    if isinstance(row, Partner):
+        return row, None, None
+
+    row_values = tuple(row) if isinstance(row, Row) else row
+    if not isinstance(row_values, tuple):
+        return row, None, None
+
+    partner = row_values[0]
+    profile = row_values[1] if has_profiles and len(row_values) > 1 else None
+    details_index = 2 if has_profiles else 1
+    details = row_values[details_index] if has_details and len(row_values) > details_index else None
+    return partner, profile, details
+
+
 @router.get("/partners", response_model=LegalPartnerListResponse)
 def list_legal_partners(
     limit: int = Query(50, ge=1, le=200),
@@ -142,27 +169,20 @@ def list_legal_partners(
         if has_details:
             query = query.filter(
                 or_(
-                    Partner.id.ilike(search_like),
+                    cast(Partner.id, String).ilike(search_like),
                     Partner.name.ilike(search_like),
                     PartnerLegalDetails.legal_name.ilike(search_like),
                 )
             )
         else:
-            query = query.filter(or_(Partner.id.ilike(search_like), Partner.name.ilike(search_like)))
+            query = query.filter(or_(cast(Partner.id, String).ilike(search_like), Partner.name.ilike(search_like)))
 
     total = query.count()
     rows = query.order_by(Partner.name.asc()).offset(offset).limit(limit).all()
 
     items: list[LegalPartnerSummary] = []
     for row in rows:
-        if isinstance(row, tuple):
-            partner = row[0]
-            profile = row[1] if has_profiles else None
-            details = row[2] if has_details else None
-        else:
-            partner = row
-            profile = None
-            details = None
+        partner, profile, details = _unpack_partner_row(row, has_profiles=has_profiles, has_details=has_details)
         items.append(_serialize_summary(partner, profile, details))
 
     return LegalPartnerListResponse(items=items, total=total, cursor=None)
@@ -176,7 +196,7 @@ def get_legal_partner(
     if not _tables_ready(db, ["partners"]):
         raise HTTPException(status_code=404, detail="partner_not_found")
 
-    partner = db.query(Partner).filter(Partner.id == partner_id).one_or_none()
+    partner = resolve_partner_by_id(db, partner_id=partner_id)
     if partner is None:
         raise HTTPException(status_code=404, detail="partner_not_found")
 
@@ -215,6 +235,7 @@ def update_legal_partner_status(
     payload: LegalPartnerStatusUpdate,
     request: Request,
     db: Session = Depends(get_db),
+    _capability_token: dict = Depends(require_admin_capability("legal", "approve")),
     token: dict = Depends(require_admin_user),
 ) -> LegalPartnerDetail:
     service = PartnerLegalService(
@@ -230,7 +251,7 @@ def update_legal_partner_status(
         raise HTTPException(status_code=404, detail=exc.code) from exc
     db.commit()
 
-    partner = db.query(Partner).filter(Partner.id == partner_id).one_or_none()
+    partner = resolve_partner_by_id(db, partner_id=partner_id)
     if partner is None:
         raise HTTPException(status_code=404, detail="partner_not_found")
     profile = db.query(PartnerLegalProfile).filter(PartnerLegalProfile.partner_id == partner_id).one_or_none()

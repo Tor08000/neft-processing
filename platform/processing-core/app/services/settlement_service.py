@@ -524,14 +524,15 @@ def execute_payout(
     period = db.query(SettlementPeriod).filter(SettlementPeriod.id == period_id).one_or_none()
     if period is None:
         raise SettlementServiceError("settlement_period_not_found")
-    if period.status != SettlementPeriodStatus.APPROVED:
-        raise SettlementServiceError("settlement_period_not_approved")
 
     existing = db.query(SettlementPayout).filter(SettlementPayout.idempotency_key == idempotency_key).one_or_none()
     if existing:
         if existing.settlement_period_id != period.id:
             raise SettlementServiceError("idempotency_conflict")
         return existing
+
+    if period.status != SettlementPeriodStatus.APPROVED:
+        raise SettlementServiceError("settlement_period_not_approved")
 
     existing_for_period = (
         db.query(SettlementPayout)

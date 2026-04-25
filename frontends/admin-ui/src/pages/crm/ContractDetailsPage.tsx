@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   activateContract,
@@ -11,12 +11,15 @@ import {
   updateContract,
 } from "../../api/crm";
 import { useAuth } from "../../auth/AuthContext";
-import { ContractForm } from "../../components/crm/ContractForm";
 import { ConfirmModal } from "../../components/common/ConfirmModal";
+import { EmptyState } from "../../components/common/EmptyState";
+import { ErrorState } from "../../components/common/ErrorState";
 import { JsonViewer } from "../../components/common/JsonViewer";
+import { Loader } from "../../components/Loader/Loader";
 import { Toast } from "../../components/common/Toast";
-import { useToast } from "../../components/Toast/useToast";
+import { ContractForm } from "../../components/crm/ContractForm";
 import { StatusBadge } from "../../components/StatusBadge/StatusBadge";
+import { useToast } from "../../components/Toast/useToast";
 import type { CrmContract, CrmProfile } from "../../types/crm";
 import { describeError, formatError } from "../../utils/apiErrors";
 
@@ -27,6 +30,8 @@ const actionLabels = {
   apply: "Apply",
 };
 
+const EMPTY_VALUE = "-";
+
 export const ContractDetailsPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -34,6 +39,8 @@ export const ContractDetailsPage: React.FC = () => {
   const { toast, showToast } = useToast();
   const [contract, setContract] = useState<CrmContract | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [loadErrorDetails, setLoadErrorDetails] = useState<string | undefined>(undefined);
   const [applyResult, setApplyResult] = useState<Record<string, unknown> | null>(null);
   const [confirmAction, setConfirmAction] = useState<null | keyof typeof actionLabels>(null);
   const [saving, setSaving] = useState(false);
@@ -46,22 +53,35 @@ export const ContractDetailsPage: React.FC = () => {
     apply: true,
   });
 
-  const loadContract = () => {
-    if (!accessToken || !id) return;
+  const loadContract = useCallback(() => {
+    if (!accessToken || !id) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
+    setLoadError(null);
+    setLoadErrorDetails(undefined);
+    setContract(null);
+    setLimitProfiles([]);
+    setRiskProfiles([]);
     Promise.all([getContract(accessToken, id), listLimitProfiles(accessToken), listRiskProfiles(accessToken)])
       .then(([response, limitResponse, riskResponse]) => {
         setContract(response);
         setLimitProfiles(limitResponse.items ?? []);
         setRiskProfiles(riskResponse.items ?? []);
       })
-      .catch((error: unknown) => showToast("error", formatError(error)))
+      .catch((error: unknown) => {
+        const summary = describeError(error);
+        setLoadError(summary.message);
+        setLoadErrorDetails(summary.details);
+        showToast("error", formatError(error));
+      })
       .finally(() => setLoading(false));
-  };
+  }, [accessToken, id, showToast]);
 
   useEffect(() => {
     loadContract();
-  }, [accessToken, id]);
+  }, [loadContract]);
 
   const handleAction = async (action: keyof typeof actionLabels) => {
     if (!accessToken || !contract) return;
@@ -109,11 +129,39 @@ export const ContractDetailsPage: React.FC = () => {
   };
 
   if (loading) {
-    return <div>Loading...</div>;
+    return <Loader label="Loading contract detail" />;
+  }
+
+  if (!id) {
+    return (
+      <EmptyState
+        title="Contract ID is required"
+        description="Open the contract detail page from the CRM contracts list."
+        primaryAction={{ label: "Back to contracts", onClick: () => navigate("/crm/contracts") }}
+      />
+    );
+  }
+
+  if (loadError) {
+    return (
+      <ErrorState
+        title="Failed to load contract detail"
+        description={loadError}
+        details={loadErrorDetails}
+        actionLabel="Retry"
+        onAction={() => void loadContract()}
+      />
+    );
   }
 
   if (!contract) {
-    return <div>Contract not found</div>;
+    return (
+      <EmptyState
+        title="Contract not found"
+        description="The requested contract is missing or no longer available."
+        primaryAction={{ label: "Back to contracts", onClick: () => navigate("/crm/contracts") }}
+      />
+    );
   }
 
   return (
@@ -126,35 +174,40 @@ export const ContractDetailsPage: React.FC = () => {
         </button>
       </div>
       <div style={{ display: "grid", gap: 8, marginBottom: 16 }}>
-        <div>Status: {contract.status ? <StatusBadge status={contract.status} /> : "-"}</div>
-        <div>Valid: {contract.valid_from ?? "-"} → {contract.valid_to ?? "-"}</div>
-        <div>Tariff: {contract.tariff_plan_id ?? "-"}</div>
-        <div>Risk profile: {contract.risk_profile_id ?? "-"}</div>
-        <div>Limit profile: {contract.limit_profile_id ?? "-"}</div>
+        <div>Status: {contract.status ? <StatusBadge status={contract.status} /> : EMPTY_VALUE}</div>
+        <div>
+          Valid: {contract.valid_from ?? EMPTY_VALUE} {"->"} {contract.valid_to ?? EMPTY_VALUE}
+        </div>
+        <div>Billing mode: {contract.billing_mode ?? EMPTY_VALUE}</div>
+        <div>Currency: {contract.currency ?? EMPTY_VALUE}</div>
+        <div>Risk profile: {contract.risk_profile_id ?? EMPTY_VALUE}</div>
+        <div>Limit profile: {contract.limit_profile_id ?? EMPTY_VALUE}</div>
         <div>Documents required: {contract.documents_required ? "Yes" : "No"}</div>
+        <div>CRM contract version: {contract.crm_contract_version ?? EMPTY_VALUE}</div>
       </div>
 
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 16 }}>
         {actionVisibility.activate && (
-          <button type="button" onClick={() => setConfirmAction("activate")}>Activate</button>
+          <button type="button" onClick={() => setConfirmAction("activate")}>
+            Activate
+          </button>
         )}
         {actionVisibility.pause && (
-          <button type="button" onClick={() => setConfirmAction("pause")}>Pause</button>
+          <button type="button" onClick={() => setConfirmAction("pause")}>
+            Pause
+          </button>
         )}
         {actionVisibility.terminate && (
-          <button type="button" onClick={() => setConfirmAction("terminate")}>Terminate</button>
+          <button type="button" onClick={() => setConfirmAction("terminate")}>
+            Terminate
+          </button>
         )}
         {actionVisibility.apply && (
-          <button type="button" onClick={() => setConfirmAction("apply")}>Apply</button>
+          <button type="button" onClick={() => setConfirmAction("apply")}>
+            Apply
+          </button>
         )}
       </div>
-
-      {contract.audit && (
-        <div style={{ marginBottom: 16 }}>
-          <h3>Audit snippet</h3>
-          <JsonViewer value={contract.audit} />
-        </div>
-      )}
 
       {applyResult && (
         <div style={{ marginBottom: 16 }}>

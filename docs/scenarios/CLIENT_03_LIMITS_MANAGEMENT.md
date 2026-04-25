@@ -1,41 +1,40 @@
-# CLIENT 03 — Limits Management
+# CLIENT 03 - Limits Management
 
 ## Goal
-Client reviews and updates fleet fuel limits, and limits enforcement is reflected in operations.
+Client reviews and updates card limits through the mounted client-portal surface. Runtime enforcement remains covered by the fleet limit engine tests.
 
 ## Actors & Roles
-- Client Owner / Fleet Manager
-- Ops/Admin (limit profiles)
+- Client Owner
+- Client Admin
 
 ## Prerequisites
 - Core API running with `postgres`.
-- Limit profiles seeded via CRM or admin limits rules.
 
 ## UI Flow
 **Client portal**
-- Limits list → create/update limit → review breaches in operations.
+- Card detail -> update limit -> confirm visible limit state.
 
 ## API Flow
-1. `GET /api/client/fleet/limits` — list current limits.
-2. `POST /api/client/fleet/limits/set` — create or update limit.
-3. `POST /api/client/fleet/limits/revoke` — revoke limit.
+1. `GET /api/v1/client/cards/{card_id}` - inspect current card limits.
+2. `POST /api/v1/client/cards/{card_id}/limits` - create or update a contractual limit for the card.
+3. `GET /api/v1/client/cards` - confirm the card summary reflects the new limit.
 
 ## DB Touchpoints
-- `fuel_limits` — client/card/vehicle limits.
-- `limit_configs`, `crm_limit_profiles` — limit rules and profiles.
+- `cards` - card ownership surface.
+- `limit_configs` - persisted contractual card limit.
 
 ## Events & Audit
-- `LIMIT_SET`, `LIMIT_REVOKED` events recorded in `case_events`.
-- Limit breaches recorded as `FUEL_LIMIT_BREACH_DETECTED`.
+- No dedicated fleet event is emitted by this client-portal surface.
+- Runtime enforcement remains covered by `test_fuel_limits_engine.py`.
 
 ## Security / Gates
-- Client permissions required (`client:fleet:*`).
+- Client auth required.
 
 ## Failure modes
-- Limit scope mismatch or unauthorized access → `403`.
-- Invalid limit payload → `422`.
+- Card not found -> `404`.
+- Invalid limit payload -> `400` / `422`.
 
 ## VERIFIED
-- pytest: `platform/processing-core/app/tests/test_fleet_v1.py`, `platform/processing-core/app/tests/test_fuel_limits_engine.py`.
-- smoke cmd: `scripts/smoke_limits_apply_and_enforce.cmd` (placeholder).
-- PASS: limits list/set/revoke succeed and breach event is recorded.
+- pytest: `platform/processing-core/app/tests/test_client_portal_api.py`, `platform/processing-core/app/tests/test_fuel_limits_engine.py`.
+- smoke cmd: `scripts/smoke_limits_apply_and_enforce.cmd`.
+- PASS: seeded card accepts a DAILY_AMOUNT limit update and persisted `limit_configs` state reflects the new value/window.

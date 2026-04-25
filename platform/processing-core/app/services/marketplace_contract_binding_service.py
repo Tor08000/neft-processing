@@ -122,6 +122,9 @@ def bind_contract_for_order(
         audit_event_id=audit.id,
     )
     db.add(link)
+    # The core session factory uses autoflush=False, so binders in the same
+    # transaction must flush explicitly to avoid duplicate logical bindings.
+    db.flush()
     record_decision_memory(
         db,
         case_id=None,

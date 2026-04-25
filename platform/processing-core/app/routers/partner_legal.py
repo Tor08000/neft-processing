@@ -16,16 +16,17 @@ from app.security.rbac.guard import require_permission
 from app.security.rbac.principal import Principal
 from app.services.audit_service import request_context_from_request
 from app.models.partner_legal import PartnerLegalStatus, PartnerLegalType, PartnerTaxRegime
+from app.services.partner_context import resolve_partner_id_from_claims
 from app.services.partner_legal_service import PartnerLegalService
 
 router = APIRouter(prefix="/partner/legal", tags=["partner-legal"])
 
 
-def _resolve_partner_id(principal: Principal) -> str:
-    raw = principal.raw_claims.get("org_id") or principal.raw_claims.get("partner_id")
-    if raw is None:
+def _resolve_partner_id(principal: Principal, db: Session) -> str:
+    resolved = resolve_partner_id_from_claims(db, claims=principal.raw_claims)
+    if resolved is None:
         raise HTTPException(status_code=403, detail={"error": "forbidden", "reason": "missing_org_context"})
-    return str(raw)
+    return str(resolved)
 
 
 def _details_out(details) -> PartnerLegalDetailsOut | None:
@@ -68,7 +69,7 @@ def get_partner_legal_profile(
     principal: Principal = Depends(require_permission("partner:profile:view")),
     db: Session = Depends(get_db),
 ) -> PartnerLegalProfileResponse:
-    partner_id = _resolve_partner_id(principal)
+    partner_id = _resolve_partner_id(principal, db)
     service = PartnerLegalService(db)
     profile = service.get_profile(partner_id=partner_id)
     details = service.get_details(partner_id=partner_id)
@@ -90,7 +91,7 @@ def upsert_partner_legal_profile(
     principal: Principal = Depends(require_permission("partner:profile:manage")),
     db: Session = Depends(get_db),
 ) -> PartnerLegalProfileOut:
-    partner_id = _resolve_partner_id(principal)
+    partner_id = _resolve_partner_id(principal, db)
     service = PartnerLegalService(db, request_ctx=request_context_from_request(None, token=principal.raw_claims))
     try:
         profile = service.upsert_profile(
@@ -116,7 +117,7 @@ def upsert_partner_legal_details(
     principal: Principal = Depends(require_permission("partner:profile:manage")),
     db: Session = Depends(get_db),
 ) -> PartnerLegalDetailsOut:
-    partner_id = _resolve_partner_id(principal)
+    partner_id = _resolve_partner_id(principal, db)
     service = PartnerLegalService(db, request_ctx=request_context_from_request(None, token=principal.raw_claims))
     details = service.upsert_details(
         partner_id=partner_id,

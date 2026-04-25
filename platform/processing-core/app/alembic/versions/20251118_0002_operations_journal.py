@@ -13,11 +13,10 @@ depends_on = None
 
 
 def upgrade():
-    schema_resolution = resolve_db_schema()
-    schema = schema_resolution.schema
-    print(f"[{revision}] {schema_resolution.line()}")
-
     bind = op.get_bind()
+    schema_resolution = resolve_db_schema()
+    schema = schema_resolution.schema if bind.dialect.name == "postgresql" else None
+    print(f"[{revision}] {schema_resolution.line()}")
 
     if not index_exists(bind, "ix_operations_card_id", schema=schema):
         op.create_index("ix_operations_card_id", "operations", ["card_id"], schema=schema)
@@ -32,8 +31,9 @@ def upgrade():
 
 
 def downgrade():
+    bind = op.get_bind()
     schema_resolution = resolve_db_schema()
-    schema = schema_resolution.schema
+    schema = schema_resolution.schema if bind.dialect.name == "postgresql" else None
     print(f"[{revision}] {schema_resolution.line()}")
 
     op.drop_index("ix_operations_created_at", table_name="operations", schema=schema)

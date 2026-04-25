@@ -86,7 +86,7 @@ Source of truth: **SSoT** payloads must drive UI behavior. Admin UI must rely so
 
 **B2. Partner Dashboard (finance summary)**
 - Why: прозрачность доходов
-- API: `GET /api/core/partner/dashboard`
+- API: `GET /api/core/partner/finance/dashboard`
 - DoD: balance / pending / blocked / penalties
 - Smoke: balance сходится с ledger
 

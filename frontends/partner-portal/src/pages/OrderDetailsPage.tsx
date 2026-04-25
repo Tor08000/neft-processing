@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+﻿import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { ApiError } from "../api/http";
 import {
@@ -7,24 +7,26 @@ import {
   declineOrder,
   fetchOrder,
   fetchOrderEvents,
-  fetchOrderSettlement,
+  fetchOrderIncidents,
   fetchOrderSettlementBreakdown,
   fetchOrderSla,
   uploadOrderProof,
 } from "../api/orders";
 import { useAuth } from "../auth/AuthContext";
+import { usePortal } from "../auth/PortalContext";
 import { StatusBadge } from "../components/StatusBadge";
 import { SupportRequestModal } from "../components/SupportRequestModal";
 import { EmptyState, ErrorState, ForbiddenState, LoadingState } from "../components/states";
 import type {
   MarketplaceOrder,
   MarketplaceOrderEvent,
+  MarketplaceOrderIncident,
   MarketplaceOrderSettlementBreakdown,
   MarketplaceOrderSlaMetric,
-  MarketplaceSettlementLink,
 } from "../types/marketplace";
 import { formatCurrency, formatDateTime } from "../utils/format";
 import { canManageOrderLifecycle, canReadOrders } from "../utils/roles";
+import { resolveEffectivePartnerRoles } from "../access/partnerWorkspace";
 import { OrderTimelinePanel } from "./OrderTimelinePanel";
 import { useTranslation } from "react-i18next";
 
@@ -40,6 +42,18 @@ const describeError = (err: unknown, fallback: string) => {
     return { message: fallback, correlationId: null };
   }
   return { message: fallback, correlationId: null };
+};
+
+const isSettlementNotFinalizedError = (err: unknown) =>
+  err instanceof ApiError &&
+  err.status === 409 &&
+  (err.errorCode === "SETTLEMENT_NOT_FINALIZED" || err.message === "SETTLEMENT_NOT_FINALIZED");
+
+const reportUnexpectedError = (err: unknown) => {
+  if (err instanceof ApiError) {
+    return;
+  }
+  console.error(err);
 };
 
 type ActionModal = "confirm" | "decline" | "complete" | "proof" | null;
@@ -73,6 +87,7 @@ const resolveSlaTone = (metric: MarketplaceOrderSlaMetric) => {
 export function OrderDetailsPage() {
   const { id } = useParams();
   const { user } = useAuth();
+  const { portal } = usePortal();
   const { t } = useTranslation();
   const [order, setOrder] = useState<MarketplaceOrder | null>(null);
   const [orderLoading, setOrderLoading] = useState(true);
@@ -84,20 +99,21 @@ export function OrderDetailsPage() {
   const [eventsError, setEventsError] = useState<string | null>(null);
   const [eventsCorrelationId, setEventsCorrelationId] = useState<string | null>(null);
 
+  const [incidents, setIncidents] = useState<MarketplaceOrderIncident[]>([]);
+  const [incidentsLoading, setIncidentsLoading] = useState(true);
+  const [incidentsError, setIncidentsError] = useState<string | null>(null);
+  const [incidentsCorrelationId, setIncidentsCorrelationId] = useState<string | null>(null);
+
   const [sla, setSla] = useState<MarketplaceOrderSlaMetric[]>([]);
   const [slaLoading, setSlaLoading] = useState(true);
   const [slaError, setSlaError] = useState<string | null>(null);
   const [slaCorrelationId, setSlaCorrelationId] = useState<string | null>(null);
 
-  const [settlement, setSettlement] = useState<MarketplaceSettlementLink | null>(null);
-  const [settlementLoading, setSettlementLoading] = useState(true);
-  const [settlementError, setSettlementError] = useState<string | null>(null);
-  const [settlementCorrelationId, setSettlementCorrelationId] = useState<string | null>(null);
-
   const [settlementBreakdown, setSettlementBreakdown] = useState<MarketplaceOrderSettlementBreakdown | null>(null);
   const [breakdownLoading, setBreakdownLoading] = useState(true);
   const [breakdownError, setBreakdownError] = useState<string | null>(null);
   const [breakdownCorrelationId, setBreakdownCorrelationId] = useState<string | null>(null);
+  const [breakdownPending, setBreakdownPending] = useState(false);
 
   const [actionModal, setActionModal] = useState<ActionModal>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
@@ -110,10 +126,11 @@ export function OrderDetailsPage() {
   const [proofNote, setProofNote] = useState("");
   const [proofAttachmentId, setProofAttachmentId] = useState("");
   const [isSupportOpen, setIsSupportOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<"timeline" | "sla" | "payouts">("timeline");
+  const [activeTab, setActiveTab] = useState<"timeline" | "incidents" | "sla" | "payouts">("timeline");
 
-  const canRead = canReadOrders(user?.roles);
-  const canManage = canManageOrderLifecycle(user?.roles);
+  const effectiveRoles = resolveEffectivePartnerRoles(portal, user?.roles);
+  const canRead = canReadOrders(effectiveRoles);
+  const canManage = canManageOrderLifecycle(effectiveRoles);
 
   const orderId = id ?? "";
 
@@ -127,8 +144,8 @@ export function OrderDetailsPage() {
         setOrder(data);
       })
       .catch((err) => {
-        console.error(err);
-        const { message, correlationId } = describeError(err, t("orderDetails.errors.loadFailed"));
+        reportUnexpectedError(err);
+        const { message, correlationId } = describeError(err, t("marketplace.orderDetails.errors.loadFailed"));
         setOrderError(message);
         setOrderCorrelationId(correlationId);
       })
@@ -145,12 +162,28 @@ export function OrderDetailsPage() {
     fetchOrderEvents(user.token, orderId)
       .then((data) => setEvents(data))
       .catch((err) => {
-        console.error(err);
-        const { message, correlationId } = describeError(err, t("orderDetails.errors.timelineFailed"));
+        reportUnexpectedError(err);
+        const { message, correlationId } = describeError(err, t("marketplace.orderDetails.errors.timelineFailed"));
         setEventsError(message);
         setEventsCorrelationId(correlationId);
       })
       .finally(() => setEventsLoading(false));
+  }, [user, orderId, t]);
+
+  const loadIncidents = useCallback(() => {
+    if (!user || !orderId) return;
+    setIncidentsLoading(true);
+    setIncidentsError(null);
+    setIncidentsCorrelationId(null);
+    fetchOrderIncidents(user.token, orderId)
+      .then((data) => setIncidents(data))
+      .catch((err) => {
+        reportUnexpectedError(err);
+        const { message, correlationId } = describeError(err, t("marketplace.orderDetails.errors.incidentsFailed"));
+        setIncidentsError(message);
+        setIncidentsCorrelationId(correlationId);
+      })
+      .finally(() => setIncidentsLoading(false));
   }, [user, orderId, t]);
 
   const loadSla = useCallback(() => {
@@ -161,28 +194,12 @@ export function OrderDetailsPage() {
     fetchOrderSla(user.token, orderId)
       .then((data) => setSla(data.obligations ?? []))
       .catch((err) => {
-        console.error(err);
-        const { message, correlationId } = describeError(err, t("orderDetails.errors.slaFailed"));
+        reportUnexpectedError(err);
+        const { message, correlationId } = describeError(err, t("marketplace.orderDetails.errors.slaFailed"));
         setSlaError(message);
         setSlaCorrelationId(correlationId);
       })
       .finally(() => setSlaLoading(false));
-  }, [user, orderId, t]);
-
-  const loadSettlement = useCallback(() => {
-    if (!user || !orderId) return;
-    setSettlementLoading(true);
-    setSettlementError(null);
-    setSettlementCorrelationId(null);
-    fetchOrderSettlement(user.token, orderId)
-      .then((data) => setSettlement(data.items?.[0] ?? null))
-      .catch((err) => {
-        console.error(err);
-        const { message, correlationId } = describeError(err, t("orderDetails.errors.payoutFailed"));
-        setSettlementError(message);
-        setSettlementCorrelationId(correlationId);
-      })
-      .finally(() => setSettlementLoading(false));
   }, [user, orderId, t]);
 
   const loadSettlementBreakdown = useCallback(() => {
@@ -190,11 +207,20 @@ export function OrderDetailsPage() {
     setBreakdownLoading(true);
     setBreakdownError(null);
     setBreakdownCorrelationId(null);
+    setBreakdownPending(false);
     fetchOrderSettlementBreakdown(user.token, orderId)
-      .then((data) => setSettlementBreakdown(data))
+      .then((data) => {
+        setSettlementBreakdown(data);
+        setBreakdownPending(false);
+      })
       .catch((err) => {
-        console.error(err);
-        const { message, correlationId } = describeError(err, t("orderDetails.errors.payoutFailed"));
+        if (isSettlementNotFinalizedError(err)) {
+          setSettlementBreakdown(null);
+          setBreakdownPending(true);
+          return;
+        }
+        reportUnexpectedError(err);
+        const { message, correlationId } = describeError(err, t("marketplace.orderDetails.errors.payoutFailed"));
         setBreakdownError(message);
         setBreakdownCorrelationId(correlationId);
       })
@@ -205,10 +231,10 @@ export function OrderDetailsPage() {
     if (!canRead) return;
     loadOrder();
     loadEvents();
+    loadIncidents();
     loadSla();
-    loadSettlement();
     loadSettlementBreakdown();
-  }, [canRead, loadOrder, loadEvents, loadSla, loadSettlement, loadSettlementBreakdown]);
+  }, [canRead, loadOrder, loadEvents, loadIncidents, loadSla, loadSettlementBreakdown]);
 
   const handleAction = async () => {
     if (!user || !order || !actionModal) return;
@@ -218,12 +244,12 @@ export function OrderDetailsPage() {
     try {
       if (actionModal === "confirm") {
         await confirmOrder(user.token, order.id);
-        setActionMessage(t("orderDetails.notifications.confirmed"));
+        setActionMessage(t("marketplace.orderDetails.notifications.confirmed"));
         setActionCorrelationId(null);
       }
       if (actionModal === "decline") {
         await declineOrder(user.token, order.id, declineReason.trim(), declineComment.trim());
-        setActionMessage(t("orderDetails.notifications.declined"));
+        setActionMessage(t("marketplace.orderDetails.notifications.declined"));
         setActionCorrelationId(null);
       }
       if (actionModal === "proof") {
@@ -233,12 +259,12 @@ export function OrderDetailsPage() {
           kind: proofKind,
           note: proofNote.trim() || undefined,
         });
-        setActionMessage(t("orderDetails.notifications.proofUploaded"));
+        setActionMessage(t("marketplace.orderDetails.notifications.proofUploaded"));
         setActionCorrelationId(null);
       }
       if (actionModal === "complete") {
         await completeOrder(user.token, order.id, { comment: completeSummary.trim() || undefined });
-        setActionMessage(t("orderDetails.notifications.completed"));
+        setActionMessage(t("marketplace.orderDetails.notifications.completed"));
         setActionCorrelationId(null);
       }
       setActionModal(null);
@@ -250,11 +276,12 @@ export function OrderDetailsPage() {
       setProofAttachmentId("");
       loadOrder();
       loadEvents();
+      loadIncidents();
       loadSla();
       loadSettlementBreakdown();
     } catch (err) {
-      console.error(err);
-      const { message, correlationId } = describeError(err, t("orderDetails.errors.actionFailed"));
+      reportUnexpectedError(err);
+      const { message, correlationId } = describeError(err, t("marketplace.orderDetails.errors.actionFailed"));
       setActionError(message);
       setActionCorrelationId(correlationId);
     }
@@ -273,14 +300,14 @@ export function OrderDetailsPage() {
   }
 
   if (orderLoading) {
-    return <LoadingState label={t("orderDetails.loading")} />;
+    return <LoadingState label={t("marketplace.orderDetails.loading")} />;
   }
 
   if (orderError || !order) {
     return (
       <ErrorState
-        title={t("orderDetails.errors.loadTitle")}
-        description={orderError ?? t("orderDetails.errors.notFound")}
+        title={t("marketplace.orderDetails.errors.loadTitle")}
+        description={orderError ?? t("marketplace.orderDetails.errors.notFound")}
         correlationId={orderCorrelationId}
         action={
           <button type="button" className="secondary" onClick={loadOrder}>
@@ -296,46 +323,46 @@ export function OrderDetailsPage() {
       <section className="card">
         <div className="section-title">
           <div>
-            <h2>{t("orderDetails.title", { id: order.id })}</h2>
-            <p className="muted">{order.serviceTitle ?? t("orderDetails.subtitle")}</p>
+            <h2>{t("marketplace.orderDetails.title", { id: order.id })}</h2>
+            <p className="muted">{order.serviceTitle ?? t("marketplace.orderDetails.subtitle")}</p>
           </div>
           <div className="actions">
             <button type="button" className="secondary" onClick={() => setIsSupportOpen(true)}>
-              {t("orderDetails.actions.support")}
+              {t("marketplace.orderDetails.actions.support")}
             </button>
             <Link to="/orders" className="ghost">
-              {t("orderDetails.actions.back")}
+              {t("marketplace.orderDetails.actions.back")}
             </Link>
           </div>
         </div>
         <div className="meta-grid">
           <div>
-            <div className="label">{t("orderDetails.fields.status")}</div>
+            <div className="label">{t("marketplace.orderDetails.fields.status")}</div>
             <StatusBadge status={order.status} />
           </div>
           <div>
-            <div className="label">{t("orderDetails.fields.client")}</div>
+            <div className="label">{t("marketplace.orderDetails.fields.client")}</div>
             <div>{order.clientName ?? order.clientId ?? t("common.notAvailable")}</div>
           </div>
           <div>
-            <div className="label">{t("orderDetails.fields.created")}</div>
+            <div className="label">{t("marketplace.orderDetails.fields.created")}</div>
             <div>{formatDateTime(order.createdAt)}</div>
           </div>
           <div>
-            <div className="label">{t("orderDetails.fields.amount")}</div>
+            <div className="label">{t("marketplace.orderDetails.fields.amount")}</div>
             <div>{formatCurrency(order.totalAmount ?? null, order.currency ?? "RUB")}</div>
           </div>
         </div>
         <div className="card__section">
           <div className="meta-grid">
             <div>
-              <div className="label">{t("orderDetails.fields.responseDue")}</div>
+              <div className="label">{t("marketplace.orderDetails.fields.responseDue")}</div>
               <div className={`badge ${responseSla ? resolveSlaTone(responseSla) : "neutral"}`}>
                 {responseSla ? formatCountdown(responseSla.remainingSeconds ?? null) : "—"}
               </div>
             </div>
             <div>
-              <div className="label">{t("orderDetails.fields.completionDue")}</div>
+              <div className="label">{t("marketplace.orderDetails.fields.completionDue")}</div>
               <div className={`badge ${completionSla ? resolveSlaTone(completionSla) : "neutral"}`}>
                 {completionSla ? formatCountdown(completionSla.remainingSeconds ?? null) : "—"}
               </div>
@@ -344,10 +371,10 @@ export function OrderDetailsPage() {
         </div>
         <div className="card__section">
           <div className="section-title">
-            <h3>{t("orderDetails.lifecycle.title")}</h3>
+            <h3>{t("marketplace.orderDetails.lifecycle.title")}</h3>
           </div>
           {!canManage ? (
-            <EmptyState title={t("orderDetails.lifecycle.deniedTitle")} description={t("orderDetails.lifecycle.deniedDescription")} />
+            <EmptyState title={t("marketplace.orderDetails.lifecycle.deniedTitle")} description={t("marketplace.orderDetails.lifecycle.deniedDescription")} />
           ) : (
             <div className="actions">
               <button
@@ -356,7 +383,7 @@ export function OrderDetailsPage() {
                 onClick={() => setActionModal("confirm")}
                 disabled={!canConfirmStatus(order.status)}
               >
-                {t("orderDetails.actions.confirm")}
+                {t("marketplace.orderDetails.actions.confirm")}
               </button>
               <button
                 type="button"
@@ -364,7 +391,7 @@ export function OrderDetailsPage() {
                 onClick={() => setActionModal("decline")}
                 disabled={!canDeclineStatus(order.status)}
               >
-                {t("orderDetails.actions.decline")}
+                {t("marketplace.orderDetails.actions.decline")}
               </button>
               <button
                 type="button"
@@ -372,7 +399,7 @@ export function OrderDetailsPage() {
                 onClick={() => setActionModal("proof")}
                 disabled={!canCompleteStatus(order.status)}
               >
-                {t("orderDetails.actions.uploadProof")}
+                {t("marketplace.orderDetails.actions.uploadProof")}
               </button>
               <button
                 type="button"
@@ -380,7 +407,7 @@ export function OrderDetailsPage() {
                 onClick={() => setActionModal("complete")}
                 disabled={!canCompleteStatus(order.status) || proofsCount === 0}
               >
-                {t("orderDetails.actions.complete")}
+                {t("marketplace.orderDetails.actions.complete")}
               </button>
             </div>
           )}
@@ -393,7 +420,7 @@ export function OrderDetailsPage() {
         </div>
         <div className="card__section">
           <div className="section-title">
-            <h3>{t("orderDetails.proofs.title")}</h3>
+            <h3>{t("marketplace.orderDetails.proofs.title")}</h3>
           </div>
           {order.proofs && order.proofs.length ? (
             <ul className="stack">
@@ -406,20 +433,45 @@ export function OrderDetailsPage() {
               ))}
             </ul>
           ) : (
-            <div className="muted">{t("orderDetails.proofs.empty")}</div>
+            <EmptyState
+              title={t("marketplace.orderDetails.proofs.title")}
+              description={t("marketplace.orderDetails.proofs.empty")}
+              action={
+                canManage && canCompleteStatus(order.status) ? (
+                  <button type="button" className="secondary" onClick={() => setActionModal("proof")}>
+                    {t("marketplace.orderDetails.actions.uploadProof")}
+                  </button>
+                ) : undefined
+              }
+            />
           )}
         </div>
       </section>
 
       <section className="card">
         <div className="section-title">
-          <h3>Settlement breakdown</h3>
+          <h3>{t("marketplace.orderDetails.settlement.title")}</h3>
         </div>
         {breakdownLoading ? (
-          <LoadingState label="Загружаем расчёт..." />
+          <LoadingState label={t("marketplace.orderDetails.settlement.loading")} />
+        ) : breakdownPending ? (
+          <EmptyState
+            title={t("marketplace.orderDetails.settlement.pendingTitle")}
+            description={t("marketplace.orderDetails.settlement.pendingDescription")}
+            action={
+              <>
+                <Link className="secondary" to="/finance">
+                  {t("marketplace.orderDetails.settlement.pendingActions.openFinance")}
+                </Link>
+                <Link className="ghost" to="/support/requests">
+                  {t("marketplace.orderDetails.settlement.pendingActions.openSupport")}
+                </Link>
+              </>
+            }
+          />
         ) : breakdownError ? (
           <ErrorState
-            title="Не удалось загрузить расчёт"
+            title={t("marketplace.orderDetails.settlement.errorTitle")}
             description={breakdownError}
             correlationId={breakdownCorrelationId}
             action={
@@ -432,18 +484,18 @@ export function OrderDetailsPage() {
           <div className="stack">
             <div className="meta-grid">
               <div>
-                <div className="label">Gross</div>
+                <div className="label">{t("marketplace.orderDetails.settlement.metrics.gross")}</div>
                 <div>{formatCurrency(settlementBreakdown.gross_amount, settlementBreakdown.currency)}</div>
               </div>
               <div>
-                <div className="label">Fee</div>
+                <div className="label">{t("marketplace.orderDetails.settlement.metrics.fee")}</div>
                 <div>
                   {formatCurrency(settlementBreakdown.platform_fee.amount, settlementBreakdown.currency)}
                   <div className="muted small">{settlementBreakdown.platform_fee.explain}</div>
                 </div>
               </div>
               <div>
-                <div className="label">Penalties</div>
+                <div className="label">{t("marketplace.orderDetails.settlement.metrics.penalties")}</div>
                 <div>
                   {formatCurrency(
                     settlementBreakdown.penalties.reduce((sum, item) => sum + item.amount, 0),
@@ -452,7 +504,7 @@ export function OrderDetailsPage() {
                 </div>
               </div>
               <div>
-                <div className="label">Net</div>
+                <div className="label">{t("marketplace.orderDetails.settlement.metrics.net")}</div>
                 <div>{formatCurrency(settlementBreakdown.partner_net, settlementBreakdown.currency)}</div>
               </div>
             </div>
@@ -460,10 +512,10 @@ export function OrderDetailsPage() {
               <table className="table">
                 <thead>
                   <tr>
-                    <th>Тип</th>
-                    <th>Причина</th>
-                    <th>Сумма</th>
-                    <th>Источник</th>
+                    <th>{t("marketplace.orderDetails.settlement.penalties.table.type")}</th>
+                    <th>{t("marketplace.orderDetails.settlement.penalties.table.reason")}</th>
+                    <th>{t("marketplace.orderDetails.settlement.penalties.table.amount")}</th>
+                    <th>{t("marketplace.orderDetails.settlement.penalties.table.source")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -474,16 +526,17 @@ export function OrderDetailsPage() {
                       <td>{formatCurrency(penalty.amount, settlementBreakdown.currency)}</td>
                       <td>
                         {penalty.source_ref?.audit_event_id ? (
-                          <Link
-                            className="link-button"
-                            to={`/support/requests?audit_event_id=${penalty.source_ref.audit_event_id}`}
-                          >
-                            Почему?
+                          <Link className="link-button" to="/support/requests">
+                            {t("marketplace.orderDetails.settlement.penalties.actions.support")}
                           </Link>
                         ) : penalty.source_ref?.sla_event_id ? (
-                          <span className="muted">SLA {penalty.source_ref.sla_event_id}</span>
+                          <span className="muted">
+                            {t("marketplace.orderDetails.settlement.penalties.actions.sla", {
+                              id: penalty.source_ref.sla_event_id,
+                            })}
+                          </span>
                         ) : (
-                          <span className="muted">—</span>
+                          <span className="muted">{t("common.notAvailable")}</span>
                         )}
                       </td>
                     </tr>
@@ -491,40 +544,54 @@ export function OrderDetailsPage() {
                 </tbody>
               </table>
             ) : (
-              <div className="muted">Штрафы отсутствуют.</div>
+              <EmptyState
+                title={t("marketplace.orderDetails.settlement.noPenaltiesTitle")}
+                description={t("marketplace.orderDetails.settlement.noPenaltiesDescription")}
+              />
             )}
             {settlementBreakdown.snapshot ? (
               <div className="meta-grid">
                 <div>
-                  <div className="label">Finalized at</div>
+                  <div className="label">{t("marketplace.orderDetails.settlement.snapshot.finalizedAt")}</div>
                   <div>
                     {settlementBreakdown.snapshot.finalized_at
                       ? formatDateTime(settlementBreakdown.snapshot.finalized_at)
-                      : "—"}
+                      : t("common.notAvailable")}
                   </div>
                 </div>
                 <div>
-                  <div className="label">Snapshot hash</div>
-                  <div className="mono">{settlementBreakdown.snapshot.hash ?? "—"}</div>
+                  <div className="label">{t("marketplace.orderDetails.settlement.snapshot.hash")}</div>
+                  <div className="mono">{settlementBreakdown.snapshot.hash ?? t("common.notAvailable")}</div>
                 </div>
               </div>
-            ) : null}
+            ) : (
+              <EmptyState
+                title={t("marketplace.orderDetails.settlement.snapshot.pendingTitle")}
+                description={t("marketplace.orderDetails.settlement.snapshot.pendingDescription")}
+              />
+            )}
           </div>
         ) : (
-          <EmptyState title="Нет данных" description="Расчёт будет доступен после принятия или завершения заказа." />
+          <EmptyState
+            title={t("marketplace.orderDetails.settlement.emptyTitle")}
+            description={t("marketplace.orderDetails.settlement.emptyDescription")}
+          />
         )}
       </section>
 
       <section className="card">
         <div className="tabs">
           <button type="button" className={activeTab === "timeline" ? "secondary" : "ghost"} onClick={() => setActiveTab("timeline")}>
-            {t("orderDetails.tabs.timeline")}
+            {t("marketplace.orderDetails.tabs.timeline")}
+          </button>
+          <button type="button" className={activeTab === "incidents" ? "secondary" : "ghost"} onClick={() => setActiveTab("incidents")}>
+            {t("marketplace.orderDetails.tabs.incidents")}
           </button>
           <button type="button" className={activeTab === "sla" ? "secondary" : "ghost"} onClick={() => setActiveTab("sla")}>
-            {t("orderDetails.tabs.sla")}
+            {t("marketplace.orderDetails.tabs.sla")}
           </button>
           <button type="button" className={activeTab === "payouts" ? "secondary" : "ghost"} onClick={() => setActiveTab("payouts")}>
-            {t("orderDetails.tabs.payouts")}
+            {t("marketplace.orderDetails.tabs.payouts")}
           </button>
         </div>
 
@@ -538,13 +605,75 @@ export function OrderDetailsPage() {
           />
         ) : null}
 
+        {activeTab === "incidents" ? (
+          <div>
+            {incidentsLoading ? (
+              <LoadingState label={t("marketplace.orderDetails.incidents.loading")} />
+            ) : incidentsError ? (
+              <ErrorState
+                title={t("marketplace.orderDetails.incidents.errorTitle")}
+                description={incidentsError}
+                correlationId={incidentsCorrelationId}
+                action={
+                  <button type="button" className="secondary" onClick={loadIncidents}>
+                    {t("errors.retry")}
+                  </button>
+                }
+              />
+            ) : incidents.length === 0 ? (
+              <EmptyState
+                title={t("marketplace.orderDetails.incidents.emptyTitle")}
+                description={t("marketplace.orderDetails.incidents.emptyDescription")}
+                action={
+                  <button type="button" className="secondary" onClick={() => setIsSupportOpen(true)}>
+                    {t("marketplace.orderDetails.actions.support")}
+                  </button>
+                }
+              />
+            ) : (
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>{t("marketplace.orderDetails.incidents.table.id")}</th>
+                    <th>{t("marketplace.orderDetails.incidents.table.title")}</th>
+                    <th>{t("marketplace.orderDetails.incidents.table.status")}</th>
+                    <th>{t("marketplace.orderDetails.incidents.table.queue")}</th>
+                    <th>{t("marketplace.orderDetails.incidents.table.source")}</th>
+                    <th>{t("marketplace.orderDetails.incidents.table.updated")}</th>
+                    <th>{t("common.actions")}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {incidents.map((incident) => (
+                    <tr key={incident.id}>
+                      <td className="mono">{incident.id}</td>
+                      <td>{incident.title}</td>
+                      <td>{incident.status}</td>
+                      <td>{incident.queue ?? "—"}</td>
+                      <td>
+                        {incident.sourceRefType
+                          ? `${incident.sourceRefType}${incident.sourceRefId ? ` / ${incident.sourceRefId}` : ""}`
+                          : "—"}
+                      </td>
+                      <td>{formatDateTime(incident.updatedAt)}</td>
+                      <td>
+                        <Link to={`/cases/${incident.id}`}>{t("common.open")}</Link>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        ) : null}
+
         {activeTab === "sla" ? (
           <div>
             {slaLoading ? (
-              <LoadingState label={t("orderDetails.sla.loading")} />
+              <LoadingState label={t("marketplace.orderDetails.sla.loading")} />
             ) : slaError ? (
               <ErrorState
-                title={t("orderDetails.sla.errorTitle")}
+                title={t("marketplace.orderDetails.sla.errorTitle")}
                 description={slaError}
                 correlationId={slaCorrelationId}
                 action={
@@ -554,16 +683,16 @@ export function OrderDetailsPage() {
                 }
               />
             ) : sla.length === 0 ? (
-              <EmptyState title={t("orderDetails.sla.emptyTitle")} description={t("orderDetails.sla.emptyDescription")} />
+              <EmptyState title={t("marketplace.orderDetails.sla.emptyTitle")} description={t("marketplace.orderDetails.sla.emptyDescription")} />
             ) : (
               <table className="table">
                 <thead>
                   <tr>
-                    <th>{t("orderDetails.sla.table.metric")}</th>
-                    <th>{t("orderDetails.sla.table.deadline")}</th>
-                    <th>{t("orderDetails.sla.table.remaining")}</th>
-                    <th>{t("orderDetails.sla.table.status")}</th>
-                    <th>{t("orderDetails.sla.table.penalty")}</th>
+                    <th>{t("marketplace.orderDetails.sla.table.metric")}</th>
+                    <th>{t("marketplace.orderDetails.sla.table.deadline")}</th>
+                    <th>{t("marketplace.orderDetails.sla.table.remaining")}</th>
+                    <th>{t("marketplace.orderDetails.sla.table.status")}</th>
+                    <th>{t("marketplace.orderDetails.sla.table.penalty")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -585,53 +714,21 @@ export function OrderDetailsPage() {
         ) : null}
 
         {activeTab === "payouts" ? (
-          <div>
-            {settlementLoading ? (
-              <LoadingState label={t("orderDetails.payouts.loading")} />
-            ) : settlementError ? (
-              <ErrorState
-                title={t("orderDetails.payouts.errorTitle")}
-                description={settlementError}
-                correlationId={settlementCorrelationId}
-                action={
-                  <button type="button" className="secondary" onClick={loadSettlement}>
-                    {t("errors.retry")}
-                  </button>
-                }
-              />
-            ) : settlement ? (
-              <div className="meta-grid">
-                <div>
-                  <div className="label">{t("orderDetails.payouts.fields.settlementId")}</div>
-                  <div className="mono">{settlement.id ?? (settlement as { settlement_ref?: string }).settlement_ref ?? "—"}</div>
-                </div>
-                <div>
-                  <div className="label">{t("orderDetails.payouts.fields.status")}</div>
-                  <StatusBadge status={settlement.status} />
-                </div>
-                <div>
-                  <div className="label">{t("orderDetails.payouts.fields.period")}</div>
-                  <div>
-                    {settlement.periodStart ? formatDateTime(settlement.periodStart) : "—"} — {settlement.periodEnd ? formatDateTime(settlement.periodEnd) : "—"}
-                  </div>
-                </div>
-                <div>
-                  <div className="label">{t("orderDetails.payouts.fields.netAmount")}</div>
-                  <div>{formatCurrency((settlement as { net_amount?: number }).net_amount ?? null)}</div>
-                </div>
-                <div>
-                  <Link
-                    className="link-button"
-                    to={`/payouts/${settlement.id ?? (settlement as { settlement_ref?: string }).settlement_ref ?? ""}`}
-                  >
-                    {t("orderDetails.payouts.actions.open")}
-                  </Link>
-                </div>
-              </div>
-            ) : (
-              <EmptyState title={t("orderDetails.payouts.emptyTitle")} description={t("orderDetails.payouts.emptyDescription")} />
-            )}
-          </div>
+          <EmptyState
+            title={t("marketplace.orderDetails.payouts.frozenTitle")}
+            description={t("marketplace.orderDetails.payouts.frozenDescription")}
+            action={
+              <>
+                <div className="muted small">{t("marketplace.orderDetails.payouts.frozenNote")}</div>
+                <Link className="secondary" to="/finance">
+                  {t("marketplace.orderDetails.payouts.openFinance")}
+                </Link>
+                <Link className="ghost" to="/support/requests">
+                  {t("marketplace.orderDetails.payouts.openSupport")}
+                </Link>
+              </>
+            }
+          />
         ) : null}
       </section>
 
@@ -641,37 +738,37 @@ export function OrderDetailsPage() {
         subjectType="ORDER"
         subjectId={order.id}
         correlationId={order.correlationId ?? undefined}
-        defaultTitle={t("orderDetails.supportTitle", { id: order.id })}
+        defaultTitle={t("marketplace.orderDetails.supportTitle", { id: order.id })}
       />
 
       {actionModal ? (
         <div className="modal-backdrop" role="dialog" aria-modal="true">
           <div className="modal">
             <div className="section-title">
-              <h3>{t(`orderDetails.modals.${actionModal}.title`)}</h3>
+              <h3>{t(`marketplace.orderDetails.modals.${actionModal}.title`)}</h3>
               <button type="button" className="ghost" onClick={() => setActionModal(null)}>
-                {t("orderDetails.modals.close")}
+                {t("marketplace.orderDetails.modals.close")}
               </button>
             </div>
-            <div>{t(`orderDetails.modals.${actionModal}.description`)}</div>
+            <div>{t(`marketplace.orderDetails.modals.${actionModal}.description`)}</div>
             {actionModal === "decline" ? (
               <div className="stack">
                 <label className="form-field">
-                  {t("orderDetails.modals.decline.reason")}
+                  {t("marketplace.orderDetails.modals.decline.reason")}
                   <input
                     type="text"
                     value={declineReason}
                     onChange={(event) => setDeclineReason(event.target.value)}
-                    placeholder={t("orderDetails.modals.decline.reasonPlaceholder")}
+                    placeholder={t("marketplace.orderDetails.modals.decline.reasonPlaceholder")}
                   />
                 </label>
                 <label className="form-field">
-                  {t("orderDetails.modals.decline.comment")}
+                  {t("marketplace.orderDetails.modals.decline.comment")}
                   <textarea
                     className="textarea"
                     value={declineComment}
                     onChange={(event) => setDeclineComment(event.target.value)}
-                    placeholder={t("orderDetails.modals.decline.commentPlaceholder")}
+                    placeholder={t("marketplace.orderDetails.modals.decline.commentPlaceholder")}
                   />
                 </label>
               </div>
@@ -679,49 +776,49 @@ export function OrderDetailsPage() {
             {actionModal === "proof" ? (
               <div className="stack">
                 <label className="form-field">
-                  {t("orderDetails.modals.proof.kind")}
+                  {t("marketplace.orderDetails.modals.proof.kind")}
                   <select value={proofKind} onChange={(event) => setProofKind(event.target.value)}>
-                    <option value="PHOTO">{t("orderDetails.modals.proof.kinds.photo")}</option>
-                    <option value="PDF">{t("orderDetails.modals.proof.kinds.pdf")}</option>
-                    <option value="ACT">{t("orderDetails.modals.proof.kinds.act")}</option>
-                    <option value="CHECK">{t("orderDetails.modals.proof.kinds.check")}</option>
-                    <option value="OTHER">{t("orderDetails.modals.proof.kinds.other")}</option>
+                    <option value="PHOTO">{t("marketplace.orderDetails.modals.proof.kinds.photo")}</option>
+                    <option value="PDF">{t("marketplace.orderDetails.modals.proof.kinds.pdf")}</option>
+                    <option value="ACT">{t("marketplace.orderDetails.modals.proof.kinds.act")}</option>
+                    <option value="CHECK">{t("marketplace.orderDetails.modals.proof.kinds.check")}</option>
+                    <option value="OTHER">{t("marketplace.orderDetails.modals.proof.kinds.other")}</option>
                   </select>
                 </label>
                 <label className="form-field">
-                  {t("orderDetails.modals.proof.attachment")}
+                  {t("marketplace.orderDetails.modals.proof.attachment")}
                   <input
                     type="text"
                     value={proofAttachmentId}
                     onChange={(event) => setProofAttachmentId(event.target.value)}
-                    placeholder={t("orderDetails.modals.proof.attachmentPlaceholder")}
+                    placeholder={t("marketplace.orderDetails.modals.proof.attachmentPlaceholder")}
                   />
                 </label>
                 <label className="form-field">
-                  {t("orderDetails.modals.proof.note")}
+                  {t("marketplace.orderDetails.modals.proof.note")}
                   <textarea
                     className="textarea"
                     value={proofNote}
                     onChange={(event) => setProofNote(event.target.value)}
-                    placeholder={t("orderDetails.modals.proof.notePlaceholder")}
+                    placeholder={t("marketplace.orderDetails.modals.proof.notePlaceholder")}
                   />
                 </label>
               </div>
             ) : null}
             {actionModal === "complete" ? (
               <label className="form-field">
-                {t("orderDetails.modals.complete.summary")}
+                {t("marketplace.orderDetails.modals.complete.summary")}
                 <textarea
                   className="textarea"
                   value={completeSummary}
                   onChange={(event) => setCompleteSummary(event.target.value)}
-                  placeholder={t("orderDetails.modals.complete.placeholder")}
+                  placeholder={t("marketplace.orderDetails.modals.complete.placeholder")}
                 />
               </label>
             ) : null}
             <div className="actions">
               <button type="button" className="secondary" onClick={() => setActionModal(null)}>
-                {t("orderDetails.modals.cancel")}
+                {t("marketplace.orderDetails.modals.cancel")}
               </button>
               <button
                 type="button"
@@ -733,7 +830,7 @@ export function OrderDetailsPage() {
                   (actionModal === "complete" && disableComplete)
                 }
               >
-                {t("orderDetails.modals.confirm")}
+                {t("marketplace.orderDetails.actions.confirm")}
               </button>
             </div>
           </div>

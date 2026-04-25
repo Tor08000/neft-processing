@@ -12,7 +12,12 @@ from app.models.logistics import (
 )
 from app.services.audit_service import RequestContext
 from app.services.logistics import events, navigator, repository
-from app.services.logistics.repository import get_last_tracking_event, get_latest_eta_snapshot
+from app.services.logistics.repository import (
+    get_last_tracking_event,
+    get_latest_eta_snapshot,
+    id_equals,
+    refresh_by_id,
+)
 from app.services.logistics.service_client import LogisticsServiceClient
 from neft_shared.settings import get_settings
 
@@ -52,7 +57,7 @@ def compute_eta_snapshot(
     reason: str,
     request_ctx: RequestContext | None = None,
 ) -> LogisticsETASnapshot | None:
-    order = db.query(LogisticsOrder).filter(LogisticsOrder.id == order_id).one_or_none()
+    order = db.query(LogisticsOrder).filter(id_equals(LogisticsOrder.id, order_id)).one_or_none()
     if not order:
         return None
 
@@ -122,8 +127,10 @@ def compute_eta_snapshot(
         inputs=serialized_inputs,
     )
     db.add(snapshot)
+    db.flush()
+    snapshot_id = str(snapshot.id)
     db.commit()
-    db.refresh(snapshot)
+    snapshot = refresh_by_id(db, snapshot, LogisticsETASnapshot, snapshot_id)
 
     events.audit_event(
         db,
@@ -181,8 +188,10 @@ def _compute_eta_snapshot_service(
         inputs=inputs,
     )
     db.add(snapshot)
+    db.flush()
+    snapshot_id = str(snapshot.id)
     db.commit()
-    db.refresh(snapshot)
+    snapshot = refresh_by_id(db, snapshot, LogisticsETASnapshot, snapshot_id)
 
     events.audit_event(
         db,
@@ -271,6 +280,8 @@ def get_or_compute_latest_eta(
 
 
 def _capture_navigator_eta(db: Session, *, order_id: str) -> None:
+    # Rebuild ETA explain data from the latest local route snapshot.
+    # The navigator contour here is evidence-only and separate from real routing transport ownership.
     if not navigator.is_enabled():
         return
     route = repository.get_active_route(db, order_id=order_id)
@@ -292,7 +303,11 @@ def _capture_navigator_eta(db: Session, *, order_id: str) -> None:
         )
     if snapshot is None or not snapshot.geometry:
         return
-    adapter = navigator.get(snapshot.provider)
+    if not navigator.can_replay_locally(snapshot.provider):
+        # External preview providers keep truthful snapshot ownership, but ETA replay stays local-only.
+        # Preserve the initial preview explain instead of pretending processing-core can re-run that provider.
+        return
+    adapter = navigator.get_local_evidence_adapter(snapshot.provider)
     geometry = [
         navigator.GeoPoint(lat=point["lat"], lon=point["lon"])
         for point in snapshot.geometry

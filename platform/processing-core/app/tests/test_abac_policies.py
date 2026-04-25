@@ -11,10 +11,11 @@ from app.services.abac import AbacContext, AbacEngine, AbacPrincipal, AbacResour
 
 @pytest.fixture(autouse=True)
 def clean_db():
-    Base.metadata.drop_all(bind=engine)
-    Base.metadata.create_all(bind=engine)
+    tables = [AbacPolicyVersion.__table__, AbacPolicy.__table__]
+    Base.metadata.drop_all(bind=engine, tables=tables)
+    Base.metadata.create_all(bind=engine, tables=tables)
     yield
-    Base.metadata.drop_all(bind=engine)
+    Base.metadata.drop_all(bind=engine, tables=tables)
 
 
 @pytest.fixture

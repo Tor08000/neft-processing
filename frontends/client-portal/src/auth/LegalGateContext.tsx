@@ -9,6 +9,7 @@ import { AccessState } from "../access/accessState";
 import { isDemoClient } from "@shared/demo/demo";
 
 const CACHE_TTL_MS = 60_000;
+const DEBUG_LEGAL_GATE = Boolean(import.meta.env.DEV && import.meta.env.VITE_CLIENT_DEBUG_LEGAL === "true");
 
 interface LegalGateContextValue {
   accessState: "idle" | "ok" | "unauthorized" | "forbidden" | "stopped";
@@ -83,7 +84,7 @@ export const LegalGateProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         return;
       }
       if (isClientOnboardingFlow) {
-        if (import.meta.env.DEV) {
+        if (DEBUG_LEGAL_GATE) {
           console.log("[LEGAL] skipped during onboarding");
         }
         setRequired([]);
@@ -205,11 +206,11 @@ export const LegalGateProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       return;
     }
     hasBootstrappedRef.current = true;
-    if (import.meta.env.DEV) {
+    if (DEBUG_LEGAL_GATE) {
       console.info("[legal-gate:init] refresh_called", { route: location.pathname });
     }
     void refresh(true).finally(() => {
-      if (import.meta.env.DEV) {
+      if (DEBUG_LEGAL_GATE) {
         console.info("[legal-gate:init] refresh_resolved", { route: location.pathname });
       }
     });
@@ -229,7 +230,7 @@ export const LegalGateProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       if (accessState === "unauthorized" || accessState === "forbidden" || accessState === "stopped") {
         return;
       }
-      if (import.meta.env.DEV) {
+      if (DEBUG_LEGAL_GATE) {
         console.info("[legal-gate:event] legal-required", { route: location.pathname, access_state: client?.access_state ?? null });
       }
       void refresh(true);

@@ -17,6 +17,8 @@ async def train_model(request: TrainingRequest) -> TrainingResponse:
         status="trained",
         trained_at=info.trained_at,
         metrics=info.metrics,
+        simulated=info.simulated,
+        provider_mode=info.provider_mode,
     )
 
 
@@ -29,6 +31,8 @@ async def update_model(request: TrainingRequest) -> TrainingResponse:
         status="updated",
         trained_at=info.trained_at,
         metrics=info.metrics,
+        simulated=info.simulated,
+        provider_mode=info.provider_mode,
     )
 
 
@@ -41,6 +45,8 @@ async def activate_model(request: TrainingRequest) -> TrainingResponse:
         status="updated",
         trained_at=info.trained_at,
         metrics=info.metrics,
+        simulated=info.simulated,
+        provider_mode=info.provider_mode,
     )
 
 
@@ -53,6 +59,8 @@ async def train_model_v3(request: TrainingRequest) -> TrainingResponse:
         status="trained",
         trained_at=info.trained_at,
         metrics=info.metrics,
+        simulated=info.simulated,
+        provider_mode=info.provider_mode,
     )
 
 
@@ -65,4 +73,6 @@ async def activate_model_v3(request: TrainingRequest) -> TrainingResponse:
         status="updated",
         trained_at=info.trained_at,
         metrics=info.metrics,
+        simulated=info.simulated,
+        provider_mode=info.provider_mode,
     )

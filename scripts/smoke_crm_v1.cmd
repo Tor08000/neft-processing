@@ -3,8 +3,8 @@ setlocal ENABLEDELAYEDEXPANSION
 
 if "%AUTH_URL%"=="" set AUTH_URL=http://localhost:8080
 if "%GATEWAY_URL%"=="" set GATEWAY_URL=http://localhost:8080
-if "%ADMIN_EMAIL%"=="" set ADMIN_EMAIL=admin@example.com
-if "%ADMIN_PASSWORD%"=="" set ADMIN_PASSWORD=admin
+if "%ADMIN_EMAIL%"=="" set ADMIN_EMAIL=admin@neft.local
+if "%ADMIN_PASSWORD%"=="" set ADMIN_PASSWORD=Neft123!
 
 echo [1/6] Login admin and get token...
 for /f "delims=" %%A in ('curl -s -X POST %AUTH_URL%/api/v1/auth/login -H "Content-Type: application/json" -d "{\"email\":\"%ADMIN_EMAIL%\",\"password\":\"%ADMIN_PASSWORD%\"}"') do set LOGIN_JSON=%%A

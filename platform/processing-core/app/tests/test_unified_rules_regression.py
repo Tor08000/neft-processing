@@ -10,6 +10,7 @@ from sqlalchemy.pool import StaticPool
 from app.db import Base
 from app.models.unified_rule import (
     RuleSetActive,
+    RuleSetAudit,
     RuleSetStatus,
     RuleSetVersion,
     UnifiedRule,
@@ -19,6 +20,13 @@ from app.models.unified_rule import (
 )
 from app.schemas.unified_rules import RuleEvaluationContext, RuleEvaluationObject, RuleEvaluationSubject
 from app.services.unified_rules_engine import SyntheticMetricsProvider, evaluate_rules, resolve_decision
+
+RULESET_TEST_TABLES = (
+    RuleSetVersion.__table__,
+    RuleSetActive.__table__,
+    RuleSetAudit.__table__,
+    UnifiedRule.__table__,
+)
 
 
 @pytest.fixture()
@@ -35,9 +43,9 @@ def regression_db() -> sessionmaker:
         bind=engine,
         class_=Session,
     )
-    Base.metadata.create_all(bind=engine)
+    Base.metadata.create_all(bind=engine, tables=list(RULESET_TEST_TABLES))
     yield SessionLocal
-    Base.metadata.drop_all(bind=engine)
+    Base.metadata.drop_all(bind=engine, tables=list(RULESET_TEST_TABLES))
     engine.dispose()
 
 

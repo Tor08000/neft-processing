@@ -22,8 +22,8 @@ def test_jwks_endpoint_returns_keys(tmp_path, monkeypatch) -> None:
 
     from app.main import app
 
-    with TestClient(app) as client:
-        response = client.get("/api/v1/auth/.well-known/jwks.json")
+    client = TestClient(app)
+    response = client.get("/api/v1/auth/.well-known/jwks.json")
 
     assert response.status_code == 200
     payload = response.json()
@@ -48,8 +48,8 @@ def test_jwks_legacy_redirects(tmp_path, monkeypatch) -> None:
 
     from app.main import app
 
-    with TestClient(app) as client:
-        response = client.get("/api/v1/auth/jwks", allow_redirects=False)
+    client = TestClient(app)
+    response = client.get("/api/v1/auth/jwks", follow_redirects=False)
 
     assert response.status_code == 308
     assert response.headers["location"] == "/api/v1/auth/.well-known/jwks.json"

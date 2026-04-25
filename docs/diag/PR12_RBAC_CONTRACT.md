@@ -7,6 +7,8 @@
 | Endpoint / guard contract | Роль/контекст | Ожидаемый статус | Где проверяется в тестах | Код guard/dependency |
 |---|---|---:|---|---|
 | `auth-host /v1/admin/users` через `_require_admin` | `PLATFORM_ADMIN` | 200 (allow) | `platform/auth-host/app/tests/test_rbac_contract.py::test_admin_endpoint_allows_platform_admin` | `platform/auth-host/app/api/routes/admin_users.py::_require_admin` |
+| `auth-host /v1/admin/users` через `_require_admin` | `NEFT_SUPERADMIN` | 200 (allow) | `platform/auth-host/app/tests/test_rbac_contract.py::test_admin_endpoint_allows_superadmin_alias` | `platform/auth-host/app/api/routes/admin_users.py::_require_admin` |
+| `auth-host /v1/admin/users` через `_require_admin` | `NEFT_FINANCE` | 403 | `platform/auth-host/app/tests/test_rbac_contract.py::test_admin_endpoint_denies_finance_admin_without_access_management_scope` | `platform/auth-host/app/api/routes/admin_users.py::_require_admin` |
 | `auth-host /v1/admin/users` через `_require_admin` | `CLIENT_USER` | 403 | `...::test_admin_endpoint_denies_client_role` | `platform/auth-host/app/api/routes/admin_users.py::_require_admin` |
 | `auth-host /v1/admin/users` через `_require_admin` | `PARTNER_USER` | 403 | `...::test_admin_endpoint_denies_partner_role` | `platform/auth-host/app/api/routes/admin_users.py::_require_admin` |
 | `auth-host protected dependency` | пустые credentials | 401 | `...::test_protected_dependency_rejects_missing_credentials` | `platform/auth-host/app/api/routes/admin_users.py::_require_admin` |
@@ -26,3 +28,5 @@
 - Scope-проверки присутствуют и проверяются на сервисном уровне (`MarketplaceOrdersService`) через доменную ошибку `forbidden`.
 - Не используются заглушки вида `assert True`.
 - Контрактные тесты не требуют Postgres/Docker и не поднимают HTTP-сервер.
+- `auth-host /v1/admin/users` остаётся broad user-registry owner; admin portal использует его как CRUD owner только для admin-capable users, а capability gating приходит из `/api/core/v1/admin/me`.
+- Admin user create/update flows now also require operator-provided `reason` and `correlation_id` in the admin portal and write canonical audit records into processing-core via internal audit ingest.

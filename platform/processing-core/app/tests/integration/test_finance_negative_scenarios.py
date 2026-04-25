@@ -6,18 +6,21 @@ from uuid import uuid4
 
 import pytest
 
-from app.db import Base, engine, get_sessionmaker
+from app.models.billing_job_run import BillingJobRun
 from app.models.audit_log import ActorType, AuditLog
 from app.models.billing_period import BillingPeriod, BillingPeriodStatus, BillingPeriodType
 from app.models.cases import Case, CaseEvent, CaseEventType, CaseKind
+from app.models.decision_result import DecisionResult
 from app.models.finance import CreditNote, InvoicePayment, InvoiceSettlementAllocation, SettlementSourceType
 from app.models.internal_ledger import (
+    InternalLedgerAccount,
     InternalLedgerEntry,
     InternalLedgerEntryDirection,
     InternalLedgerTransaction,
 )
 from app.models.invoice import Invoice, InvoicePdfStatus, InvoiceStatus, InvoiceTransitionLog
-from app.models.marketplace_contracts import Contract, ContractObligation, ContractStatus
+from app.models.legal_graph import LegalEdge, LegalNode
+from app.models.marketplace_contracts import Contract, ContractObligation, ContractStatus, ContractVersion
 from app.models.marketplace_order_sla import (
     MarketplaceOrderContractLink,
     MarketplaceOrderEvent,
@@ -31,21 +34,90 @@ from app.models.marketplace_orders import (
     MarketplaceOrderEventType,
     MarketplaceOrderStatus,
 )
+from app.models.money_flow import MoneyFlowEvent
+from app.models.refund_request import RefundRequest
+from app.models.risk_decision import RiskDecision
+from app.models.risk_policy import RiskPolicy
+from app.models.risk_threshold import RiskThreshold
+from app.models.risk_threshold_set import RiskThresholdSet
+from app.models.risk_training_snapshot import RiskTrainingSnapshot
+from app.models.risk_types import RiskSubjectType, RiskThresholdAction, RiskThresholdScope
 from app.services.audit_service import RequestContext
 from app.services.finance import FinanceService
 from app.services.invoice_state_machine import InvalidTransitionError, InvoiceStateMachine
 from app.services.order_sla_consequence_service import apply_sla_consequences
 from app.services.order_sla_service import evaluate_order_event
+from app.tests._scoped_router_harness import scoped_session_context
 
 _INVOICE_PERIOD_SEQ = count()
+_PAYMENT_THRESHOLD_SET_ID = "finance-payment-thresholds"
+_INVOICE_THRESHOLD_SET_ID = "finance-invoice-thresholds"
 
 
-@pytest.fixture(autouse=True)
-def clean_db():
-    Base.metadata.drop_all(bind=engine)
-    Base.metadata.create_all(bind=engine)
-    yield
-    Base.metadata.drop_all(bind=engine)
+def _dedupe_tables(*tables):
+    seen: set[str] = set()
+    ordered = []
+    for table in tables:
+        key = str(table.key)
+        if key in seen:
+            continue
+        seen.add(key)
+        ordered.append(table)
+    return tuple(ordered)
+
+
+TEST_TABLES = _dedupe_tables(
+    AuditLog.__table__,
+    BillingJobRun.__table__,
+    BillingPeriod.__table__,
+    Case.__table__,
+    CaseEvent.__table__,
+    CreditNote.__table__,
+    DecisionResult.__table__,
+    InternalLedgerAccount.__table__,
+    InternalLedgerTransaction.__table__,
+    InternalLedgerEntry.__table__,
+    Invoice.__table__,
+    InvoicePayment.__table__,
+    InvoiceSettlementAllocation.__table__,
+    InvoiceTransitionLog.__table__,
+    LegalNode.__table__,
+    LegalEdge.__table__,
+    MarketplaceOrder.__table__,
+    MarketplaceOrderContractLink.__table__,
+    MarketplaceOrderEvent.__table__,
+    MarketplaceSlaNotificationOutbox.__table__,
+    MoneyFlowEvent.__table__,
+    OrderSlaConsequence.__table__,
+    OrderSlaEvaluation.__table__,
+    Contract.__table__,
+    ContractObligation.__table__,
+    ContractVersion.__table__,
+    RefundRequest.__table__,
+    RiskDecision.__table__,
+    RiskPolicy.__table__,
+    RiskThreshold.__table__,
+    RiskThresholdSet.__table__,
+    RiskTrainingSnapshot.__table__,
+)
+
+
+def _seed_threshold_set(db_session, *, threshold_set_id: str, subject_type: RiskSubjectType, action: RiskThresholdAction) -> None:
+    existing = db_session.get(RiskThresholdSet, threshold_set_id)
+    if existing is not None:
+        return
+    db_session.add(
+        RiskThresholdSet(
+            id=threshold_set_id,
+            subject_type=subject_type,
+            scope=RiskThresholdScope.GLOBAL,
+            action=action,
+            block_threshold=90,
+            review_threshold=70,
+            allow_threshold=0,
+        )
+    )
+    db_session.commit()
 
 
 @pytest.fixture(autouse=True)
@@ -58,17 +130,29 @@ def _disable_decision_memory(monkeypatch: pytest.MonkeyPatch) -> None:
     import app.services.order_sla_service as sla_service
 
     monkeypatch.setattr(binding_service, "record_decision_memory", _noop)
+    monkeypatch.setattr(sla_consequence_service, "create_notification", _noop)
+    monkeypatch.setattr(sla_consequence_service, "resolve_client_email", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(sla_consequence_service, "_apply_marketplace_penalty", _noop)
     monkeypatch.setattr(sla_consequence_service, "record_decision_memory", _noop)
     monkeypatch.setattr(sla_service, "record_decision_memory", _noop)
 
 
 @pytest.fixture()
 def db_session():
-    session = get_sessionmaker()()
-    try:
+    with scoped_session_context(tables=TEST_TABLES) as session:
+        _seed_threshold_set(
+            session,
+            threshold_set_id=_PAYMENT_THRESHOLD_SET_ID,
+            subject_type=RiskSubjectType.PAYMENT,
+            action=RiskThresholdAction.PAYMENT,
+        )
+        _seed_threshold_set(
+            session,
+            threshold_set_id=_INVOICE_THRESHOLD_SET_ID,
+            subject_type=RiskSubjectType.INVOICE,
+            action=RiskThresholdAction.INVOICE,
+        )
         yield session
-    finally:
-        session.close()
 
 
 def _ledger_balanced(db_session, tx_id: str) -> bool:

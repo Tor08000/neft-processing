@@ -1,8 +1,11 @@
 import { render, screen } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { I18nextProvider } from "react-i18next";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { App } from "../App";
+import { AuthProvider } from "../auth/AuthContext";
 import type { AuthSession } from "../api/types";
+import i18n from "../i18n";
+import { PriceVersionDetailsPage } from "./PriceVersionDetailsPage";
 
 const session: AuthSession = {
   token: "token-1",
@@ -26,13 +29,22 @@ const mockFetch = (url: string) => {
         item_count: 10,
         error_count: 0,
       }),
-      { status: 200 },
+      {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      },
     );
   }
   if (url.includes("/partner/prices/versions")) {
-    return new Response(JSON.stringify({ items: [] }), { status: 200 });
+    return new Response(JSON.stringify({ items: [] }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
   }
-  return new Response(JSON.stringify({ items: [] }), { status: 200 });
+  return new Response(JSON.stringify({ items: [] }), {
+    status: 200,
+    headers: { "content-type": "application/json" },
+  });
 };
 
 beforeEach(() => {
@@ -47,13 +59,19 @@ afterEach(() => {
 describe("Prices role gating", () => {
   it("hides publish and rollback actions for non-owners", async () => {
     render(
-      <MemoryRouter initialEntries={["/prices/version-1"]}>
-        <App initialSession={session} />
-      </MemoryRouter>,
+      <I18nextProvider i18n={i18n}>
+        <AuthProvider initialSession={session}>
+          <MemoryRouter initialEntries={["/prices/version-1"]}>
+            <Routes>
+              <Route path="/prices/:id" element={<PriceVersionDetailsPage />} />
+            </Routes>
+          </MemoryRouter>
+        </AuthProvider>
+      </I18nextProvider>,
     );
 
-    expect(await screen.findByText(/Версия/)).toBeInTheDocument();
-    expect(screen.queryByText(/Публиковать/)).not.toBeInTheDocument();
-    expect(screen.queryByText(/Rollback/)).not.toBeInTheDocument();
+    expect(await screen.findByText("Статус")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Публиковать/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Rollback/i })).not.toBeInTheDocument();
   });
 });

@@ -13,6 +13,9 @@ Shadow outputs are persisted in `risk_v5_shadow_decisions` for auditability and 
 - v5 score and predicted outcome
 - features snapshot + hash + schema version
 - explain payload with top features and impacts
+- provider payload evidence (`schema`, `document_type`, `metadata_keys`, amount presence) so shadow scoring can be replayed against the AI service contract
+
+The v5 shadow scorer maps decision-context features into the AI service `/api/v1/risk-score` contract. The AI service remains a heuristic scoring provider in this repo; it accepts risk subjects such as `payment`, `export`, and `fuel_transaction` explicitly and returns a stable trace hash. Provider failures remain degraded shadow records and never alter v4 outcomes.
 
 ## Separation from v4
 All v4 thresholds, policies, and explain payloads remain unchanged.

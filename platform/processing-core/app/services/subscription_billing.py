@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import calendar
+import hashlib
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
@@ -12,7 +13,9 @@ from sqlalchemy.orm import Session
 
 from app.db.schema import DB_SCHEMA
 from app.models.audit_log import ActorType, AuditVisibility
+from app.services.billing_service import issue_invoice
 from app.services.audit_service import AuditService, RequestContext
+from app.services.case_events_service import CaseEventActor
 from app.services.s3_storage import S3Storage
 from neft_shared.logging_setup import get_logger
 
@@ -25,6 +28,7 @@ except ImportError:  # pragma: no cover - optional dependency
     getSampleStyleSheet = SimpleDocTemplate = Spacer = PdfTable = Paragraph = None
 
 logger = get_logger(__name__)
+SubscriptionInvoiceId = str | int
 
 
 @dataclass(frozen=True)
@@ -40,22 +44,51 @@ class SubscriptionInvoiceLine:
 
 @dataclass(frozen=True)
 class SubscriptionInvoiceResult:
-    invoice_id: int
+    invoice_id: SubscriptionInvoiceId
     created: bool
 
 
 def _table(db: Session, name: str) -> Table:
-    return Table(name, MetaData(), autoload_with=db.get_bind(), schema=DB_SCHEMA)
+    return Table(name, MetaData(), autoload_with=_bind(db), schema=DB_SCHEMA)
+
+
+def _bind(db: Session):
+    try:
+        return db.connection()
+    except Exception:
+        return db.get_bind()
 
 
 def _table_exists(db: Session, name: str) -> bool:
     try:
         from sqlalchemy import inspect
 
-        inspector = inspect(db.get_bind())
+        inspector = inspect(_bind(db))
         return inspector.has_table(name, schema=DB_SCHEMA)
     except Exception:
         return False
+
+
+def _has_columns(table: Table, *columns: str) -> bool:
+    available = set(table.c.keys())
+    return all(column in available for column in columns)
+
+
+def _is_billing_flow_invoice_table(table: Table) -> bool:
+    return _has_columns(
+        table,
+        "client_id",
+        "invoice_number",
+        "amount_total",
+        "amount_paid",
+        "idempotency_key",
+        "ledger_tx_id",
+        "audit_event_id",
+    )
+
+
+def _is_legacy_subscription_invoice_table(table: Table) -> bool:
+    return _has_columns(table, "subscription_id", "period_start", "period_end")
 
 
 def _now() -> datetime:
@@ -102,6 +135,265 @@ def _tables_ready(db: Session, table_names: Iterable[str]) -> bool:
     return all(_table_exists(db, name) for name in table_names)
 
 
+def _invoice_table_invoice_exists(db: Session, *, invoice_id: SubscriptionInvoiceId) -> bool:
+    if not _table_exists(db, "invoices"):
+        return False
+    invoices = _table(db, "invoices")
+    return (
+        db.execute(select(invoices.c.id).where(invoices.c.id == str(invoice_id)))
+        .scalar_one_or_none()
+        is not None
+    )
+
+
+def _generate_invoice_table_invoice_pdf(db: Session, *, invoice_id: SubscriptionInvoiceId) -> bool:
+    from app.models.invoice import Invoice
+    from app.services.invoice_pdf import InvoicePdfService
+
+    invoice = db.get(Invoice, str(invoice_id))
+    if invoice is None:
+        return False
+    InvoicePdfService(db).generate(invoice)
+    return True
+
+
+def _billing_flow_invoice_row(db: Session, *, invoice_id: SubscriptionInvoiceId) -> dict[str, Any] | None:
+    if not _table_exists(db, "billing_invoices"):
+        return None
+    billing_invoices = _table(db, "billing_invoices")
+    if not _is_billing_flow_invoice_table(billing_invoices) or _is_legacy_subscription_invoice_table(billing_invoices):
+        return None
+    row = (
+        db.execute(select(billing_invoices).where(billing_invoices.c.id == str(invoice_id)))
+        .mappings()
+        .first()
+    )
+    return dict(row) if row else None
+
+
+def _period_label_from_idempotency_key(idempotency_key: object) -> str:
+    parts = str(idempotency_key or "").split(":")
+    if len(parts) >= 4 and parts[0] == "subscription-invoice":
+        return f"{parts[-2]} - {parts[-1]}"
+    return "not specified"
+
+
+def _generate_billing_flow_invoice_pdf(
+    db: Session,
+    *,
+    invoice_id: SubscriptionInvoiceId,
+    invoice: dict[str, Any] | None = None,
+) -> bool:
+    billing_invoices = _table(db, "billing_invoices")
+    required_columns = {"pdf_status", "pdf_object_key", "pdf_url", "pdf_hash", "pdf_generated_at"}
+    missing_columns = sorted(required_columns.difference(billing_invoices.c.keys()))
+    if missing_columns:
+        logger.warning(
+            "subscription_billing.billing_flow_pdf_columns_missing",
+            extra={"invoice_id": str(invoice_id), "missing_columns": missing_columns},
+        )
+        return False
+
+    invoice = invoice or _billing_flow_invoice_row(db, invoice_id=invoice_id)
+    if not invoice:
+        return False
+
+    from io import BytesIO
+
+    payload = BytesIO()
+    doc = SimpleDocTemplate(payload, pagesize=A4)
+    styles = getSampleStyleSheet()
+    amount_total = _decimal(invoice.get("amount_total"))
+    amount_paid = _decimal(invoice.get("amount_paid"))
+    amount_due = amount_total - amount_paid
+    period_label = _period_label_from_idempotency_key(invoice.get("idempotency_key"))
+    invoice_number = invoice.get("invoice_number") or str(invoice_id)
+    currency = invoice.get("currency") or ""
+
+    story = [
+        Paragraph("NEFT Billing Invoice", styles["Title"]),
+        Spacer(1, 12),
+        Paragraph(f"Invoice: {invoice_number}", styles["Normal"]),
+        Paragraph(f"Client: {invoice.get('client_id')}", styles["Normal"]),
+        Paragraph(f"Period: {period_label}", styles["Normal"]),
+        Paragraph(f"Status: {invoice.get('status')}", styles["Normal"]),
+        Paragraph(f"Currency: {currency}", styles["Normal"]),
+        Spacer(1, 12),
+        PdfTable(
+            [
+                ["Description", "Amount", "Paid", "Due"],
+                ["Subscription charge", str(amount_total), str(amount_paid), str(amount_due)],
+            ]
+        ),
+        Spacer(1, 12),
+        Paragraph(f"Generated at: {_now().isoformat()}", styles["Normal"]),
+    ]
+    doc.build(story)
+    pdf_bytes = payload.getvalue()
+    pdf_hash = hashlib.sha256(pdf_bytes).hexdigest()
+
+    storage = S3Storage()
+    storage.ensure_bucket()
+    key = invoice.get("pdf_object_key") or f"billing-invoices/{invoice_id}.pdf"
+    pdf_url = storage.put_bytes(key, pdf_bytes, content_type="application/pdf")
+    db.execute(
+        update(billing_invoices)
+        .where(billing_invoices.c.id == invoice["id"])
+        .values(
+            pdf_status="READY",
+            pdf_object_key=key,
+            pdf_url=pdf_url,
+            pdf_hash=pdf_hash,
+            pdf_generated_at=_now(),
+        )
+    )
+    AuditService(db).audit(
+        event_type="BILLING_FLOW_INVOICE_PDF_UPLOADED",
+        entity_type="billing_invoice",
+        entity_id=str(invoice_id),
+        action="PDF",
+        visibility=AuditVisibility.INTERNAL,
+        after={"pdf_object_key": key, "pdf_url": pdf_url, "pdf_hash": pdf_hash},
+        request_ctx=RequestContext(actor_type=ActorType.SYSTEM, actor_id="billing_pdf"),
+    )
+    return True
+
+
+def _normalize_subscription_status(status: str | None) -> str | None:
+    if not status:
+        return None
+    upper = str(status).upper()
+    if upper == "OVERDUE":
+        return "PAST_DUE"
+    return upper
+
+
+def _legacy_billing_cycle(plan: dict[str, Any] | None) -> str:
+    if not plan:
+        return "MONTHLY"
+    try:
+        months = int(plan.get("billing_period_months") or 0)
+    except (TypeError, ValueError):
+        return "MONTHLY"
+    if months == 12:
+        return "YEARLY"
+    return "MONTHLY"
+
+
+def _legacy_subscription_rows(
+    db: Session,
+    *,
+    org_id: int | None = None,
+    subscription_id: int | None = None,
+) -> list[dict[str, Any]]:
+    required_tables = [
+        "client_subscriptions",
+        "subscription_plans",
+        "billing_invoices",
+    ]
+    if not _tables_ready(db, required_tables):
+        return []
+    client_subscriptions = _table(db, "client_subscriptions")
+    subscription_plans = _table(db, "subscription_plans")
+    query = select(client_subscriptions)
+    if org_id is not None:
+        query = query.where(client_subscriptions.c.tenant_id == org_id)
+    if subscription_id is not None:
+        query = query.where(client_subscriptions.c.id == subscription_id)
+    query = query.where(client_subscriptions.c.status == "ACTIVE")
+    rows = db.execute(query).mappings().all()
+    plan_ids = {row["plan_id"] for row in rows if row.get("plan_id") is not None}
+    plans: dict[Any, dict[str, Any]] = {}
+    if plan_ids:
+        plan_rows = (
+            db.execute(select(subscription_plans).where(subscription_plans.c.id.in_(plan_ids)))
+            .mappings()
+            .all()
+        )
+        plans = {row["id"]: dict(row) for row in plan_rows}
+    subscriptions: list[dict[str, Any]] = []
+    for row in rows:
+        plan = plans.get(row.get("plan_id"))
+        subscriptions.append(
+            {
+                **dict(row),
+                "org_id": row.get("tenant_id"),
+                "billing_cycle": _legacy_billing_cycle(plan),
+                "grace_period_days": 0,
+                "_storage": "client_subscriptions",
+            }
+        )
+    return subscriptions
+
+
+def _resolve_subscription_client_id(db: Session, subscription: dict[str, Any]) -> str | None:
+    client_id = subscription.get("client_id")
+    if client_id not in (None, ""):
+        return str(client_id)
+    if not _table_exists(db, "client_subscriptions"):
+        return None
+
+    client_subscriptions = _table(db, "client_subscriptions")
+    client_id_column = client_subscriptions.c.get("client_id")
+    if client_id_column is None:
+        return None
+
+    subscription_id = subscription.get("id")
+    if subscription_id not in (None, "") and client_subscriptions.c.get("id") is not None:
+        resolved = (
+            db.execute(select(client_id_column).where(client_subscriptions.c.id == subscription_id))
+            .scalar()
+        )
+        if resolved not in (None, ""):
+            return str(resolved)
+
+    tenant_id = subscription.get("org_id")
+    if tenant_id in (None, "") or client_subscriptions.c.get("tenant_id") is None:
+        return None
+
+    query = select(client_id_column).where(client_subscriptions.c.tenant_id == tenant_id)
+    order_by = []
+    if client_subscriptions.c.get("created_at") is not None:
+        order_by.append(desc(client_subscriptions.c.created_at))
+    elif client_subscriptions.c.get("start_at") is not None:
+        order_by.append(desc(client_subscriptions.c.start_at))
+    if order_by:
+        query = query.order_by(*order_by)
+    resolved = db.execute(query.limit(1)).scalar()
+    if resolved in (None, ""):
+        return None
+    return str(resolved)
+
+
+def _update_legacy_subscription_status(
+    db: Session,
+    *,
+    invoice: dict[str, Any],
+    status: str,
+) -> None:
+    if not _table_exists(db, "client_subscriptions"):
+        return
+    client_subscriptions = _table(db, "client_subscriptions")
+    target_status = _normalize_subscription_status(status)
+    subscription_id = invoice.get("subscription_id")
+    if subscription_id is not None:
+        result = db.execute(
+            update(client_subscriptions)
+            .where(client_subscriptions.c.id == subscription_id)
+            .values(status=target_status)
+        )
+        if getattr(result, "rowcount", 0):
+            return
+    org_id = invoice.get("org_id")
+    if org_id is None:
+        return
+    db.execute(
+        update(client_subscriptions)
+        .where(client_subscriptions.c.tenant_id == org_id)
+        .values(status=target_status)
+    )
+
+
 def _resolve_pricing_record(
     db: Session,
     *,
@@ -109,13 +401,18 @@ def _resolve_pricing_record(
     item_id: int,
     as_of: datetime,
 ) -> dict[str, Any] | None:
+    if not _table_exists(db, "pricing_catalog"):
+        return None
     pricing_catalog = _table(db, "pricing_catalog")
+    resolved_item_id = _coerce_pricing_catalog_item_id(pricing_catalog.c.item_id, item_id)
+    if resolved_item_id is None:
+        return None
     record = (
         db.execute(
             select(pricing_catalog)
             .where(
                 pricing_catalog.c.item_type == item_type,
-                pricing_catalog.c.item_id == item_id,
+                pricing_catalog.c.item_id == resolved_item_id,
                 pricing_catalog.c.effective_from <= as_of,
                 or_(pricing_catalog.c.effective_to.is_(None), pricing_catalog.c.effective_to > as_of),
             )
@@ -126,6 +423,45 @@ def _resolve_pricing_record(
         .first()
     )
     return dict(record) if record else None
+
+
+def _coerce_pricing_catalog_item_id(column, item_id: Any) -> Any:
+    try:
+        python_type = column.type.python_type
+    except Exception:
+        python_type = None
+
+    if python_type is int:
+        if isinstance(item_id, int):
+            return item_id
+        if isinstance(item_id, str):
+            normalized = item_id.strip()
+            if normalized.isdigit():
+                return int(normalized)
+            return None
+        try:
+            return int(item_id)
+        except (TypeError, ValueError):
+            return None
+    return item_id
+
+
+def _billing_flow_invoice_idempotency_key(
+    *,
+    subscription: dict[str, Any],
+    period_start: date,
+    period_end: date,
+) -> str:
+    subscription_ref = subscription.get("id") or subscription.get("client_id") or subscription.get("org_id") or "subscription"
+    return f"subscription-invoice:{subscription_ref}:{period_start.isoformat()}:{period_end.isoformat()}"
+
+
+def _request_ctx_to_case_actor(request_ctx: RequestContext | None) -> CaseEventActor | None:
+    if request_ctx is None:
+        return None
+    if request_ctx.actor_id is None and request_ctx.actor_email is None:
+        return None
+    return CaseEventActor(id=request_ctx.actor_id, email=request_ctx.actor_email)
 
 
 def _plan_line(
@@ -145,6 +481,10 @@ def _plan_line(
     pricing = _resolve_pricing_record(db, item_type="PLAN", item_id=subscription["plan_id"], as_of=as_of) or {}
     cycle = (subscription.get("billing_cycle") or "MONTHLY").upper()
     price = pricing.get("price_yearly") if cycle == "YEARLY" else pricing.get("price_monthly")
+    if price is None and plan:
+        price_cents = plan.get("price_cents")
+        if price_cents is not None:
+            price = Decimal(str(price_cents)) / Decimal("100")
     line = SubscriptionInvoiceLine(
         line_type="PLAN",
         ref_code=plan_code,
@@ -154,6 +494,8 @@ def _plan_line(
         amount=_decimal(price),
     )
     currency = pricing.get("currency") if pricing else None
+    if not currency and plan:
+        currency = plan.get("currency")
     return line, currency
 
 
@@ -207,6 +549,8 @@ def _invoice_exists(
     period_end: date,
 ) -> bool:
     billing_invoices = _table(db, "billing_invoices")
+    if not _is_legacy_subscription_invoice_table(billing_invoices):
+        return False
     existing = (
         db.execute(
             select(billing_invoices.c.id).where(
@@ -219,6 +563,25 @@ def _invoice_exists(
         .first()
     )
     return existing is not None
+
+
+def _billing_flow_invoice_by_idempotency_key(
+    db: Session,
+    *,
+    idempotency_key: str,
+) -> dict[str, Any] | None:
+    billing_invoices = _table(db, "billing_invoices")
+    if not _is_billing_flow_invoice_table(billing_invoices):
+        return None
+    key_column = billing_invoices.c.get("idempotency_key")
+    if key_column is None:
+        return None
+    row = (
+        db.execute(select(billing_invoices).where(key_column == idempotency_key))
+        .mappings()
+        .first()
+    )
+    return dict(row) if row else None
 
 
 def _resolve_invoice_currency(
@@ -447,26 +810,87 @@ def generate_subscription_invoice(
     total_amount = _invoice_lines_total(lines)
     currency_code = _resolve_invoice_currency(db, org_id=subscription["org_id"], fallback=currency)
     due_at = now + timedelta(days=int(subscription.get("grace_period_days") or 0))
+    if total_amount <= 0:
+        logger.info(
+            "subscription_billing.zero_total_skipped",
+            extra={
+                "org_id": subscription.get("org_id"),
+                "subscription_id": subscription.get("id"),
+                "period_start": period_start.isoformat(),
+                "period_end": period_end.isoformat(),
+            },
+        )
+        return SubscriptionInvoiceResult(invoice_id=0, created=False)
 
     billing_invoices = _table(db, "billing_invoices")
-    insert_stmt = (
-        insert(billing_invoices)
-        .values(
-            org_id=subscription["org_id"],
-            subscription_id=subscription["id"],
+    billing_flow_mode = _is_billing_flow_invoice_table(billing_invoices) and not _is_legacy_subscription_invoice_table(billing_invoices)
+    if billing_flow_mode:
+        client_id = _resolve_subscription_client_id(db, subscription)
+        if client_id in (None, ""):
+            logger.warning(
+                "subscription_billing.client_id_missing",
+                extra={"org_id": subscription.get("org_id"), "subscription_id": subscription.get("id")},
+            )
+            return SubscriptionInvoiceResult(invoice_id=0, created=False)
+        idempotency_key = _billing_flow_invoice_idempotency_key(
+            subscription=subscription,
             period_start=period_start,
             period_end=period_end,
-            status="ISSUED",
-            issued_at=now,
-            due_at=due_at,
-            total_amount=total_amount,
-            currency=currency_code,
         )
-        .returning(billing_invoices.c.id)
-    )
-    invoice_id = db.execute(insert_stmt).scalar_one()
+        existing_billing_flow_invoice = _billing_flow_invoice_by_idempotency_key(
+            db,
+            idempotency_key=idempotency_key,
+        )
+        if existing_billing_flow_invoice is not None:
+            logger.info(
+                "subscription_billing.billing_flow_invoice_replay",
+                extra={
+                    "org_id": subscription.get("org_id"),
+                    "subscription_id": subscription.get("id"),
+                    "invoice_id": existing_billing_flow_invoice.get("id"),
+                    "period_start": period_start.isoformat(),
+                    "period_end": period_end.isoformat(),
+                },
+            )
+            return SubscriptionInvoiceResult(
+                invoice_id=str(existing_billing_flow_invoice["id"]),
+                created=False,
+            )
+        issued = issue_invoice(
+            db,
+            tenant_id=int(subscription["org_id"]),
+            client_id=str(client_id),
+            case_id=None,
+            currency=currency_code,
+            amount_total=total_amount,
+            due_at=due_at,
+            idempotency_key=idempotency_key,
+            actor=_request_ctx_to_case_actor(request_ctx),
+            request_id=request_ctx.request_id if request_ctx else None,
+            trace_id=request_ctx.trace_id if request_ctx else None,
+        )
+        invoice_id: SubscriptionInvoiceId = str(issued.invoice.id)
+        if issued.is_replay:
+            return SubscriptionInvoiceResult(invoice_id=invoice_id, created=False)
+    else:
+        insert_values = {
+            "org_id": subscription["org_id"],
+            "subscription_id": subscription["id"],
+            "period_start": period_start,
+            "period_end": period_end,
+            "status": "ISSUED",
+            "issued_at": now,
+            "due_at": due_at,
+            "total_amount": total_amount,
+            "currency": currency_code,
+        }
+        insert_stmt = insert(billing_invoices).values(**insert_values)
+        if _bind(db).dialect.name == "sqlite":
+            result = db.execute(insert_stmt)
+            invoice_id = int(result.inserted_primary_key[0])
+        else:
+            invoice_id = db.execute(insert_stmt.returning(billing_invoices.c.id)).scalar_one()
 
-    billing_invoice_lines = _table(db, "billing_invoice_lines")
     line_payloads = [
         {
             "invoice_id": invoice_id,
@@ -480,7 +904,8 @@ def generate_subscription_invoice(
         }
         for line in lines
     ]
-    if line_payloads:
+    if line_payloads and _table_exists(db, "billing_invoice_lines"):
+        billing_invoice_lines = _table(db, "billing_invoice_lines")
         db.execute(insert(billing_invoice_lines).values(line_payloads))
 
     if usage_summary:
@@ -543,27 +968,36 @@ def generate_invoices_for_period(
     org_id: int | None = None,
     subscription_id: int | None = None,
     request_ctx: RequestContext | None = None,
-) -> list[int]:
-    required_tables = [
-        "org_subscriptions",
-        "subscription_plans",
-        "billing_invoices",
-        "billing_invoice_lines",
-        "pricing_catalog",
-    ]
-    if not _tables_ready(db, required_tables):
+) -> list[SubscriptionInvoiceId]:
+    if _tables_ready(
+        db,
+        [
+            "org_subscriptions",
+            "subscription_plans",
+            "billing_invoices",
+            "billing_invoice_lines",
+            "pricing_catalog",
+        ],
+    ):
+        org_subscriptions = _table(db, "org_subscriptions")
+        query = select(org_subscriptions).where(org_subscriptions.c.status == "ACTIVE")
+        if org_id is not None:
+            query = query.where(org_subscriptions.c.org_id == org_id)
+        if subscription_id is not None:
+            query = query.where(org_subscriptions.c.id == subscription_id)
+        subscriptions = [dict(row) for row in db.execute(query).mappings().all()]
+    else:
+        subscriptions = _legacy_subscription_rows(
+            db,
+            org_id=org_id,
+            subscription_id=subscription_id,
+        )
+
+    if not subscriptions:
         logger.warning("subscription_billing.tables_missing")
         return []
 
-    org_subscriptions = _table(db, "org_subscriptions")
-    query = select(org_subscriptions).where(org_subscriptions.c.status == "ACTIVE")
-    if org_id is not None:
-        query = query.where(org_subscriptions.c.org_id == org_id)
-    if subscription_id is not None:
-        query = query.where(org_subscriptions.c.id == subscription_id)
-
-    subscriptions = db.execute(query).mappings().all()
-    created_invoice_ids: list[int] = []
+    created_invoice_ids: list[SubscriptionInvoiceId] = []
 
     for subscription in subscriptions:
         period_start, period_end = _resolve_period(subscription, target_date)
@@ -581,17 +1015,17 @@ def generate_invoices_for_period(
 
 
 def mark_invoice_overdue(db: Session, *, now: datetime | None = None) -> list[int]:
-    if not _tables_ready(db, ["billing_invoices", "org_subscriptions"]):
+    if not _tables_ready(db, ["billing_invoices"]):
         logger.warning("subscription_billing.tables_missing_overdue")
         return []
 
     now = now or _now()
     billing_invoices = _table(db, "billing_invoices")
-    org_subscriptions = _table(db, "org_subscriptions")
+    org_subscriptions = _table(db, "org_subscriptions") if _table_exists(db, "org_subscriptions") else None
 
     overdue_rows = (
         db.execute(
-            select(billing_invoices.c.id, billing_invoices.c.subscription_id)
+            select(billing_invoices.c.id, billing_invoices.c.subscription_id, billing_invoices.c.org_id)
             .where(
                 billing_invoices.c.status == "ISSUED",
                 billing_invoices.c.due_at.isnot(None),
@@ -611,11 +1045,14 @@ def mark_invoice_overdue(db: Session, *, now: datetime | None = None) -> list[in
             .where(billing_invoices.c.id == invoice_id)
             .values(status="OVERDUE")
         )
-        db.execute(
-            update(org_subscriptions)
-            .where(org_subscriptions.c.id == subscription_id)
-            .values(status="OVERDUE")
-        )
+        if org_subscriptions is not None:
+            db.execute(
+                update(org_subscriptions)
+                .where(org_subscriptions.c.id == subscription_id)
+                .values(status="OVERDUE")
+            )
+        else:
+            _update_legacy_subscription_status(db, invoice=row, status="OVERDUE")
         AuditService(db).audit(
             event_type="SUBSCRIPTION_INVOICE_OVERDUE",
             entity_type="billing_invoice",
@@ -636,12 +1073,12 @@ def update_invoice_status(
     status: str,
     request_ctx: RequestContext | None,
 ) -> dict[str, Any] | None:
-    if not _tables_ready(db, ["billing_invoices", "org_subscriptions"]):
+    if not _tables_ready(db, ["billing_invoices"]):
         logger.warning("subscription_billing.tables_missing_status_update")
         return None
 
     billing_invoices = _table(db, "billing_invoices")
-    org_subscriptions = _table(db, "org_subscriptions")
+    org_subscriptions = _table(db, "org_subscriptions") if _table_exists(db, "org_subscriptions") else None
 
     invoice = (
         db.execute(select(billing_invoices).where(billing_invoices.c.id == invoice_id))
@@ -650,6 +1087,7 @@ def update_invoice_status(
     )
     if not invoice:
         return None
+    invoice = dict(invoice)
 
     updates: dict[str, Any] = {"status": status}
     now = _now()
@@ -661,11 +1099,14 @@ def update_invoice_status(
     db.execute(update(billing_invoices).where(billing_invoices.c.id == invoice_id).values(**updates))
 
     if status == "PAID":
-        db.execute(
-            update(org_subscriptions)
-            .where(org_subscriptions.c.id == invoice["subscription_id"])
-            .values(status="ACTIVE")
-        )
+        if org_subscriptions is not None:
+            db.execute(
+                update(org_subscriptions)
+                .where(org_subscriptions.c.id == invoice["subscription_id"])
+                .values(status="ACTIVE")
+            )
+        else:
+            _update_legacy_subscription_status(db, invoice=invoice, status="ACTIVE")
 
     AuditService(db).audit(
         event_type=f"SUBSCRIPTION_INVOICE_{status}",
@@ -680,9 +1121,16 @@ def update_invoice_status(
     return dict(invoice)
 
 
-def generate_invoice_pdf(db: Session, *, invoice_id: int) -> bool:
+def generate_invoice_pdf(db: Session, *, invoice_id: SubscriptionInvoiceId) -> bool:
     if any(dep is None for dep in (A4, getSampleStyleSheet, SimpleDocTemplate, Spacer, PdfTable, Paragraph)):
         raise RuntimeError("reportlab is required for PDF generation")
+
+    billing_flow_invoice = _billing_flow_invoice_row(db, invoice_id=invoice_id)
+    if billing_flow_invoice is not None:
+        return _generate_billing_flow_invoice_pdf(db, invoice_id=invoice_id, invoice=billing_flow_invoice)
+
+    if _invoice_table_invoice_exists(db, invoice_id=invoice_id):
+        return _generate_invoice_table_invoice_pdf(db, invoice_id=invoice_id)
 
     if not _tables_ready(db, ["billing_invoices", "billing_invoice_lines"]):
         logger.warning("subscription_billing.tables_missing_pdf")

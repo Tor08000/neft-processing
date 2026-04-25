@@ -8,7 +8,7 @@
 ## 1) Общее описание (AS-IS)
 
 **Фактически реализованный стек:**
-- Мультисервисная платформа с основным API `core-api` (`platform/processing-core`) и вспомогательными сервисами: `auth-host`, `integration-hub`, `ai-service`, `document-service`, `logistics-service`, `crm-service` (stub). Состав и параметры определены в `docker-compose.yml`.
+- Мультисервисная платформа с основным API `core-api` (`platform/processing-core`) и вспомогательными сервисами: `auth-host`, `integration-hub`, `ai-service`, `document-service`, `logistics-service`, `crm-service` (compatibility/shadow CRM surface). Состав и параметры определены в `docker-compose.yml`.
 - Gateway (nginx) маршрутизирует API и SPA фронтенды. (`gateway/nginx.conf`)
 - Асинхронная обработка: Celery worker/beat (`platform/billing-clearing`).
 - Инфраструктура: Postgres, Redis, MinIO, observability stack (OTel/Jaeger/Prometheus/Grafana/Loki/Promtail).
@@ -18,12 +18,12 @@
 platform/
   processing-core/        # Core API + доменные модели/сервисы
   auth-host/              # JWT/auth сервис
-  integration-hub/        # webhooks + EDO stub
+  integration-hub/        # webhooks + EDO transport owner (stub only in explicit mode)
   ai-services/risk-scorer # эвристический risk scorer
   billing-clearing/       # Celery worker/beat
   document-service/       # PDF render/sign/verify
   logistics-service/      # ETA/Deviation/Explain
-  crm-service/            # CRM stub (health/metrics)
+  crm-service/            # Compatibility/shadow CRM service
 frontends/
   admin-ui/
   client-portal/
@@ -43,11 +43,11 @@ shared/
 | gateway | API + SPA routing | — | `/health`, `/metrics`, прокси `/api/*`, `/admin/`, `/client/`, `/partner/` | DONE |
 | core-api | Core domain API | Postgres, schema `processing_core` | `/api/core/*`, `/api/v1/*` | DONE |
 | auth-host | Auth/JWT | Postgres, schema `AUTH_DB_SCHEMA` (default `public`) | `/api/auth/*` | DONE |
-| integration-hub | Webhooks + EDO stub | Postgres/SQLite (configurable) | `/api/int/*`, `/api/integrations/*` | PARTIAL |
+| integration-hub | Webhooks + explicit EDO transport owner | Postgres/SQLite (configurable) | `/api/int/*`, `/api/integrations/*` | PARTIAL |
 | ai-service | Risk scoring API (heuristics) | — | `/api/ai/*` | PARTIAL |
 | document-service | PDF render/sign/verify | — | `/api/docs/*` | DONE |
 | logistics-service | ETA/Deviation/Explain | — | `/api/logistics/*` | PARTIAL |
-| crm-service | CRM stub | — | `/api/crm/*` | STUB |
+| crm-service | Compatibility/shadow CRM surface | — | `/api/crm/*`, `/api/v1/crm/*` | COMPATIBILITY |
 | billing-clearing worker/beat | Асинхронные billing/settlement задачи | Postgres `processing_core`, Redis | Celery queues (internal) | DONE |
 | flower | UI мониторинга Celery | — | `/api/workers` | DONE |
 | admin-web | Admin SPA | — | `/admin/` | PARTIAL |
@@ -87,7 +87,7 @@ shared/
 | Fleet/Fuel | PARTIAL | fleet ingestion + fuel models/providers | `platform/processing-core/app/models/fuel.py`, `platform/processing-core/app/integrations/fuel/` |
 | Marketplace | PARTIAL | marketplace orders/SLA/promotions | `platform/processing-core/app/models/marketplace_orders.py`, `platform/processing-core/app/services/marketplace_order_service.py` |
 | Logistics | PARTIAL | ETA/Deviation/Explain сервис + core модели | `platform/logistics-service/neft_logistics_service/main.py`, `platform/processing-core/app/models/logistics.py` |
-| CRM | PARTIAL | CRM модели/роутеры + отдельный stub сервис | `platform/processing-core/app/models/crm.py`, `platform/crm-service/app/main.py` |
+| CRM | PARTIAL | canonical admin CRM в `processing-core` + compatibility/shadow `crm-service` | `platform/processing-core/app/routers/admin/crm.py`, `platform/crm-service/app/main.py` |
 | Analytics/BI | PARTIAL | BI endpoints + optional ClickHouse marts | `platform/processing-core/app/api/v1/endpoints/bi.py`, `platform/processing-core/app/alembic/versions/20297240_0129_bi_runtime_marts_v1.py` |
 | Notifications | PARTIAL | email/webhook notifications | `platform/processing-core/app/services/notifications_v1.py`, `platform/processing-core/app/tests/test_notifications_webhook.py` |
 | Frontends | PARTIAL | Admin/Client/Partner SPA | `frontends/admin-ui/`, `frontends/client-portal/`, `frontends/partner-portal/` |
@@ -105,10 +105,10 @@ shared/
 
 ## 6) Известные ограничения (AS-IS)
 
-- **CRM service** — stub (health/metrics, без бизнес-логики). (`platform/crm-service/app/main.py`)
+- **CRM service** — compatibility/shadow CRM service with its own `/api/v1/crm/*` runtime, but not the canonical CRM control plane owner. (`platform/crm-service/app/main.py`)
 - **EDO провайдеры** — stub/mocked, реальных внешних коннекторов нет. (`platform/integration-hub/neft_integration_hub/settings.py`, `platform/integration-hub/neft_integration_hub/models/edo_stub.py`)
 - **AI scoring** — эвристическая модель без внешних ML моделей. (`platform/ai-services/risk-scorer/app/model_provider.py`)
-- **Logistics provider** — по умолчанию `mock` через `LOGISTICS_PROVIDER`. (`platform/logistics-service/neft_logistics_service/settings.py`)
+- **Logistics provider** — по умолчанию transport=`integration_hub`, compute=`osrm`; explicit `mock` remains dev/test-only override. (`platform/logistics-service/neft_logistics_service/settings.py`)
 - **ClickHouse/BI** — опционально и не обязателен для verify_all. (`docker-compose.yml`, `platform/processing-core/app/alembic/versions/20297240_0129_bi_runtime_marts_v1.py`)
 
 ---

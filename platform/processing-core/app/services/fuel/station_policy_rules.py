@@ -46,6 +46,9 @@ def ensure_default_station_risk_rule(db: Session) -> None:
 
     changed = False
     for key, value in payload.items():
+        if key == "enabled":
+            # Operator overrides must survive the default-rule repair path.
+            continue
         if getattr(rule, key) != value:
             setattr(rule, key, value)
             changed = True

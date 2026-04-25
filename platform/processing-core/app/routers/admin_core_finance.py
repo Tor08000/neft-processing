@@ -19,6 +19,8 @@ from app.schemas.admin.finance import (
 )
 from app.schemas.partner_finance import PartnerLedgerEntryOut, PartnerLedgerListResponse
 
+# Hidden compatibility bridge for `/api/core/admin/*` finance aliases.
+# Canonical owner routes live under `/api/core/v1/admin/finance/*`.
 router = APIRouter(prefix="/admin", tags=["admin-core-finance"], dependencies=[Depends(require_admin_user)])
 
 

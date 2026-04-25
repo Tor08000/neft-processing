@@ -1,0 +1,87 @@
+{
+  "checked_at": "2026-04-23T20:00:11.983Z",
+  "gateway_base_url": "http://localhost",
+  "client_portal_url": "http://localhost/client",
+  "partner_portal_url": "http://localhost/partner",
+  "order_id": "e3c9e7ed-fa46-424e-981b-c7716c8c200e",
+  "case_id": "4877f31a-1f10-47ca-b13b-6e4c78d9e31e",
+  "case_title": "Marketplace order e3c9e7ed-fa46-424e-981b-c7716c8c200e",
+  "source_ref_type": "MARKETPLACE_ORDER",
+  "source_ref_id": "e3c9e7ed-fa46-424e-981b-c7716c8c200e",
+  "direct_api": {
+    "client_incidents_total": 1,
+    "partner_incidents_total": 1,
+    "client_case_status": "TRIAGE",
+    "partner_case_status": "TRIAGE"
+  },
+  "client": {
+    "orderUrl": "http://localhost/client/marketplace/orders/e3c9e7ed-fa46-424e-981b-c7716c8c200e",
+    "caseHref": "/client/cases/4877f31a-1f10-47ca-b13b-6e4c78d9e31e",
+    "supportHref": "/client/client/support",
+    "expectedApi": [
+      {
+        "contains": "/api/core/v1/marketplace/client/orders/e3c9e7ed-fa46-424e-981b-c7716c8c200e/incidents",
+        "status": 200
+      },
+      {
+        "contains": "/api/core/cases/4877f31a-1f10-47ca-b13b-6e4c78d9e31e",
+        "status": 200
+      },
+      {
+        "contains": "/api/core/client/support/tickets",
+        "status": 200
+      }
+    ],
+    "screenshots": [
+      "C:\\neft-processing\\docs\\diag\\screenshots\\client-marketplace-order-incidents.png",
+      "C:\\neft-processing\\docs\\diag\\screenshots\\client-case-detail-support-trail.png",
+      "C:\\neft-processing\\docs\\diag\\screenshots\\client-support-inbox.png"
+    ],
+    "consoleMessages": [
+      {
+        "type": "error",
+        "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+      },
+      {
+        "type": "error",
+        "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+      }
+    ]
+  },
+  "partner": {
+    "orderUrl": "http://localhost/partner/orders/e3c9e7ed-fa46-424e-981b-c7716c8c200e",
+    "caseHref": "/partner/cases/4877f31a-1f10-47ca-b13b-6e4c78d9e31e",
+    "supportHref": "/partner/support/requests",
+    "backHref": "/partner/support/requests",
+    "partnerHeading": "Запросы",
+    "expectedApi": [
+      {
+        "contains": "/api/core/v1/marketplace/partner/orders/e3c9e7ed-fa46-424e-981b-c7716c8c200e/incidents",
+        "status": 200
+      },
+      {
+        "contains": "/api/core/cases/4877f31a-1f10-47ca-b13b-6e4c78d9e31e",
+        "status": 200
+      },
+      {
+        "contains": "/api/core/cases?",
+        "status": 200
+      }
+    ],
+    "screenshots": [
+      "C:\\neft-processing\\docs\\diag\\screenshots\\partner-marketplace-order-incidents.png",
+      "C:\\neft-processing\\docs\\diag\\screenshots\\partner-case-detail-support-trail.png",
+      "C:\\neft-processing\\docs\\diag\\screenshots\\partner-support-inbox.png"
+    ],
+    "consoleMessages": [
+      {
+        "type": "error",
+        "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+      },
+      {
+        "type": "error",
+        "text": "Failed to load resource: the server responded with a status of 409 (Conflict)"
+      }
+    ]
+  }
+}

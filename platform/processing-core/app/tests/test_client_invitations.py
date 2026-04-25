@@ -1,23 +1,28 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from urllib.parse import parse_qs, urlparse
 
 from fastapi.testclient import TestClient
 
 from app.db import get_sessionmaker
 from app.main import app
+from app.models.invitation_email_deliveries import InvitationEmailDelivery
 from app.models.client_invitations import ClientInvitation
-from app.tests.test_admin_onboarding_approve import _InMemoryStorage, _base_prefix, _create_and_submit_application, _jwt
+from app.models.notification_outbox import NotificationOutbox
+from app.tests.test_admin_onboarding_approve import (
+    _InMemoryStorage,
+    _base_prefix,
+    _configure_onboarding_test_env,
+    _create_and_submit_application,
+    _jwt,
+    onboarding_sqlite_harness,
+)
 
 
 def _setup(monkeypatch, *, throttle_minutes: int = 0) -> str:
     secret = "users-invite-secret"
-    monkeypatch.setenv("ONBOARDING_TOKEN_SECRET", "onboarding-secret")
-    monkeypatch.setenv("CLIENT_TOKEN_SECRET", secret)
-    monkeypatch.setenv("CLIENT_PUBLIC_KEY", secret)
-    monkeypatch.setenv("ADMIN_PUBLIC_KEY", secret)
-    monkeypatch.setenv("NEFT_AUTH_ALLOWED_ALGS", "HS256")
-    monkeypatch.setenv("APP_ENV", "dev")
+    _configure_onboarding_test_env(monkeypatch, secret)
     monkeypatch.setenv("CLIENT_INVITE_RESEND_THROTTLE_MINUTES", str(throttle_minutes))
     monkeypatch.setattr("app.routers.client_onboarding_documents_v1.OnboardingDocumentsStorage.from_env", lambda: _InMemoryStorage())
     monkeypatch.setattr("app.routers.admin_onboarding_review_v1.OnboardingDocumentsStorage.from_env", lambda: _InMemoryStorage())
@@ -49,70 +54,87 @@ def _bootstrap_client(api_client: TestClient, secret: str) -> tuple[str, str]:
 def test_client_invitations_flow(monkeypatch) -> None:
     secret = _setup(monkeypatch, throttle_minutes=3)
 
-    with TestClient(app) as api_client:
-        base, owner_token = _bootstrap_client(api_client, secret)
+    with onboarding_sqlite_harness(
+        ClientInvitation.__table__,
+        NotificationOutbox.__table__,
+        InvitationEmailDelivery.__table__,
+    ):
+        with TestClient(app) as api_client:
+            base, owner_token = _bootstrap_client(api_client, secret)
 
-        empty_list = api_client.get(f"{base}/client/users/invitations", headers={"Authorization": f"Bearer {owner_token}"})
-        assert empty_list.status_code == 200
-        assert empty_list.json()["items"] == []
+            empty_list = api_client.get(f"{base}/client/users/invitations", headers={"Authorization": f"Bearer {owner_token}"})
+            assert empty_list.status_code == 200
+            assert empty_list.json()["items"] == []
 
-        create = api_client.post(
-            f"{base}/client/users/invite",
-            headers={"Authorization": f"Bearer {owner_token}"},
-            json={"email": "new.user@example.com", "roles": ["CLIENT_MANAGER"]},
-        )
-        assert create.status_code == 201
-        invitation_id = create.json()["invitation_id"]
-        invitation_token = create.json()["token"]
+            create = api_client.post(
+                f"{base}/client/users/invite",
+                headers={"Authorization": f"Bearer {owner_token}"},
+                json={"email": "new.user@example.com", "roles": ["CLIENT_MANAGER"]},
+            )
+            assert create.status_code == 201
+            invitation_id = create.json()["invitation_id"]
+            assert create.json()["token"]
 
-        listed = api_client.get(
-            f"{base}/client/users/invitations?status=PENDING&sort=created_at_desc&limit=10&offset=0",
-            headers={"Authorization": f"Bearer {owner_token}"},
-        )
-        assert listed.status_code == 200
-        assert listed.json()["total"] >= 1
-        assert listed.json()["items"][0]["status"] == "PENDING"
+            listed = api_client.get(
+                f"{base}/client/users/invitations?status=PENDING&sort=created_at_desc&limit=10&offset=0",
+                headers={"Authorization": f"Bearer {owner_token}"},
+            )
+            assert listed.status_code == 200
+            assert listed.json()["total"] >= 1
+            assert listed.json()["items"][0]["status"] == "PENDING"
 
-        session = get_sessionmaker()()
-        invitation = session.query(ClientInvitation).filter(ClientInvitation.id == invitation_id).one()
-        before_sent = invitation.last_sent_at
-        session.close()
+            session = get_sessionmaker()()
+            invitation = session.query(ClientInvitation).filter(ClientInvitation.id == invitation_id).one()
+            before_sent = invitation.last_sent_at
+            session.close()
 
-        resend = api_client.post(
-            f"{base}/client/users/invitations/{invitation_id}/resend",
-            headers={"Authorization": f"Bearer {owner_token}"},
-            json={"expires_in_days": 7},
-        )
-        assert resend.status_code == 429
+            resend = api_client.post(
+                f"{base}/client/users/invitations/{invitation_id}/resend",
+                headers={"Authorization": f"Bearer {owner_token}"},
+                json={"expires_in_days": 7},
+            )
+            assert resend.status_code == 429
 
-        session = get_sessionmaker()()
-        invitation = session.query(ClientInvitation).filter(ClientInvitation.id == invitation_id).one()
-        invitation.last_sent_at = datetime.now(timezone.utc).replace(year=2020)
-        session.commit()
-        session.close()
+            session = get_sessionmaker()()
+            invitation = session.query(ClientInvitation).filter(ClientInvitation.id == invitation_id).one()
+            invitation.last_sent_at = datetime.now(timezone.utc).replace(year=2020)
+            session.commit()
+            session.close()
 
-        resend = api_client.post(
-            f"{base}/client/users/invitations/{invitation_id}/resend",
-            headers={"Authorization": f"Bearer {owner_token}"},
-            json={"expires_in_days": 7},
-        )
-        assert resend.status_code == 200
+            resend = api_client.post(
+                f"{base}/client/users/invitations/{invitation_id}/resend",
+                headers={"Authorization": f"Bearer {owner_token}"},
+                json={"expires_in_days": 7},
+            )
+            assert resend.status_code == 200
 
-        session = get_sessionmaker()()
-        invitation = session.query(ClientInvitation).filter(ClientInvitation.id == invitation_id).one()
-        assert int(invitation.resent_count or 0) == 1
-        assert invitation.last_sent_at is not None
-        assert invitation.last_sent_at != before_sent
+            session = get_sessionmaker()()
+            invitation = session.query(ClientInvitation).filter(ClientInvitation.id == invitation_id).one()
+            resent_event = (
+                session.query(NotificationOutbox)
+                .filter(
+                    NotificationOutbox.aggregate_id == invitation_id,
+                    NotificationOutbox.event_type == "INVITATION_RESENT",
+                )
+                .order_by(NotificationOutbox.created_at.desc())
+                .first()
+            )
+            accept_url = ((resent_event.payload or {}).get("variables") or {}).get("accept_url") if resent_event else None
+            latest_token = parse_qs(urlparse(accept_url).query).get("token", [None])[0] if accept_url else None
+            assert int(invitation.resent_count or 0) == 1
+            assert invitation.last_sent_at is not None
+            assert invitation.last_sent_at != before_sent
+            assert latest_token
 
-        revoke = api_client.post(
-            f"{base}/client/users/invitations/{invitation_id}/revoke",
-            headers={"Authorization": f"Bearer {owner_token}"},
-        )
-        assert revoke.status_code == 200
-        session.refresh(invitation)
-        assert invitation.status == "REVOKED"
+            revoke = api_client.post(
+                f"{base}/client/users/invitations/{invitation_id}/revoke",
+                headers={"Authorization": f"Bearer {owner_token}"},
+            )
+            assert revoke.status_code == 200
+            session.refresh(invitation)
+            assert invitation.status == "REVOKED"
 
-        accept = api_client.post(f"{base}/auth/invitations/accept", json={"token": invitation_token})
-        assert accept.status_code == 409
-        assert accept.json()["detail"] == "invite_revoked"
-        session.close()
+            accept = api_client.post(f"{base}/auth/invitations/accept", json={"token": latest_token})
+            assert accept.status_code == 409
+            assert accept.json()["error"]["message"] == "invite_revoked"
+            session.close()

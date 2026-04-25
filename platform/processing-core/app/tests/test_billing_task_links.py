@@ -1,25 +1,17 @@
 from __future__ import annotations
 
 import pytest
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
 
-from app.db import Base
 from app.models.billing_job_run import BillingJobRun, BillingJobStatus, BillingJobType
 from app.models.billing_task_link import BillingTaskLink, BillingTaskStatus, BillingTaskType
 from app.services.billing_task_links import BillingTaskLinkService
+from app.tests._scoped_router_harness import scoped_session_context
 
 
 @pytest.fixture
 def session():
-    engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
-    Base.metadata.create_all(engine)
-    SessionLocal = sessionmaker(bind=engine)
-    db = SessionLocal()
-    try:
+    with scoped_session_context(tables=(BillingJobRun.__table__, BillingTaskLink.__table__)) as db:
         yield db
-    finally:
-        db.close()
 
 
 def test_task_link_upsert_updates_status(session):

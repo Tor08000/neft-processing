@@ -4,6 +4,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
+from app.models.cases import CasePriority, CaseQueue, CaseStatus
 from app.models.support_ticket import SupportTicketPriority, SupportTicketSlaStatus, SupportTicketStatus
 
 
@@ -61,6 +62,11 @@ class SupportTicketOut(BaseModel):
     id: str
     org_id: str
     created_by_user_id: str
+    case_id: str | None = None
+    case_status: CaseStatus | None = None
+    case_queue: CaseQueue | None = None
+    case_priority: CasePriority | None = None
+    case_updated_at: datetime | None = None
     subject: str
     message: str
     status: SupportTicketStatus

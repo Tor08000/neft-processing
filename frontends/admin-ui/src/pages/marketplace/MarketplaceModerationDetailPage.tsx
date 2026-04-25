@@ -9,6 +9,12 @@ import {
   fetchServiceDetail,
   rejectMarketplaceEntity,
 } from "../../api/marketplaceModeration";
+import { Loader } from "../../components/Loader/Loader";
+import { EmptyState } from "../../components/common/EmptyState";
+import { ErrorState } from "../../components/common/ErrorState";
+import { Toast } from "../../components/Toast/Toast";
+import { useToast } from "../../components/Toast/useToast";
+import { useAdmin } from "../../admin/AdminContext";
 import type {
   MarketplaceModerationAuditItem,
   MarketplaceModerationEntityType,
@@ -18,21 +24,12 @@ import type {
   MarketplaceServiceDetail,
 } from "../../types/marketplaceModeration";
 import { formatDateTime } from "../../utils/format";
-import { Loader } from "../../components/Loader/Loader";
-import { Toast } from "../../components/Toast/Toast";
-import { useToast } from "../../components/Toast/useToast";
-
-const reasonOptions: Array<{ value: MarketplaceModerationReasonCode; label: string }> = [
-  { value: "INVALID_CONTENT", label: "Invalid content" },
-  { value: "MISSING_INFO", label: "Missing info" },
-  { value: "POLICY_VIOLATION", label: "Policy violation" },
-  { value: "DUPLICATE", label: "Duplicate" },
-  { value: "WRONG_CATEGORY", label: "Wrong category" },
-  { value: "PRICING_ISSUE", label: "Pricing issue" },
-  { value: "GEO_SCOPE_ISSUE", label: "Geo scope issue" },
-  { value: "ENTITLEMENTS_ISSUE", label: "Entitlements issue" },
-  { value: "OTHER", label: "Other" },
-];
+import { describeRuntimeError } from "../../api/runtimeError";
+import {
+  moderationDetailCopy,
+  moderationEntityLabels,
+  moderationReasonOptions,
+} from "./marketplaceModerationCopy";
 
 const getEntityTitle = (
   entityType: MarketplaceModerationEntityType,
@@ -41,15 +38,24 @@ const getEntityTitle = (
   if (!detail) return "";
   if (entityType === "OFFER") {
     const offerDetail = detail as MarketplaceOfferDetail;
-    return offerDetail.title_override?.trim() || "Offer";
+    return offerDetail.title_override?.trim() || moderationEntityLabels[entityType];
   }
   const titledDetail = detail as MarketplaceProductCardDetail | MarketplaceServiceDetail;
   return titledDetail.title;
 };
 
+const DetailEmptyState: React.FC<{ title: string; description: string }> = ({ title, description }) => (
+  <EmptyState title={title} description={description} />
+);
+
 const AuditTimeline: React.FC<{ items: MarketplaceModerationAuditItem[] }> = ({ items }) => {
   if (!items.length) {
-    return <div className="muted">Нет событий модерации.</div>;
+    return (
+      <DetailEmptyState
+        title={moderationDetailCopy.audit.emptyTitle}
+        description={moderationDetailCopy.audit.emptyDescription}
+      />
+    );
   }
   return (
     <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 12 }}>
@@ -60,16 +66,26 @@ const AuditTimeline: React.FC<{ items: MarketplaceModerationAuditItem[] }> = ({ 
             <span className="muted">{formatDateTime(item.created_at)}</span>
           </div>
           <div className="muted" style={{ marginTop: 4 }}>
-            {item.actor_role ? `Actor: ${item.actor_role}` : ""}{item.actor_user_id ? ` (${item.actor_user_id})` : ""}
+            {item.actor_role ? `${moderationDetailCopy.audit.actor}: ${item.actor_role}` : ""}
+            {item.actor_user_id ? ` (${item.actor_user_id})` : ""}
           </div>
           <div style={{ marginTop: 8, display: "grid", gap: 4 }}>
             {(item.before_status || item.after_status) && (
               <div>
-                Status: {item.before_status ?? "—"} → {item.after_status ?? "—"}
+                {moderationDetailCopy.audit.status}: {item.before_status ?? moderationDetailCopy.values.fallback} →{" "}
+                {item.after_status ?? moderationDetailCopy.values.fallback}
               </div>
             )}
-            {item.reason_code && <div>Reason: {item.reason_code}</div>}
-            {item.comment && <div>Comment: {item.comment}</div>}
+            {item.reason_code && (
+              <div>
+                {moderationDetailCopy.audit.reason}: {item.reason_code}
+              </div>
+            )}
+            {item.comment && (
+              <div>
+                {moderationDetailCopy.audit.comment}: {item.comment}
+              </div>
+            )}
           </div>
         </li>
       ))}
@@ -96,31 +112,39 @@ const RejectModal: React.FC<RejectModalProps> = ({ open, title, onConfirm, onCan
   return (
     <div className="modal-backdrop" role="dialog" aria-modal="true">
       <div className="modal">
-        <h3 style={{ marginTop: 0 }}>Reject {title}</h3>
-        <label style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 12 }}>
-          <span>Reason code</span>
-          <select value={reason} onChange={(event) => setReason(event.target.value as MarketplaceModerationReasonCode)}>
-            <option value="">Select reason</option>
-            {reasonOptions.map((option) => (
+        <h3 style={{ marginTop: 0 }}>{moderationDetailCopy.rejectModal.title(title)}</h3>
+        <label
+          htmlFor="moderation-reject-reason"
+          style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 12 }}
+        >
+          <span>{moderationDetailCopy.rejectModal.reasonLabel}</span>
+          <select
+            id="moderation-reject-reason"
+            value={reason}
+            onChange={(event) => setReason(event.target.value as MarketplaceModerationReasonCode)}
+          >
+            <option value="">{moderationDetailCopy.rejectModal.reasonPlaceholder}</option>
+            {moderationReasonOptions.map((option) => (
               <option key={option.value} value={option.value}>
                 {option.label}
               </option>
             ))}
           </select>
         </label>
-        <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-          <span>Comment</span>
+        <label htmlFor="moderation-reject-comment" style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <span>{moderationDetailCopy.rejectModal.commentLabel}</span>
           <textarea
+            id="moderation-reject-comment"
             value={comment}
             onChange={(event) => setComment(event.target.value)}
             rows={4}
-            placeholder="Укажите причину отклонения (10+ символов)"
+            placeholder={moderationDetailCopy.rejectModal.commentPlaceholder}
             style={{ resize: "vertical" }}
           />
         </label>
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16 }}>
           <button type="button" className="ghost" onClick={onCancel}>
-            Отмена
+            {moderationDetailCopy.rejectModal.cancel}
           </button>
           <button
             type="button"
@@ -141,7 +165,7 @@ const RejectModal: React.FC<RejectModalProps> = ({ open, title, onConfirm, onCan
               cursor: canSubmit ? "pointer" : "not-allowed",
             }}
           >
-            Reject
+            {moderationDetailCopy.rejectModal.submit}
           </button>
         </div>
       </div>
@@ -152,27 +176,27 @@ const RejectModal: React.FC<RejectModalProps> = ({ open, title, onConfirm, onCan
 const ProductDetails: React.FC<{ data: MarketplaceProductCardDetail }> = ({ data }) => (
   <div className="card" style={{ display: "grid", gap: 12 }}>
     <div>
-      <strong>Description</strong>
-      <p>{data.description || "—"}</p>
+      <strong>{moderationDetailCopy.sections.description}</strong>
+      <p>{data.description || moderationDetailCopy.values.fallback}</p>
     </div>
     <div>
-      <strong>Category</strong>
+      <strong>{moderationDetailCopy.sections.category}</strong>
       <div>{data.category}</div>
     </div>
     <div>
-      <strong>Tags</strong>
-      <div>{data.tags.length ? data.tags.join(", ") : "—"}</div>
+      <strong>{moderationDetailCopy.sections.tags}</strong>
+      <div>{data.tags.length ? data.tags.join(", ") : moderationDetailCopy.values.fallback}</div>
     </div>
     <div>
-      <strong>Attributes</strong>
+      <strong>{moderationDetailCopy.sections.attributes}</strong>
       <pre>{JSON.stringify(data.attributes, null, 2)}</pre>
     </div>
     <div>
-      <strong>Variants</strong>
+      <strong>{moderationDetailCopy.sections.variants}</strong>
       <pre>{JSON.stringify(data.variants, null, 2)}</pre>
     </div>
     <div>
-      <strong>Media</strong>
+      <strong>{moderationDetailCopy.sections.media}</strong>
       {data.media.length ? (
         <ul>
           {data.media.map((item) => (
@@ -182,7 +206,10 @@ const ProductDetails: React.FC<{ data: MarketplaceProductCardDetail }> = ({ data
           ))}
         </ul>
       ) : (
-        <div className="muted">Нет медиа.</div>
+        <DetailEmptyState
+          title={moderationDetailCopy.empty.mediaTitle}
+          description={moderationDetailCopy.empty.mediaDescription}
+        />
       )}
     </div>
   </div>
@@ -191,50 +218,57 @@ const ProductDetails: React.FC<{ data: MarketplaceProductCardDetail }> = ({ data
 const ServiceDetails: React.FC<{ data: MarketplaceServiceDetail }> = ({ data }) => (
   <div className="card" style={{ display: "grid", gap: 12 }}>
     <div>
-      <strong>Description</strong>
-      <p>{data.description || "—"}</p>
+      <strong>{moderationDetailCopy.sections.description}</strong>
+      <p>{data.description || moderationDetailCopy.values.fallback}</p>
     </div>
     <div>
-      <strong>Duration</strong>
+      <strong>{moderationDetailCopy.sections.duration}</strong>
       <div>{data.duration_min} min</div>
     </div>
     <div>
-      <strong>Requirements</strong>
-      <div>{data.requirements || "—"}</div>
+      <strong>{moderationDetailCopy.sections.requirements}</strong>
+      <div>{data.requirements || moderationDetailCopy.values.fallback}</div>
     </div>
     <div>
-      <strong>Locations</strong>
+      <strong>{moderationDetailCopy.sections.locations}</strong>
       {data.locations.length ? (
         <ul>
           {data.locations.map((location) => (
             <li key={location.id}>
-              {location.address || location.location_id} {location.is_active ? "" : "(inactive)"}
+              {location.address || location.location_id}{" "}
+              {location.is_active ? "" : moderationDetailCopy.values.inactiveSuffix}
             </li>
           ))}
         </ul>
       ) : (
-        <div className="muted">Нет локаций.</div>
+        <DetailEmptyState
+          title={moderationDetailCopy.empty.locationsTitle}
+          description={moderationDetailCopy.empty.locationsDescription}
+        />
       )}
     </div>
     <div>
-      <strong>Schedule preview</strong>
+      <strong>{moderationDetailCopy.sections.schedulePreview}</strong>
       {data.schedule ? (
         <div style={{ display: "grid", gap: 8 }}>
           <div>
-            Rules: {data.schedule.rules.length}
+            {moderationDetailCopy.sections.rules}: {data.schedule.rules.length}
             <pre>{JSON.stringify(data.schedule.rules, null, 2)}</pre>
           </div>
           <div>
-            Exceptions: {data.schedule.exceptions.length}
+            {moderationDetailCopy.sections.exceptions}: {data.schedule.exceptions.length}
             <pre>{JSON.stringify(data.schedule.exceptions, null, 2)}</pre>
           </div>
         </div>
       ) : (
-        <div className="muted">Нет расписания.</div>
+        <DetailEmptyState
+          title={moderationDetailCopy.empty.scheduleTitle}
+          description={moderationDetailCopy.empty.scheduleDescription}
+        />
       )}
     </div>
     <div>
-      <strong>Media</strong>
+      <strong>{moderationDetailCopy.sections.media}</strong>
       {data.media.length ? (
         <ul>
           {data.media.map((item) => (
@@ -244,7 +278,10 @@ const ServiceDetails: React.FC<{ data: MarketplaceServiceDetail }> = ({ data }) 
           ))}
         </ul>
       ) : (
-        <div className="muted">Нет медиа.</div>
+        <DetailEmptyState
+          title={moderationDetailCopy.empty.mediaTitle}
+          description={moderationDetailCopy.empty.mediaDescription}
+        />
       )}
     </div>
   </div>
@@ -253,41 +290,42 @@ const ServiceDetails: React.FC<{ data: MarketplaceServiceDetail }> = ({ data }) 
 const OfferDetails: React.FC<{ data: MarketplaceOfferDetail }> = ({ data }) => (
   <div className="card" style={{ display: "grid", gap: 12 }}>
     <div>
-      <strong>Subject</strong>
+      <strong>{moderationDetailCopy.sections.subject}</strong>
       <div>
         {data.subject_type} · {data.subject_id}
       </div>
     </div>
     <div>
-      <strong>Description</strong>
-      <div>{data.description_override || "—"}</div>
+      <strong>{moderationDetailCopy.sections.description}</strong>
+      <div>{data.description_override || moderationDetailCopy.values.fallback}</div>
     </div>
     <div>
-      <strong>Price model</strong>
+      <strong>{moderationDetailCopy.sections.priceModel}</strong>
       <div>{data.price_model}</div>
     </div>
     <div>
-      <strong>Price</strong>
+      <strong>{moderationDetailCopy.sections.price}</strong>
       <div>
-        {data.price_amount ?? data.price_min ?? "—"} {data.currency}
+        {data.price_amount ?? data.price_min ?? moderationDetailCopy.values.fallback} {data.currency}
       </div>
     </div>
     <div>
-      <strong>Terms</strong>
+      <strong>{moderationDetailCopy.sections.terms}</strong>
       <pre>{JSON.stringify(data.terms, null, 2)}</pre>
     </div>
     <div>
-      <strong>Geo scope</strong>
+      <strong>{moderationDetailCopy.sections.geoScope}</strong>
       <div>{data.geo_scope}</div>
     </div>
     <div>
-      <strong>Entitlements</strong>
+      <strong>{moderationDetailCopy.sections.entitlements}</strong>
       <div>{data.entitlement_scope}</div>
     </div>
     <div>
-      <strong>Validity window</strong>
+      <strong>{moderationDetailCopy.sections.validityWindow}</strong>
       <div>
-        {data.valid_from ? formatDateTime(data.valid_from) : "—"} → {data.valid_to ? formatDateTime(data.valid_to) : "—"}
+        {data.valid_from ? formatDateTime(data.valid_from) : moderationDetailCopy.values.fallback} →{" "}
+        {data.valid_to ? formatDateTime(data.valid_to) : moderationDetailCopy.values.fallback}
       </div>
     </div>
   </div>
@@ -301,8 +339,10 @@ export const MarketplaceModerationDetailPage: React.FC<ModerationDetailPageProps
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { profile } = useAdmin();
   const { toast, showToast } = useToast();
   const [isRejectOpen, setRejectOpen] = useState(false);
+  const canApproveMarketplace = Boolean(profile?.permissions?.marketplace?.approve) && !profile?.read_only;
 
   const isProduct = entityType === "PRODUCT";
   const isService = entityType === "SERVICE";
@@ -350,7 +390,7 @@ export const MarketplaceModerationDetailPage: React.FC<ModerationDetailPageProps
       return approveMarketplaceEntity(entityType, id);
     },
     onSuccess: () => {
-      showToast("success", "Approved");
+      showToast("success", moderationDetailCopy.toasts.approved);
       queryClient.invalidateQueries({ queryKey: ["marketplaceModerationQueue"] });
       if (isProduct) {
         queryClient.invalidateQueries({ queryKey: ["mp", "moderation", "product", id] });
@@ -363,7 +403,8 @@ export const MarketplaceModerationDetailPage: React.FC<ModerationDetailPageProps
       }
       queryClient.invalidateQueries({ queryKey: ["marketplaceModerationAudit", entityType, id] });
     },
-    onError: (err) => showToast("error", err instanceof Error ? err.message : "Ошибка подтверждения"),
+    onError: (err) =>
+      showToast("error", describeRuntimeError(err, moderationDetailCopy.errors.approve).description),
   });
 
   const rejectMutation = useMutation({
@@ -372,7 +413,7 @@ export const MarketplaceModerationDetailPage: React.FC<ModerationDetailPageProps
       return rejectMarketplaceEntity(entityType, id, payload);
     },
     onSuccess: () => {
-      showToast("success", "Rejected");
+      showToast("success", moderationDetailCopy.toasts.rejected);
       queryClient.invalidateQueries({ queryKey: ["marketplaceModerationQueue"] });
       if (isProduct) {
         queryClient.invalidateQueries({ queryKey: ["mp", "moderation", "product", id] });
@@ -385,11 +426,24 @@ export const MarketplaceModerationDetailPage: React.FC<ModerationDetailPageProps
       }
       queryClient.invalidateQueries({ queryKey: ["marketplaceModerationAudit", entityType, id] });
     },
-    onError: (err) => showToast("error", err instanceof Error ? err.message : "Ошибка отклонения"),
+    onError: (err) =>
+      showToast("error", describeRuntimeError(err, moderationDetailCopy.errors.reject).description),
   });
 
   const detail = productQuery.data ?? serviceQuery.data ?? offerQuery.data;
   const activeQuery = isProduct ? productQuery : isService ? serviceQuery : offerQuery;
+  const detailError = activeQuery.error
+    ? describeRuntimeError(
+        activeQuery.error,
+        "Moderation detail owner route returned an internal error. Retry or inspect request metadata below.",
+      )
+    : null;
+  const auditError = auditQuery.error
+    ? describeRuntimeError(
+        auditQuery.error,
+        "Moderation audit owner route returned an internal error. Retry or inspect request metadata below.",
+      )
+    : null;
 
   const title = useMemo(() => getEntityTitle(entityType, detail), [detail, entityType]);
 
@@ -397,69 +451,101 @@ export const MarketplaceModerationDetailPage: React.FC<ModerationDetailPageProps
     <div>
       <div className="page-header" style={{ gap: 12, alignItems: "center" }}>
         <div>
-          <h1 style={{ marginBottom: 4 }}>{title || "Moderation detail"}</h1>
-          {detail && (
+          <h1 style={{ marginBottom: 4 }}>{title || moderationDetailCopy.fallbackTitle}</h1>
+          {detail ? (
             <div className="muted">
-              {entityType} · {detail.status} · Partner {detail.partner_id}
+              {moderationDetailCopy.subtitle(entityType, detail.status, detail.partner_id)}
             </div>
-          )}
+          ) : null}
         </div>
         <div style={{ display: "flex", gap: 8, marginLeft: "auto" }}>
           <button type="button" className="ghost" onClick={() => navigate(-1)}>
-            Back
+            {moderationDetailCopy.actions.back}
           </button>
-          <button
-            type="button"
-            className="neft-btn-secondary"
-            onClick={() => approveMutation.mutate()}
-            disabled={approveMutation.isPending || rejectMutation.isPending}
-          >
-            Approve
-          </button>
-          <button
-            type="button"
-            className="ghost"
-            onClick={() => setRejectOpen(true)}
-            disabled={approveMutation.isPending || rejectMutation.isPending}
-            style={{ color: "#dc2626" }}
-          >
-            Reject
-          </button>
+          {canApproveMarketplace ? (
+            <>
+              <button
+                type="button"
+                className="neft-btn-secondary"
+                onClick={() => approveMutation.mutate()}
+                disabled={approveMutation.isPending || rejectMutation.isPending || !detail}
+              >
+                {moderationDetailCopy.actions.approve}
+              </button>
+              <button
+                type="button"
+                className="ghost"
+                onClick={() => setRejectOpen(true)}
+                disabled={approveMutation.isPending || rejectMutation.isPending || !detail}
+                style={{ color: "#dc2626" }}
+              >
+                {moderationDetailCopy.actions.reject}
+              </button>
+            </>
+          ) : (
+            <span className="neft-chip neft-chip-muted">Read-only moderation</span>
+          )}
         </div>
-        {activeQuery.isFetching && <Loader label="Обновляем" />}
+        {activeQuery.isFetching && !activeQuery.isLoading ? <Loader label={moderationDetailCopy.loading.detail} /> : null}
       </div>
 
       <Toast toast={toast} />
 
-      {activeQuery.error && <div style={{ color: "#dc2626" }}>{activeQuery.error.message}</div>}
+      {activeQuery.isLoading ? <Loader label={moderationDetailCopy.loading.detail} /> : null}
 
-      {detail && (
+      {detailError ? (
+        <ErrorState
+          title={moderationDetailCopy.errors.detailTitle}
+          description={detailError.description}
+          actionLabel={moderationDetailCopy.actions.retry}
+          onAction={() => {
+            void activeQuery.refetch();
+          }}
+          details={detailError.details}
+          requestId={detailError.requestId}
+          correlationId={detailError.correlationId}
+        />
+      ) : null}
+
+      {detail ? (
         <div style={{ display: "grid", gap: 16 }}>
           {entityType === "PRODUCT" && <ProductDetails data={detail as MarketplaceProductCardDetail} />}
           {entityType === "SERVICE" && <ServiceDetails data={detail as MarketplaceServiceDetail} />}
           {entityType === "OFFER" && <OfferDetails data={detail as MarketplaceOfferDetail} />}
 
           <div className="card" style={{ display: "grid", gap: 12 }}>
-            <h3 style={{ margin: 0 }}>Audit timeline</h3>
-            {auditQuery.isLoading ? <Loader label="Загружаем историю" /> : null}
-            {auditQuery.error ? (
-              <div style={{ color: "#dc2626" }}>{auditQuery.error.message}</div>
+            <h3 style={{ margin: 0 }}>{moderationDetailCopy.sections.auditTimeline}</h3>
+            {auditQuery.isLoading ? <Loader label={moderationDetailCopy.loading.audit} /> : null}
+            {auditError ? (
+              <ErrorState
+                title={moderationDetailCopy.errors.auditTitle}
+                description={auditError.description}
+                actionLabel={moderationDetailCopy.actions.retry}
+                onAction={() => {
+                  void auditQuery.refetch();
+                }}
+                details={auditError.details}
+                requestId={auditError.requestId}
+                correlationId={auditError.correlationId}
+              />
             ) : (
               <AuditTimeline items={auditQuery.data?.items ?? []} />
             )}
           </div>
         </div>
-      )}
+      ) : null}
 
-      <RejectModal
-        open={isRejectOpen}
-        title={title || entityType}
-        onCancel={() => setRejectOpen(false)}
-        onConfirm={(payload) => {
-          rejectMutation.mutate(payload);
-          setRejectOpen(false);
-        }}
-      />
+      {canApproveMarketplace ? (
+        <RejectModal
+          open={isRejectOpen}
+          title={title || moderationEntityLabels[entityType]}
+          onCancel={() => setRejectOpen(false)}
+          onConfirm={(payload) => {
+            rejectMutation.mutate(payload);
+            setRejectOpen(false);
+          }}
+        />
+      ) : null}
     </div>
   );
 };

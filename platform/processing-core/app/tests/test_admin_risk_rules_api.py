@@ -1,35 +1,51 @@
-import os
-
 import pytest
+from fastapi import APIRouter, Depends
 from fastapi.testclient import TestClient
+from sqlalchemy.orm import Session
 
-TEST_DB_URL = os.getenv("DATABASE_URL")
-
-if TEST_DB_URL and not TEST_DB_URL.startswith("sqlite"):
-    pytest.skip("admin risk rules API tests expect isolated SQLite database", allow_module_level=True)
-
-os.environ.setdefault("DATABASE_URL", "sqlite+pysqlite:///:memory:")
-
-from app.db import Base, engine  # noqa: E402
-from app.main import app  # noqa: E402
+from app import services
+from app.api.dependencies.admin import require_admin_user
+from app.models.risk_rule import RiskRule, RiskRuleAudit, RiskRuleVersion
+from app.routers.admin.risk_rules import router as admin_risk_rules_router
+from app.tests._scoped_router_harness import router_client_context, scoped_session_context
 
 
-@pytest.fixture(autouse=True)
-def clean_db():
-    Base.metadata.drop_all(bind=engine)
-    Base.metadata.create_all(bind=engine)
-    yield
-    Base.metadata.drop_all(bind=engine)
+ADMIN_RISK_RULES_TEST_TABLES = (
+    RiskRule.__table__,
+    RiskRuleVersion.__table__,
+    RiskRuleAudit.__table__,
+)
+
+
+def _admin_risk_rules_test_router() -> APIRouter:
+    router = APIRouter(prefix="/api/v1/admin", dependencies=[Depends(require_admin_user)])
+    router.include_router(admin_risk_rules_router)
+    return router
 
 
 @pytest.fixture
-def client(admin_auth_headers: dict):
-    with TestClient(app) as api_client:
+def db_session() -> Session:
+    with scoped_session_context(tables=ADMIN_RISK_RULES_TEST_TABLES) as session:
+        yield session
+
+
+@pytest.fixture
+def client(db_session: Session, admin_auth_headers: dict):
+    with router_client_context(
+        router=_admin_risk_rules_test_router(),
+        db_session=db_session,
+        dependency_overrides={require_admin_user: services.admin_auth.require_admin},
+    ) as api_client:
         api_client.headers.update(admin_auth_headers)
         yield api_client
 
 
-def _rule_payload(name: str = "rule-1", scope: str = "GLOBAL", subject: str | None = None, enabled: bool = True):
+def _rule_payload(
+    name: str = "rule-1",
+    scope: str = "GLOBAL",
+    subject: str | None = None,
+    enabled: bool = True,
+):
     return {
         "description": "test rule",
         "dsl": {
@@ -100,9 +116,12 @@ def test_validation_requires_window_for_aggregated_metrics(client: TestClient):
     assert resp.json()["detail"] == "window must be provided for aggregated metrics"
 
 
-def test_unauthorized_access_denied():
-    with TestClient(app) as api_client:
+def test_unauthorized_access_denied(db_session: Session):
+    with router_client_context(
+        router=_admin_risk_rules_test_router(),
+        db_session=db_session,
+        dependency_overrides={require_admin_user: services.admin_auth.require_admin},
+    ) as api_client:
         resp = api_client.get("/api/v1/admin/risk/rules")
         assert resp.status_code == 401
         assert resp.json() == {"detail": "Missing bearer token"}
-

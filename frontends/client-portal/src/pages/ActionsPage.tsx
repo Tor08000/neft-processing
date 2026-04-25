@@ -1,30 +1,46 @@
-import { useEffect, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { acknowledgeDocument, fetchDocuments } from "../api/documents";
+
 import { fetchExports } from "../api/exports";
-import { acknowledgeReconciliationRequest } from "../api/reconciliation";
 import { createInvoiceMessage } from "../api/invoices";
+import { acknowledgeReconciliationRequest } from "../api/reconciliation";
+import { acknowledgeClientDocument, listClientDocuments, type ClientDocumentListItem } from "../api/client/documents";
 import { useAuth } from "../auth/AuthContext";
-import { AppErrorState, AppLoadingState } from "../components/states";
-import type { ClientDocumentSummary } from "../types/documents";
+import { Table, type Column } from "../components/common/Table";
 import type { AccountingExportItem } from "../types/exports";
+import { getAckLikeState, getEdoTone, hasLegacyLikeAttention } from "../utils/clientDocuments";
+import { getDocumentTypeLabel, getEdoStatusLabel, getSignatureStatusLabel, getSignatureTone } from "../utils/documents";
 import { canAccessFinance } from "../utils/roles";
 
-const DOCUMENT_TYPES = [
-  { value: "INVOICE_PDF", label: "Invoice PDF" },
-  { value: "ACT_RECONCILIATION", label: "Reconciliation act" },
-];
+const ACTIONS_PAGE_DOCUMENT_LIMIT = 50;
+
+function describeCanonicalAction(actionCode: string | null | undefined): string {
+  if (actionCode === "SIGN") return "Подписать";
+  if (actionCode === "SEND_TO_EDO") return "Отправить";
+  if (actionCode === "UPLOAD_OR_SUBMIT") return "Подготовить";
+  return "Требует действия";
+}
+
+type ActionInboxItem = {
+  key: string;
+  contour: "document" | "export";
+  title: string;
+  typeLabel: string;
+  attention: ReactNode;
+  actionLabel: string;
+  href: string;
+};
 
 export function ActionsPage() {
   const { user } = useAuth();
   const [documentId, setDocumentId] = useState("");
-  const [documentType, setDocumentType] = useState(DOCUMENT_TYPES[0].value);
   const [reconciliationId, setReconciliationId] = useState("");
   const [invoiceId, setInvoiceId] = useState("");
   const [supportMessage, setSupportMessage] = useState("");
   const [status, setStatus] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [documents, setDocuments] = useState<ClientDocumentSummary[]>([]);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [documents, setDocuments] = useState<ClientDocumentListItem[]>([]);
   const [exports, setExports] = useState<AccountingExportItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -35,51 +51,139 @@ export function ActionsPage() {
   useEffect(() => {
     if (!user) return;
     setIsLoading(true);
-    Promise.all([fetchDocuments(user, { limit: 50, offset: 0 }), fetchExports(user)])
-      .then(([docs, exportsResp]) => {
-        setDocuments(docs.items);
-        setExports(exportsResp.items);
+    setLoadError(null);
+    Promise.all([
+      listClientDocuments({ direction: "inbound", limit: ACTIONS_PAGE_DOCUMENT_LIMIT, offset: 0 }, user),
+      listClientDocuments({ direction: "outbound", limit: ACTIONS_PAGE_DOCUMENT_LIMIT, offset: 0 }, user),
+      fetchExports(user),
+    ])
+      .then(([inboundDocs, outboundDocs, exportsResp]) => {
+        setDocuments([...(inboundDocs.items ?? []), ...(outboundDocs.items ?? [])]);
+        setExports(exportsResp.items ?? []);
       })
-      .catch((err: Error) => setError(err.message))
+      .catch((err: Error) => setLoadError(err.message))
       .finally(() => setIsLoading(false));
   }, [user]);
 
+  const actionableDocuments = useMemo(() => documents.filter((doc) => hasLegacyLikeAttention(doc)), [documents]);
+  const actionableExports = useMemo(
+    () => exports.filter((item) => item.reconciliation_status === "mismatch" || item.status === "FAILED"),
+    [exports],
+  );
+
+  const inboxItems = useMemo<ActionInboxItem[]>(() => {
+    const documentItems = actionableDocuments.map((doc) => {
+      const ackLikeState = getAckLikeState(doc);
+      return {
+        key: `document:${doc.id}`,
+        contour: "document" as const,
+        title: doc.title,
+        typeLabel: doc.doc_type ? getDocumentTypeLabel(doc.doc_type) : "—",
+        attention: (
+          <div className="table-row-actions">
+            {ackLikeState ? (
+              <span className={`pill pill--${getSignatureTone(ackLikeState)}`}>{getSignatureStatusLabel(ackLikeState)}</span>
+            ) : null}
+            {doc.edo_status ? (
+              <span className={`pill pill--${getEdoTone(doc)}`}>{getEdoStatusLabel(doc.edo_status)}</span>
+            ) : null}
+            {doc.requires_action ? (
+              <span className="pill pill--warning">{describeCanonicalAction(doc.action_code)}</span>
+            ) : null}
+          </div>
+        ),
+        actionLabel: doc.requires_action ? describeCanonicalAction(doc.action_code) : "Открыть документ",
+        href: `/documents/${doc.id}`,
+      };
+    });
+    const exportItems = actionableExports.map((item) => ({
+      key: `export:${item.id ?? item.type ?? ""}`,
+      contour: "export" as const,
+      title: item.type ?? item.title ?? "—",
+      typeLabel: "Экспорт",
+      attention: <span className="pill pill--warning">{item.reconciliation_status === "mismatch" ? "Требует сверки" : "Ошибка выгрузки"}</span>,
+      actionLabel: item.reconciliation_status === "mismatch" ? "Проверить выгрузку" : "Открыть ошибку",
+      href: item.id ? `/exports/${item.id}` : "/exports",
+    }));
+    return [...documentItems, ...exportItems];
+  }, [actionableDocuments, actionableExports]);
+
+  const inboxColumns = useMemo<Column<ActionInboxItem>[]>(
+    () => [
+      {
+        key: "contour",
+        title: "Контур",
+        render: (item) => (item.contour === "document" ? "Документ" : "Экспорт"),
+      },
+      {
+        key: "title",
+        title: "Элемент",
+        render: (item) => item.title,
+      },
+      {
+        key: "typeLabel",
+        title: "Тип",
+        render: (item) => item.typeLabel,
+      },
+      {
+        key: "attention",
+        title: "Статус",
+        render: (item) => item.attention,
+      },
+      {
+        key: "actionLabel",
+        title: "Действие",
+        render: (item) => item.actionLabel,
+      },
+      {
+        key: "open",
+        title: "",
+        render: (item) => (
+          <div className="table-row-actions">
+            <Link to={item.href}>Открыть</Link>
+          </div>
+        ),
+      },
+    ],
+    [],
+  );
+
   const handleAcknowledgeDocument = async () => {
     if (!user) return;
-    setError(null);
+    setActionError(null);
     setStatus("queued");
     try {
-      await acknowledgeDocument(documentType, documentId, user);
+      await acknowledgeClientDocument(documentId, user);
       setStatus("success: Документ подтвержден. correlation_id доступен в audit.");
     } catch (err) {
-      setError((err as Error).message);
+      setActionError((err as Error).message);
       setStatus("failed");
     }
   };
 
   const handleConfirmExport = async () => {
     if (!user) return;
-    setError(null);
+    setActionError(null);
     setStatus("queued");
     try {
       await acknowledgeReconciliationRequest(reconciliationId, user);
       setStatus("success: Экспорт подтвержден как полученный.");
     } catch (err) {
-      setError((err as Error).message);
+      setActionError((err as Error).message);
       setStatus("failed");
     }
   };
 
   const handleSupportRequest = async () => {
     if (!user) return;
-    setError(null);
+    setActionError(null);
     setStatus("queued");
     try {
       const resp = await createInvoiceMessage(invoiceId, supportMessage, user);
       setStatus(`success: Запрос отправлен. correlation_id: ${resp.message_id}`);
       setSupportMessage("");
     } catch (err) {
-      setError((err as Error).message);
+      setActionError((err as Error).message);
       setStatus("failed");
     }
   };
@@ -97,49 +201,42 @@ export function ActionsPage() {
             <p className="muted">Безопасные клиентские действия с проверкой ролей и audit.</p>
           </div>
         </div>
-        {isLoading ? <AppLoadingState /> : null}
-        {error ? <AppErrorState message={error} /> : null}
+        {actionError ? <div className="card error">{actionError}</div> : null}
         {status ? <div className="card success">{status}</div> : null}
       </section>
 
       <section className="card">
-        <h3>Inbox</h3>
-        <p className="muted">Все элементы, требующие действий, в одном списке.</p>
-        <ul className="bullets">
-          {documents
-            .filter((doc) => doc.signature_status !== "signed" || doc.edo_status === "failed")
-            .map((doc) => (
-              <li key={doc.id}>
-                Документ {doc.document_type} требует действий ·{" "}
-                <Link to={`/client/documents/${doc.id}`}>Открыть</Link>
-              </li>
-            ))}
-          {exports
-            .filter((item) => item.reconciliation_status === "mismatch" || item.status === "FAILED")
-            .map((item) => (
-              <li key={item.id ?? item.type ?? ""}>
-                Экспорт {item.type ?? item.title ?? "—"} требует внимания ·{" "}
-                {item.id ? <Link to={`/exports/${item.id}`}>Открыть</Link> : "—"}
-              </li>
-            ))}
-          {documents.length === 0 && exports.length === 0 ? <li>Ничего не требует действий.</li> : null}
-        </ul>
+        <div className="card__header">
+          <div>
+            <h3>Inbox</h3>
+            <p className="muted">Все элементы, требующие действий, в одном списке.</p>
+          </div>
+        </div>
+        <Table
+          columns={inboxColumns}
+          data={inboxItems}
+          loading={isLoading}
+          rowKey={(item) => item.key}
+          errorState={
+            loadError
+              ? {
+                  title: "Не удалось загрузить inbox действий",
+                  description: loadError,
+                }
+              : undefined
+          }
+          emptyState={{
+            title: "Ничего не требует действий",
+            description: "Когда появятся документы или выгрузки с action-required статусом, они будут показаны здесь.",
+          }}
+          footer={loadError ? null : <div className="table-footer__content muted">Элементов inbox: {inboxItems.length}</div>}
+        />
       </section>
 
       <section className="card">
-        <h3>Acknowledge document</h3>
-        <p className="muted">Подтверждение документа (ack).</p>
+        <h3>Acknowledge closing document</h3>
+        <p className="muted">Подтверждение closing-документа (ack).</p>
         <div className="filters">
-          <div className="filter">
-            <label htmlFor="documentType">Тип документа</label>
-            <select id="documentType" value={documentType} onChange={(e) => setDocumentType(e.target.value)}>
-              {DOCUMENT_TYPES.map((item) => (
-                <option key={item.value} value={item.value}>
-                  {item.label}
-                </option>
-              ))}
-            </select>
-          </div>
           <div className="filter">
             <label htmlFor="documentId">ID документа</label>
             <input
@@ -168,12 +265,12 @@ export function ActionsPage() {
         <h3>Request e-sign / EDO dispatch</h3>
         <p className="muted">Доступно в read-only режиме. Запрос отправляется через поддержку.</p>
         <div className="actions">
-          <button type="button" className="secondary" disabled>
+          <Link className="secondary" to="/client/support/new?topic=document_signature">
             Запросить подпись
-          </button>
-          <button type="button" className="secondary" disabled>
+          </Link>
+          <Link className="secondary" to="/client/support/new?topic=document_edo">
             Запросить ЭДО-отправку
-          </button>
+          </Link>
         </div>
       </section>
 

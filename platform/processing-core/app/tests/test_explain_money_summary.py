@@ -1,35 +1,27 @@
 from datetime import date
+from uuid import uuid4
 
 import pytest
 
-from app.db import Base, SessionLocal, engine
 from app.models.invoice import Invoice
 from app.models.money_flow import MoneyFlowEvent
 from app.models.money_flow_v3 import MoneyInvariantSnapshot, MoneyInvariantSnapshotPhase
 from app.services.explain.unified import build_unified_explain
 from app.services.money_flow.events import MoneyFlowEventType
 from app.services.money_flow.states import MoneyFlowState, MoneyFlowType
-
-
-@pytest.fixture(autouse=True)
-def _setup_db():
-    Base.metadata.drop_all(bind=engine)
-    Base.metadata.create_all(bind=engine)
-    yield
-    Base.metadata.drop_all(bind=engine)
+from app.tests._explain_test_harness import EXPLAIN_UNIFIED_FUEL_TEST_TABLES
+from app.tests._scoped_router_harness import scoped_session_context
 
 
 @pytest.fixture
 def session():
-    db = SessionLocal()
-    try:
+    with scoped_session_context(tables=EXPLAIN_UNIFIED_FUEL_TEST_TABLES) as db:
         yield db
-    finally:
-        db.close()
 
 
 def test_money_summary_and_invariants(session):
     invoice = Invoice(
+        id=str(uuid4()),
         client_id="client-1",
         period_from=date(2025, 1, 1),
         period_to=date(2025, 1, 31),

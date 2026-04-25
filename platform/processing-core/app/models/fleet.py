@@ -75,11 +75,11 @@ class FuelCardGroupMember(Base):
         UniqueConstraint("group_id", "card_id", name="pk_fuel_card_group_members"),
     )
 
-    group_id = Column(GUID(), ForeignKey("fuel_card_groups.id"), primary_key=True)
-    card_id = Column(GUID(), ForeignKey("fuel_cards.id"), primary_key=True)
+    group_id = Column(String(36), ForeignKey("fuel_card_groups.id"), primary_key=True)
+    card_id = Column(String(36), ForeignKey("fuel_cards.id"), primary_key=True)
     added_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     removed_at = Column(DateTime(timezone=True), nullable=True)
-    audit_event_id = Column(GUID(), nullable=True)
+    audit_event_id = Column(String(36), nullable=True)
 
 
 class ClientEmployee(Base):
@@ -88,13 +88,13 @@ class ClientEmployee(Base):
         UniqueConstraint("client_id", "email", name="uq_client_employees_client_email"),
     )
 
-    id = Column(GUID(), primary_key=True, default=new_uuid_str)
+    id = Column(String(36), primary_key=True, default=new_uuid_str)
     client_id = Column(String(64), nullable=False, index=True)
     email = Column(String(256), nullable=False)
     status = Column(ExistingEnum(EmployeeStatus, name="employee_status"), nullable=False)
     timezone = Column(String(64), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    audit_event_id = Column(GUID(), nullable=True)
+    audit_event_id = Column(String(36), nullable=True)
 
 
 class FuelGroupAccess(Base):
@@ -103,14 +103,14 @@ class FuelGroupAccess(Base):
         UniqueConstraint("group_id", "employee_id", name="uq_fuel_group_access_group_employee"),
     )
 
-    id = Column(GUID(), primary_key=True, default=new_uuid_str)
+    id = Column(String(36), primary_key=True, default=new_uuid_str)
     client_id = Column(String(64), nullable=False, index=True)
-    group_id = Column(GUID(), ForeignKey("fuel_card_groups.id"), nullable=False, index=True)
-    employee_id = Column(GUID(), ForeignKey("client_employees.id"), nullable=False, index=True)
+    group_id = Column(String(36), ForeignKey("fuel_card_groups.id"), nullable=False, index=True)
+    employee_id = Column(String(36), ForeignKey("client_employees.id"), nullable=False, index=True)
     role = Column(ExistingEnum(FuelGroupRole, name="fuel_group_role"), nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     revoked_at = Column(DateTime(timezone=True), nullable=True)
-    audit_event_id = Column(GUID(), nullable=True)
+    audit_event_id = Column(String(36), nullable=True)
 
 
 __all__ = [

@@ -1,83 +1,111 @@
 export type CrmStatus = string;
 
 export interface CrmClient {
+  id: string;
   client_id: string;
-  tenant_id?: number | null;
-  legal_name?: string | null;
-  status?: CrmStatus | null;
-  country?: string | null;
-  timezone?: string | null;
+  tenant_id: number;
+  legal_name: string;
+  tax_id?: string | null;
+  kpp?: string | null;
+  status: CrmStatus;
+  country: string;
+  timezone: string;
+  created_at?: string | null;
+  updated_at?: string | null;
+  meta?: Record<string, unknown> | null;
   active_contract_id?: string | null;
   active_subscription_id?: string | null;
   limit_profile_id?: string | null;
   risk_profile_id?: string | null;
-  features?: Record<string, boolean> | null;
-  created_at?: string | null;
-  updated_at?: string | null;
 }
 
 export interface CrmContract {
-  id?: string | null;
-  contract_id?: string | null;
-  contract_number?: string | null;
-  client_id?: string | null;
-  status?: CrmStatus | null;
+  id: string;
+  contract_id: string;
+  tenant_id?: number | null;
+  contract_number: string;
+  client_id: string;
+  status: CrmStatus;
   valid_from?: string | null;
   valid_to?: string | null;
-  tariff_plan_id?: string | null;
+  billing_mode?: string | null;
+  currency?: string | null;
   risk_profile_id?: string | null;
   limit_profile_id?: string | null;
   documents_required?: boolean | null;
-  features?: Record<string, boolean> | null;
-  audit?: Record<string, unknown> | null;
-  apply_result?: Record<string, unknown> | null;
+  crm_contract_version?: number | null;
   created_at?: string | null;
-  updated_at?: string | null;
+  meta?: Record<string, unknown> | null;
 }
 
 export interface CrmTariff {
-  tariff_id?: string | null;
-  id?: string | null;
-  name?: string | null;
-  status?: CrmStatus | null;
-  base_fee?: number | string | null;
-  domains?: Record<string, boolean> | null;
-  included_summary?: string | null;
+  id: string;
+  tariff_id: string;
+  name: string;
+  description?: string | null;
+  status: CrmStatus;
+  billing_period: string;
+  base_fee_minor: number;
+  currency: string;
+  features?: Record<string, boolean> | null;
+  limits_defaults?: Record<string, unknown> | null;
   definition?: Record<string, unknown> | null;
+  created_at?: string | null;
 }
 
 export interface CrmSubscription {
-  id?: string | null;
-  subscription_id?: string | null;
-  client_id?: string | null;
-  tariff_id?: string | null;
-  status?: CrmStatus | null;
+  id: string;
+  subscription_id: string;
+  tenant_id?: number | null;
+  client_id: string;
+  tariff_plan_id: string;
+  status: CrmStatus;
+  billing_cycle?: string | null;
   billing_day?: number | null;
   started_at?: string | null;
-  next_run_at?: string | null;
-  last_period_id?: string | null;
-  segments?: unknown[] | null;
-  usage?: unknown[] | null;
-  charges?: unknown[] | null;
-  invoices?: string[] | null;
-  money_links?: unknown[] | null;
+  paused_at?: string | null;
+  ended_at?: string | null;
+  meta?: Record<string, unknown> | null;
+  created_at?: string | null;
+  updated_at?: string | null;
 }
 
 export interface CrmProfile {
   id: string;
+  tenant_id?: number | null;
   name?: string | null;
-  description?: string | null;
+  status?: CrmStatus | null;
   definition?: Record<string, unknown> | null;
+  created_at?: string | null;
+}
+
+export interface CrmRiskProfile extends CrmProfile {
+  risk_policy_id?: string | null;
+  threshold_set_id?: string | null;
+  shadow_enabled?: boolean | null;
 }
 
 export interface CrmFeatureFlag {
+  id?: string | null;
+  tenant_id?: number | null;
+  client_id?: string | null;
   feature: string;
   enabled: boolean;
+  updated_at?: string | null;
+  updated_by?: string | null;
+}
+
+export interface CrmDecisionContext {
+  client_id: string;
+  tenant_id: number;
+  active_contract: CrmContract | null;
+  tariff: CrmTariff | null;
+  feature_flags: CrmFeatureFlag[];
+  risk_profile: CrmRiskProfile | null;
+  limit_profile: CrmProfile | null;
+  enforcement_flags: Record<string, boolean>;
 }
 
 export interface CrmListResponse<T> {
   items: T[];
-  total?: number;
-  limit?: number;
-  offset?: number;
 }

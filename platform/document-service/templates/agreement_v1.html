@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>NEFT Service Agreement</title>
+    <style>
+      body { font-family: Arial, sans-serif; margin: 40px; color: #111827; line-height: 1.5; }
+      h1 { font-size: 22px; margin-bottom: 8px; }
+      h2 { font-size: 15px; margin-top: 24px; }
+      table { width: 100%; border-collapse: collapse; margin: 18px 0; }
+      td { border: 1px solid #d1d5db; padding: 8px; }
+      .muted { color: #4b5563; font-size: 12px; }
+    </style>
+  </head>
+  <body>
+    <h1>NEFT Service Agreement</h1>
+    <p class="muted">Generated for onboarding application {{ application_id }}.</p>
+    <table>
+      <tbody>
+        <tr><td>Client</td><td>{{ company_name }}</td></tr>
+        <tr><td>INN</td><td>{{ inn }}</td></tr>
+        <tr><td>OGRN</td><td>{{ ogrn }}</td></tr>
+        <tr><td>Contact email</td><td>{{ email }}</td></tr>
+      </tbody>
+    </table>
+    <h2>Services</h2>
+    <p>
+      NEFT provides access to processing, partner marketplace, document flow,
+      support, finance read surfaces, and related operational modules according
+      to enabled capabilities.
+    </p>
+    <h2>Operational Evidence</h2>
+    <p>
+      Platform events, generated documents, signatures, notifications, and
+      support case records form the operational evidence trail for the client.
+    </p>
+  </body>
+</html>

@@ -3,9 +3,9 @@ import { useNavigate } from "react-router-dom";
 import { createUser } from "../api/adminUsers";
 import { ValidationError } from "../api/http";
 import { useAuth } from "../auth/AuthContext";
-import type { RoleOption } from "../types/users";
-
-const ROLE_OPTIONS: RoleOption[] = ["PLATFORM_ADMIN", "CLIENT_OWNER", "CLIENT_MANAGER", "CLIENT_VIEWER"];
+import AdminWriteActionModal from "../components/admin/AdminWriteActionModal";
+import { createUserPageCopy } from "./operatorKeyPageCopy";
+import { ADMIN_ROLE_CATALOG, DEFAULT_ADMIN_ROLE_CODE } from "../types/users";
 
 export const CreateUserPage: React.FC = () => {
   const { accessToken } = useAuth();
@@ -14,40 +14,58 @@ export const CreateUserPage: React.FC = () => {
   const [fullName, setFullName] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [roles, setRoles] = useState<RoleOption[]>(["CLIENT_VIEWER"]);
+  const [roles, setRoles] = useState<string[]>([DEFAULT_ADMIN_ROLE_CODE]);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [pendingCreate, setPendingCreate] = useState<{
+    email: string;
+    password: string;
+    full_name?: string;
+    roles: string[];
+  } | null>(null);
 
-  const toggleRole = (role: RoleOption) => {
-    setRoles((current) =>
-      current.includes(role) ? current.filter((r) => r !== role) : [...current, role],
-    );
+  const toggleRole = (role: string) => {
+    setRoles((current) => (current.includes(role) ? current.filter((item) => item !== role) : [...current, role]));
   };
 
-  const handleSubmit = async (event: React.FormEvent) => {
+  const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault();
     setError(null);
     if (password !== confirmPassword) {
-      setError("Пароль и подтверждение не совпадают");
+      setError(createUserPageCopy.errors.passwordMismatch);
+      return;
+    }
+    if (roles.length === 0) {
+      setError(createUserPageCopy.errors.rolesRequired);
       return;
     }
     if (!accessToken) return;
+    setPendingCreate({
+      email,
+      password,
+      full_name: fullName || undefined,
+      roles,
+    });
+  };
+
+  const confirmCreate = async ({ reason, correlationId }: { reason: string; correlationId: string }) => {
+    if (!accessToken || !pendingCreate) return;
     setSubmitting(true);
     try {
       await createUser(accessToken, {
-        email,
-        password,
-        full_name: fullName || undefined,
-        roles,
+        ...pendingCreate,
+        reason,
+        correlation_id: correlationId,
       });
-      navigate("/users");
+      setPendingCreate(null);
+      navigate("/admins");
     } catch (err) {
       if (err instanceof ValidationError) {
-        setError("Проверьте корректность введённых данных");
+        setError(createUserPageCopy.errors.invalidData);
         return;
       }
-      setError("Не удалось создать пользователя");
-      console.error("Ошибка создания пользователя", err);
+      setError(createUserPageCopy.errors.createFailed);
+      console.error(createUserPageCopy.errors.createLog, err);
     } finally {
       setSubmitting(false);
     }
@@ -55,46 +73,66 @@ export const CreateUserPage: React.FC = () => {
 
   return (
     <div className="card">
-      <h2>Создать пользователя</h2>
+      <h2>{createUserPageCopy.header.title}</h2>
+      <p className="muted">{createUserPageCopy.header.description}</p>
       {error ? <div className="error-text">{error}</div> : null}
       <form className="form-grid" onSubmit={handleSubmit}>
-        <label className="label">Email</label>
+        <label className="label">{createUserPageCopy.labels.email}</label>
         <input
           type="email"
           value={email}
-          onChange={(e) => setEmail(e.target.value)}
+          onChange={(event) => setEmail(event.target.value)}
           required
-          placeholder="user@example.com"
+          placeholder={createUserPageCopy.placeholders.email}
         />
 
-        <label className="label">Полное имя</label>
-        <input type="text" value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="Имя пользователя" />
+        <label className="label">{createUserPageCopy.labels.fullName}</label>
+        <input
+          type="text"
+          value={fullName}
+          onChange={(event) => setFullName(event.target.value)}
+          placeholder={createUserPageCopy.placeholders.fullName}
+        />
 
-        <label className="label">Пароль</label>
-        <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+        <label className="label">{createUserPageCopy.labels.password}</label>
+        <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} required />
 
-        <label className="label">Подтверждение пароля</label>
-        <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} required />
+        <label className="label">{createUserPageCopy.labels.confirmPassword}</label>
+        <input
+          type="password"
+          value={confirmPassword}
+          onChange={(event) => setConfirmPassword(event.target.value)}
+          required
+        />
 
-        <label className="label">Роли</label>
-        <div className="role-grid">
-          {ROLE_OPTIONS.map((role) => (
-            <label key={role} className="checkbox">
-              <input type="checkbox" checked={roles.includes(role)} onChange={() => toggleRole(role)} />
-              {role}
+        <label className="label">{createUserPageCopy.labels.roles}</label>
+        <div className="stack">
+          {ADMIN_ROLE_CATALOG.map((role) => (
+            <label key={role.code} className="checkbox" style={{ display: "grid", gap: 4 }}>
+              <span>
+                <input type="checkbox" checked={roles.includes(role.code)} onChange={() => toggleRole(role.code)} />{" "}
+                {role.label}
+              </span>
+              <span className="muted small">{role.description}</span>
             </label>
           ))}
         </div>
 
         <div style={{ display: "flex", gap: 12 }}>
           <button type="submit" disabled={submitting}>
-            {submitting ? "Создаём..." : "Создать"}
+            {submitting ? createUserPageCopy.actions.submitting : createUserPageCopy.actions.submit}
           </button>
           <button type="button" className="ghost" onClick={() => navigate(-1)}>
-            Отмена
+            {createUserPageCopy.actions.cancel}
           </button>
         </div>
       </form>
+      <AdminWriteActionModal
+        isOpen={pendingCreate !== null}
+        title={createUserPageCopy.modal.title}
+        onCancel={() => setPendingCreate(null)}
+        onConfirm={confirmCreate}
+      />
     </div>
   );
 };

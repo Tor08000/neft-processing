@@ -4,10 +4,12 @@ import { request, requestWithMeta } from "./http";
 describe("http auth header attachment", () => {
   beforeEach(() => {
     localStorage.clear();
+    vi.stubEnv("VITE_CLIENT_DEBUG_HTTP", "true");
     vi.restoreAllMocks();
   });
 
   afterEach(() => {
+    vi.unstubAllEnvs();
     vi.restoreAllMocks();
   });
 

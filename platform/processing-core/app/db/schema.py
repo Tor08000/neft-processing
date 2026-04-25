@@ -18,8 +18,20 @@ def _quote_schema(schema: str) -> str:
     return f'"{escaped}"'
 
 
+def quote_identifier(identifier: str) -> str:
+    escaped = identifier.replace('"', '""')
+    return f'"{escaped}"'
+
+
 def quote_schema(schema: str) -> str:
-    return _quote_schema(schema)
+    return quote_identifier(schema)
+
+
+def qualified_table_name(table_name: str, schema: str | None = None) -> str:
+    quoted_table = quote_identifier(table_name)
+    if not schema:
+        return quoted_table
+    return f"{quote_schema(schema)}.{quoted_table}"
 
 
 @dataclass(frozen=True)

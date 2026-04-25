@@ -16,6 +16,7 @@ import { EmptyState } from "../../components/EmptyState";
 import { formatCurrency, formatDateTime } from "../../utils/format";
 import type { PartnerBalance, PartnerExportJob, PartnerLedgerEntry, PartnerLedgerExplain } from "../../types/partnerFinance";
 import { PartnerErrorState } from "../../components/PartnerErrorState";
+import { DetailPanel, FinanceOverview } from "@shared/brand/components";
 
 export function FinancePageProd() {
   const { user } = useAuth();
@@ -36,19 +37,22 @@ export function FinancePageProd() {
   const [exportFormat, setExportFormat] = useState<"CSV" | "ZIP">("CSV");
   const [exportError, setExportError] = useState<string | null>(null);
   const [exportLoading, setExportLoading] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
 
   const currency = useMemo(() => balance?.currency ?? "RUB", [balance]);
-  const meta = portal?.partner?.profile?.meta_json ?? {};
-  const legalStatus =
-    typeof (meta as Record<string, unknown>).legal_status === "string"
-      ? ((meta as Record<string, unknown>).legal_status as string)
-      : null;
+  const legalStatus = portal?.partner?.legal_state?.status ?? null;
   const needsLegal = Boolean(legalStatus && legalStatus !== "VERIFIED");
+
+  const reloadFinance = () => {
+    setReloadKey((value) => value + 1);
+  };
 
   useEffect(() => {
     let active = true;
     if (!user) return;
     setIsLoading(true);
+    setError(null);
+    setLoadMoreError(null);
     Promise.all([
       fetchPartnerBalance(user.token),
       fetchPartnerLedger(user.token, { limit: ledgerLimit }),
@@ -73,7 +77,7 @@ export function FinancePageProd() {
     return () => {
       active = false;
     };
-  }, [user, ledgerLimit]);
+  }, [user, ledgerLimit, reloadKey]);
 
   const handleExplain = async (entry: PartnerLedgerEntry) => {
     if (!user) return;
@@ -97,6 +101,7 @@ export function FinancePageProd() {
 
   const loadMoreLedger = async () => {
     if (!user || !ledgerCursor) return;
+    setLoadMoreError(null);
     try {
       const next = await fetchPartnerLedger(user.token, { limit: ledgerLimit, cursor: ledgerCursor });
       setLedger((prev) => [...prev, ...(next.items ?? [])]);
@@ -145,7 +150,7 @@ export function FinancePageProd() {
           <div className="notice warning">
             <strong>Юридический профиль не подтверждён</strong>
             <div className="muted">Заполните юридические данные и загрузите документы для разблокировки выплат.</div>
-            <div className="actions">
+            <div className="toolbar-actions">
               <Link className="ghost" to="/legal">
                 Перейти к юридическим данным
               </Link>
@@ -155,27 +160,51 @@ export function FinancePageProd() {
       ) : null}
       <section className="card">
         <div className="section-title">
+          <h2>Read-only finance registers</h2>
+        </div>
+        <div className="toolbar-actions">
+          <Link className="ghost" to="/contracts">
+            Contracts
+          </Link>
+          <Link className="ghost" to="/settlements">
+            Settlements
+          </Link>
+        </div>
+        <p className="muted small">
+          Contracts and settlement periods are read-only views over the finance owner. Payout approval stays in the existing admin workflow.
+        </p>
+      </section>
+      <section className="card">
+        <div className="section-title">
           <h2>Баланс</h2>
         </div>
         {isLoading ? (
           <LoadingState />
         ) : error ? (
-          <PartnerErrorState error={error} />
+          <PartnerErrorState error={error} onRetry={reloadFinance} />
         ) : (
-          <div className="grid three">
-            <div className="metric-card">
-              <div className="muted">Доступно</div>
-              <strong>{formatCurrency(balance?.balance_available ?? null, currency)}</strong>
-            </div>
-            <div className="metric-card">
-              <div className="muted">Ожидает</div>
-              <strong>{formatCurrency(balance?.balance_pending ?? null, currency)}</strong>
-            </div>
-            <div className="metric-card">
-              <div className="muted">Заблокировано</div>
-              <strong>{formatCurrency(balance?.balance_blocked ?? null, currency)}</strong>
-            </div>
-          </div>
+          <FinanceOverview
+            items={[
+              {
+                id: "available",
+                label: "Доступно",
+                value: formatCurrency(balance?.balance_available ?? null, currency),
+                tone: "success",
+              },
+              {
+                id: "pending",
+                label: "Ожидает",
+                value: formatCurrency(balance?.balance_pending ?? null, currency),
+                tone: "warning",
+              },
+              {
+                id: "blocked",
+                label: "Заблокировано",
+                value: formatCurrency(balance?.balance_blocked ?? null, currency),
+                tone: "danger",
+              },
+            ]}
+          />
         )}
       </section>
       <section className="card">
@@ -183,25 +212,33 @@ export function FinancePageProd() {
           <h2>Итоги по счёту</h2>
         </div>
         {ledgerTotals ? (
-          <div className="grid three">
-            <div className="metric-card">
-              <div className="muted">Поступления</div>
-              <strong>{formatCurrency(ledgerTotals.in ?? null, currency)}</strong>
-            </div>
-            <div className="metric-card">
-              <div className="muted">Списания</div>
-              <strong>{formatCurrency(ledgerTotals.out ?? null, currency)}</strong>
-            </div>
-            <div className="metric-card">
-              <div className="muted">Итого</div>
-              <strong>{formatCurrency(ledgerTotals.net ?? null, currency)}</strong>
-            </div>
-          </div>
+          <FinanceOverview
+            items={[
+              {
+                id: "ledger-in",
+                label: "Поступления",
+                value: formatCurrency(ledgerTotals.in ?? null, currency),
+                tone: "success",
+              },
+              {
+                id: "ledger-out",
+                label: "Списания",
+                value: formatCurrency(ledgerTotals.out ?? null, currency),
+                tone: "warning",
+              },
+              {
+                id: "ledger-net",
+                label: "Итого",
+                value: formatCurrency(ledgerTotals.net ?? null, currency),
+                tone: "info",
+              },
+            ]}
+          />
         ) : (
           <EmptyState
             title="Нет итогов"
             description="Итоги появятся после операций по счету."
-            primaryAction={{ label: "Обновить", onClick: () => window.location.reload() }}
+            primaryAction={{ label: "Обновить", onClick: reloadFinance }}
           />
         )}
       </section>
@@ -212,54 +249,65 @@ export function FinancePageProd() {
         {isLoading ? (
           <LoadingState />
         ) : error ? (
-          <PartnerErrorState error={error} />
+          <PartnerErrorState error={error} onRetry={reloadFinance} />
         ) : ledger.length === 0 ? (
           <EmptyState
             title="Нет движений"
             description="Начисления и списания появятся после завершения заказов."
-            primaryAction={{ label: "Обновить", onClick: () => window.location.reload() }}
+            primaryAction={{ label: "Обновить", onClick: reloadFinance }}
           />
         ) : (
-          <>
-            {loadMoreError ? <PartnerErrorState error={loadMoreError} /> : null}
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Дата</th>
-                  <th>Тип</th>
-                  <th>Сумма</th>
-                  <th>Направление</th>
-                  <th>Заказ</th>
-                  <th>Источник</th>
-                  <th>Расшифровка</th>
-                </tr>
-              </thead>
-              <tbody>
-                {ledger.map((entry) => (
-                  <tr key={entry.id}>
-                    <td>{formatDateTime(entry.created_at)}</td>
-                    <td>
-                      <StatusBadge status={entry.entry_type} />
-                    </td>
-                    <td>{formatCurrency(entry.amount ?? null, entry.currency)}</td>
-                    <td>{entry.direction}</td>
-                    <td className="mono">{entry.order_id ?? "—"}</td>
-                    <td>{resolveLedgerSource(entry)}</td>
-                    <td>
-                      <button type="button" className="secondary" onClick={() => handleExplain(entry)}>
-                        Подробнее
-                      </button>
-                    </td>
+          <div className="table-shell">
+            {loadMoreError ? <PartnerErrorState error={loadMoreError} onRetry={loadMoreLedger} /> : null}
+            <div className="table-scroll">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Дата</th>
+                    <th>Тип</th>
+                    <th>Сумма</th>
+                    <th>Направление</th>
+                    <th>Заказ</th>
+                    <th>Источник</th>
+                    <th>Расшифровка</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-            {ledgerCursor ? (
-              <button type="button" className="ghost" onClick={loadMoreLedger} style={{ marginTop: 12 }}>
-                Загрузить ещё
-              </button>
-            ) : null}
-          </>
+                </thead>
+                <tbody>
+                  {ledger.map((entry) => (
+                    <tr key={entry.id}>
+                      <td>{formatDateTime(entry.created_at)}</td>
+                      <td>
+                        <StatusBadge status={entry.entry_type} />
+                      </td>
+                      <td>{formatCurrency(entry.amount ?? null, entry.currency)}</td>
+                      <td>{entry.direction}</td>
+                      <td className="mono">{entry.order_id ?? "—"}</td>
+                      <td>{resolveLedgerSource(entry)}</td>
+                      <td>
+                        <div className="table-row-actions">
+                          <button type="button" className="secondary" onClick={() => handleExplain(entry)}>
+                            Подробнее
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="table-footer">
+              <div className="table-footer__content">
+                <span className="muted">Проводок: {ledger.length}</span>
+                {ledgerCursor ? (
+                  <div className="toolbar-actions">
+                    <button type="button" className="ghost" onClick={loadMoreLedger}>
+                      Загрузить ещё
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          </div>
         )}
       </section>
 
@@ -268,126 +316,140 @@ export function FinancePageProd() {
           <h2>Экспорт расчётов</h2>
         </div>
         <div className="stack">
-          <div className="grid three">
-            <label className="form-field">
-              Период с
-              <input type="date" value={exportFrom} onChange={(event) => setExportFrom(event.target.value)} />
-            </label>
-            <label className="form-field">
-              Период по
-              <input type="date" value={exportTo} onChange={(event) => setExportTo(event.target.value)} />
-            </label>
-            <label className="form-field">
-              Формат
-              <select value={exportFormat} onChange={(event) => setExportFormat(event.target.value as "CSV" | "ZIP")}>
-                <option value="CSV">CSV</option>
-                <option value="ZIP">ZIP</option>
-              </select>
-            </label>
+          <div className="surface-toolbar">
+            <div className="grid three" style={{ flex: "1 1 560px" }}>
+              <label className="form-field">
+                Период с
+                <input type="date" value={exportFrom} onChange={(event) => setExportFrom(event.target.value)} />
+              </label>
+              <label className="form-field">
+                Период по
+                <input type="date" value={exportTo} onChange={(event) => setExportTo(event.target.value)} />
+              </label>
+              <label className="form-field">
+                Формат
+                <select value={exportFormat} onChange={(event) => setExportFormat(event.target.value as "CSV" | "ZIP")}>
+                  <option value="CSV">CSV</option>
+                  <option value="ZIP">ZIP</option>
+                </select>
+              </label>
+            </div>
+            <div className="toolbar-actions">
+              <button type="button" className="primary" onClick={handleExport} disabled={!exportFrom || !exportTo || exportLoading}>
+                {exportLoading ? "Готовим..." : "Экспортировать расчёты"}
+              </button>
+            </div>
           </div>
-          <button type="button" className="primary" onClick={handleExport} disabled={!exportFrom || !exportTo || exportLoading}>
-            {exportLoading ? "Готовим..." : "Экспортировать расчёты"}
-          </button>
           {exportError ? <div className="notice error">{exportError}</div> : null}
           {exportJobs.length ? (
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Файл</th>
-                  <th>Статус</th>
-                  <th>Создано</th>
-                  <th>Скачать</th>
-                </tr>
-              </thead>
-              <tbody>
-                {exportJobs.map((job) => (
-                  <tr key={job.id}>
-                    <td>{job.file_name ?? job.id}</td>
-                    <td>{job.status}</td>
-                    <td>{formatDateTime(job.created_at)}</td>
-                    <td>
-                      {job.status === "DONE" ? (
-                        <a className="link-button" href={getPartnerExportDownloadUrl(job.id)}>
-                          Скачать
-                        </a>
-                      ) : (
-                        <span className="muted">—</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <div className="table-shell">
+              <div className="table-scroll">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>Файл</th>
+                      <th>Статус</th>
+                      <th>Создано</th>
+                      <th>Скачать</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {exportJobs.map((job) => (
+                      <tr key={job.id}>
+                        <td>{job.file_name ?? job.id}</td>
+                        <td>{job.status}</td>
+                        <td>{formatDateTime(job.created_at)}</td>
+                        <td>
+                          {job.status === "DONE" ? (
+                            <div className="table-row-actions">
+                              <a className="link-button" href={getPartnerExportDownloadUrl(job.id)}>
+                                Скачать
+                              </a>
+                            </div>
+                          ) : (
+                            <span className="muted">—</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="table-footer">
+                <div className="table-footer__content">
+                  <span className="muted">Экспортов: {exportJobs.length}</span>
+                </div>
+              </div>
+            </div>
           ) : (
             <EmptyState
               title="Экспортов пока нет"
               description="Создайте первый экспорт расчетов."
-              primaryAction={{ label: "Обновить", onClick: () => window.location.reload() }}
+              primaryAction={{ label: "Обновить", onClick: reloadFinance }}
             />
           )}
         </div>
       </section>
 
-      {isExplainOpen ? (
-        <div className="modal-backdrop" role="dialog" aria-modal="true">
-          <div className="modal">
-            <div className="section-title">
-              <h3>Расшифровка</h3>
-              <button type="button" className="ghost" onClick={() => setIsExplainOpen(false)}>
-                Закрыть
-              </button>
-            </div>
-            {explainEntry ? (
-              <div className="stack">
-                <div className="meta-grid">
-                  <div>
-                    <div className="label">Операция</div>
-                    <div>{explainEntry.operation}</div>
-                  </div>
-                  <div>
-                    <div className="label">Сумма</div>
-                    <div>{formatCurrency(explainEntry.amount, explainEntry.currency)}</div>
-                  </div>
-                  <div>
-                    <div className="label">Направление</div>
-                    <div>{explainEntry.direction}</div>
-                  </div>
-                  <div>
-                    <div className="label">Источник</div>
-                    <div>{explainEntry.source_label ?? "—"}</div>
-                  </div>
-                  <div>
-                    <div className="label">Администратор</div>
-                    <div className="mono">{explainEntry.admin_actor_id ?? "—"}</div>
-                  </div>
-                </div>
-                {explainEntry.formula ? (
-                  <div>
-                    <div className="label">Формула</div>
-                    <div className="mono">{explainEntry.formula}</div>
-                  </div>
-                ) : null}
-                {explainEntry.settlement_snapshot_hash ? (
-                  <div>
-                    <div className="label">Хэш снапшота</div>
-                    <div className="mono">{explainEntry.settlement_snapshot_hash}</div>
-                  </div>
-                ) : null}
-                {explainEntry.settlement_breakdown_url ? (
-                  <div>
-                    <div className="label">Детализация расчёта</div>
-                    <a className="link-button" href={explainEntry.settlement_breakdown_url}>
-                      Открыть
-                    </a>
-                  </div>
-                ) : null}
+      <DetailPanel
+        open={isExplainOpen}
+        title="Расшифровка"
+        subtitle={explainEntry?.entry_id ? `Entry ${explainEntry.entry_id}` : "Загрузка деталей проводки"}
+        onClose={() => setIsExplainOpen(false)}
+        closeLabel="Закрыть"
+        size="md"
+      >
+        {explainEntry ? (
+          <div className="stack">
+            <div className="detail-panel__card meta-grid">
+              <div>
+                <div className="label">Операция</div>
+                <div>{explainEntry.operation}</div>
               </div>
-            ) : (
-              <LoadingState />
-            )}
+              <div>
+                <div className="label">Сумма</div>
+                <div>{formatCurrency(explainEntry.amount, explainEntry.currency)}</div>
+              </div>
+              <div>
+                <div className="label">Направление</div>
+                <div>{explainEntry.direction}</div>
+              </div>
+              <div>
+                <div className="label">Источник</div>
+                <div>{explainEntry.source_label ?? "—"}</div>
+              </div>
+              <div>
+                <div className="label">Администратор</div>
+                <div className="mono">{explainEntry.admin_actor_id ?? "—"}</div>
+              </div>
+            </div>
+            {explainEntry.formula ? (
+              <div className="detail-panel__card">
+                <div className="label">Формула</div>
+                <div className="mono">{explainEntry.formula}</div>
+              </div>
+            ) : null}
+            {explainEntry.settlement_snapshot_hash ? (
+              <div className="detail-panel__card">
+                <div className="label">Хэш снапшота</div>
+                <div className="mono">{explainEntry.settlement_snapshot_hash}</div>
+              </div>
+            ) : null}
+            {explainEntry.settlement_breakdown_url ? (
+              <div className="detail-panel__card">
+                <div className="label">Детализация расчёта</div>
+                <div className="toolbar-actions">
+                  <a className="link-button" href={explainEntry.settlement_breakdown_url}>
+                    Открыть
+                  </a>
+                </div>
+              </div>
+            ) : null}
           </div>
-        </div>
-      ) : null}
+        ) : (
+          <LoadingState />
+        )}
+      </DetailPanel>
     </div>
   );
 }

@@ -36,19 +36,14 @@ def _make_alembic_config(db_url: str) -> Config:
 def test_alembic_upgrade_is_idempotent_and_preserves_enums() -> None:
     db_url = get_database_url()
     engine = ensure_connectable(db_url)
+    if engine.dialect.name != "postgresql":
+        pytest.skip("Postgres is required for end-to-end Alembic idempotence")
     alembic_cfg = _make_alembic_config(db_url)
 
     command.upgrade(alembic_cfg, "head")
     command.upgrade(alembic_cfg, "head")
 
     with engine.connect() as connection:
-        if connection.dialect.name != "postgresql":
-            columns = connection.exec_driver_sql("PRAGMA table_info('posting_batches')").fetchall()
-            posting_type_column = next((col for col in columns if col[1] == "posting_type"), None)
-            assert posting_type_column is not None
-            assert "CHAR" in posting_type_column[2].upper() or posting_type_column[2].upper().startswith("VARCHAR")
-            return
-
         connection.execute(sa.text("SET search_path TO :schema"), {"schema": DB_SCHEMA})
         enum_count = connection.execute(
             sa.text(

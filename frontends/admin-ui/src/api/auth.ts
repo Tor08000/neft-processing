@@ -1,6 +1,8 @@
 import { request } from "./http";
 import type { AuthSession, AuthUser, LoginRequest, LoginResponse, MeResponse } from "../types/auth";
 
+const isDebugAuthEnabled = () => Boolean(import.meta.env.DEV && import.meta.env.VITE_ADMIN_DEBUG_AUTH === "true");
+
 export async function login(payload: LoginRequest): Promise<AuthSession> {
   const body = await request<LoginResponse>(
     "/login",
@@ -16,7 +18,7 @@ export async function login(payload: LoginRequest): Promise<AuthSession> {
 }
 
 export async function me(token: string): Promise<AuthUser> {
-  if (import.meta.env.DEV) {
+  if (isDebugAuthEnabled()) {
     const tokenPresent = Boolean(token);
     const headerAttached = tokenPresent;
     console.info("[auth-me] token_present=%s header_attached=%s", tokenPresent, headerAttached);

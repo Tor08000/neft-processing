@@ -133,6 +133,28 @@ describe("AuthProvider deterministic flow", () => {
     expect(screen.getByTestId("path").textContent).toBe("/login");
   });
 
+  it("allows a manual login after a stale-token reauth redirect", async () => {
+    vi.spyOn(authApi, "login").mockResolvedValue({ token: makeJwt(), refreshToken: "r1", expiresAt: Date.now() + 60_000 } as never);
+    vi.spyOn(authApi, "fetchMe").mockResolvedValue({ email: "client@neft.local", roles: ["CLIENT_USER"], subject_type: "CLIENT", client_id: "c1" } as never);
+
+    renderHarness("/dashboard");
+
+    await act(async () => {
+      window.dispatchEvent(new Event("client-auth-logout"));
+    });
+
+    await waitFor(() => expect(screen.getByTestId("auth-error").textContent).toBe("reauth_required"));
+    await waitFor(() => expect(screen.getByTestId("path").textContent).toBe("/login"));
+
+    await act(async () => {
+      screen.getByRole("button", { name: "login" }).click();
+    });
+
+    await waitFor(() => expect(authApi.login).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(authApi.fetchMe).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.getByTestId("path").textContent).toBe("/"));
+  });
+
 
   it("signup activation persists token before /me and does not redirect to reauth", async () => {
     localStorage.setItem("access_token", "invalid-token");
@@ -154,7 +176,7 @@ describe("AuthProvider deterministic flow", () => {
     const savedToken = localStorage.getItem("access_token");
     expect(savedToken).toBeTruthy();
     expect(savedToken).toContain(".");
-    await waitFor(() => expect(screen.getByTestId("path").textContent).toBe("/connect/plan"));
+    await waitFor(() => expect(screen.getByTestId("path").textContent).toBe("/onboarding"));
   });
 
   it("signup activation with /me 401 throws to caller and keeps reauth flag unset", async () => {
@@ -199,7 +221,7 @@ describe("AuthProvider deterministic flow", () => {
     await waitFor(() => expect(authApi.fetchMe).toHaveBeenCalledTimes(1));
   });
 
-  it("signup fallback login routes directly to connect plan", async () => {
+  it("signup fallback login routes directly to canonical onboarding", async () => {
     vi.spyOn(authApi, "login").mockResolvedValue({ token: makeJwt(), refreshToken: "r1", expiresAt: Date.now() + 60_000 } as never);
     vi.spyOn(authApi, "fetchMe").mockResolvedValue({ email: "new@neft.local", roles: ["CLIENT_USER"], subject_type: "CLIENT", client_id: "c1" } as never);
 
@@ -211,6 +233,6 @@ describe("AuthProvider deterministic flow", () => {
 
     await waitFor(() => expect(authApi.login).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(authApi.fetchMe).toHaveBeenCalledTimes(1));
-    await waitFor(() => expect(screen.getByTestId("path").textContent).toBe("/connect/plan"));
+    await waitFor(() => expect(screen.getByTestId("path").textContent).toBe("/onboarding"));
   });
 });

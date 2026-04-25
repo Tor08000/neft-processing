@@ -23,6 +23,7 @@ from app.models.marketplace_client_events import (
 from app.models.marketplace_offers import MarketplaceOffer
 from app.routers.client.marketplace_recommendations import router as recommendations_router
 from app.security.client_auth import require_client_user
+from app.services.marketplace_recommendations_service import _MEMORY_CACHE
 
 CURRENT_CLIENT_TOKEN: dict = {
     "client_id": str(uuid4()),
@@ -34,6 +35,15 @@ CURRENT_CLIENT_TOKEN: dict = {
 
 @pytest.fixture()
 def api_client() -> tuple[TestClient, sessionmaker]:
+    global CURRENT_CLIENT_TOKEN
+    CURRENT_CLIENT_TOKEN = {
+        "client_id": str(uuid4()),
+        "user_id": str(uuid4()),
+        "subscription_codes": ["PRO"],
+        "region_code": "RU-MOW",
+    }
+    _MEMORY_CACHE.clear()
+
     engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
     SessionLocal = sessionmaker(autocommit=False, autoflush=False, expire_on_commit=False, bind=engine)
 
@@ -46,7 +56,7 @@ def api_client() -> tuple[TestClient, sessionmaker]:
         table.create(bind=engine)
 
     app = FastAPI(generate_unique_id_function=generate_unique_id)
-    app.include_router(recommendations_router, prefix="/api")
+    app.include_router(recommendations_router, prefix="/api/v1")
 
     def override_get_db():
         db = SessionLocal()
@@ -62,6 +72,7 @@ def api_client() -> tuple[TestClient, sessionmaker]:
     with TestClient(app) as client:
         yield client, SessionLocal
 
+    _MEMORY_CACHE.clear()
     for table in reversed(tables):
         table.drop(bind=engine)
     engine.dispose()
@@ -74,7 +85,7 @@ def _create_product_card(db: Session, *, category: str, title: str) -> Marketpla
         title=title,
         description=f"{title} description",
         category=category,
-        status="PUBLISHED",
+        status="ACTIVE",
         tags=[],
         attributes={},
         variants=[],
@@ -169,7 +180,20 @@ def test_recommendations_filters_status_and_entitlements(api_client: tuple[TestC
     assert [item["offer_id"] for item in payload["items"]] == [str(offer_active.id)]
 
 
-def test_recommendations_why(api_client: tuple[TestClient, sessionmaker]):
+def test_live_recommendations_router_owns_mode_query_contract(api_client: tuple[TestClient, sessionmaker]):
+    client, SessionLocal = api_client
+
+    with SessionLocal() as db:
+        product = _create_product_card(db, category="Auto", title="Diagnostics")
+        _create_offer(db, product=product)
+
+    response = client.get("/api/v1/marketplace/client/recommendations?limit=1&mode=default")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["items"]
+
+
+def test_live_recommendations_router_owns_why_contract(api_client: tuple[TestClient, sessionmaker]):
     client, SessionLocal = api_client
     client_id = CURRENT_CLIENT_TOKEN["client_id"]
 

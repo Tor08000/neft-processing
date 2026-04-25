@@ -3,6 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 
+from app.api.dependencies.admin_capability import require_admin_capability
 from app.db import get_db
 from app.models.marketplace_sponsored import SponsoredCampaignStatus
 from app.schemas.marketplace.sponsored import (
@@ -13,10 +14,10 @@ from app.schemas.marketplace.sponsored import (
     SponsoredLedgerEntryOut,
     SponsoredRefundRequest,
 )
-from app.services.audit_service import request_context_from_request
+from app.services.audit_service import _sanitize_token_for_audit, request_context_from_request
 from app.services.marketplace_sponsored_service import MarketplaceSponsoredService
 
-router = APIRouter(tags=["admin"])
+router = APIRouter(tags=["admin"], dependencies=[Depends(require_admin_capability("marketplace"))])
 
 
 def _campaign_out(campaign) -> SponsoredCampaignOut:
@@ -92,10 +93,11 @@ def update_campaign_status(
     payload: SponsoredCampaignStatusUpdate,
     request: Request,
     db: Session = Depends(get_db),
+    token: dict = Depends(require_admin_capability("marketplace", "operate")),
 ) -> SponsoredCampaignOut:
     service = MarketplaceSponsoredService(
         db,
-        request_ctx=request_context_from_request(request),
+        request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(token)),
     )
     campaign = service.get_campaign(campaign_id)
     if not campaign:
@@ -110,10 +112,11 @@ def pause_partner_campaigns(
     partner_id: str,
     request: Request,
     db: Session = Depends(get_db),
+    token: dict = Depends(require_admin_capability("marketplace", "operate")),
 ) -> int:
     service = MarketplaceSponsoredService(
         db,
-        request_ctx=request_context_from_request(request),
+        request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(token)),
     )
     items, _ = service.list_campaigns(partner_id=partner_id, limit=1000, offset=0)
     for campaign in items:
@@ -127,10 +130,11 @@ def resume_partner_campaigns(
     partner_id: str,
     request: Request,
     db: Session = Depends(get_db),
+    token: dict = Depends(require_admin_capability("marketplace", "operate")),
 ) -> int:
     service = MarketplaceSponsoredService(
         db,
-        request_ctx=request_context_from_request(request),
+        request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(token)),
     )
     items, _ = service.list_campaigns(partner_id=partner_id, limit=1000, offset=0)
     for campaign in items:
@@ -145,10 +149,11 @@ def charge_order_paid(
     payload: SponsoredChargeRequest,
     request: Request,
     db: Session = Depends(get_db),
+    token: dict = Depends(require_admin_capability("marketplace", "operate")),
 ) -> SponsoredLedgerEntryOut | None:
     service = MarketplaceSponsoredService(
         db,
-        request_ctx=request_context_from_request(request),
+        request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(token)),
     )
     entry = service.charge_cpa_for_order_paid(
         order_id=payload.order_id,
@@ -166,10 +171,11 @@ def reverse_order_refund(
     payload: SponsoredRefundRequest,
     request: Request,
     db: Session = Depends(get_db),
+    token: dict = Depends(require_admin_capability("marketplace", "operate")),
 ) -> SponsoredLedgerEntryOut | None:
     service = MarketplaceSponsoredService(
         db,
-        request_ctx=request_context_from_request(request),
+        request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(token)),
     )
     entry = service.reverse_cpa_for_refund(
         order_id=payload.order_id,

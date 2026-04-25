@@ -69,7 +69,7 @@ export function ClientCardsPage() {
     fetchCards(user)
       .then((data) => {
         if (!mounted) return;
-        setCards(data.items);
+        setCards(data.items ?? []);
         if (data.templates?.length) {
           setTemplates(
             data.templates.map((item) =>
@@ -241,7 +241,7 @@ export function ClientCardsPage() {
         );
         handleBulkResult("apply", response);
         fetchCards(user)
-          .then((data) => setCards(data.items))
+          .then((data) => setCards(data.items ?? []))
           .catch(() => undefined);
       }
       setActiveModal(null);

@@ -179,6 +179,16 @@ async def _ensure_demo_user(
             (normalized_email,),
         )
         existing_user = await cur.fetchone()
+        email_normalized = False
+
+        if not existing_user and normalized_username:
+            await cur.execute(
+                """
+                SELECT id, email, username, password_hash, is_active FROM users WHERE lower(username) = lower(%s)
+                """,
+                (normalized_username,),
+            )
+            existing_user = await cur.fetchone()
 
         password_reset = False
         user_id = existing_user.get("id") if existing_user else demo_user_id
@@ -203,6 +213,12 @@ async def _ensure_demo_user(
                     "UPDATE users SET is_active = TRUE WHERE id = %s",
                     (user_id,),
                 )
+            if normalized_email != (existing_user.get("email") or "").strip().lower():
+                await cur.execute(
+                    "UPDATE users SET email = %s WHERE id = %s",
+                    (normalized_email, user_id),
+                )
+                email_normalized = True
             if normalized_username and normalized_username != (existing_user.get("username") or ""):
                 await cur.execute(
                     "UPDATE users SET username = %s WHERE id = %s",
@@ -245,14 +261,19 @@ async def _ensure_demo_user(
         status = "noop"
         if existing_user:
             logger.info(
-                "%s already exists: email=%s, user_id=%s, updated_roles=%s, password_reset=%s",
+                "%s already exists: email=%s, user_id=%s, updated_roles=%s, password_reset=%s, email_normalized=%s",
                 label,
                 normalized_email,
                 user_id,
                 bool(missing_roles),
                 password_reset,
+                email_normalized,
             )
-            status = "updated" if missing_roles or password_reset or not existing_user.get("is_active", True) else "noop"
+            status = (
+                "updated"
+                if missing_roles or password_reset or not existing_user.get("is_active", True) or email_normalized
+                else "noop"
+            )
         else:
             logger.info("%s seeded: email=%s, user_id=%s, roles=%s", label, normalized_email, user_id, roles)
             status = "created"

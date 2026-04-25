@@ -3,9 +3,12 @@ import type {
   DriverDTO,
   PaginatedResponse,
   RouteDetail,
+  TripCreatePayload,
   TripDetail,
   TripDeviationsResponse,
   TripDeviationType,
+  FuelConsumptionWritePayload,
+  FuelConsumptionWriteResult,
   TripEta,
   TripListItem,
   TripSlaImpact,
@@ -105,6 +108,14 @@ export async function fetchTrips(
 
 export async function fetchTripById(token: string, tripId: string): Promise<TripDetail> {
   return request<TripDetail>(`/client/logistics/trips/${tripId}`, { method: "GET" }, { token });
+}
+
+export async function createTrip(token: string, payload: TripCreatePayload): Promise<TripDetail> {
+  return request<TripDetail>(
+    "/client/logistics/trips",
+    { method: "POST", body: JSON.stringify(payload) },
+    { token },
+  );
 }
 
 export async function fetchTripRoute(token: string, tripId: string): Promise<RouteDetail> {
@@ -235,4 +246,22 @@ export async function fetchTripFuel(token: string, tripId: string): Promise<impo
     },
     alerts: response.alerts ?? [],
   };
+}
+
+export async function writeFuelConsumption(
+  token: string,
+  payload: FuelConsumptionWritePayload,
+): Promise<FuelConsumptionWriteResult> {
+  const idempotencyKey =
+    payload.idempotency_key ??
+    `client-ui-fuel:${payload.trip_id}:${payload.distance_km.toFixed(3)}:${payload.vehicle_kind}`;
+  return request<FuelConsumptionWriteResult>(
+    "/client/logistics/fuel/consumption",
+    {
+      method: "POST",
+      headers: { "Idempotency-Key": idempotencyKey },
+      body: JSON.stringify({ ...payload, idempotency_key: idempotencyKey }),
+    },
+    { token },
+  );
 }

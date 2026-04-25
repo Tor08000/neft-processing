@@ -10,3 +10,8 @@ dependencies = [
   "httpx==0.27.2",
   "neft_shared @ file:../../shared/python",
 ]
+
+[tool.pytest.ini_options]
+markers = [
+  "integration: tests that exercise local integration wiring or external task evidence",
+]

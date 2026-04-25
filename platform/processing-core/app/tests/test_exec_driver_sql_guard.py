@@ -22,7 +22,7 @@ def _has_placeholder(node: ast.AST) -> bool:
 
 def _exec_driver_sql_violations(path: Path) -> list[str]:
     violations: list[str] = []
-    tree = ast.parse(path.read_text())
+    tree = ast.parse(path.read_text(encoding="utf-8-sig"))
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
             continue

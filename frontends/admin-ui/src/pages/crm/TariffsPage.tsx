@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { createTariff, listTariffs } from "../../api/crm";
 import { useAuth } from "../../auth/AuthContext";
@@ -9,6 +9,7 @@ import { useToast } from "../../components/Toast/useToast";
 import { StatusBadge } from "../../components/StatusBadge/StatusBadge";
 import type { CrmTariff } from "../../types/crm";
 import { describeError, formatError } from "../../utils/apiErrors";
+import { tariffsPageCopy } from "./crmListPageCopy";
 
 export const TariffsPage: React.FC = () => {
   const navigate = useNavigate();
@@ -16,51 +17,62 @@ export const TariffsPage: React.FC = () => {
   const { toast, showToast } = useToast();
   const [tariffs, setTariffs] = useState<CrmTariff[]>([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<{ title: string; description?: string; details?: string } | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [saving, setSaving] = useState(false);
   const [canCreate, setCanCreate] = useState(true);
 
   const columns: DataColumn<CrmTariff>[] = useMemo(
     () => [
-      { key: "tariff_id", title: "Tariff ID", render: (row) => row.tariff_id ?? row.id ?? "-" },
-      { key: "name", title: "Name" },
-      { key: "status", title: "Status", render: (row) => (row.status ? <StatusBadge status={row.status} /> : "-") },
-      { key: "base_fee", title: "Base fee" },
+      { key: "tariff_id", title: tariffsPageCopy.columns.tariffId, render: (row) => row.tariff_id ?? row.id ?? tariffsPageCopy.values.fallback },
+      { key: "name", title: tariffsPageCopy.columns.name },
       {
-        key: "domains",
-        title: "Domains",
+        key: "status",
+        title: tariffsPageCopy.columns.status,
+        render: (row) => (row.status ? <StatusBadge status={row.status} /> : tariffsPageCopy.values.fallback),
+      },
+      { key: "billing_period", title: tariffsPageCopy.columns.billingPeriod },
+      { key: "base_fee_minor", title: tariffsPageCopy.columns.baseFeeMinor },
+      {
+        key: "features",
+        title: tariffsPageCopy.columns.features,
         render: (row) =>
-          row.domains
-            ? Object.entries(row.domains)
+          row.features
+            ? Object.entries(row.features)
                 .filter(([, enabled]) => enabled)
                 .map(([key]) => key)
-                .join(", ") || "-"
-            : "-",
+                .join(", ") || tariffsPageCopy.values.fallback
+            : tariffsPageCopy.values.fallback,
       },
-      { key: "included_summary", title: "Included" },
+      { key: "currency", title: tariffsPageCopy.columns.currency },
     ],
     [],
   );
 
-  const loadTariffs = () => {
+  const loadTariffs = useCallback(() => {
     if (!accessToken) return;
     setLoading(true);
+    setError(null);
     listTariffs(accessToken)
       .then((response) => setTariffs(response.items))
-      .catch((error: unknown) => showToast("error", formatError(error)))
+      .catch((error: unknown) => {
+        const summary = describeError(error);
+        setError({ title: tariffsPageCopy.errors.load, description: summary.message, details: summary.details });
+        showToast("error", formatError(error));
+      })
       .finally(() => setLoading(false));
-  };
+  }, [accessToken, showToast]);
 
   useEffect(() => {
     loadTariffs();
-  }, [accessToken]);
+  }, [accessToken, loadTariffs]);
 
   const handleCreate = async (values: Partial<CrmTariff>) => {
     if (!accessToken) return;
     setSaving(true);
     try {
       await createTariff(accessToken, values);
-      showToast("success", "Tariff created");
+      showToast("success", tariffsPageCopy.toasts.created);
       setShowCreate(false);
       loadTariffs();
     } catch (error: unknown) {
@@ -77,14 +89,7 @@ export const TariffsPage: React.FC = () => {
   return (
     <div>
       <Toast toast={toast} />
-      <h1>CRM · Tariffs</h1>
-      <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-        {canCreate && (
-          <button type="button" onClick={() => setShowCreate((prev) => !prev)}>
-            {showCreate ? "Close" : "Create tariff"}
-          </button>
-        )}
-      </div>
+      <h1>{tariffsPageCopy.title}</h1>
       {showCreate && (
         <div style={{ marginBottom: 24, border: "1px solid #e2e8f0", padding: 16, borderRadius: 12 }}>
           <TariffForm onSubmit={handleCreate} submitting={saving} submitLabel="Create" />
@@ -94,7 +99,36 @@ export const TariffsPage: React.FC = () => {
         data={tariffs}
         columns={columns}
         loading={loading}
-        onRowClick={(row) => navigate(`/crm/tariffs/${row.tariff_id ?? row.id}`)}
+        toolbar={
+          <div className="table-toolbar">
+            <div className="toolbar-actions">
+              {canCreate ? (
+                <button type="button" className="button primary" onClick={() => setShowCreate((prev) => !prev)}>
+                  {showCreate ? tariffsPageCopy.actions.close : tariffsPageCopy.actions.create}
+                </button>
+              ) : null}
+            </div>
+          </div>
+        }
+        errorState={
+          error
+            ? {
+                title: error.title,
+                description: error.description,
+                details: error.details,
+                actionLabel: tariffsPageCopy.actions.retry,
+                actionOnClick: loadTariffs,
+              }
+            : undefined
+        }
+        footer={<div className="table-footer__content muted">{tariffsPageCopy.footer.rows(tariffs.length)}</div>}
+        emptyState={{
+          title: tariffsPageCopy.empty.title,
+          description: tariffsPageCopy.empty.description,
+          actionLabel: canCreate ? tariffsPageCopy.actions.create : undefined,
+          actionOnClick: canCreate ? () => setShowCreate(true) : undefined,
+        }}
+        onRowClick={(row) => navigate(`/crm/tariffs/${row.id}`)}
       />
     </div>
   );

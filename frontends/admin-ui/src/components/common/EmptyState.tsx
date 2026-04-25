@@ -1,24 +1,39 @@
 import React from "react";
+import { EmptyState as BrandEmptyState } from "@shared/brand/components";
 
 interface EmptyStateProps {
   title: string;
   description?: string;
+  hint?: string;
+  icon?: React.ReactNode;
+  primaryAction?: {
+    label: string;
+    onClick?: () => void;
+  };
+  secondaryAction?: {
+    label: string;
+    onClick?: () => void;
+  };
   actionLabel?: string;
   actionOnClick?: () => void;
 }
 
-export const EmptyState: React.FC<EmptyStateProps> = ({ title, description, actionLabel, actionOnClick }) => {
-  return (
-    <div className="card empty-state">
-      <div className="empty-state__content">
-        <h3>{title}</h3>
-        {description ? <p className="muted">{description}</p> : null}
-        {actionLabel ? (
-          <button type="button" className="neft-button neft-btn-primary" onClick={actionOnClick}>
-            {actionLabel}
-          </button>
-        ) : null}
-      </div>
-    </div>
-  );
-};
+export const EmptyState: React.FC<EmptyStateProps> = ({
+  title,
+  description,
+  hint,
+  icon,
+  primaryAction,
+  secondaryAction,
+  actionLabel,
+  actionOnClick,
+}) => (
+  <BrandEmptyState
+    title={title}
+    description={description}
+    hint={hint}
+    icon={icon}
+    primaryAction={primaryAction ?? (actionLabel ? { label: actionLabel, onClick: actionOnClick } : undefined)}
+    secondaryAction={secondaryAction}
+  />
+);

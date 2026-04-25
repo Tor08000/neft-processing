@@ -18,7 +18,7 @@ NEFT_BOOTSTRAP_PARTNER_PASSWORD
 ```
 NEFT_BOOTSTRAP_ENABLED=1
 DEMO_SEED_FORCE_PASSWORD_RESET=1
-NEFT_BOOTSTRAP_PASSWORD_VERSION=1
+NEFT_BOOTSTRAP_PASSWORD_VERSION=2
 ```
 
 Ключи RSA `auth-host` хранятся в volume `auth-keys` (`/data/keys`). Чтобы пересоздать ключи: `docker compose down -v`. Чтобы сохранить ключи между рестартами: `docker compose down` без `-v`.
@@ -28,13 +28,13 @@ NEFT_BOOTSTRAP_PASSWORD_VERSION=1
 ```bash
 curl -i -X POST http://localhost/api/auth/v1/auth/login \
   -H "Content-Type: application/json" \
-  -d "{\"email\":\"admin@example.com\",\"password\":\"admin\"}"
+  -d "{\"email\":\"admin@neft.local\",\"password\":\"Neft123!\"}"
 ```
 
 Windows CMD (одной строкой, без `\`):
 
 ```bat
-curl -i -X POST http://localhost/api/auth/v1/auth/login -H "Content-Type: application/json" -d "{\"email\":\"admin@example.com\",\"password\":\"admin\"}"
+curl -i -X POST http://localhost/api/auth/v1/auth/login -H "Content-Type: application/json" -d "{\"email\":\"admin@neft.local\",\"password\":\"Neft123!\"}"
 ```
 
 ### Admin login
@@ -205,7 +205,7 @@ scripts\ui_smoke_assets.cmd
 Скрипт также проверяет auth login POST:
 
 ```bat
-curl -i -X POST http://localhost/api/auth/v1/auth/login -H "Content-Type: application/json" -d "{\"email\":\"admin@example.com\",\"password\":\"admin\"}"
+curl -i -X POST http://localhost/api/auth/v1/auth/login -H "Content-Type: application/json" -d "{\"email\":\"admin@neft.local\",\"password\":\"Neft123!\"}"
 ```
 
 ## 2.2) Проверка что HTML не подменяет ассеты
@@ -239,13 +239,13 @@ curl -I http://localhost/partner/assets/index-XXXX.css
 ```bash
 curl -i -X POST http://localhost/api/auth/v1/auth/login \
   -H "Content-Type: application/json" \
-  -d "{\"email\":\"admin@example.com\",\"password\":\"admin\"}"
+  -d "{\"email\":\"admin@neft.local\",\"password\":\"Neft123!\"}"
 ```
 
 Windows CMD:
 
 ```bat
-curl -i -X POST http://localhost/api/auth/v1/auth/login -H "Content-Type: application/json" -d "{\"email\":\"admin@example.com\",\"password\":\"admin\"}"
+curl -i -X POST http://localhost/api/auth/v1/auth/login -H "Content-Type: application/json" -d "{\"email\":\"admin@neft.local\",\"password\":\"Neft123!\"}"
 ```
 
 Ожидание:
@@ -275,13 +275,13 @@ curl -I http://localhost/client/assets/index-XXXX.css
 ```bash
 curl -i -X POST http://localhost/api/auth/v1/auth/login \
   -H "Content-Type: application/json" \
-  -d "{\"email\":\"admin@example.com\",\"password\":\"admin\"}"
+  -d "{\"email\":\"admin@neft.local\",\"password\":\"Neft123!\"}"
 ```
 
 Windows CMD:
 
 ```bat
-curl -i -X POST http://localhost/api/auth/v1/auth/login -H "Content-Type: application/json" -d "{\"email\":\"admin@example.com\",\"password\":\"admin\"}"
+curl -i -X POST http://localhost/api/auth/v1/auth/login -H "Content-Type: application/json" -d "{\"email\":\"admin@neft.local\",\"password\":\"Neft123!\"}"
 ```
 Ожидание:
 

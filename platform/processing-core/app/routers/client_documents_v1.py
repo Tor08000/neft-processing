@@ -26,7 +26,11 @@ from app.domains.documents.service import DocumentsService
 from app.domains.documents.storage import DocumentsStorage
 from app.domains.documents.timeline_schemas import TimelineEventOut
 from app.domains.documents.timeline_service import TimelineRequestContext
+from app.routers.client_documents import acknowledge_document_legacy_compatible
+from app.schemas.closing_documents import DocumentAcknowledgementResponse
 
+# Canonical client-facing documents/docflow surface. New client document flows should
+# use /api/core/client/documents* rather than the legacy /api/v1/client/documents* contour.
 router = APIRouter(prefix="/api/core/client/documents", tags=["client-documents"])
 
 
@@ -204,6 +208,21 @@ def get_client_document(
     return document
 
 
+
+
+@router.post("/{document_id}/ack", response_model=DocumentAcknowledgementResponse, status_code=201)
+def acknowledge_client_document(
+    document_id: str,
+    request: Request,
+    token: dict = Depends(client_portal_user),
+    db: Session = Depends(get_db),
+) -> DocumentAcknowledgementResponse:
+    return acknowledge_document_legacy_compatible(
+        document_id=document_id,
+        request=request,
+        token=token,
+        db=db,
+    )
 
 
 @router.get("/{document_id}/files", response_model=list[DocumentFileOut])

@@ -156,6 +156,7 @@ def _build_payload(
             client_id=tx.client_id,
             vehicle_id=str(tx.vehicle_id) if tx.vehicle_id else None,
             driver_id=str(tx.driver_id) if tx.driver_id else None,
+            station_id=str(tx.station_id) if tx.station_id else None,
         )
         result = UnifiedExplainResult(
             status=STATUS_MAP.get(tx.status, tx.status.value),

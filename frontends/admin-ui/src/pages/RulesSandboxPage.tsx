@@ -1,6 +1,13 @@
 import React, { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { evaluateRulesSandbox, fetchRuleSetVersions, type SandboxResponse } from "../api/unifiedRules";
+import {
+  evaluateRulesSandbox,
+  fetchRuleSetVersions,
+  type RuleSetVersion,
+  type SandboxResponse,
+} from "../api/unifiedRules";
+import { Loader } from "../components/Loader/Loader";
+import { EmptyState } from "../components/common/EmptyState";
 
 const SCOPES = ["API", "FLEET", "DOCS", "BILLING", "MARKETPLACE", "AUTH", "CRM", "GLOBAL"] as const;
 
@@ -31,25 +38,44 @@ export const RulesSandboxPage: React.FC = () => {
   const [transactionId, setTransactionId] = useState<string>("");
   const [result, setResult] = useState<SandboxResponse | null>(null);
   const [error, setError] = useState<string>("");
+  const [isEvaluating, setIsEvaluating] = useState(false);
 
-  const { data: versions, isFetching } = useQuery({
+  const {
+    data: versions,
+    error: versionsError,
+    isFetching,
+    isLoading: versionsLoading,
+    refetch: refetchVersions,
+  } = useQuery<RuleSetVersion[], Error>({
     queryKey: ["ruleset-versions", scope],
     queryFn: () => fetchRuleSetVersions(scope),
     staleTime: 30_000,
   });
 
   const versionOptions = useMemo(() => versions ?? [], [versions]);
+  const canEvaluate = mode === "synthetic" || transactionId.trim().length > 0;
+
+  const handleScopeChange = (nextScope: string) => {
+    setScope(nextScope);
+    setVersionId("");
+  };
 
   const handlePresetChange = (nextKey: PresetKey) => {
     const preset = PRESETS[nextKey];
     setPresetKey(nextKey);
-    setScope(preset.scope);
+    handleScopeChange(preset.scope);
     setContextText(JSON.stringify(preset.context, null, 2));
     setMetricsText(JSON.stringify(preset.synthetic_metrics, null, 2));
   };
 
   const handleEvaluate = async () => {
     setError("");
+    if (!canEvaluate) {
+      setError("Transaction ID is required for historical evaluation.");
+      return;
+    }
+
+    setIsEvaluating(true);
     try {
       if (mode === "synthetic") {
         const context = JSON.parse(contextText);
@@ -68,7 +94,7 @@ export const RulesSandboxPage: React.FC = () => {
         const payload = {
           mode,
           scope,
-          transaction_id: transactionId,
+          transaction_id: transactionId.trim(),
           version_id: versionId ? Number(versionId) : undefined,
         };
         const response = await evaluateRulesSandbox(payload);
@@ -76,6 +102,8 @@ export const RulesSandboxPage: React.FC = () => {
       }
     } catch (err) {
       setError((err as Error).message);
+    } finally {
+      setIsEvaluating(false);
     }
   };
 
@@ -83,21 +111,28 @@ export const RulesSandboxPage: React.FC = () => {
     <div>
       <div className="page-header">
         <h1>Rules sandbox</h1>
-        {isFetching && <span>Загружаем версии...</span>}
+        {isFetching && !versionsLoading ? <span className="muted">Refreshing versions...</span> : null}
       </div>
 
       <div className="neft-card" style={{ padding: 20, marginBottom: 16 }}>
         <div style={{ display: "grid", gap: 16, gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
           <label>
             <div className="label">Mode</div>
-            <select className="neft-select" value={mode} onChange={(e) => setMode(e.target.value as typeof mode)}>
+            <select
+              className="neft-select"
+              value={mode}
+              onChange={(event) => {
+                setMode(event.target.value as typeof mode);
+                setError("");
+              }}
+            >
               <option value="synthetic">Synthetic</option>
               <option value="historical">Historical</option>
             </select>
           </label>
           <label>
             <div className="label">Scope</div>
-            <select className="neft-select" value={scope} onChange={(e) => setScope(e.target.value)}>
+            <select className="neft-select" value={scope} onChange={(event) => handleScopeChange(event.target.value)}>
               {SCOPES.map((option) => (
                 <option key={option} value={option}>
                   {option}
@@ -110,7 +145,8 @@ export const RulesSandboxPage: React.FC = () => {
             <select
               className="neft-select"
               value={versionId}
-              onChange={(e) => setVersionId(e.target.value)}
+              onChange={(event) => setVersionId(event.target.value)}
+              disabled={versionsLoading || Boolean(versionsError)}
             >
               <option value="">Active by scope</option>
               {versionOptions.map((version) => (
@@ -120,13 +156,13 @@ export const RulesSandboxPage: React.FC = () => {
               ))}
             </select>
           </label>
-          {mode === "synthetic" && (
+          {mode === "synthetic" ? (
             <label>
               <div className="label">Preset</div>
               <select
                 className="neft-select"
                 value={presetKey}
-                onChange={(e) => handlePresetChange(e.target.value as PresetKey)}
+                onChange={(event) => handlePresetChange(event.target.value as PresetKey)}
               >
                 {Object.entries(PRESETS).map(([key, preset]) => (
                   <option key={key} value={key}>
@@ -135,21 +171,58 @@ export const RulesSandboxPage: React.FC = () => {
                 ))}
               </select>
             </label>
-          )}
-          {mode === "historical" && (
+          ) : null}
+          {mode === "historical" ? (
             <label>
               <div className="label">Transaction ID</div>
               <input
                 className="neft-input"
                 value={transactionId}
-                onChange={(e) => setTransactionId(e.target.value)}
+                onChange={(event) => {
+                  setTransactionId(event.target.value);
+                  setError("");
+                }}
                 placeholder="tx_123"
               />
             </label>
-          )}
+          ) : null}
         </div>
 
-        {mode === "synthetic" && (
+        <div style={{ marginTop: 16 }} aria-live="polite">
+          {versionsLoading ? <Loader label="Loading rule set versions..." /> : null}
+          {versionsError ? (
+            <div className="error-state" role="alert" style={{ padding: 12 }}>
+              <div className="error-state__content">
+                <h3>Rule set versions unavailable</h3>
+                <p className="muted">
+                  The sandbox can still evaluate the active scope, but pinned version selection is disabled.
+                </p>
+                <button
+                  type="button"
+                  className="neft-button neft-btn-primary"
+                  onClick={() => {
+                    void refetchVersions();
+                  }}
+                >
+                  Retry
+                </button>
+                <details className="error-state__details">
+                  <summary>Details</summary>
+                  <pre>{versionsError.message}</pre>
+                </details>
+              </div>
+            </div>
+          ) : null}
+          {!versionsLoading && !versionsError && versionOptions.length === 0 ? (
+            <EmptyState
+              title="No rule set versions"
+              description="Create or publish a rule set version before pinning sandbox evaluation."
+              hint="Active by scope remains available."
+            />
+          ) : null}
+        </div>
+
+        {mode === "synthetic" ? (
           <div style={{ display: "grid", gap: 16, marginTop: 16, gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))" }}>
             <label>
               <div className="label">Context (JSON)</div>
@@ -157,7 +230,7 @@ export const RulesSandboxPage: React.FC = () => {
                 className="neft-input"
                 rows={8}
                 value={contextText}
-                onChange={(e) => setContextText(e.target.value)}
+                onChange={(event) => setContextText(event.target.value)}
               />
             </label>
             <label>
@@ -166,21 +239,30 @@ export const RulesSandboxPage: React.FC = () => {
                 className="neft-input"
                 rows={8}
                 value={metricsText}
-                onChange={(e) => setMetricsText(e.target.value)}
+                onChange={(event) => setMetricsText(event.target.value)}
               />
             </label>
           </div>
-        )}
+        ) : null}
 
-        <div style={{ marginTop: 16, display: "flex", gap: 12, alignItems: "center" }}>
-          <button className="neft-btn-primary" type="button" onClick={handleEvaluate}>
-            Evaluate
+        <div style={{ marginTop: 16, display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+          <button className="neft-btn-primary" type="button" onClick={handleEvaluate} disabled={isEvaluating}>
+            {isEvaluating ? "Evaluating..." : "Evaluate"}
           </button>
-          {error && <span style={{ color: "#ff4d4d" }}>{error}</span>}
+          {!canEvaluate ? <span className="muted small">Transaction ID is required for historical mode.</span> : null}
         </div>
       </div>
 
-      {result && (
+      {error ? (
+        <div className="error-state" role="alert" style={{ padding: 16, marginBottom: 16 }}>
+          <div className="error-state__content">
+            <h3>Evaluation failed</h3>
+            <p className="muted">{error}</p>
+          </div>
+        </div>
+      ) : null}
+
+      {result ? (
         <div className="neft-card" style={{ padding: 20 }}>
           <h2 style={{ marginTop: 0 }}>Decision</h2>
           <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
@@ -190,11 +272,11 @@ export const RulesSandboxPage: React.FC = () => {
             </div>
             <div>
               <div className="label">Reason codes</div>
-              <div>{result.reason_codes.length ? result.reason_codes.join(", ") : "—"}</div>
+              <div>{result.reason_codes.length ? result.reason_codes.join(", ") : "-"}</div>
             </div>
             <div>
               <div className="label">Rule set</div>
-              <div>{result.version ? `${result.version.scope} / ${result.version.rule_set_version_id}` : "—"}</div>
+              <div>{result.version ? `${result.version.scope} / ${result.version.rule_set_version_id}` : "-"}</div>
             </div>
           </div>
 
@@ -216,14 +298,14 @@ export const RulesSandboxPage: React.FC = () => {
                     <td style={{ padding: "6px 4px" }}>{rule.code}</td>
                     <td style={{ padding: "6px 4px" }}>{rule.policy}</td>
                     <td style={{ padding: "6px 4px" }}>{rule.priority}</td>
-                    <td style={{ padding: "6px 4px" }}>{rule.reason_code ?? "—"}</td>
-                    <td style={{ padding: "6px 4px" }}>{rule.explain ?? "—"}</td>
+                    <td style={{ padding: "6px 4px" }}>{rule.reason_code ?? "-"}</td>
+                    <td style={{ padding: "6px 4px" }}>{rule.explain ?? "-"}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           ) : (
-            <div>Нет совпавших правил.</div>
+            <div className="muted">No matched rules.</div>
           )}
 
           <details style={{ marginTop: 20 }}>
@@ -231,7 +313,7 @@ export const RulesSandboxPage: React.FC = () => {
             <pre style={{ whiteSpace: "pre-wrap" }}>{JSON.stringify(result.explain, null, 2)}</pre>
           </details>
         </div>
-      )}
+      ) : null}
     </div>
   );
 };

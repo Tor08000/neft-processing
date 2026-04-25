@@ -1,13 +1,9 @@
 from datetime import date, datetime, timezone
-from typing import Tuple
 from uuid import uuid4
 
 import pytest
-from sqlalchemy import create_engine
-from sqlalchemy.orm import Session, sessionmaker
-from sqlalchemy.pool import StaticPool
+from sqlalchemy.orm import Session
 
-from app.db import Base
 from app.models.crm import CRMClient, CRMClientStatus
 from app.models.fleet_intelligence import (
     DriverBehaviorLevel,
@@ -20,24 +16,14 @@ from app.models.fleet_intelligence import (
     StationTrustLevel,
 )
 from app.services.fleet_intelligence import trends
+from app.tests._fleet_intelligence_test_harness import FLEET_INTELLIGENCE_CONTROL_TEST_TABLES
+from app.tests._scoped_router_harness import scoped_session_context
 
 
 @pytest.fixture()
-def db_session() -> Tuple[Session, sessionmaker]:
-    engine = create_engine(
-        "sqlite://",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
-    SessionLocal = sessionmaker(autocommit=False, autoflush=False, expire_on_commit=False, bind=engine)
-    Base.metadata.create_all(bind=engine)
-    session = SessionLocal()
-    try:
-        yield session, SessionLocal
-    finally:
-        session.close()
-        Base.metadata.drop_all(bind=engine)
-        engine.dispose()
+def db_session() -> Session:
+    with scoped_session_context(tables=FLEET_INTELLIGENCE_CONTROL_TEST_TABLES) as session:
+        yield session
 
 
 def _seed_client(db: Session) -> CRMClient:
@@ -54,16 +40,15 @@ def _seed_client(db: Session) -> CRMClient:
     return client
 
 
-def test_trend_labels_v2(db_session: Tuple[Session, sessionmaker]):
-    db, _ = db_session
-    _seed_client(db)
+def test_trend_labels_v2(db_session: Session):
+    _seed_client(db_session)
     day = date(2025, 1, 31)
     driver_id = str(uuid4())
     stable_driver_id = str(uuid4())
     station_id = str(uuid4())
     vehicle_id = str(uuid4())
 
-    db.add_all(
+    db_session.add_all(
         [
             FIDriverScore(
                 tenant_id=1,
@@ -151,13 +136,13 @@ def test_trend_labels_v2(db_session: Tuple[Session, sessionmaker]):
             ),
         ]
     )
-    db.commit()
+    db_session.commit()
 
-    trends.compute_trends_for_client(db, client_id="client-1", day=day)
-    db.commit()
+    trends.compute_trends_for_client(db_session, client_id="client-1", day=day)
+    db_session.commit()
 
     driver_trend = (
-        db.query(FITrendSnapshot)
+        db_session.query(FITrendSnapshot)
         .filter(FITrendSnapshot.entity_id == driver_id)
         .filter(FITrendSnapshot.metric == FITrendMetric.DRIVER_BEHAVIOR_SCORE)
         .first()
@@ -166,7 +151,7 @@ def test_trend_labels_v2(db_session: Tuple[Session, sessionmaker]):
     assert driver_trend.label == FITrendLabel.DEGRADING
 
     stable_driver_trend = (
-        db.query(FITrendSnapshot)
+        db_session.query(FITrendSnapshot)
         .filter(FITrendSnapshot.entity_id == stable_driver_id)
         .filter(FITrendSnapshot.metric == FITrendMetric.DRIVER_BEHAVIOR_SCORE)
         .first()
@@ -175,7 +160,7 @@ def test_trend_labels_v2(db_session: Tuple[Session, sessionmaker]):
     assert stable_driver_trend.label == FITrendLabel.STABLE
 
     station_trend = (
-        db.query(FITrendSnapshot)
+        db_session.query(FITrendSnapshot)
         .filter(FITrendSnapshot.entity_id == station_id)
         .filter(FITrendSnapshot.metric == FITrendMetric.STATION_TRUST_SCORE)
         .first()
@@ -184,7 +169,7 @@ def test_trend_labels_v2(db_session: Tuple[Session, sessionmaker]):
     assert station_trend.label == FITrendLabel.DEGRADING
 
     vehicle_trend = (
-        db.query(FITrendSnapshot)
+        db_session.query(FITrendSnapshot)
         .filter(FITrendSnapshot.entity_id == vehicle_id)
         .filter(FITrendSnapshot.metric == FITrendMetric.VEHICLE_EFFICIENCY_DELTA_PCT)
         .first()

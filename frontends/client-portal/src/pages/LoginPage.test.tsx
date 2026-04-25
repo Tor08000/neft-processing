@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { LoginPage } from "./LoginPage";
 
 const useAuthMock = vi.fn();
@@ -39,6 +39,7 @@ vi.mock("../api/auth", async () => {
 
 describe("LoginPage", () => {
   beforeEach(() => {
+    vi.stubEnv("VITE_DEMO_MODE", "true");
     vi.clearAllMocks();
     listSsoIdpsMock.mockResolvedValue({ idps: [] });
     useToastMock.mockReturnValue({ toast: null, showToast: vi.fn() });
@@ -51,6 +52,39 @@ describe("LoginPage", () => {
       portalState: "READY",
       refresh: vi.fn().mockResolvedValue(undefined),
     });
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("shows the client bootstrap password, not the admin password", async () => {
+    render(
+      <MemoryRouter>
+        <LoginPage />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => expect(listSsoIdpsMock).toHaveBeenCalledTimes(1));
+    expect(screen.getByDisplayValue("Client123!")).toBeInTheDocument();
+    expect(screen.queryByDisplayValue("Neft123!")).not.toBeInTheDocument();
+  });
+
+  it("does not expose demo credentials when demo mode is disabled", async () => {
+    vi.stubEnv("VITE_DEMO_MODE", "false");
+
+    render(
+      <MemoryRouter>
+        <LoginPage />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => expect(listSsoIdpsMock).toHaveBeenCalledTimes(1));
+    expect(screen.queryByDisplayValue("Client123!")).not.toBeInTheDocument();
+    expect(screen.queryByText("Demo password")).not.toBeInTheDocument();
+    expect(screen.queryByText("Используйте демо-учётные данные, чтобы продолжить работу.")).not.toBeInTheDocument();
+    expect(screen.getByText("Войдите под учётными данными клиента, чтобы продолжить работу.")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Password")).toBeInTheDocument();
   });
 
   it("refreshes client state after successful login", async () => {

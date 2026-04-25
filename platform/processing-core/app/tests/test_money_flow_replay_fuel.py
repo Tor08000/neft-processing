@@ -2,34 +2,80 @@ from datetime import datetime, timezone
 from uuid import uuid4
 
 import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.pool import StaticPool
 
 from app.config import settings
-from app.db import Base, SessionLocal, engine
+from app.db import Base
+from app.domains.ledger.models import LedgerAccountBalanceV1, LedgerAccountV1, LedgerEntryV1, LedgerLineV1
 from app.models.billing_period import BillingPeriodType
+from app.models.audit_log import AuditLog
+from app.models.billing_period import BillingPeriod
+from app.models.clearing_batch import ClearingBatch
+from app.models.client_actions import ReconciliationRequest
 from app.models.fuel import FuelCard, FuelCardStatus, FuelNetwork, FuelNetworkStatus, FuelStation, FuelStationStatus, FuelTransaction, FuelTransactionStatus
+from app.models.internal_ledger import InternalLedgerAccount, InternalLedgerEntry, InternalLedgerTransaction
+from app.models.invoice import Invoice, InvoiceLine
 from app.models.money_flow_v3 import MoneyFlowLink, MoneyFlowLinkNodeType, MoneyFlowLinkType
 from app.services.billing_periods import BillingPeriodService, period_bounds_for_dates
-from app.services.fuel.authorize import authorize_fuel_tx
 from app.services.fuel.settlement import settle_fuel_tx
 from app.services.money_flow.replay import MoneyReplayMode, MoneyReplayScope, run_money_flow_replay
-from app.schemas.fuel import FuelAuthorizeRequest
+
+FUEL_REPLAY_TEST_TABLES = [
+    AuditLog.__table__,
+    BillingPeriod.__table__,
+    ClearingBatch.__table__,
+    ReconciliationRequest.__table__,
+    FuelNetwork.__table__,
+    FuelStation.__table__,
+    FuelCard.__table__,
+    FuelTransaction.__table__,
+    MoneyFlowLink.__table__,
+    InternalLedgerAccount.__table__,
+    InternalLedgerEntry.__table__,
+    InternalLedgerTransaction.__table__,
+    LedgerAccountV1.__table__,
+    LedgerEntryV1.__table__,
+    LedgerLineV1.__table__,
+    LedgerAccountBalanceV1.__table__,
+    Invoice.__table__,
+    InvoiceLine.__table__,
+]
 
 
-@pytest.fixture(autouse=True)
-def _setup_db():
-    Base.metadata.drop_all(bind=engine)
-    Base.metadata.create_all(bind=engine)
-    yield
-    Base.metadata.drop_all(bind=engine)
+def _build_session_factory() -> tuple[sessionmaker, object]:
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+        future=True,
+    )
+    SessionLocal = sessionmaker(
+        autocommit=False,
+        autoflush=False,
+        expire_on_commit=False,
+        bind=engine,
+        class_=Session,
+    )
+    for table in FUEL_REPLAY_TEST_TABLES:
+        table.create(bind=engine)
+    return SessionLocal, engine
 
 
 @pytest.fixture
-def session():
+def session(monkeypatch: pytest.MonkeyPatch):
+    SessionLocal, engine = _build_session_factory()
+    monkeypatch.setattr("app.services.fuel.settlement.apply_fuel_transaction_mileage", lambda *args, **kwargs: None)
+    monkeypatch.setattr("app.services.fuel.settlement.fuel_linker.auto_link_fuel_tx", lambda *args, **kwargs: None)
     db = SessionLocal()
     try:
         yield db
     finally:
         db.close()
+        for table in reversed(FUEL_REPLAY_TEST_TABLES):
+            table.drop(bind=engine)
+        engine.dispose()
 
 
 def _seed_fuel_refs(db):
@@ -56,6 +102,30 @@ def _seed_fuel_refs(db):
     db.add_all([network, station, card])
     db.commit()
     return card, station, network
+
+
+def _seed_authorized_fuel_tx(db: Session, *, card: FuelCard, station: FuelStation, network: FuelNetwork) -> FuelTransaction:
+    transaction = FuelTransaction(
+        tenant_id=1,
+        client_id="client-1",
+        card_id=card.id,
+        vehicle_id=None,
+        driver_id=None,
+        station_id=station.id,
+        network_id=network.id,
+        occurred_at=datetime(2025, 1, 5, tzinfo=timezone.utc),
+        fuel_type="DIESEL",
+        volume_ml=10000,
+        unit_price_minor=500,
+        amount_total_minor=5000,
+        currency="RUB",
+        status=FuelTransactionStatus.AUTHORIZED,
+        external_ref=str(uuid4()),
+    )
+    db.add(transaction)
+    db.commit()
+    db.refresh(transaction)
+    return transaction
 
 
 def test_replay_fuel_dry_run_deterministic(session):
@@ -108,25 +178,14 @@ def test_replay_fuel_dry_run_deterministic(session):
 
 
 def test_replay_fuel_compare_no_diff_after_settle(session):
-    _seed_fuel_refs(session)
-    payload = FuelAuthorizeRequest(
-        card_token="card-1",
-        network_code="NET",
-        station_code="ST-1",
-        occurred_at=datetime(2025, 1, 5, tzinfo=timezone.utc),
-        fuel_type="DIESEL",
-        volume_liters=10.0,
-        unit_price=500,
-        currency="RUB",
-        external_ref=str(uuid4()),
-    )
-    result = authorize_fuel_tx(session, payload=payload)
-    tx_id = result.response.transaction_id
+    card, station, network = _seed_fuel_refs(session)
+    transaction = _seed_authorized_fuel_tx(session, card=card, station=station, network=network)
+    tx_id = str(transaction.id)
     settle_fuel_tx(session, transaction_id=tx_id)
 
     period_start, period_end = period_bounds_for_dates(
-        date_from=payload.occurred_at.date(),
-        date_to=payload.occurred_at.date(),
+        date_from=transaction.occurred_at.date(),
+        date_to=transaction.occurred_at.date(),
         tz=settings.NEFT_BILLING_TZ,
     )
     period = BillingPeriodService(session).get_or_create(

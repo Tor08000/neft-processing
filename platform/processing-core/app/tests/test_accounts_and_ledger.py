@@ -5,29 +5,19 @@ from uuid import uuid4
 import pytest
 from sqlalchemy import inspect
 
-from app.db import Base, SessionLocal, engine
+from app.db.types import GUID
 from app.models.account import AccountStatus, AccountType
 from app.models.ledger_entry import LedgerDirection
 from app.models.operation import Operation, OperationStatus, OperationType
 from app.repositories.accounts_repository import AccountsRepository
 from app.repositories.ledger_repository import LedgerRepository, OperationNotFound
-
-
-@pytest.fixture(autouse=True)
-def _prepare_db():
-    Base.metadata.drop_all(bind=engine)
-    Base.metadata.create_all(bind=engine)
-    yield
-    Base.metadata.drop_all(bind=engine)
+from ._money_router_harness import ACCOUNT_LEDGER_TEST_TABLES, money_session_context
 
 
 @pytest.fixture
 def session():
-    db = SessionLocal()
-    try:
+    with money_session_context(tables=ACCOUNT_LEDGER_TEST_TABLES) as db:
         yield db
-    finally:
-        db.close()
 
 
 @pytest.fixture
@@ -40,10 +30,13 @@ def ledger_repo(session):
     return LedgerRepository(session)
 
 
-def test_migration_tables_created():
-    inspector = inspect(engine)
+def test_migration_tables_created(session):
+    inspector = inspect(session.bind)
     tables = set(inspector.get_table_names())
     assert {"accounts", "ledger_entries", "account_balances"}.issubset(tables)
+    assert isinstance(session.bind.dialect.type_descriptor(GUID()), GUID)
+    assert isinstance(session.bind.dialect.type_descriptor(session.get_bind().dialect.type_descriptor(GUID())), GUID)
+    assert isinstance(ACCOUNT_LEDGER_TEST_TABLES[2].c.client_id.type, GUID)
 
     account_indexes = {index["name"] for index in inspector.get_indexes("accounts")}
     assert {
@@ -62,14 +55,14 @@ def test_migration_tables_created():
 
 def test_account_crud(accounts_repo: AccountsRepository):
     account = accounts_repo.get_or_create_account(
-        client_id="client-1",
+        client_id="11111111-1111-1111-1111-111111111111",
         currency="RUB",
         account_type=AccountType.CLIENT_MAIN,
     )
     assert account.id is not None
 
     same = accounts_repo.get_or_create_account(
-        client_id="client-1",
+        client_id="11111111-1111-1111-1111-111111111111",
         currency="RUB",
         account_type=AccountType.CLIENT_MAIN,
     )
@@ -86,7 +79,7 @@ def test_posting_and_balances(
     accounts_repo: AccountsRepository, ledger_repo: LedgerRepository, session
 ):
     account = accounts_repo.get_or_create_account(
-        client_id="client-2",
+        client_id="22222222-2222-2222-2222-222222222222",
         currency="USD",
         account_type=AccountType.CLIENT_MAIN,
     )
@@ -99,7 +92,7 @@ def test_posting_and_balances(
         status=OperationStatus.AUTHORIZED,
         merchant_id="merchant-1",
         terminal_id="terminal-1",
-        client_id="client-2",
+        client_id="22222222-2222-2222-2222-222222222222",
         card_id="card-1",
         amount=10000,
         amount_settled=0,
@@ -141,7 +134,7 @@ def test_ledger_entry_requires_existing_operation_when_operation_id_provided(
     accounts_repo: AccountsRepository, ledger_repo: LedgerRepository
 ):
     account = accounts_repo.get_or_create_account(
-        client_id="client-3",
+        client_id="33333333-3333-3333-3333-333333333333",
         currency="USD",
         account_type=AccountType.CLIENT_MAIN,
     )

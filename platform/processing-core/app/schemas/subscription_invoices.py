@@ -7,6 +7,9 @@ from pydantic import BaseModel, ConfigDict
 
 from app.schemas.billing_payment_intakes import PaymentIntakeOut
 
+InvoiceId = str | int
+SubscriptionId = str | int
+
 
 class SubscriptionInvoiceLineOut(BaseModel):
     line_type: str
@@ -19,11 +22,11 @@ class SubscriptionInvoiceLineOut(BaseModel):
 
 
 class SubscriptionInvoiceOut(BaseModel):
-    id: int
+    id: InvoiceId
     org_id: int
-    subscription_id: int | None = None
-    period_start: date
-    period_end: date
+    subscription_id: SubscriptionId | None = None
+    period_start: date | None = None
+    period_end: date | None = None
     status: str
     issued_at: datetime | None = None
     due_at: datetime | None = None
@@ -58,12 +61,12 @@ class SubscriptionInvoiceGenerateRequest(BaseModel):
 
 
 class SubscriptionInvoiceGenerateResponse(BaseModel):
-    invoice_ids: list[int]
+    invoice_ids: list[InvoiceId]
     created: int
 
 
 class SubscriptionInvoiceStatusResponse(BaseModel):
-    id: int
+    id: InvoiceId
     status: str
     paid_at: datetime | None = None
 

@@ -1,12 +1,14 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { App } from "../App";
 import type { AuthSession } from "../api/types";
+import { AuthProvider } from "../auth/AuthContext";
+import { I18nProvider } from "../i18n";
+import { FleetGroupDetailsPage } from "./FleetGroupDetailsPage";
 
 const session: AuthSession = {
-  token: "token-1",
+  token: "test.header.payload",
   email: "viewer@demo.test",
   roles: ["CLIENT_USER"],
   subjectType: "CLIENT",
@@ -18,6 +20,8 @@ describe("FleetGroupDetailsPage", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
+    window.localStorage.clear();
+    window.sessionStorage.clear();
   });
 
   it("renders tabs and hides admin actions for viewer", async () => {
@@ -63,7 +67,13 @@ describe("FleetGroupDetailsPage", () => {
 
     render(
       <MemoryRouter initialEntries={["/fleet/groups/group-1"]}>
-        <App initialSession={session} />
+        <I18nProvider locale="ru">
+          <AuthProvider initialSession={session}>
+            <Routes>
+              <Route path="/fleet/groups/:id" element={<FleetGroupDetailsPage />} />
+            </Routes>
+          </AuthProvider>
+        </I18nProvider>
       </MemoryRouter>,
     );
 

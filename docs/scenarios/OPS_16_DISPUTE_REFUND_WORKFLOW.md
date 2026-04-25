@@ -1,38 +1,64 @@
-# OPS 16 — Dispute / Refund Workflow
+# OPS 16 - Dispute / Refund Workflow
 
 ## Goal
-Admin opens disputes, resolves them, and issues refunds where required.
+Admin opens a dispute on a captured operation, moves it through review, accepts it with hold release plus refund/fee postings, and can also post a standalone refund.
 
 ## Actors & Roles
 - Ops/Admin
 
 ## Prerequisites
-- Core API running with `postgres`.
+- `auth-host`, `core-api`, and `postgres` are running.
+- Admin login uses the canonical seeded credentials.
 
 ## UI Flow
 **Admin portal**
-- Disputes list → open dispute → accept/reject/close → review refund entries.
+- Disputes queue -> open dispute -> move to review -> accept/reject/close -> inspect refund outcome.
+- Refunds page -> create refund -> verify posted status and posting reference.
 
 ## API Flow
-1. `POST /api/disputes/open` — open dispute.
-2. `POST /api/disputes/{id}/review` — move to review.
-3. `POST /api/disputes/{id}/accept` / `POST /api/disputes/{id}/reject` — resolve.
-4. `POST /api/refunds` — create refund request.
+1. `POST /api/v1/admin/disputes/open` - open dispute and place hold.
+2. `POST /api/v1/admin/disputes/{id}/review` - move dispute to `UNDER_REVIEW`.
+3. `POST /api/v1/admin/disputes/{id}/accept` - accept dispute, release hold, post refund and fee adjustment.
+4. `POST /api/v1/admin/refunds` - create standalone refund request.
 
 ## DB Touchpoints
-- `disputes`, `dispute_events`.
-- `billing_refunds` / `credit_notes` for refunds.
+- `disputes`, `dispute_events`
+- `posting_batches`, `ledger_entries`, `account_balances`
+- `refund_requests`
+- `operations.refunded_amount`
 
 ## Events & Audit
-- Audit log entries for dispute transitions and refunds.
+- Dispute events persisted for:
+  - `OPENED`
+  - `HOLD_PLACED`
+  - `MOVED_TO_REVIEW`
+  - `ACCEPTED`
+  - `REFUND_POSTED`
+  - `FEE_POSTED`
+- Posting batches persisted for dispute hold, dispute refund, dispute fee adjustment, and standalone refund.
 
 ## Security / Gates
-- Admin permissions required (`admin:disputes:*`, `admin:refunds:*`).
+- Admin permissions required:
+  - `admin:disputes:*`
+  - `admin:refunds:*`
 
-## Failure modes
-- Invalid dispute state transition → `409`.
+## Failure Modes
+- Invalid dispute state transition -> `409`
+- Missing account/ledger schema parity -> runtime 500 until additive repair migrations are applied
 
 ## VERIFIED
-- pytest: `platform/processing-core/app/tests/test_disputes.py`, `platform/processing-core/app/tests/test_refunds.py`.
-- smoke cmd: `scripts/smoke_dispute_refund.cmd` (placeholder).
-- PASS: dispute transitions apply and refund entries recorded.
+- pytest:
+  - `platform/processing-core/app/tests/test_disputes.py`
+  - `platform/processing-core/app/tests/test_refunds.py`
+  - `platform/processing-core/app/tests/test_accounts_and_ledger.py`
+  - `platform/processing-core/app/tests/test_admin_accounts_api.py`
+  - `platform/processing-core/app/tests/test_posting_engine.py`
+  - `platform/processing-core/app/tests/test_ledger_posting_engine.py`
+- smoke cmd:
+  - `scripts/smoke_dispute_refund.cmd`
+- PASS:
+  - admin login/verify succeeds
+  - dispute open -> review -> accept succeeds through canonical admin routes
+  - dispute hold is released after acceptance
+  - refund request posts in `SAME_PERIOD`
+  - persisted dispute events, posting batches, refund row, and `operations.refunded_amount` are verified

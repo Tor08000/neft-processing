@@ -56,7 +56,7 @@ export function ClientUsersPage() {
   const [inviteStatus, setInviteStatus] = useState("ALL");
   const [inviteSort, setInviteSort] = useState("created_at_desc");
 
-  const canManage = hasAnyRole(user, ["CLIENT_OWNER", "CLIENT_ADMIN"]);
+  const canManage = hasAnyRole(user, ["CLIENT_OWNER", "CLIENT_MANAGER", "CLIENT_ADMIN"]);
   const emailValid = newEmail.trim() !== "" && newEmail.includes("@");
 
   const loadUsers = () => {

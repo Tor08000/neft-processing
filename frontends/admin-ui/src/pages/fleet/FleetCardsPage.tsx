@@ -8,6 +8,7 @@ import ForbiddenPage from "../ForbiddenPage";
 import type { FleetCard } from "../../types/fleet";
 import { describeError } from "../../utils/apiErrors";
 import { formatDateTime } from "../../utils/format";
+import { fleetCardsPageCopy } from "./fleetPageCopy";
 
 const filterCards = (cards: FleetCard[], status: string, search: string) => {
   const term = search.trim().toLowerCase();
@@ -52,7 +53,7 @@ export const FleetCardsPage = () => {
         setIsForbidden(true);
         return;
       }
-      setError({ title: "Не удалось загрузить карты", description: summary.message, details: summary.details });
+      setError({ title: fleetCardsPageCopy.errors.load, description: summary.message, details: summary.details });
     } finally {
       setLoading(false);
     }
@@ -63,18 +64,23 @@ export const FleetCardsPage = () => {
   }, [loadCards]);
 
   const filteredCards = useMemo(() => filterCards(cards, statusFilter, search), [cards, statusFilter, search]);
+  const filtersActive = Boolean(statusFilter || search.trim());
 
   const columns: DataColumn<FleetCard>[] = [
-    { key: "card_alias", title: "Alias", render: (row) => row.card_alias ?? "—" },
-    { key: "masked_pan", title: "Masked PAN", render: (row) => row.masked_pan ?? "—" },
-    { key: "status", title: "Status", render: (row) => (row.status ? <StatusBadge status={row.status} /> : "—") },
-    { key: "currency", title: "Currency", render: (row) => row.currency ?? "—" },
-    { key: "issued_at", title: "Issued", render: (row) => formatDateTime(row.issued_at) },
-    { key: "created_at", title: "Created", render: (row) => formatDateTime(row.created_at) },
+    { key: "card_alias", title: fleetCardsPageCopy.columns.alias, render: (row) => row.card_alias ?? fleetCardsPageCopy.values.fallback },
+    { key: "masked_pan", title: fleetCardsPageCopy.columns.maskedPan, render: (row) => row.masked_pan ?? fleetCardsPageCopy.values.fallback },
+    {
+      key: "status",
+      title: fleetCardsPageCopy.columns.status,
+      render: (row) => (row.status ? <StatusBadge status={row.status} /> : fleetCardsPageCopy.values.fallback),
+    },
+    { key: "currency", title: fleetCardsPageCopy.columns.currency, render: (row) => row.currency ?? fleetCardsPageCopy.values.fallback },
+    { key: "issued_at", title: fleetCardsPageCopy.columns.issued, render: (row) => formatDateTime(row.issued_at) },
+    { key: "created_at", title: fleetCardsPageCopy.columns.created, render: (row) => formatDateTime(row.created_at) },
   ];
 
   if (loading) {
-    return <Loader label="Загружаем карты" />;
+    return <Loader label={fleetCardsPageCopy.loading} />;
   }
 
   if (isForbidden) {
@@ -82,40 +88,65 @@ export const FleetCardsPage = () => {
   }
 
   if (unavailable) {
-    return <div className="card">Fleet cards endpoint unavailable in this environment.</div>;
+    return <div className="card">{fleetCardsPageCopy.unavailable}</div>;
   }
 
   return (
     <div>
       <div className="page-header">
-        <h1>Fleet · Cards</h1>
-      </div>
-      <div className="filters">
-        <div className="filter">
-          <span className="label">Status</span>
-          <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
-            <option value="">Все</option>
-            <option value="ACTIVE">ACTIVE</option>
-            <option value="BLOCKED">BLOCKED</option>
-          </select>
-        </div>
-        <div className="filter">
-          <span className="label">Search</span>
-          <input
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Alias, masked pan, card id"
-          />
-        </div>
+        <h1>{fleetCardsPageCopy.title}</h1>
       </div>
       <DataTable
         data={filteredCards}
         columns={columns}
         loading={false}
+        toolbar={
+          <div className="table-toolbar">
+            <div className="filters">
+              <div className="filter">
+                <span className="label">{fleetCardsPageCopy.filters.status}</span>
+                <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+                  <option value="">{fleetCardsPageCopy.filters.all}</option>
+                  <option value="ACTIVE">ACTIVE</option>
+                  <option value="BLOCKED">BLOCKED</option>
+                </select>
+              </div>
+              <div className="filter filter--wide">
+                <span className="label">{fleetCardsPageCopy.filters.search}</span>
+                <input
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder={fleetCardsPageCopy.filters.searchPlaceholder}
+                />
+              </div>
+            </div>
+            <div className="toolbar-actions">
+              <button
+                type="button"
+                className="button secondary"
+                onClick={() => {
+                  setStatusFilter("");
+                  setSearch("");
+                }}
+                disabled={!filtersActive}
+              >
+                {fleetCardsPageCopy.actions.reset}
+              </button>
+            </div>
+          </div>
+        }
         errorState={error ? { title: error.title, description: error.description, details: error.details } : undefined}
+        footer={<div className="table-footer__content muted">{fleetCardsPageCopy.footer.rows(filteredCards.length)}</div>}
         emptyState={{
-          title: "Карты не найдены",
-          description: "Проверьте фильтры или добавьте новую карту в клиентском кабинете.",
+          title: fleetCardsPageCopy.empty.title,
+          description: fleetCardsPageCopy.empty.description,
+          actionLabel: filtersActive ? fleetCardsPageCopy.empty.resetAction : undefined,
+          actionOnClick: filtersActive
+            ? () => {
+                setStatusFilter("");
+                setSearch("");
+              }
+            : undefined,
         }}
       />
     </div>

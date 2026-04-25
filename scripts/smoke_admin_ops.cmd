@@ -8,8 +8,7 @@ set "CORE_URL=%GATEWAY_BASE%%CORE_BASE%"
 set "LOG_DIR=logs"
 if not exist "%LOG_DIR%" mkdir "%LOG_DIR%"
 
-for /f "tokens=2 delims==" %%I in ('wmic os get LocalDateTime /value') do set "dt=%%I"
-set "ts=%dt:~0,4%-%dt:~4,2%-%dt:~6,2%_%dt:~8,4%"
+for /f "usebackq delims=" %%I in (`python -c "from datetime import datetime; print(datetime.now().strftime('%%Y-%%m-%%d_%%H%%M'))"`) do set "ts=%%I"
 set "LOG_FILE=%LOG_DIR%\\smoke_admin_ops_%ts%.log"
 
 echo smoke_admin_ops.cmd started at %date% %time% > "%LOG_FILE%"

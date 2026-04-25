@@ -20,6 +20,7 @@ Risk Engine v5 introduces ML-heavy scoring, shadow mode execution, deterministic
 
 ## Scoring
 v5 calls the existing AI service `/api/v1/risk-score` endpoint using the selector `risk_v5_<subject_type>`.
+The shadow adapter maps v4 decision-context features into that provider contract and stores provider payload evidence with every shadow explain. The AI service is still a heuristic provider in this repo, not a trained-model owner; its response must include stable trace data and the shadow record must remain degraded if the provider rejects the payload.
 
 ## Configuration
 - `RISK_V5_SHADOW_ENABLED` controls whether shadow hooks are active (default: `false`).

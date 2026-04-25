@@ -93,6 +93,8 @@ def list_batches(
     status: str | None = None,
     date_from: date | None = None,
     date_to: date | None = None,
+    limit: int | None = None,
+    offset: int | None = None,
 ) -> list[ClearingBatch]:
     query = db.query(ClearingBatch)
     if merchant_id:
@@ -103,7 +105,12 @@ def list_batches(
         query = query.filter(ClearingBatch.date_from >= date_from)
     if date_to:
         query = query.filter(ClearingBatch.date_to <= date_to)
-    return query.order_by(ClearingBatch.created_at.desc()).all()
+    query = query.order_by(ClearingBatch.created_at.desc())
+    if offset:
+        query = query.offset(offset)
+    if limit:
+        query = query.limit(limit)
+    return query.all()
 
 
 def mark_batch_sent(db: Session, batch_id: str) -> ClearingBatch:

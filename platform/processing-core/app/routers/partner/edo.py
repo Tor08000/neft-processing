@@ -35,7 +35,7 @@ def get_document(
     db: Session = Depends(get_db),
 ) -> EdoDocumentOut:
     partner_id = token.get("partner_id")
-    doc = db.query(EdoDocument).get(document_id)
+    doc = db.get(EdoDocument, document_id)
     if not doc or doc.subject_id != str(partner_id):
         raise HTTPException(status_code=404, detail="edo_document_not_found")
     return _serialize_document(doc)
@@ -48,7 +48,7 @@ def list_artifacts(
     db: Session = Depends(get_db),
 ) -> list[EdoArtifactOut]:
     partner_id = token.get("partner_id")
-    doc = db.query(EdoDocument).get(document_id)
+    doc = db.get(EdoDocument, document_id)
     if not doc or doc.subject_id != str(partner_id):
         raise HTTPException(status_code=404, detail="edo_document_not_found")
     records = (
@@ -78,7 +78,7 @@ def list_transitions(
     db: Session = Depends(get_db),
 ) -> list[EdoTransitionOut]:
     partner_id = token.get("partner_id")
-    doc = db.query(EdoDocument).get(document_id)
+    doc = db.get(EdoDocument, document_id)
     if not doc or doc.subject_id != str(partner_id):
         raise HTTPException(status_code=404, detail="edo_document_not_found")
     records = (
@@ -110,7 +110,7 @@ def acknowledge_document(
     db: Session = Depends(get_db),
 ) -> dict:
     partner_id = token.get("partner_id")
-    doc = db.query(EdoDocument).get(document_id)
+    doc = db.get(EdoDocument, document_id)
     if not doc or doc.subject_id != str(partner_id):
         raise HTTPException(status_code=404, detail="edo_document_not_found")
     return {"acknowledged": True, "document_id": document_id}

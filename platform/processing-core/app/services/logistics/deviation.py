@@ -688,8 +688,10 @@ def _create_deviation_event(
         explain=explain,
     )
     db.add(event)
+    db.flush()
+    event_id = str(event.id)
     db.commit()
-    db.refresh(event)
+    event = repository.refresh_by_id(db, event, LogisticsDeviationEvent, event_id)
 
     events.audit_event(
         db,
@@ -736,8 +738,10 @@ def _emit_risk_signal(
         explain=explain,
     )
     db.add(signal)
+    db.flush()
+    signal_id = str(signal.id)
     db.commit()
-    db.refresh(signal)
+    signal = repository.refresh_by_id(db, signal, LogisticsRiskSignal, signal_id)
 
     events.audit_event(
         db,

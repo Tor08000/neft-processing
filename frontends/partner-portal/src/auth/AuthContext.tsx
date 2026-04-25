@@ -27,9 +27,21 @@ function isPartnerRolePresent(roles: string[]): boolean {
   return roles.some((role) => role.startsWith("PARTNER_"));
 }
 
+function readStoredSession(): AuthSession | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    const stored = JSON.parse(raw) as AuthSession;
+    return stored.expiresAt > Date.now() ? stored : null;
+  } catch (err) {
+    console.error("Не удалось восстановить сессию", err);
+    return null;
+  }
+}
+
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialSession = null }) => {
-  const [user, setUser] = useState<AuthSession | null>(initialSession);
-  const [isLoading, setIsLoading] = useState(true);
+  const [user, setUser] = useState<AuthSession | null>(() => initialSession ?? readStoredSession());
+  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const persist = useCallback((session: AuthSession | null) => {
@@ -84,20 +96,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialSes
 
   useEffect(() => {
     if (initialSession) {
+      setUser(initialSession);
       setIsLoading(false);
       return;
     }
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      try {
-        const stored = JSON.parse(raw) as AuthSession;
-        if (stored.expiresAt > Date.now()) {
-          void reviveSession(stored);
-          return;
-        }
-      } catch (err) {
-        console.error("Не удалось восстановить сессию", err);
-      }
+    const stored = readStoredSession();
+    if (stored) {
+      void reviveSession(stored);
+      return;
     }
     setIsLoading(false);
   }, [initialSession, reviveSession]);
@@ -105,6 +111,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialSes
   const handleLogin = useCallback(
     async (email: string, password: string) => {
       setError(null);
+      setIsLoading(true);
       try {
         const session = await login({ email, password });
         if (!isPartnerRolePresent(session.roles)) {
@@ -156,6 +163,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialSes
         }
         console.error("Ошибка авторизации", err);
         setError("Сервис временно недоступен");
+      } finally {
+        setIsLoading(false);
       }
     },
     [logout, persist],

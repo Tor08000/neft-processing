@@ -23,14 +23,6 @@ button:disabled {
   box-sizing: border-box;
 }
 
-.card {
-  background: var(--neft-surface);
-  border: 1px solid var(--neft-border);
-  border-radius: var(--neft-radius-card);
-  padding: 1rem 1.25rem;
-  box-shadow: var(--neft-shadow-sm);
-}
-
 .page-section {
   margin-bottom: 24px;
 }
@@ -76,15 +68,6 @@ button:disabled {
 
 .grid.three {
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-}
-
-.metric-card {
-  display: grid;
-  gap: 0.35rem;
-  padding: 0.75rem 1rem;
-  border-radius: var(--neft-radius-md);
-  border: 1px solid var(--neft-border);
-  background: rgba(255, 255, 255, 0.02);
 }
 
 .data-table {
@@ -148,25 +131,6 @@ button:disabled {
   border: 1px solid rgba(255, 176, 32, 0.35);
 }
 
-.section-title {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 0.75rem;
-}
-
-.neft-filters {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  align-items: flex-end;
-}
-
-.neft-filter {
-  min-width: 220px;
-  flex: 1 1 240px;
-}
-
 .neft-actions {
   display: flex;
   gap: 10px;
@@ -202,18 +166,6 @@ button:disabled {
   }
 }
 
-.filters {
-  display: flex;
-  gap: 0.75rem;
-  flex-wrap: wrap;
-}
-
-.filter {
-  display: grid;
-  gap: 0.35rem;
-  min-width: 180px;
-}
-
 .status-grid {
   display: grid;
   gap: 0.35rem;
@@ -224,12 +176,6 @@ button:disabled {
   align-items: center;
   gap: 0.4rem;
   font-size: 0.95rem;
-}
-
-.quick-filters {
-  display: flex;
-  gap: 0.5rem;
-  align-items: flex-end;
 }
 
 input,

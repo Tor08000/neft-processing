@@ -16,6 +16,8 @@ from app.models.settlement import Settlement, SettlementStatus
 from app.repositories.accounts_repository import AccountsRepository
 from app.repositories.ledger_repository import LedgerRepository
 
+PLATFORM_OWNER_ID = "00000000-0000-0000-0000-000000000001"
+
 
 class SettlementError(Exception):
     """Domain error for settlement lifecycle violations."""
@@ -102,9 +104,9 @@ def _post_payout_ledger(db: Session, *, settlement: Settlement, payout: PayoutOr
     currency = payout.currency
 
     platform_account = accounts_repo.get_or_create_account(
-        client_id="PLATFORM",
+        client_id=PLATFORM_OWNER_ID,
         owner_type=AccountOwnerType.PLATFORM,
-        owner_id="PLATFORM",
+        owner_id=PLATFORM_OWNER_ID,
         currency=currency,
         account_type=AccountType.TECHNICAL,
         auto_commit=False,

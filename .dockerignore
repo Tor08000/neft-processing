@@ -1,37 +1,36 @@
-# git
 .git
-.gitignore
-
-# node
+.github
+.hypothesis
+.mypy_cache
+.npm-cache
+.pytest_cache
+.ruff_cache
+.venv
+.admin_token
+.cache
+.codex
+.env
+.turbo
+Microsoft
+**/.venv
+**/__pycache__
+**/.pytest_cache
+**/.hypothesis
 **/node_modules
 **/dist
+**/build
 **/.vite
-**/.cache
-**/coverage
-
-# python
-**/__pycache__
+**/.vitest-results.json
 **/*.pyc
 **/*.pyo
-**/.pytest_cache
-**/.mypy_cache
-**/.ruff_cache
-**/.venv
-**/venv
-
-# OS
-.DS_Store
-Thumbs.db
-
-# misc
-.env
-.admin_token
-logs/
-data/
-build/
-dist/
-/alembic.ini
-!platform/processing-core/app/alembic.ini
-!platform/auth-host/app/alembic.ini
-.vscode/
-.idea/
+**/*.pyd
+*.log
+logs
+data
+tmp
+coverage
+.env.local
+.env.*.local
+services/*/.env
+FETCH_HEAD
+CACHED

@@ -2,9 +2,11 @@ import type { AuthSession } from "../api/types";
 
 export type ClientRole =
   | "CLIENT_ADMIN"
+  | "CLIENT_MANAGER"
   | "CLIENT_OWNER"
   | "CLIENT_ACCOUNTANT"
   | "CLIENT_FLEET_MANAGER"
+  | "CLIENT_VIEWER"
   | "CLIENT_USER";
 
 const normalizeRoles = (user: AuthSession | null): ClientRole[] => (user?.roles ?? []) as ClientRole[];

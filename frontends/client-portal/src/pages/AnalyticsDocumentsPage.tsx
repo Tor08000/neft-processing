@@ -10,7 +10,6 @@ import { FilterBar, type DateFilters } from "../components/analytics/FilterBar";
 import { ClientErrorState } from "../components/ClientErrorState";
 import { DemoEmptyState } from "../components/DemoEmptyState";
 import { AppEmptyState, AppForbiddenState, AppLoadingState } from "../components/states";
-import { demoDocumentsSummary } from "../demo/demoData";
 import { useI18n } from "../i18n";
 import type { AnalyticsDocumentsSummaryResponse } from "../types/analytics";
 import { buildDateRange } from "../utils/dateRange";
@@ -50,10 +49,11 @@ export function AnalyticsDocumentsPage() {
     setUseDemoData(false);
     fetchDocumentsSummary(user, { clientId: user.clientId, from: filters.from, to: filters.to })
       .then((resp) => setSummary(resp))
-      .catch((err: unknown) => {
+      .catch(async (err: unknown) => {
         console.error("Не удалось загрузить аналитику документов", err);
         const status = err instanceof ApiError ? err.status : undefined;
         if (isDemoClientAccount && status === 404) {
+          const { demoDocumentsSummary } = await import("../demo/demoData");
           setSummary(demoDocumentsSummary);
           setUseDemoData(true);
           setError(null);

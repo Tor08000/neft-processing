@@ -5,10 +5,11 @@ from datetime import date, datetime, timezone
 from decimal import Decimal
 from uuid import UUID, uuid4
 
-from sqlalchemy import func
+from sqlalchemy import MetaData, Table, func, text, update
 from sqlalchemy.orm import Session
 
 from app.db.types import new_uuid_str
+from app.db.schema import DB_SCHEMA
 from app.models.billing_flow import (
     BillingInvoice,
     BillingInvoiceStatus,
@@ -18,7 +19,7 @@ from app.models.billing_flow import (
     BillingRefundStatus,
 )
 from app.models.billing_summary import BillingSummary
-from app.models.cases import CaseEventType, CaseKind, CasePriority
+from app.models.cases import CaseEventType, CaseKind, CasePriority, CaseQueue
 from app.models.client import Client
 from app.models.internal_ledger import (
     InternalLedgerAccountType,
@@ -121,6 +122,68 @@ def _invoice_number() -> str:
     return f"INV-{uuid4().hex[:12].upper()}"
 
 
+def _reflected_table(db: Session, name: str) -> Table:
+    return Table(name, MetaData(), autoload_with=db.connection(), schema=DB_SCHEMA)
+
+
+def _reflected_table_exists(db: Session, name: str) -> bool:
+    try:
+        from sqlalchemy import inspect
+
+        connection = db.connection()
+        inspector = inspect(connection)
+        if inspector.has_table(name, schema=DB_SCHEMA):
+            return True
+        if connection.dialect.name != "postgresql":
+            return inspector.has_table(name)
+        return False
+    except Exception:
+        return False
+
+
+def _reactivate_subscription_storage(db: Session, *, tenant_id: int) -> None:
+    if _reflected_table_exists(db, "org_subscriptions"):
+        org_subscriptions = _reflected_table(db, "org_subscriptions")
+        org_id_col = org_subscriptions.c.get("org_id")
+        status_col = org_subscriptions.c.get("status")
+        if org_id_col is not None and status_col is not None:
+            db.execute(
+                text(
+                    f'UPDATE "{DB_SCHEMA}".org_subscriptions '
+                    "SET status = :status "
+                    "WHERE org_id = :tenant_id"
+                ),
+                {"status": "ACTIVE", "tenant_id": tenant_id},
+            )
+
+    if _reflected_table_exists(db, "client_subscriptions"):
+        client_subscriptions = _reflected_table(db, "client_subscriptions")
+        tenant_col = client_subscriptions.c.get("tenant_id")
+        status_col = client_subscriptions.c.get("status")
+        if tenant_col is not None and status_col is not None:
+            db.execute(
+                text(
+                    f'UPDATE "{DB_SCHEMA}".client_subscriptions '
+                    "SET status = :status "
+                    "WHERE tenant_id = :tenant_id"
+                ),
+                {"status": "ACTIVE", "tenant_id": tenant_id},
+            )
+
+
+def reactivate_subscription_storage(db: Session, *, tenant_id: int) -> None:
+    _reactivate_subscription_storage(db, tenant_id=tenant_id)
+
+
+def _is_paid_status(value: object) -> bool:
+    if value is None:
+        return False
+    enum_value = getattr(value, "value", None)
+    if enum_value not in (None, ""):
+        return str(enum_value).upper() == "PAID"
+    return str(value).upper() == "PAID"
+
+
 def get_billing_summaries(
     db: Session,
     *,
@@ -178,20 +241,52 @@ def _update_invoice_status(
     request_id: str | None,
     trace_id: str | None,
 ) -> None:
-    paid_total = (
-        db.query(func.coalesce(func.sum(BillingPayment.amount), 0))
-        .filter(BillingPayment.invoice_id == invoice.id)
-        .filter(BillingPayment.status != BillingPaymentStatus.FAILED)
-        .scalar()
+    invoice_id = str(invoice.id)
+    payment_lookup: dict[str, BillingPayment] = {}
+    for obj in db.identity_map.values():
+        if isinstance(obj, BillingPayment) and obj.id is not None:
+            payment_lookup[str(obj.id)] = obj
+    for obj in db.new:
+        if isinstance(obj, BillingPayment) and obj.id is not None:
+            payment_lookup[str(obj.id)] = obj
+
+    pending_paid_total = sum(
+        Decimal(payment.amount or 0)
+        for payment in db.new
+        if isinstance(payment, BillingPayment)
+        and str(payment.invoice_id) == invoice_id
+        and payment.status != BillingPaymentStatus.FAILED
     )
-    refunded_total = (
-        db.query(func.coalesce(func.sum(BillingRefund.amount), 0))
-        .join(BillingPayment, BillingRefund.payment_id == BillingPayment.id)
-        .filter(BillingPayment.invoice_id == invoice.id)
-        .filter(BillingRefund.status != BillingRefundStatus.FAILED)
-        .scalar()
+    pending_refunded_total = sum(
+        Decimal(refund.amount or 0)
+        for refund in db.new
+        if isinstance(refund, BillingRefund)
+        and refund.status != BillingRefundStatus.FAILED
+        and (payment := payment_lookup.get(str(refund.payment_id))) is not None
+        and str(payment.invoice_id) == invoice_id
     )
-    paid = Decimal(paid_total or 0) - Decimal(refunded_total or 0)
+
+    with db.no_autoflush:
+        paid_total = (
+            db.query(func.coalesce(func.sum(BillingPayment.amount), 0))
+            .filter(BillingPayment.invoice_id == invoice.id)
+            .filter(BillingPayment.status != BillingPaymentStatus.FAILED)
+            .scalar()
+        )
+        refunded_total = (
+            db.query(func.coalesce(func.sum(BillingRefund.amount), 0))
+            .join(BillingPayment, BillingRefund.payment_id == BillingPayment.id)
+            .filter(BillingPayment.invoice_id == invoice.id)
+            .filter(BillingRefund.status != BillingRefundStatus.FAILED)
+            .scalar()
+        )
+
+    paid = (
+        Decimal(paid_total or 0)
+        + pending_paid_total
+        - Decimal(refunded_total or 0)
+        - pending_refunded_total
+    )
     new_status = BillingInvoiceStatus.ISSUED
     if paid <= 0:
         new_status = BillingInvoiceStatus.ISSUED
@@ -244,10 +339,12 @@ def _resolve_case_id(
         db,
         tenant_id=tenant_id,
         kind=CaseKind.INVOICE,
+        entity_type="invoice",
         entity_id=invoice_number,
         kpi_key=None,
         window_days=None,
         title=f"Billing invoice {invoice_number}",
+        description=f"Billing invoice {invoice_number}",
         priority=CasePriority.MEDIUM,
         note=None,
         explain=None,
@@ -255,6 +352,7 @@ def _resolve_case_id(
         selected_actions=None,
         mastery_snapshot=None,
         created_by=actor.id if actor else None,
+        queue=CaseQueue.FINANCE_OPS,
         request_id=request_id,
         trace_id=trace_id,
     )
@@ -390,6 +488,8 @@ def issue_invoice(
         event_type="INVOICE_ISSUED",
         subject_type=NotificationSubjectType.CLIENT,
         subject_id=client_id,
+        aggregate_type="billing_invoice",
+        aggregate_id=invoice_id,
         template_code="invoice_issued_email",
         template_vars={
             "invoice_number": number,
@@ -415,6 +515,7 @@ def issue_invoice(
         mastery_snapshot=None,
         audit_event_id=str(event.id),
     )
+    db.flush()
 
     billing_metrics.mark_invoice_issued()
     return BillingInvoiceResult(invoice=invoice, is_replay=False)
@@ -451,6 +552,7 @@ def capture_payment(
         raise ValueError("invoice_not_found")
     if invoice.currency != currency_code:
         raise ValueError("currency_mismatch")
+    payment_clears_invoice = Decimal(invoice.amount_paid or 0) + amount >= Decimal(invoice.amount_total or 0)
 
     payment_id = new_uuid_str()
     captured_at = datetime.now(timezone.utc)
@@ -533,6 +635,9 @@ def capture_payment(
         audit_event_id=event.id,
     )
     db.add(payment)
+    # Persist the payment row before downstream reads/side effects so
+    # autoflush-enabled sessions do not diverge from actual DB state.
+    db.flush()
 
     record_decision_memory(
         db,
@@ -555,6 +660,9 @@ def capture_payment(
         request_id=request_id,
         trace_id=trace_id,
     )
+    if _is_paid_status(invoice.status) or payment_clears_invoice:
+        reactivate_subscription_storage(db, tenant_id=tenant_id)
+    db.flush()
 
     billing_metrics.mark_payment_captured()
     return BillingPaymentResult(payment=payment, invoice=invoice, is_replay=False)
@@ -675,6 +783,9 @@ def refund_payment(
         audit_event_id=event.id,
     )
     db.add(refund)
+    # Persist the refund row before invoice/payment status recompute to keep
+    # runtime behavior stable across autoflush configurations.
+    db.flush()
 
     record_decision_memory(
         db,
@@ -690,13 +801,21 @@ def refund_payment(
         audit_event_id=str(event.id),
     )
 
-    payment_refunded = (
-        db.query(func.coalesce(func.sum(BillingRefund.amount), 0))
-        .filter(BillingRefund.payment_id == payment_id)
-        .filter(BillingRefund.status != BillingRefundStatus.FAILED)
-        .scalar()
+    pending_payment_refunded = sum(
+        Decimal(candidate.amount or 0)
+        for candidate in db.new
+        if isinstance(candidate, BillingRefund)
+        and str(candidate.payment_id) == str(payment_id)
+        and candidate.status != BillingRefundStatus.FAILED
     )
-    if Decimal(payment_refunded or 0) >= Decimal(payment.amount):
+    with db.no_autoflush:
+        payment_refunded = (
+            db.query(func.coalesce(func.sum(BillingRefund.amount), 0))
+            .filter(BillingRefund.payment_id == payment_id)
+            .filter(BillingRefund.status != BillingRefundStatus.FAILED)
+            .scalar()
+        )
+    if Decimal(payment_refunded or 0) + pending_payment_refunded >= Decimal(payment.amount):
         payment.status = BillingPaymentStatus.REFUNDED_FULL
     else:
         payment.status = BillingPaymentStatus.REFUNDED_PARTIAL
@@ -708,6 +827,7 @@ def refund_payment(
         request_id=request_id,
         trace_id=trace_id,
     )
+    db.flush()
 
     billing_metrics.mark_refund()
     return BillingRefundResult(refund=refund, payment=payment, invoice=invoice, is_replay=False)
@@ -819,5 +939,6 @@ __all__ = [
     "calculate_client_charges",
     "capture_payment",
     "issue_invoice",
+    "reactivate_subscription_storage",
     "refund_payment",
 ]

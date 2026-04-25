@@ -1,15 +1,45 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from types import SimpleNamespace
 from unittest.mock import patch
 from uuid import uuid4
+import sys
 
 import pytest
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
+from fastapi.testclient import TestClient
 
 pytest.importorskip("neft_integration_hub")
 
+
+try:
+    import prometheus_client  # noqa: F401
+except ModuleNotFoundError:
+    class _MetricStub:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def labels(self, *args, **kwargs):
+            return self
+
+        def inc(self, *args, **kwargs):
+            return None
+
+        def set(self, *args, **kwargs):
+            return None
+
+        def observe(self, *args, **kwargs):
+            return None
+
+    sys.modules["prometheus_client"] = SimpleNamespace(
+        CONTENT_TYPE_LATEST="text/plain",
+        Counter=_MetricStub,
+        Gauge=_MetricStub,
+        Histogram=_MetricStub,
+        generate_latest=lambda: b"",
+    )
+
+from neft_integration_hub import main as main_module
 from neft_integration_hub.db import Base
 from neft_integration_hub.schemas import WebhookOwner
 from neft_integration_hub.models import WebhookDelivery, WebhookDeliveryStatus
@@ -17,6 +47,7 @@ from neft_integration_hub.services.webhooks import (
     build_event_envelope,
     compute_sla,
     create_endpoint,
+    create_subscription,
     decrypt_secret,
     encrypt_secret,
     enqueue_delivery,
@@ -26,12 +57,32 @@ from neft_integration_hub.services.webhooks import (
     schedule_replay,
 )
 from neft_integration_hub.settings import get_settings
+from neft_integration_hub.tests._db import WEBHOOK_TABLES, make_sqlite_session, make_sqlite_session_factory
 
 
 def _make_sqlite_session():
-    engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
-    Base.metadata.create_all(bind=engine)
-    return sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)()
+    return make_sqlite_session(*WEBHOOK_TABLES)
+
+
+@pytest.fixture()
+def webhook_api_client(monkeypatch: pytest.MonkeyPatch):
+    testing_session_local = make_sqlite_session_factory(*WEBHOOK_TABLES, static_pool=True)
+
+    def override_get_db():
+        db = testing_session_local()
+        try:
+            yield db
+        finally:
+            db.close()
+
+    monkeypatch.setenv("ALLOW_MOCK_PROVIDERS_IN_PROD", "1")
+    monkeypatch.setattr(main_module.celery_app, "send_task", lambda *args, **kwargs: None)
+    main_module.app.dependency_overrides[main_module.get_db] = override_get_db
+    try:
+        with TestClient(main_module.app) as client:
+            yield client, testing_session_local
+    finally:
+        main_module.app.dependency_overrides.pop(main_module.get_db, None)
 
 
 def test_build_event_envelope_contract():
@@ -128,6 +179,7 @@ def test_pause_blocks_delivery_and_resume_restores():
     assert delivery.next_retry_at is None
 
     endpoint = resume_endpoint(db, endpoint)
+    db.expire_all()
     updated = db.query(WebhookDelivery).filter_by(id=delivery.id).first()
     assert endpoint.delivery_paused is False
     assert updated.status == WebhookDeliveryStatus.PENDING.value
@@ -147,7 +199,7 @@ def test_sla_calculation():
             correlation_id="corr-5",
             owner=WebhookOwner(type=endpoint.owner_type, id=endpoint.owner_id),
             payload={"doc_id": "doc-4"},
-            occurred_at=now.isoformat(),
+            occurred_at=now,
         ),
     )
     ok_delivery.status = WebhookDeliveryStatus.DELIVERED.value
@@ -161,7 +213,7 @@ def test_sla_calculation():
             correlation_id="corr-6",
             owner=WebhookOwner(type=endpoint.owner_type, id=endpoint.owner_id),
             payload={"doc_id": "doc-5"},
-            occurred_at=now.isoformat(),
+            occurred_at=now,
         ),
     )
     bad_delivery.status = WebhookDeliveryStatus.DELIVERED.value
@@ -175,7 +227,7 @@ def test_sla_calculation():
             correlation_id="corr-7",
             owner=WebhookOwner(type=endpoint.owner_type, id=endpoint.owner_id),
             payload={"doc_id": "doc-6"},
-            occurred_at=now.isoformat(),
+            occurred_at=now,
         ),
     )
     failed_delivery.status = WebhookDeliveryStatus.FAILED.value
@@ -245,3 +297,173 @@ def test_alert_events_published():
         db.commit()
         evaluate_alerts(db, endpoint=endpoint)
         assert any(call.args[0].event_type == "WEBHOOK_ALERT_RESOLVED" for call in publish_mock.call_args_list)
+
+
+def test_webhook_endpoint_and_subscription_routes(webhook_api_client):
+    client, session_factory = webhook_api_client
+    with session_factory() as db:
+        endpoint, _secret = create_endpoint(db, owner_type="PARTNER", owner_id="partner-1", url="https://partner.example.com/webhooks")
+        subscription = create_subscription(
+            db,
+            endpoint_id=endpoint.id,
+            event_type="orders.updated",
+            schema_version=1,
+            filters={"station_id": "station-1"},
+            enabled=True,
+        )
+        endpoint_id = endpoint.id
+        subscription_id = subscription.id
+
+    response = client.get("/v1/webhooks/subscriptions", params={"endpoint_id": endpoint_id})
+    assert response.status_code == 200
+    assert response.json() == [
+        {
+            "id": subscription_id,
+            "endpoint_id": endpoint_id,
+            "event_type": "orders.updated",
+            "schema_version": 1,
+            "filters": {"station_id": "station-1"},
+            "enabled": True,
+        }
+    ]
+
+    response = client.patch(
+        f"/v1/webhooks/endpoints/{endpoint_id}",
+        json={"status": "DISABLED", "url": "https://partner.example.com/updated"},
+    )
+    assert response.status_code == 200
+    assert response.json()["status"] == "DISABLED"
+    assert response.json()["url"] == "https://partner.example.com/updated"
+
+    response = client.patch(f"/v1/webhooks/subscriptions/{subscription_id}", json={"enabled": False})
+    assert response.status_code == 200
+    assert response.json()["enabled"] is False
+
+    response = client.delete(f"/v1/webhooks/subscriptions/{subscription_id}")
+    assert response.status_code == 204
+
+    response = client.get("/v1/webhooks/subscriptions", params={"endpoint_id": endpoint_id})
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+def test_webhook_delivery_routes_support_ui_filters_detail_and_retry(webhook_api_client):
+    client, session_factory = webhook_api_client
+    with session_factory() as db:
+        endpoint, _secret = create_endpoint(db, owner_type="PARTNER", owner_id="partner-1", url="https://partner.example.com/webhooks")
+        matching = enqueue_delivery(
+            db,
+            endpoint=endpoint,
+            envelope=build_event_envelope(
+                event_id="99999999-9999-9999-9999-999999999991",
+                event_type="orders.updated",
+                correlation_id="corr-delivery-1",
+                owner=WebhookOwner(type=endpoint.owner_type, id=endpoint.owner_id),
+                payload={"order_id": "order-1"},
+                occurred_at=datetime(2024, 1, 2, 12, 0, tzinfo=timezone.utc),
+            ),
+        )
+        matching.status = WebhookDeliveryStatus.FAILED.value
+        matching.attempt = 2
+        matching.last_http_status = 502
+        matching.last_error = "upstream_timeout"
+        matching.next_retry_at = None
+        db.add(matching)
+
+        other = enqueue_delivery(
+            db,
+            endpoint=endpoint,
+            envelope=build_event_envelope(
+                event_id="99999999-9999-9999-9999-999999999992",
+                event_type="catalog.updated",
+                correlation_id="corr-delivery-2",
+                owner=WebhookOwner(type=endpoint.owner_type, id=endpoint.owner_id),
+                payload={"catalog_id": "catalog-1"},
+                occurred_at=datetime(2024, 1, 3, 12, 0, tzinfo=timezone.utc),
+            ),
+        )
+        other.status = WebhookDeliveryStatus.DELIVERED.value
+        db.add(other)
+        db.commit()
+        delivery_id = matching.id
+        endpoint_id = endpoint.id
+        event_id = matching.event_id
+
+    response = client.get(
+        "/v1/webhooks/deliveries",
+        params={
+            "endpoint_id": endpoint_id,
+            "status": "FAILED",
+            "from": "2024-01-02",
+            "to": "2024-01-02",
+            "limit": 20,
+            "event_type": "orders.updated",
+            "event_id": event_id,
+        },
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body) == 1
+    assert body[0]["id"] == delivery_id
+
+    response = client.get(f"/v1/webhooks/deliveries/{delivery_id}")
+    assert response.status_code == 200
+    detail = response.json()
+    assert detail["endpoint_url"] == "https://partner.example.com/webhooks"
+    assert detail["correlation_id"] == "corr-delivery-1"
+    assert detail["envelope"]["payload"] == {"order_id": "order-1"}
+    assert detail["headers"]["X-NEFT-Event-Id"] == event_id
+    assert detail["attempts"] == [
+        {
+            "attempt": 2,
+            "http_status": 502,
+            "error": "upstream_timeout",
+            "latency_ms": None,
+            "delivered_at": None,
+            "next_retry_at": None,
+            "correlation_id": "corr-delivery-1",
+        }
+    ]
+
+    with patch.object(main_module.celery_app, "send_task") as send_task_mock:
+        response = client.post(f"/v1/webhooks/deliveries/{delivery_id}/retry")
+
+    assert response.status_code == 200
+    assert response.json() == {"delivery_id": delivery_id}
+    send_task_mock.assert_called_once_with("webhook.deliver", args=[delivery_id])
+
+    with session_factory() as db:
+        refreshed = db.query(WebhookDelivery).filter(WebhookDelivery.id == delivery_id).first()
+        assert refreshed is not None
+        assert refreshed.status == WebhookDeliveryStatus.PENDING.value
+        assert refreshed.next_retry_at is not None
+        assert refreshed.last_http_status is None
+        assert refreshed.last_error is None
+
+
+def test_webhook_test_route_accepts_payload_contract(webhook_api_client):
+    client, session_factory = webhook_api_client
+    with session_factory() as db:
+        endpoint, _secret = create_endpoint(db, owner_type="PARTNER", owner_id="partner-1", url="https://partner.example.com/webhooks")
+        endpoint_id = endpoint.id
+
+    with patch.object(main_module.celery_app, "send_task") as send_task_mock:
+        response = client.post(
+            f"/v1/webhooks/endpoints/{endpoint_id}/test",
+            json={"event_type": "test.ping", "payload": {"hello": "world"}},
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["delivery_id"]
+    assert body["status"] == WebhookDeliveryStatus.PENDING.value
+    assert body["http_status"] is None
+    assert body["latency_ms"] is None
+    assert body["error"] is None
+    send_task_mock.assert_called_once()
+
+    with session_factory() as db:
+        delivery = db.query(WebhookDelivery).filter(WebhookDelivery.id == body["delivery_id"]).first()
+        assert delivery is not None
+        assert delivery.event_type == "test.ping"
+        assert delivery.payload["payload"] == {"hello": "world"}

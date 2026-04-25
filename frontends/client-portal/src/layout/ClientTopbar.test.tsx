@@ -1,48 +1,40 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import { ClientTopbar } from "./ClientTopbar";
 
 const baseProps = {
-  title: "Клиентский портал",
+  title: "Client portal",
   activePath: "/dashboard",
-  items: [{ to: "/dashboard", label: "Обзор", icon: <span>i</span>, audience: "all" as const }],
+  items: [{ to: "/dashboard", label: "Overview", icon: <span>i</span>, audience: "all" as const }],
   userEmail: "user@test.dev",
   mode: "personal" as const,
   theme: "light" as const,
-  onSelectMode: vi.fn(),
   onToggleTheme: vi.fn(),
   onToggleSidebar: vi.fn(),
   onLogout: vi.fn(),
 };
 
-describe("ClientTopbar mode switcher", () => {
-  it("does not render mode switcher for single-mode users", () => {
+describe("ClientTopbar mode indicator", () => {
+  it("renders the system-derived mode as a read-only indicator", () => {
     render(
       <MemoryRouter>
-        <ClientTopbar {...baseProps} availableModes={["personal"]} />
+        <ClientTopbar {...baseProps} />
       </MemoryRouter>,
     );
 
-    expect(screen.queryByLabelText("Режим клиента")).not.toBeInTheDocument();
+    expect(screen.getByTestId("client-mode-indicator")).toBeInTheDocument();
+    expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
   });
 
-  it("allows switching between allowed modes for multi-mode users", () => {
-    const onSelectMode = vi.fn();
+  it("does not expose a manual client kind switcher for fleet-capable users", () => {
     render(
       <MemoryRouter>
-        <ClientTopbar
-          {...baseProps}
-          availableModes={["personal", "fleet"]}
-          onSelectMode={onSelectMode}
-        />
+        <ClientTopbar {...baseProps} mode="fleet" />
       </MemoryRouter>,
     );
 
-    const select = screen.getByLabelText("Режим клиента");
-    fireEvent.change(select, { target: { value: "fleet" } });
-
-    expect(onSelectMode).toHaveBeenCalledWith("fleet");
-    expect(screen.queryByRole("option", { name: "Недоступный" })).not.toBeInTheDocument();
+    expect(screen.getByTestId("client-mode-indicator")).toBeInTheDocument();
+    expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
   });
 });

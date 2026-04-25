@@ -20,8 +20,11 @@ from app.schemas.admin.billing_flows import (
 )
 from app.services.billing_service import capture_payment, issue_invoice, refund_payment
 from app.services.case_events_service import CaseEventActor
+from app.services.token_claims import DEFAULT_TENANT_ID, resolve_token_tenant_id
 
 
+# Canonical admin owner for explicit invoice/payment/refund flow actions over billing_flow storage.
+# Distinct from admin/billing summary/tariff control-plane reads.
 router = APIRouter(prefix="/billing/flows", tags=["admin"])
 
 
@@ -39,7 +42,7 @@ def issue_invoice_endpoint(
     token: dict = Depends(require_admin_user),
     db: Session = Depends(get_db),
 ) -> BillingInvoiceResponse:
-    tenant_id = int(token.get("tenant_id") or 0)
+    tenant_id = resolve_token_tenant_id(token, default=DEFAULT_TENANT_ID)
     actor = _actor_from_token(token)
     try:
         result = issue_invoice(
@@ -86,7 +89,7 @@ def capture_payment_endpoint(
     token: dict = Depends(require_admin_user),
     db: Session = Depends(get_db),
 ) -> BillingPaymentResponse:
-    tenant_id = int(token.get("tenant_id") or 0)
+    tenant_id = resolve_token_tenant_id(token, default=DEFAULT_TENANT_ID)
     actor = _actor_from_token(token)
     try:
         result = capture_payment(
@@ -131,7 +134,7 @@ def refund_payment_endpoint(
     token: dict = Depends(require_admin_user),
     db: Session = Depends(get_db),
 ) -> BillingRefundResponse:
-    tenant_id = int(token.get("tenant_id") or 0)
+    tenant_id = resolve_token_tenant_id(token, default=DEFAULT_TENANT_ID)
     actor = _actor_from_token(token)
     try:
         result = refund_payment(

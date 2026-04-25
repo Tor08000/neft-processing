@@ -1,22 +1,25 @@
 import React from "react";
 import { Link } from "react-router-dom";
 import type { OpsSupportSummary } from "../../types/ops";
-import { buildPlaceholderLink } from "./opsUtils";
 
 const formatNumber = (value: number) => new Intl.NumberFormat("ru-RU").format(value);
 
 type MetricRowProps = {
   label: string;
   value: number;
-  to: string;
+  to?: string;
 };
 
 const MetricRow: React.FC<MetricRowProps> = ({ label, value, to }) => (
   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
     <span>{label}</span>
-    <Link to={to} style={{ color: "var(--neft-primary)", fontWeight: 600 }}>
-      {formatNumber(value)}
-    </Link>
+    {to ? (
+      <Link to={to} style={{ color: "var(--neft-primary)", fontWeight: 600 }}>
+        {formatNumber(value)}
+      </Link>
+    ) : (
+      <span style={{ fontWeight: 600 }}>{formatNumber(value)}</span>
+    )}
   </div>
 );
 
@@ -29,7 +32,7 @@ export const OpsSupportPanel: React.FC<OpsSupportPanelProps> = ({ support }) => 
     <section className="neft-card" style={{ padding: 16 }}>
       <h3 style={{ marginTop: 0 }}>Support</h3>
       <div style={{ display: "grid", gap: 8 }}>
-        <MetricRow label="Open tickets" value={support.open_tickets} to={buildPlaceholderLink("Support open tickets")} />
+        <MetricRow label="Open tickets" value={support.open_tickets} to="/cases?queue=SUPPORT" />
         <MetricRow label="SLA breaches (24h)" value={support.sla_breaches_24h} to="/ops/support/breaches" />
       </div>
       {support.sla_breaches_24h === 0 ? (

@@ -24,7 +24,6 @@
     "**/*.test.tsx",
     "src/**/*.test.ts",
     "src/**/*.test.tsx",
-    "src/stubs/**",
     "types/react-query.d.ts"
   ],
   "references": [{ "path": "./tsconfig.node.json" }]

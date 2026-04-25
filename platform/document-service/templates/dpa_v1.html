@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>NEFT Data Processing Addendum</title>
+    <style>
+      body { font-family: Arial, sans-serif; margin: 40px; color: #111827; line-height: 1.5; }
+      h1 { font-size: 22px; margin-bottom: 8px; }
+      h2 { font-size: 15px; margin-top: 24px; }
+      .meta { margin: 18px 0; padding: 12px; border: 1px solid #d1d5db; }
+      .muted { color: #4b5563; font-size: 12px; }
+    </style>
+  </head>
+  <body>
+    <h1>NEFT Data Processing Addendum</h1>
+    <p class="muted">Generated for onboarding application {{ application_id }}.</p>
+    <div class="meta">
+      <div><strong>Controller:</strong> {{ company_name }}</div>
+      <div><strong>INN:</strong> {{ inn }}</div>
+      <div><strong>OGRN:</strong> {{ ogrn }}</div>
+      <div><strong>Contact email:</strong> {{ email }}</div>
+    </div>
+    <h2>Processing Purpose</h2>
+    <p>
+      Personal and operational data is processed to provide NEFT platform
+      services, including access management, transactions, support, document
+      workflows, risk controls, and audit evidence.
+    </p>
+    <h2>Security Measures</h2>
+    <p>
+      Access is controlled through role and capability checks, event audit,
+      storage integrity controls, and provider-specific transport boundaries.
+    </p>
+  </body>
+</html>
